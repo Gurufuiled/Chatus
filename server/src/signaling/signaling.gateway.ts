@@ -133,9 +133,73 @@ export class SignalingGateway
     if (!targetUserId || !candidate) return;
 
     const data = JSON.stringify({
-      type: 'ice',
+      type: 'ice_candidate',
       from_user_id: client.userId,
       candidate,
+    });
+    this.sendToUser(targetUserId, data);
+  }
+
+  @SubscribeMessage('call_cancel')
+  handleCallCancel(
+    client: AuthenticatedSocket,
+    payload: { target_user_id: string },
+  ) {
+    if (!client.userId) return;
+    const { target_user_id: targetUserId } = payload;
+    if (!targetUserId) return;
+
+    const data = JSON.stringify({
+      type: 'call_cancel',
+      from_user_id: client.userId,
+    });
+    this.sendToUser(targetUserId, data);
+  }
+
+  @SubscribeMessage('call_decline')
+  handleCallDecline(
+    client: AuthenticatedSocket,
+    payload: { target_user_id: string },
+  ) {
+    if (!client.userId) return;
+    const { target_user_id: targetUserId } = payload;
+    if (!targetUserId) return;
+
+    const data = JSON.stringify({
+      type: 'call_decline',
+      from_user_id: client.userId,
+    });
+    this.sendToUser(targetUserId, data);
+  }
+
+  @SubscribeMessage('call_end')
+  handleCallEnd(
+    client: AuthenticatedSocket,
+    payload: { target_user_id: string },
+  ) {
+    if (!client.userId) return;
+    const { target_user_id: targetUserId } = payload;
+    if (!targetUserId) return;
+
+    const data = JSON.stringify({
+      type: 'call_end',
+      from_user_id: client.userId,
+    });
+    this.sendToUser(targetUserId, data);
+  }
+
+  @SubscribeMessage('call_busy')
+  handleCallBusy(
+    client: AuthenticatedSocket,
+    payload: { target_user_id: string },
+  ) {
+    if (!client.userId) return;
+    const { target_user_id: targetUserId } = payload;
+    if (!targetUserId) return;
+
+    const data = JSON.stringify({
+      type: 'call_busy',
+      from_user_id: client.userId,
     });
     this.sendToUser(targetUserId, data);
   }

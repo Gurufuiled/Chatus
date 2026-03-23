@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   Image,
   Modal,
   Pressable,
@@ -13,6 +14,8 @@ import {
 import * as MediaLibrary from 'expo-media-library';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import MaterialCommunityIcons from 'expo/node_modules/@expo/vector-icons/MaterialCommunityIcons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { colors, typography, MIN_TAP_TARGET } from '../theme/colors';
 import { DocumentPickerService } from '../services/DocumentPickerService';
 import { VoiceRecorderService, type VoiceRecordingResult } from '../services/VoiceRecorderService';
@@ -74,6 +77,10 @@ function SendIcon() {
   return <Feather name="send" size={18} color={colors.accent} />;
 }
 
+function VoiceSendIcon() {
+  return <Feather name="arrow-up" size={20} color="#FFFFFF" />;
+}
+
 function SheetActionIcon({ tone }: { tone: AttachmentAction['tone'] }) {
   if (tone === 'video') {
     return <MaterialCommunityIcons name="play-circle-outline" size={19} color="#6B7280" />;
@@ -104,6 +111,8 @@ export function InputBar({
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
   const voiceActionBusyRef = useRef(false);
+  const voiceSwipeTriggeredRef = useRef(false);
+  const recordingPulse = useRef(new Animated.Value(1)).current;
 
   const hasText = inputText.trim().length > 0;
   const hasPendingImage = pendingImage != null;
@@ -166,6 +175,36 @@ export function InputBar({
   }, [isVoiceRecording]);
 
   useEffect(() => {
+    if (!isVoiceRecording) {
+      recordingPulse.stopAnimation();
+      recordingPulse.setValue(1);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(recordingPulse, {
+          toValue: 0.25,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+        Animated.timing(recordingPulse, {
+          toValue: 1,
+          duration: 520,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    loop.start();
+
+    return () => {
+      loop.stop();
+      recordingPulse.setValue(1);
+    };
+  }, [isVoiceRecording, recordingPulse]);
+
+  useEffect(() => {
     return () => {
       if (VoiceRecorderService.isRecording()) {
         VoiceRecorderService.stopRecording().catch(() => {});
@@ -173,30 +212,12 @@ export function InputBar({
     };
   }, []);
 
-  const handleVoiceButtonPress = useCallback(async () => {
-    if (voiceActionBusyRef.current) return;
+  const startVoiceRecording = useCallback(async () => {
+    if (voiceActionBusyRef.current || isVoiceRecording) return;
     voiceActionBusyRef.current = true;
-
-    if (isVoiceRecording) {
-      try {
-        const result = await VoiceRecorderService.stopRecording();
-        setIsVoiceRecording(false);
-        setVoiceElapsedMs(0);
-        await onSendVoice(result);
-      } catch (err) {
-        setIsVoiceRecording(false);
-        setVoiceElapsedMs(0);
-        if (__DEV__) console.warn('[InputBar] stop voice recording error:', err);
-        Alert.alert('Ошибка', 'Не удалось сохранить голосовое сообщение.');
-      } finally {
-        voiceActionBusyRef.current = false;
-      }
-      return;
-    }
 
     try {
       if (VoiceRecorderService.isRecording()) {
-        voiceActionBusyRef.current = false;
         return;
       }
       await VoiceRecorderService.startRecording();
@@ -208,6 +229,40 @@ export function InputBar({
     } finally {
       voiceActionBusyRef.current = false;
     }
+  }, [isVoiceRecording]);
+
+  const cancelVoiceRecording = useCallback(async () => {
+    if (voiceActionBusyRef.current || !isVoiceRecording) return;
+    voiceActionBusyRef.current = true;
+
+    try {
+      await VoiceRecorderService.stopRecording();
+    } catch (err) {
+      if (__DEV__) console.warn('[InputBar] cancel voice recording error:', err);
+    } finally {
+      setIsVoiceRecording(false);
+      setVoiceElapsedMs(0);
+      voiceActionBusyRef.current = false;
+    }
+  }, [isVoiceRecording]);
+
+  const finishVoiceRecording = useCallback(async () => {
+    if (voiceActionBusyRef.current || !isVoiceRecording) return;
+    voiceActionBusyRef.current = true;
+
+    try {
+      const result = await VoiceRecorderService.stopRecording();
+      setIsVoiceRecording(false);
+      setVoiceElapsedMs(0);
+      await onSendVoice(result);
+    } catch (err) {
+      setIsVoiceRecording(false);
+      setVoiceElapsedMs(0);
+      if (__DEV__) console.warn('[InputBar] stop voice recording error:', err);
+      Alert.alert('Ошибка', 'Не удалось сохранить голосовое сообщение.');
+    } finally {
+      voiceActionBusyRef.current = false;
+    }
   }, [isVoiceRecording, onSendVoice]);
 
   const runAttachmentAction = useCallback(async (action: () => Promise<void>) => {
@@ -215,7 +270,7 @@ export function InputBar({
     try {
       await action();
     } catch (err) {
-      if (__DEV__) console.warn('[InputBar] Attachment error:', err);
+      if (__DEV__) console.warn('[InputBar] attachment error:', err);
       Alert.alert('Ошибка', 'Не удалось прикрепить файл. Попробуй ещё раз.');
     }
   }, []);
@@ -312,25 +367,39 @@ export function InputBar({
     setShowAttachmentSheet(true);
   }, [showAttachmentButton]);
 
+  const voiceRecordGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!canSend && !isVoiceRecording)
+        .activeOffsetY([-8, 8])
+        .failOffsetX([-24, 24])
+        .onBegin(() => {
+          voiceSwipeTriggeredRef.current = false;
+        })
+        .onUpdate((event) => {
+          if (voiceSwipeTriggeredRef.current) return;
+          if (event.translationY <= -18) {
+            voiceSwipeTriggeredRef.current = true;
+            runOnJS(startVoiceRecording)();
+          }
+        })
+        .onFinalize(() => {
+          voiceSwipeTriggeredRef.current = false;
+        }),
+    [canSend, isVoiceRecording, startVoiceRecording]
+  );
+
+  const voiceElapsedLabel = useMemo(() => {
+    const minutes = Math.floor(voiceElapsedMs / 60000).toString();
+    const seconds = Math.floor((voiceElapsedMs % 60000) / 1000)
+      .toString()
+      .padStart(2, '0');
+    return `${minutes}:${seconds}`;
+  }, [voiceElapsedMs]);
+
   return (
     <>
       <View style={styles.inputRow}>
-        {isVoiceRecording ? (
-          <View style={styles.recordingBanner}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>Идёт запись голосового...</Text>
-            <Text style={styles.recordingTime}>
-              {Math.floor(voiceElapsedMs / 60000)
-                .toString()
-                .padStart(2, '0')}
-              :
-              {Math.floor((voiceElapsedMs % 60000) / 1000)
-                .toString()
-                .padStart(2, '0')}
-            </Text>
-          </View>
-        ) : null}
-
         {pendingImage ? (
           <View style={styles.previewCard}>
             <Image source={{ uri: pendingImage.uri }} style={styles.previewImage} />
@@ -362,52 +431,89 @@ export function InputBar({
           </View>
         ) : null}
 
-        <View style={styles.composerShell}>
-          {showAttachmentButton ? (
+        {isVoiceRecording ? (
+          <View style={styles.recordingComposer}>
             <Pressable
-              style={styles.leadingAction}
-              onPress={openAttachmentSheet}
+              style={styles.recordingCancelButton}
+              onPress={() => {
+                void cancelVoiceRecording();
+              }}
               accessibilityRole="button"
-              accessibilityLabel="Открыть вложения"
+              accessibilityLabel="Отменить запись голосового"
             >
-              <PaperclipIcon />
+              <Text style={styles.recordingCancelText}>Отмена</Text>
             </Pressable>
-          ) : null}
 
-          <TextInput
-            style={styles.input}
-            placeholder={placeholder}
-            placeholderTextColor={colors.placeholder}
-            value={inputText}
-            onChangeText={handleInputChange}
-            multiline
-            maxLength={4096}
-          />
+            <View style={styles.recordingCenter}>
+              <Animated.View style={[styles.recordingDot, { opacity: recordingPulse }]} />
+              <Text style={styles.recordingTime}>{voiceElapsedLabel}</Text>
+            </View>
 
-          {canSend ? (
-            <Pressable
-              style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
-              onPress={handleSend}
-              accessibilityRole="button"
-              accessibilityLabel="Отправить сообщение"
-            >
-              <SendIcon />
-            </Pressable>
-          ) : (
             <Pressable
               style={({ pressed }) => [
-                styles.trailingAction,
-                isVoiceRecording && styles.trailingActionRecording,
-                pressed && styles.trailingActionPressed,
+                styles.recordingSendButton,
+                pressed && styles.recordingSendButtonPressed,
               ]}
-              onPress={handleVoiceButtonPress}
+              onPress={() => {
+                void finishVoiceRecording();
+              }}
               accessibilityRole="button"
-              accessibilityLabel={isVoiceRecording ? 'Остановить запись голосового' : 'Записать голосовое сообщение'}
+              accessibilityLabel="Отправить голосовое сообщение"
             >
-              <MicIcon />
+              <VoiceSendIcon />
             </Pressable>
-          )}
-        </View>
+          </View>
+        ) : (
+          <View style={styles.composerShell}>
+            {showAttachmentButton ? (
+              <Pressable
+                style={styles.leadingAction}
+                onPress={openAttachmentSheet}
+                accessibilityRole="button"
+                accessibilityLabel="Открыть вложения"
+              >
+                <PaperclipIcon />
+              </Pressable>
+            ) : null}
+
+            <TextInput
+              style={styles.input}
+              placeholder={placeholder}
+              placeholderTextColor={colors.placeholder}
+              value={inputText}
+              onChangeText={handleInputChange}
+              multiline
+              maxLength={4096}
+            />
+
+            {canSend ? (
+              <Pressable
+                style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
+                onPress={handleSend}
+                accessibilityRole="button"
+                accessibilityLabel="Отправить сообщение"
+              >
+                <SendIcon />
+              </Pressable>
+            ) : (
+              <GestureDetector gesture={voiceRecordGesture}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.trailingAction,
+                    pressed && styles.trailingActionPressed,
+                  ]}
+                  onPress={() => {
+                    void startVoiceRecording();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Записать голосовое сообщение"
+                >
+                  <MicIcon />
+                </Pressable>
+              </GestureDetector>
+            )}
+          </View>
+        )}
       </View>
 
       <Modal
@@ -518,35 +624,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
-  recordingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E9D5D7',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
-  },
-  recordingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#EF4444',
-    marginRight: 8,
-  },
-  recordingText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  recordingTime: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#EF4444',
-  },
   previewImage: {
     width: 56,
     height: 56,
@@ -580,6 +657,60 @@ const styles = StyleSheet.create({
   },
   replyComposerWrap: {
     marginBottom: 8,
+  },
+  recordingComposer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 54,
+    borderRadius: 27,
+    backgroundColor: '#2B2C30',
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 4,
+  },
+  recordingCancelButton: {
+    minWidth: 68,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  recordingCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#67A4FF',
+  },
+  recordingCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF4B4B',
+    marginRight: 8,
+  },
+  recordingTime: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#D1D5DB',
+  },
+  recordingSendButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5BA3FF',
+    shadowColor: '#245DA8',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  recordingSendButtonPressed: {
+    opacity: 0.88,
   },
   composerShell: {
     flexDirection: 'row',
@@ -621,9 +752,6 @@ const styles = StyleSheet.create({
   },
   trailingActionPressed: {
     opacity: 0.82,
-  },
-  trailingActionRecording: {
-    backgroundColor: '#FEECEE',
   },
   sheetRoot: {
     flex: 1,

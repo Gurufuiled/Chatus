@@ -1,4 +1,9 @@
 export { BubbleTail } from './BubbleTail';
+export { ChatContextMenuOverlay } from './ChatContextMenuOverlay';
+export { ChatForwardSheet } from './ChatForwardSheet';
+export { ChatInputDock } from './ChatInputDock';
+export { ChatMessageList } from './ChatMessageList';
+export { ChatTopBanners } from './ChatTopBanners';
 export { FileBubble } from './FileBubble';
 export { MessageTimeStatus } from './MessageTimeStatus';
 export { ImageBubble } from './ImageBubble';

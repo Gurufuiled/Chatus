@@ -10,6 +10,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -22,6 +23,7 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatDao } from '../db';
+import { useCall } from '../contexts/CallContext';
 import { useVoicePlayer } from '../contexts/VoicePlayerContext';
 import { resolveAvatarUrl } from '../config';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -205,6 +207,17 @@ function getFileExtension(fileName: string) {
   const ext = fileName.split('.').pop()?.trim() ?? '';
   if (!ext || ext === fileName) return 'FILE';
   return ext.slice(0, 4).toUpperCase();
+}
+
+function sanitizePhoneForDial(phone: string) {
+  const trimmed = phone.trim();
+  if (!trimmed) return '';
+
+  const hasLeadingPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return '';
+
+  return hasLeadingPlus ? `+${digits}` : digits;
 }
 
 function buildVoicePreviewBars(waveform: number[]) {
@@ -408,6 +421,7 @@ export function ChatProfileScreen() {
   const navigation = useNavigation<ChatProfileNavigation>();
   const route = useRoute<ChatProfileRoute>();
   const { chatId, userId, chatTitle } = route.params;
+  const { startCall } = useCall();
   const [profile, setProfile] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -602,6 +616,30 @@ export function ChatProfileScreen() {
     links: linkItems.length,
   };
 
+  const handlePhoneCallPress = async () => {
+    const phone = profile?.phone?.trim() ?? '';
+    const dialNumber = sanitizePhoneForDial(phone);
+
+    if (!dialNumber) {
+      Alert.alert('Нет номера', 'У этого пользователя пока нет номера для звонка.');
+      return;
+    }
+
+    const url = Platform.OS === 'ios' ? `telprompt:${dialNumber}` : `tel:${dialNumber}`;
+
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Не удалось открыть звонок', 'Устройство не смогло открыть экран вызова.');
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Не удалось открыть звонок', 'Попробуй еще раз чуть позже.');
+    }
+  };
+
   const handleCallPress = () => {
     Alert.alert('Звонок', 'Когда появится звонок, эту кнопку можно будет привязать к audio call.');
   };
@@ -610,7 +648,16 @@ export function ChatProfileScreen() {
     Alert.alert('Видео', 'Здесь позже можно открыть видео-звонок или видео-профиль пользователя.');
   };
 
-  const handleSearchPress = () => {
+  const handleStartCallPress = async () => {
+    await startCall({
+      userId,
+      chatId,
+      displayName,
+      avatarUrl,
+    });
+  };
+
+  const handleSearchPressLegacy = () => {
     Alert.alert(
       'Поиск по чату',
       'Следующим шагом сюда можно привязать поиск сообщений прямо внутри этого диалога.'
@@ -622,6 +669,14 @@ export function ChatProfileScreen() {
     chatStore.getState().updateChat({
       ...chat,
       is_muted: isMuted ? 0 : 1,
+    });
+  };
+
+  const handleSearchPress = () => {
+    navigation.navigate('Chat', {
+      chatId,
+      chatTitle,
+      startSearch: true,
     });
   };
 
@@ -916,8 +971,13 @@ export function ChatProfileScreen() {
             {handleLabel ? <Text style={styles.handle}>{handleLabel}</Text> : null}
 
             <Animated.View style={[styles.quickActionsRow, heroActionsStyle]}>
-            <QuickActionButton icon="phone" label="Звонок" onPress={handleCallPress} />
-            <QuickActionButton icon="video" label="Видео" onPress={handleVideoPress} />
+            <QuickActionButton
+              icon="phone"
+              label="Звонок"
+              onPress={() => {
+                void handleStartCallPress();
+              }}
+            />
             <QuickActionButton
               icon={isMuted ? 'bell-off' : 'bell'}
               label="Звук"
@@ -1176,7 +1236,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     width: '100%',
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
   },
   quickAction: {
     width: 64,

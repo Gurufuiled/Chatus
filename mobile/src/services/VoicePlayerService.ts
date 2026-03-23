@@ -13,6 +13,7 @@ export interface VoicePlayerStatus {
   positionMs: number;
   durationMs: number;
   isPlaying: boolean;
+  rate: number;
 }
 
 export type VoicePlayerStatusListener = (status: VoicePlayerStatus) => void;
@@ -27,7 +28,9 @@ class VoicePlayerServiceClass {
     positionMs: 0,
     durationMs: 0,
     isPlaying: false,
+    rate: 1,
   };
+  private playbackRate = 1;
 
   private async ensureVoiceCacheDir(): Promise<string> {
     if (this.voiceCacheDir) return this.voiceCacheDir;
@@ -94,7 +97,7 @@ class VoicePlayerServiceClass {
     }
     this.soundRef = null;
     this.currentUri = null;
-    this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false };
+    this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
     this.notifyListeners();
   }
 
@@ -114,10 +117,23 @@ class VoicePlayerServiceClass {
   private handlePlaybackStatusUpdate = (status: AVPlaybackStatus): void => {
     if (!status.isLoaded) return;
 
+    if (status.didJustFinish) {
+      this.lastStatus = {
+        positionMs: 0,
+        durationMs: status.durationMillis ?? this.lastStatus.durationMs,
+        isPlaying: false,
+        rate: status.rate ?? this.playbackRate,
+      };
+      void this.soundRef?.stopAsync().catch(() => {});
+      this.notifyListeners();
+      return;
+    }
+
     this.lastStatus = {
       positionMs: status.positionMillis ?? 0,
       durationMs: status.durationMillis ?? 0,
       isPlaying: status.isPlaying ?? false,
+      rate: status.rate ?? this.playbackRate,
     };
     this.notifyListeners();
   };
@@ -127,7 +143,7 @@ class VoicePlayerServiceClass {
    * Stops and unloads any previously playing sound.
    * Serialized to avoid race when play() is called concurrently.
    */
-  async play(uri: string): Promise<void> {
+  async play(uri: string, positionMs?: number): Promise<void> {
     const previous = this.playPromise;
     this.playPromise = (async () => {
       await previous;
@@ -135,7 +151,17 @@ class VoicePlayerServiceClass {
       if (this.soundRef && this.currentUri === uri) {
         const currentStatus = await this.soundRef.getStatusAsync();
         if (currentStatus.isLoaded) {
+          if (positionMs != null) {
+            const durationMs = currentStatus.durationMillis ?? this.lastStatus.durationMs ?? 0;
+            const nextPosition = Math.max(0, Math.min(positionMs, durationMs));
+            await this.soundRef.setPositionAsync(nextPosition);
+          }
           if (!currentStatus.isPlaying) {
+            const durationMs = currentStatus.durationMillis ?? 0;
+            const currentPosition = positionMs ?? currentStatus.positionMillis ?? 0;
+            if (durationMs > 0 && currentPosition >= durationMs - 80) {
+              await this.soundRef.setPositionAsync(0);
+            }
             await this.soundRef.playAsync();
             const resumedStatus = await this.soundRef.getStatusAsync();
             if (resumedStatus.isLoaded) {
@@ -143,6 +169,7 @@ class VoicePlayerServiceClass {
                 positionMs: resumedStatus.positionMillis ?? 0,
                 durationMs: resumedStatus.durationMillis ?? 0,
                 isPlaying: resumedStatus.isPlaying ?? false,
+                rate: resumedStatus.rate ?? this.playbackRate,
               };
               this.notifyListeners();
             }
@@ -160,6 +187,9 @@ class VoicePlayerServiceClass {
         {
           shouldPlay: true,
           progressUpdateIntervalMillis: PROGRESS_UPDATE_INTERVAL_MS,
+          rate: this.playbackRate,
+          shouldCorrectPitch: true,
+          positionMillis: positionMs != null ? Math.max(0, positionMs) : 0,
         },
         this.handlePlaybackStatusUpdate,
         false
@@ -173,6 +203,7 @@ class VoicePlayerServiceClass {
           positionMs: status.positionMillis ?? 0,
           durationMs: status.durationMillis ?? 0,
           isPlaying: status.isPlaying ?? false,
+          rate: status.rate ?? this.playbackRate,
         };
         this.notifyListeners();
       }
@@ -191,12 +222,13 @@ class VoicePlayerServiceClass {
       if (status.isLoaded) {
         this.lastStatus.isPlaying = false;
         this.lastStatus.positionMs = status.positionMillis ?? 0;
+        this.lastStatus.rate = status.rate ?? this.playbackRate;
         this.notifyListeners();
       }
     } catch {
       this.soundRef = null;
       this.currentUri = null;
-      this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false };
+      this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
       throw new Error('Failed to pause playback');
     }
   }
@@ -204,6 +236,57 @@ class VoicePlayerServiceClass {
   /** Stop current playback and unload. */
   async stop(): Promise<void> {
     await this.stopAndUnloadCurrent();
+  }
+
+  async seekTo(positionMs: number): Promise<void> {
+    const sound = this.soundRef;
+    if (!sound) return;
+
+    const status = await sound.getStatusAsync();
+    if (!status.isLoaded) return;
+
+    const maxDuration = status.durationMillis ?? this.lastStatus.durationMs ?? 0;
+    const nextPosition = Math.max(0, Math.min(positionMs, maxDuration));
+    await sound.setPositionAsync(nextPosition);
+    const nextStatus = await sound.getStatusAsync();
+    if (nextStatus.isLoaded) {
+      this.lastStatus = {
+        positionMs: nextStatus.positionMillis ?? nextPosition,
+        durationMs: nextStatus.durationMillis ?? maxDuration,
+        isPlaying: nextStatus.isPlaying ?? false,
+        rate: nextStatus.rate ?? this.playbackRate,
+      };
+      this.notifyListeners();
+    }
+  }
+
+  async setPlaybackRate(rate: number): Promise<void> {
+    const normalizedRate = rate <= 0 ? 1 : rate;
+    this.playbackRate = normalizedRate;
+
+    if (!this.soundRef) {
+      this.lastStatus.rate = normalizedRate;
+      this.notifyListeners();
+      return;
+    }
+
+    try {
+      await this.soundRef.setRateAsync(normalizedRate, true);
+      const status = await this.soundRef.getStatusAsync();
+      if (status.isLoaded) {
+        this.lastStatus = {
+          positionMs: status.positionMillis ?? 0,
+          durationMs: status.durationMillis ?? 0,
+          isPlaying: status.isPlaying ?? false,
+          rate: status.rate ?? normalizedRate,
+        };
+        this.notifyListeners();
+      }
+    } catch {
+      this.lastStatus.rate = normalizedRate;
+      this.notifyListeners();
+      throw new Error('Failed to change playback rate');
+    }
   }
 
   /** Get current playback status (position, duration, isPlaying). */

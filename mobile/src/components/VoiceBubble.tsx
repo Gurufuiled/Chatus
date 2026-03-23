@@ -1,6 +1,7 @@
 ﻿import React from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
-import { Dimensions, StyleSheet, View, Text, Pressable } from 'react-native';
+import { useState } from 'react';
+import { Dimensions, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useVoicePlayer } from '../contexts/VoicePlayerContext';
 import { colors, bubbleRadius, typography } from '../theme/colors';
 import { buildUiWaveform } from '../services/waveformUtils';
@@ -13,6 +14,7 @@ export interface VoiceBubbleProps {
   isMe: boolean;
   time?: string;
   status?: string;
+  embedded?: boolean;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -86,8 +88,10 @@ export function VoiceBubble({
   isMe,
   time,
   status: messageStatus,
+  embedded = false,
 }: VoiceBubbleProps) {
-  const { play, pause, currentVoiceUri, status } = useVoicePlayer();
+  const { play, pause, seekTo, currentVoiceUri, status } = useVoicePlayer();
+  const [waveformWidth, setWaveformWidth] = useState(0);
 
   const isCurrent = currentVoiceUri === uri;
   const isPlaying = isCurrent && status.isPlaying;
@@ -109,13 +113,42 @@ export function VoiceBubble({
     }
   };
 
+  const handleWaveformLayout = (event: LayoutChangeEvent) => {
+    const nextWidth = Math.round(event.nativeEvent.layout.width);
+    if (nextWidth > 0 && nextWidth !== waveformWidth) {
+      setWaveformWidth(nextWidth);
+    }
+  };
+
+  const handleWaveformPress = async (pressX: number) => {
+    if (waveformWidth <= 0 || durationMs <= 0) return;
+    const ratio = clamp01(pressX / waveformWidth);
+    const targetPositionMs = Math.round(durationMs * ratio);
+
+    try {
+      if (!isCurrent) {
+        await play(uri, targetPositionMs);
+      } else {
+        await seekTo(targetPositionMs);
+      }
+    } catch (err) {
+      if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
+    }
+  };
+
   const bars = buildTelegramLikeBars(uri, waveform, durationMs, 44);
   const barCount = bars.length;
   const filledBarCount =
     progress > 0 ? Math.max(0, Math.min(barCount, Math.round(progress * barCount))) : 0;
+  const hasPlaybackProgress = isCurrent && progress > 0;
 
   return (
-    <View style={[styles.container, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+    <View
+      style={[
+        styles.container,
+        embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+      ]}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={isPlaying ? 'Pause voice message' : 'Play voice message'}
@@ -132,13 +165,19 @@ export function VoiceBubble({
         <Feather
           name={isPlaying ? 'pause' : 'play'}
           size={14}
-          color={isMe ? '#FFFFFF' : '#605719'}
+          color={isMe ? '#4D8DFF' : '#605719'}
           style={isPlaying ? undefined : styles.playIconPlay}
         />
       </Pressable>
 
       <View style={styles.contentColumn}>
-        <View style={styles.waveformContainer}>
+        <Pressable
+          onLayout={handleWaveformLayout}
+          onPress={(event) => {
+            void handleWaveformPress(event.nativeEvent.locationX);
+          }}
+          style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
+        >
           {filledBarCount > 0 ? (
             <View
               pointerEvents="none"
@@ -166,14 +205,16 @@ export function VoiceBubble({
                         ? '#FFFFFF'
                         : '#B8B8BE'
                       : isMe
-                        ? 'rgba(255,255,255,0.52)'
+                        ? hasPlaybackProgress
+                          ? '#C8D0DC'
+                          : '#FFFFFF'
                         : 'rgba(188, 188, 194, 0.72)',
                   },
                 ]}
               />
             );
           })}
-        </View>
+        </Pressable>
 
         <View style={styles.metaRow}>
           <Text style={[styles.duration, isMe && styles.durationMe]}>
@@ -205,6 +246,13 @@ const styles = StyleSheet.create({
     width: VOICE_BUBBLE_WIDTH,
     maxWidth: '100%',
   },
+  containerEmbedded: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    marginVertical: 0,
+    width: '100%',
+    backgroundColor: 'transparent',
+  },
   bubbleMe: {
     backgroundColor: colors.bubbleMe,
     ...bubbleRadius.mine,
@@ -222,8 +270,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   playButtonMe: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(255,255,255,0.95)',
   },
   playButtonOther: {
     backgroundColor: 'rgba(138, 89, 214, 0.12)',
@@ -250,6 +298,9 @@ const styles = StyleSheet.create({
     paddingTop: 3,
     height: 20,
     position: 'relative',
+  },
+  waveformPressed: {
+    opacity: 0.9,
   },
   waveformTrack: {
     position: 'absolute',

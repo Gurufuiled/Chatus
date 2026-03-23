@@ -33,6 +33,7 @@ export interface ImageBubbleProps {
   caption?: string;
   time?: string;
   status?: string;
+  embedded?: boolean;
 }
 
 function computeDisplaySize(
@@ -68,6 +69,7 @@ export function ImageBubble({
   caption,
   time,
   status,
+  embedded = false,
 }: ImageBubbleProps) {
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
@@ -116,7 +118,12 @@ export function ImageBubble({
 
   return (
     <>
-      <View style={[styles.container, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+      <View
+        style={[
+          styles.container,
+          embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+        ]}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="View image fullscreen"
@@ -177,6 +184,13 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     maxWidth: '100%',
     alignSelf: 'flex-start',
+  },
+  containerEmbedded: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 2,
+    backgroundColor: 'transparent',
+    alignSelf: 'stretch',
   },
   bubbleMe: {
     backgroundColor: colors.bubbleMe,

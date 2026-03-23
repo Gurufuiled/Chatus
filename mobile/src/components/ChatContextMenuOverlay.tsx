@@ -1,0 +1,266 @@
+import React from 'react';
+import { BlurView } from 'expo-blur';
+import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import type { Message } from '../stores/types';
+
+const MENU_WIDTH = 202;
+const MENU_EDGE_GAP = 12;
+const REACTION_BAR_HEIGHT = 40;
+const REACTION_BAR_WIDTH = 248;
+const MENU_REACTIONS = ['❤️', '👏', '😭', '🥰', '💋', '🤣', '👍'];
+
+type ChatContextMenuOverlayProps = {
+  menuState: {
+    messageId: string;
+    isMe: boolean;
+    previewTop: number;
+    previewLeft: number;
+    previewWidth: number;
+    previewHeight: number;
+    menuTop: number;
+    menuLeft: number;
+    placement: 'above' | 'below';
+  } | null;
+  activeMenuMessage: Message | null;
+  menuActions: {
+    key: string;
+    label: string;
+    icon: React.ComponentProps<typeof Feather>['name'];
+    color: string;
+    disabled: boolean;
+  }[];
+  menuAnim: Animated.Value;
+  blurTargetRef: React.RefObject<View | null>;
+  screenWidth: number;
+  onClose: () => void;
+  onMenuAction: (key: string) => void;
+  renderMenuPreviewBody: (message: Message, forcedWidth?: number) => React.ReactNode;
+};
+
+export function ChatContextMenuOverlay({
+  menuState,
+  activeMenuMessage,
+  menuActions,
+  menuAnim,
+  blurTargetRef,
+  screenWidth,
+  onClose,
+  onMenuAction,
+  renderMenuPreviewBody,
+}: ChatContextMenuOverlayProps) {
+  if (!menuState) {
+    return null;
+  }
+
+  const backdropOpacity = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const menuTranslateY = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [menuState.placement === 'above' ? -14 : 16, 0],
+  });
+  const menuScale = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+  const previewTranslateY = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [menuState.placement === 'above' ? -6 : 10, 0],
+  });
+  const reactionTranslateY = menuAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [8, 0],
+  });
+
+  return (
+    <View pointerEvents="box-none" style={styles.menuOverlayRoot}>
+      <Pressable style={styles.menuBackdrop} onPress={onClose}>
+        <Animated.View style={[styles.menuBlurWrap, { opacity: backdropOpacity }]}>
+          <BlurView
+            intensity={100}
+            tint="default"
+            blurMethod="dimezisBlurView"
+            blurReductionFactor={1}
+            blurTarget={blurTargetRef}
+            style={styles.menuBackdropBlur}
+          />
+        </Animated.View>
+      </Pressable>
+
+      {activeMenuMessage ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.menuPreviewOverlay,
+            {
+              top: menuState.previewTop,
+              left: menuState.previewLeft,
+              width: menuState.previewWidth,
+              opacity: menuAnim,
+              transform: [{ translateY: previewTranslateY }, { scale: menuScale }],
+            },
+          ]}
+        >
+          <View style={[styles.menuPreviewWrap, { width: menuState.previewWidth }]}>
+            {renderMenuPreviewBody(activeMenuMessage, menuState.previewWidth)}
+          </View>
+        </Animated.View>
+      ) : null}
+
+      <Animated.View
+        style={[
+          styles.reactionBar,
+          {
+            top: Math.max(
+              MENU_EDGE_GAP,
+              menuState.previewTop - REACTION_BAR_HEIGHT - 8
+            ),
+            left: Math.max(
+              MENU_EDGE_GAP,
+              Math.min(
+                menuState.isMe
+                  ? menuState.previewLeft + menuState.previewWidth - REACTION_BAR_WIDTH
+                  : menuState.previewLeft,
+                screenWidth - REACTION_BAR_WIDTH - MENU_EDGE_GAP
+              )
+            ),
+            opacity: menuAnim,
+            transform: [{ translateY: reactionTranslateY }, { scale: menuScale }],
+          },
+        ]}
+      >
+        {MENU_REACTIONS.map((reaction) => (
+          <Text key={reaction} style={styles.reactionEmoji}>
+            {reaction}
+          </Text>
+        ))}
+        <View style={styles.reactionCheck}>
+          <Feather name="check" size={18} color="#FFFFFF" />
+        </View>
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.menuCard,
+          {
+            top: menuState.menuTop,
+            left: menuState.menuLeft ?? MENU_EDGE_GAP,
+            opacity: menuAnim,
+            transform: [{ translateY: menuTranslateY }, { scale: menuScale }],
+          },
+        ]}
+      >
+        {menuActions.map((action, index) => (
+          <Pressable
+            key={action.key}
+            disabled={action.disabled}
+            style={[
+              styles.menuAction,
+              action.disabled && styles.menuActionDisabled,
+              index < menuActions.length - 1 && styles.menuActionBorder,
+            ]}
+            onPress={() => onMenuAction(action.key)}
+          >
+            <Text style={[styles.menuActionLabel, { color: action.color }]}>
+              {action.label}
+            </Text>
+            <Feather name={action.icon as never} size={18} color={action.color} />
+          </Pressable>
+        ))}
+      </Animated.View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  menuOverlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 40,
+    elevation: 40,
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+  menuBlurWrap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuBackdropBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  menuPreviewOverlay: {
+    position: 'absolute',
+  },
+  menuPreviewWrap: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  reactionBar: {
+    position: 'absolute',
+    width: REACTION_BAR_WIDTH,
+    height: REACTION_BAR_HEIGHT,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 12,
+    paddingRight: 6,
+    gap: 8,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  reactionEmoji: {
+    fontSize: 24,
+    lineHeight: 28,
+  },
+  reactionCheck: {
+    marginLeft: 'auto',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#CDE0C0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuCard: {
+    position: 'absolute',
+    width: MENU_WIDTH,
+    backgroundColor: 'rgba(255,255,255,0.935)',
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  menuAction: {
+    minHeight: 39,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+  },
+  menuActionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#ECEEF2',
+  },
+  menuActionDisabled: {
+    opacity: 0.55,
+  },
+  menuActionLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+});

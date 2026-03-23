@@ -11,6 +11,10 @@ export type SignalingEventHandlers = {
   onOffer?: (fromUserId: string, sdp: RTCSessionDescriptionInit) => void;
   onAnswer?: (fromUserId: string, sdp: RTCSessionDescriptionInit) => void;
   onIceCandidate?: (fromUserId: string, candidate: RTCIceCandidateInit | null) => void;
+  onCallCancel?: (fromUserId: string) => void;
+  onCallDecline?: (fromUserId: string) => void;
+  onCallEnd?: (fromUserId: string) => void;
+  onCallBusy?: (fromUserId: string) => void;
   onError?: (error: string | Error) => void;
 };
 
@@ -23,6 +27,8 @@ type SignalingMessage = {
   target_user_id?: string;
   from_user_id?: string;
   sdp?: string | RTCSessionDescriptionInit;
+  offer?: string | RTCSessionDescriptionInit;
+  answer?: string | RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit | null;
   code?: string;
   message?: string;
@@ -36,10 +42,39 @@ class SignalingServiceClass {
   private reconnectAttempt = 0;
   private manualDisconnect = false;
   private handlers: SignalingEventHandlers = {};
+  private listeners = new Set<SignalingEventHandlers>();
   private whenConnectedResolvers: Array<() => void> = [];
 
   setHandlers(handlers: SignalingEventHandlers): void {
     this.handlers = { ...this.handlers, ...handlers };
+  }
+
+  addListener(handlers: SignalingEventHandlers): () => void {
+    this.listeners.add(handlers);
+    return () => {
+      this.listeners.delete(handlers);
+    };
+  }
+
+  private emit<K extends keyof SignalingEventHandlers>(
+    key: K,
+    ...args: Parameters<NonNullable<SignalingEventHandlers[K]>>
+  ): void {
+    const primary = this.handlers[key];
+    if (typeof primary === 'function') {
+      (primary as (...innerArgs: Parameters<NonNullable<SignalingEventHandlers[K]>>) => void)(
+        ...args
+      );
+    }
+
+    this.listeners.forEach((listener) => {
+      const handler = listener[key];
+      if (typeof handler === 'function') {
+        (handler as (...innerArgs: Parameters<NonNullable<SignalingEventHandlers[K]>>) => void)(
+          ...args
+        );
+      }
+    });
   }
 
   connect(): void {
@@ -115,30 +150,44 @@ class SignalingServiceClass {
 
     switch (type) {
       case 'offer':
-        if (fromUserId && msg.sdp != null) {
+        if (fromUserId && (msg.offer != null || msg.sdp != null)) {
           const sdpInit: RTCSessionDescriptionInit =
-            typeof msg.sdp === 'string'
-              ? { type: 'offer', sdp: msg.sdp }
-              : (msg.sdp as RTCSessionDescriptionInit);
-          this.handlers.onOffer?.(fromUserId, sdpInit);
+            typeof (msg.offer ?? msg.sdp) === 'string'
+              ? { type: 'offer', sdp: String(msg.offer ?? msg.sdp) }
+              : ((msg.offer ?? msg.sdp) as RTCSessionDescriptionInit);
+          this.emit('onOffer', fromUserId, sdpInit);
         }
         break;
       case 'answer':
-        if (fromUserId && msg.sdp != null) {
+        if (fromUserId && (msg.answer != null || msg.sdp != null)) {
           const sdpInit: RTCSessionDescriptionInit =
-            typeof msg.sdp === 'string'
-              ? { type: 'answer', sdp: msg.sdp }
-              : (msg.sdp as RTCSessionDescriptionInit);
-          this.handlers.onAnswer?.(fromUserId, sdpInit);
+            typeof (msg.answer ?? msg.sdp) === 'string'
+              ? { type: 'answer', sdp: String(msg.answer ?? msg.sdp) }
+              : ((msg.answer ?? msg.sdp) as RTCSessionDescriptionInit);
+          this.emit('onAnswer', fromUserId, sdpInit);
         }
         break;
+      case 'ice':
       case 'ice_candidate':
         if (fromUserId) {
-          this.handlers.onIceCandidate?.(fromUserId, msg.candidate ?? null);
+          this.emit('onIceCandidate', fromUserId, msg.candidate ?? null);
         }
         break;
+      case 'call_cancel':
+        if (fromUserId) this.emit('onCallCancel', fromUserId);
+        break;
+      case 'call_decline':
+        if (fromUserId) this.emit('onCallDecline', fromUserId);
+        break;
+      case 'call_end':
+        if (fromUserId) this.emit('onCallEnd', fromUserId);
+        break;
+      case 'call_busy':
+        if (fromUserId) this.emit('onCallBusy', fromUserId);
+        break;
       case 'error':
-        this.handlers.onError?.(
+        this.emit(
+          'onError',
           (msg.message as string) ?? (msg.code as string) ?? 'Signaling error'
         );
         break;
@@ -186,27 +235,54 @@ class SignalingServiceClass {
     this.ws.send(JSON.stringify(data));
   }
 
+  private sendEvent(event: string, data: Record<string, unknown>): void {
+    this.send({ event, data });
+  }
+
   sendOffer(targetUserId: string, sdp: RTCSessionDescriptionInit): void {
-    const sdpStr =
-      typeof sdp === 'object' && sdp?.sdp != null ? sdp.sdp : '';
-    this.send({ type: 'offer', target_user_id: targetUserId, sdp: sdpStr });
+    this.sendEvent('offer', {
+      target_user_id: targetUserId,
+      offer: {
+        type: 'offer',
+        sdp: typeof sdp === 'object' && sdp?.sdp != null ? sdp.sdp : '',
+      },
+    });
   }
 
   sendAnswer(targetUserId: string, sdp: RTCSessionDescriptionInit): void {
-    const sdpStr =
-      typeof sdp === 'object' && sdp?.sdp != null ? sdp.sdp : '';
-    this.send({ type: 'answer', target_user_id: targetUserId, sdp: sdpStr });
+    this.sendEvent('answer', {
+      target_user_id: targetUserId,
+      answer: {
+        type: 'answer',
+        sdp: typeof sdp === 'object' && sdp?.sdp != null ? sdp.sdp : '',
+      },
+    });
   }
 
   sendIceCandidate(
     targetUserId: string,
     candidate: RTCIceCandidateInit | null
   ): void {
-    this.send({
-      type: 'ice_candidate',
+    this.sendEvent('ice', {
       target_user_id: targetUserId,
       candidate: candidate ?? null,
     });
+  }
+
+  sendCallCancel(targetUserId: string): void {
+    this.sendEvent('call_cancel', { target_user_id: targetUserId });
+  }
+
+  sendCallDecline(targetUserId: string): void {
+    this.sendEvent('call_decline', { target_user_id: targetUserId });
+  }
+
+  sendCallEnd(targetUserId: string): void {
+    this.sendEvent('call_end', { target_user_id: targetUserId });
+  }
+
+  sendCallBusy(targetUserId: string): void {
+    this.sendEvent('call_busy', { target_user_id: targetUserId });
   }
 
   isConnected(): boolean {

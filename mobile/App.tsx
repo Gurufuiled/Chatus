@@ -5,6 +5,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
+import { CallProvider } from './src/contexts/CallContext';
 import { VoicePlayerProvider } from './src/contexts/VoicePlayerContext';
 import { WebSocketProvider } from './src/contexts/WebSocketProvider';
 import { RootNavigator } from './src/navigation';
@@ -40,10 +41,12 @@ export default function App() {
         <AuthProvider initialSession={initialSession}>
         <WebSocketProvider>
           <VoicePlayerProvider>
-            <NavigationContainer>
-              <RootNavigator />
-              <StatusBar style="auto" />
-            </NavigationContainer>
+            <CallProvider>
+              <NavigationContainer>
+                <RootNavigator />
+                <StatusBar style="auto" />
+              </NavigationContainer>
+            </CallProvider>
           </VoicePlayerProvider>
         </WebSocketProvider>
       </AuthProvider>

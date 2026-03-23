@@ -16,9 +16,11 @@ import {
 } from '../services/VoicePlayerService';
 
 type VoicePlayerContextType = {
-  play: (uri: string) => Promise<void>;
+  play: (uri: string, positionMs?: number) => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
+  seekTo: (positionMs: number) => Promise<void>;
+  setPlaybackRate: (rate: number) => Promise<void>;
   currentVoiceUri: string | null;
   status: VoicePlayerStatus;
 };
@@ -37,7 +39,7 @@ export function VoicePlayerProvider({ children }: { children: React.ReactNode })
     return () => VoicePlayerService.removeStatusListener(listener);
   }, []);
 
-  const play = useCallback(async (uri: string) => {
+  const play = useCallback(async (uri: string, positionMs?: number) => {
     setStatus((prev) =>
       currentVoiceUri === uri
         ? prev
@@ -45,11 +47,12 @@ export function VoicePlayerProvider({ children }: { children: React.ReactNode })
             positionMs: 0,
             durationMs: 0,
             isPlaying: false,
+            rate: prev.rate ?? 1,
           }
     );
     setCurrentVoiceUri(uri);
     try {
-      await VoicePlayerService.play(uri);
+      await VoicePlayerService.play(uri, positionMs);
     } catch (err) {
       setCurrentVoiceUri(null);
       throw err;
@@ -65,10 +68,20 @@ export function VoicePlayerProvider({ children }: { children: React.ReactNode })
     setCurrentVoiceUri(null);
   }, []);
 
+  const seekTo = useCallback(async (positionMs: number) => {
+    await VoicePlayerService.seekTo(positionMs);
+  }, []);
+
+  const setPlaybackRate = useCallback(async (rate: number) => {
+    await VoicePlayerService.setPlaybackRate(rate);
+  }, []);
+
   const value: VoicePlayerContextType = {
     play,
     pause,
     stop,
+    seekTo,
+    setPlaybackRate,
     currentVoiceUri,
     status,
   };
