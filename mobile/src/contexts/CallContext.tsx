@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   createContext,
   useCallback,
   useContext,
@@ -96,11 +96,150 @@ function resolvePeerMeta(userId: string) {
   };
 }
 
-export function CallProvider({ children }: { children: React.ReactNode }) {
+const CallOverlay = React.memo(function CallOverlay({
+  callState,
+  onAccept,
+  onDecline,
+  onEnd,
+  onToggleMute,
+}: {
+  callState: CallUiState | null;
+  onAccept: () => void;
+  onDecline: () => void;
+  onEnd: () => void;
+  onToggleMute: () => void;
+}) {
   const insets = useSafeAreaInsets();
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    if (callState?.phase !== 'active' || !callState.startedAt) return undefined;
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [callState?.phase, callState?.startedAt]);
+  const statusText = useMemo(() => {
+    if (!callState) return '';
+    switch (callState.phase) {
+      case 'incoming':
+        return '\u0412\u0445\u043e\u0434\u044f\u0449\u0438\u0439 \u0437\u0432\u043e\u043d\u043e\u043a';
+      case 'outgoing':
+        return '\u0412\u044b\u0437\u044b\u0432\u0430\u0435\u043c...';
+      case 'connecting':
+        return '\u0421\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u043c...';
+      case 'active':
+        return formatCallDuration(callState.startedAt, nowTick);
+      default:
+        return '';
+    }
+  }, [callState, nowTick]);
+  const initial = callState ? buildInitial(callState.displayName) : '?';
+  return (
+    <Modal visible={callState != null} transparent animationType="fade" onRequestClose={onEnd}>
+      <View style={styles.overlay}>
+        <View style={[styles.overlayCard, { paddingTop: Math.max(insets.top, 20) + 18 }]}>
+          <View style={styles.heroSpacer} />
+          {callState?.avatarUrl ? (
+            <Image source={{ uri: callState.avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarFallbackText}>{initial}</Text>
+            </View>
+          )}
+          <Text style={styles.name}>{callState?.displayName ?? ''}</Text>
+          <Text style={styles.status}>{statusText}</Text>
+          <View style={styles.controlsRow}>
+            {callState?.phase === 'incoming' ? (
+              <>
+                <Pressable
+                  onPress={onDecline}
+                  style={({ pressed }) => [
+                    styles.controlButton,
+                    styles.controlButtonDanger,
+                    pressed && styles.controlButtonPressed,
+                  ]}
+                >
+                  <Feather name="phone-off" size={22} color="#FFFFFF" />
+                  <Text style={styles.controlLabelLight}>
+                    {'\u041e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={onAccept}
+                  style={({ pressed }) => [
+                    styles.controlButton,
+                    styles.controlButtonSuccess,
+                    pressed && styles.controlButtonPressed,
+                  ]}
+                >
+                  <Feather name="phone-call" size={22} color="#FFFFFF" />
+                  <Text style={styles.controlLabelLight}>
+                    {'\u041f\u0440\u0438\u043d\u044f\u0442\u044c'}
+                  </Text>
+                </Pressable>
+              </>
+            ) : callState?.phase === 'active' ? (
+              <>
+                <Pressable
+                  onPress={onToggleMute}
+                  style={({ pressed }) => [
+                    styles.controlButton,
+                    callState.isMuted
+                      ? styles.controlButtonMuted
+                      : styles.controlButtonNeutral,
+                    pressed && styles.controlButtonPressed,
+                  ]}
+                >
+                  <Feather
+                    name={callState.isMuted ? 'mic-off' : 'mic'}
+                    size={22}
+                    color={callState.isMuted ? '#FFFFFF' : '#1F2937'}
+                  />
+                  <Text style={callState.isMuted ? styles.controlLabelLight : styles.controlLabelDark}>
+                    {callState.isMuted
+                      ? '\u041c\u0438\u043a\u0440\u043e\u0444\u043e\u043d \u0432\u044b\u043a\u043b.'
+                      : '\u041c\u0438\u043a\u0440\u043e\u0444\u043e\u043d'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={onEnd}
+                  style={({ pressed }) => [
+                    styles.controlButton,
+                    styles.controlButtonDanger,
+                    pressed && styles.controlButtonPressed,
+                  ]}
+                >
+                  <Feather name="phone-off" size={22} color="#FFFFFF" />
+                  <Text style={styles.controlLabelLight}>
+                    {'\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c'}
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable
+                onPress={onEnd}
+                style={({ pressed }) => [
+                  styles.controlButtonWide,
+                  styles.controlButtonDanger,
+                  pressed && styles.controlButtonPressed,
+                ]}
+              >
+                <Feather name="phone-off" size={22} color="#FFFFFF" />
+                <Text style={styles.controlLabelLight}>
+                  {'\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+});
+
+export function CallProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
   const [callState, setCallState] = useState<CallUiState | null>(null);
-  const [nowTick, setNowTick] = useState(Date.now());
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<RTCMediaStream | null>(null);
@@ -126,16 +265,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       SignalingService.disconnect();
     };
   }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (callState?.phase !== 'active' || !callState.startedAt) return undefined;
-
-    const timer = setInterval(() => {
-      setNowTick(Date.now());
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [callState?.phase, callState?.startedAt]);
 
   const clearOutgoingTimeout = useCallback(() => {
     if (outgoingTimeoutRef.current) {
@@ -532,152 +661,36 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [cleanupCallSession, clearOutgoingTimeout, flushPendingIceCandidates]);
 
-  const statusText = useMemo(() => {
-    if (!callState) return '';
-    switch (callState.phase) {
-      case 'incoming':
-        return 'Входящий звонок';
-      case 'outgoing':
-        return 'Вызываем...';
-      case 'connecting':
-        return 'Соединяем...';
-      case 'active':
-        return formatCallDuration(callState.startedAt, nowTick);
-      default:
-        return '';
-    }
-  }, [callState, nowTick]);
-
-  const initial = callState ? buildInitial(callState.displayName) : '?';
-
+  const contextValue = useMemo(
+    () => ({
+      callState,
+      startCall,
+      acceptIncomingCall,
+      declineIncomingCall,
+      endCall,
+      toggleMute,
+    }),
+    [acceptIncomingCall, callState, declineIncomingCall, endCall, startCall, toggleMute]
+  );
   return (
-    <CallContext.Provider
-      value={{
-        callState,
-        startCall,
-        acceptIncomingCall,
-        declineIncomingCall,
-        endCall,
-        toggleMute,
-      }}
-    >
+    <CallContext.Provider value={contextValue}>
       {children}
-
-      <Modal
-        visible={callState != null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
+      <CallOverlay
+        callState={callState}
+        onAccept={() => {
+          void acceptIncomingCall();
+        }}
+        onDecline={() => {
+          void declineIncomingCall();
+        }}
+        onEnd={() => {
           void endCall();
         }}
-      >
-        <View style={styles.overlay}>
-          <View style={[styles.overlayCard, { paddingTop: Math.max(insets.top, 20) + 18 }]}>
-            <View style={styles.heroSpacer} />
-
-            {callState?.avatarUrl ? (
-              <Image source={{ uri: callState.avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>{initial}</Text>
-              </View>
-            )}
-
-            <Text style={styles.name}>{callState?.displayName ?? ''}</Text>
-            <Text style={styles.status}>{statusText}</Text>
-
-            <View style={styles.controlsRow}>
-              {callState?.phase === 'incoming' ? (
-                <>
-                  <Pressable
-                    onPress={() => {
-                      void declineIncomingCall();
-                    }}
-                    style={({ pressed }) => [
-                      styles.controlButton,
-                      styles.controlButtonDanger,
-                      pressed && styles.controlButtonPressed,
-                    ]}
-                  >
-                    <Feather name="phone-off" size={22} color="#FFFFFF" />
-                    <Text style={styles.controlLabelLight}>Отклонить</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      void acceptIncomingCall();
-                    }}
-                    style={({ pressed }) => [
-                      styles.controlButton,
-                      styles.controlButtonSuccess,
-                      pressed && styles.controlButtonPressed,
-                    ]}
-                  >
-                    <Feather name="phone-call" size={22} color="#FFFFFF" />
-                    <Text style={styles.controlLabelLight}>Принять</Text>
-                  </Pressable>
-                </>
-              ) : callState?.phase === 'active' ? (
-                <>
-                  <Pressable
-                    onPress={toggleMute}
-                    style={({ pressed }) => [
-                      styles.controlButton,
-                      callState.isMuted
-                        ? styles.controlButtonMuted
-                        : styles.controlButtonNeutral,
-                      pressed && styles.controlButtonPressed,
-                    ]}
-                  >
-                    <Feather
-                      name={callState.isMuted ? 'mic-off' : 'mic'}
-                      size={22}
-                      color={callState.isMuted ? '#FFFFFF' : '#1F2937'}
-                    />
-                    <Text
-                      style={
-                        callState.isMuted ? styles.controlLabelLight : styles.controlLabelDark
-                      }
-                    >
-                      {callState.isMuted ? 'Микрофон выкл.' : 'Микрофон'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      void endCall();
-                    }}
-                    style={({ pressed }) => [
-                      styles.controlButton,
-                      styles.controlButtonDanger,
-                      pressed && styles.controlButtonPressed,
-                    ]}
-                  >
-                    <Feather name="phone-off" size={22} color="#FFFFFF" />
-                    <Text style={styles.controlLabelLight}>Завершить</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <Pressable
-                  onPress={() => {
-                    void endCall();
-                  }}
-                  style={({ pressed }) => [
-                    styles.controlButtonWide,
-                    styles.controlButtonDanger,
-                    pressed && styles.controlButtonPressed,
-                  ]}
-                >
-                  <Feather name="phone-off" size={22} color="#FFFFFF" />
-                  <Text style={styles.controlLabelLight}>Отменить</Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
+        onToggleMute={toggleMute}
+      />
     </CallContext.Provider>
   );
 }
-
 export function useCall() {
   const ctx = useContext(CallContext);
   if (!ctx) {
@@ -790,3 +803,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+

@@ -176,6 +176,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           }
           const mapped = mapServerMessageToMessage(msg);
           const currentUserId = authStore.getState().user?.id ?? null;
+          const selectedChatId = chatStore.getState().selectedChatId;
           const sendingCandidates = existing.filter(
             (m) =>
               m.status === 'sending' &&
@@ -201,6 +202,13 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             messageStore.getState().prependMessage(msg.chat_id, mapped);
           }
           updateChatLastMessage(msg.chat_id, mapped);
+          if (msg.sender_id !== currentUserId) {
+            if (selectedChatId === msg.chat_id) {
+              chatStore.getState().clearUnread(msg.chat_id);
+            } else {
+              chatStore.getState().incrementUnread(msg.chat_id);
+            }
+          }
         },
 
         onMessageAck: async (payload) => {

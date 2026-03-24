@@ -1,27 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Animated,
+  Animated as RNAnimated,
+  Easing,
   Image,
-  Modal,
+  Keyboard,
+  PanResponder,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type ViewStyle,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
-import MaterialCommunityIcons from 'expo/node_modules/@expo/vector-icons/MaterialCommunityIcons';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
 import { colors, typography, MIN_TAP_TARGET } from '../theme/colors';
 import { DocumentPickerService } from '../services/DocumentPickerService';
 import { VoiceRecorderService, type VoiceRecordingResult } from '../services/VoiceRecorderService';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
 import type { Message } from '../stores/types';
-import { ReplyPreview, buildReplyPreviewText } from './ReplyPreview';
+import { InputAttachmentSheet } from './InputAttachmentSheet';
+import { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
+import { buildReplyPreviewText } from './ReplyPreview';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
 
 export interface ImagePickResult {
@@ -65,6 +66,15 @@ type GalleryItem = {
   height?: number;
 };
 
+type VoiceRecordMode = 'idle' | 'holding' | 'locked';
+
+const VOICE_LOCK_THRESHOLD = 88;
+const VOICE_CANCEL_THRESHOLD = 56;
+const VOICE_CANCEL_TRIGGER_PROGRESS = 0.84;
+const VOICE_MAX_UP_DRAG = 108;
+const VOICE_MAX_LEFT_DRAG = 92;
+const VOICE_HOLD_TO_RECORD_MS = 170;
+
 function PaperclipIcon() {
   return <Feather name="paperclip" size={20} color="#6B7280" />;
 }
@@ -75,18 +85,6 @@ function MicIcon() {
 
 function SendIcon() {
   return <Feather name="send" size={18} color={colors.accent} />;
-}
-
-function VoiceSendIcon() {
-  return <Feather name="arrow-up" size={20} color="#FFFFFF" />;
-}
-
-function SheetActionIcon({ tone }: { tone: AttachmentAction['tone'] }) {
-  if (tone === 'video') {
-    return <MaterialCommunityIcons name="play-circle-outline" size={19} color="#6B7280" />;
-  }
-
-  return <Feather name="file-text" size={16} color="#6B7280" />;
 }
 
 export function InputBar({
@@ -108,16 +106,102 @@ export function InputBar({
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryDenied, setGalleryDenied] = useState(false);
   const [pendingImage, setPendingImage] = useState<ImagePickResult | null>(null);
-  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
-  const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
-  const voiceActionBusyRef = useRef(false);
-  const voiceSwipeTriggeredRef = useRef(false);
-  const recordingPulse = useRef(new Animated.Value(1)).current;
+  const [voiceRecordModeState, setVoiceRecordModeState] = useState<VoiceRecordMode>('idle');
+  const [voiceTouchTracking, setVoiceTouchTracking] = useState(false);
+  const [voiceRecordingStartedAtMs, setVoiceRecordingStartedAtMs] = useState(0);
+
+  const voiceRecordModeRef = useRef<VoiceRecordMode>('idle');
+  const voiceStartPendingRef = useRef(false);
+  const voiceFinalizePendingRef = useRef(false);
+  const voiceRecordingReadyRef = useRef(false);
+  const pendingVoiceOutcomeRef = useRef<'send' | 'cancel' | null>(null);
+  const voiceCancelProgressRef = useRef(0);
+  const voiceLockedSnapshotRef = useRef(false);
+  const voiceGestureActiveRef = useRef(false);
+  const voiceHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceHoldActivatedRef = useRef(false);
+  const voiceDragXAnimated = useRef(new RNAnimated.Value(0)).current;
+  const voiceDragYAnimated = useRef(new RNAnimated.Value(0)).current;
+  const voiceCancelProgressAnimated = useRef(new RNAnimated.Value(0)).current;
+  const voiceLockProgressAnimated = useRef(new RNAnimated.Value(0)).current;
 
   const hasText = inputText.trim().length > 0;
   const hasPendingImage = pendingImage != null;
   const canSend = hasText || hasPendingImage;
+  const isVoiceRecording = voiceRecordModeState !== 'idle';
+  const isVoiceLocked = voiceRecordModeState === 'locked';
   const replyPreviewText = buildReplyPreviewText(replyToMessage);
+
+  const setVoiceRecordMode = useCallback((mode: VoiceRecordMode) => {
+    voiceRecordModeRef.current = mode;
+    setVoiceRecordModeState(mode);
+  }, []);
+
+  const updateVoiceGestureState = useCallback(
+    (dragX: number, dragY: number, cancelProgress: number, lockProgress: number) => {
+      voiceDragXAnimated.setValue(dragX);
+      voiceDragYAnimated.setValue(dragY);
+      voiceCancelProgressAnimated.setValue(cancelProgress);
+      voiceLockProgressAnimated.setValue(lockProgress);
+      voiceCancelProgressRef.current = cancelProgress;
+      voiceLockedSnapshotRef.current = voiceRecordModeRef.current === 'locked' || lockProgress >= 1;
+    },
+    [voiceCancelProgressAnimated, voiceDragXAnimated, voiceDragYAnimated, voiceLockProgressAnimated]
+  );
+
+  const animateVoiceGestureState = useCallback(
+    (dragX: number, dragY: number, cancelProgress: number, lockProgress: number) => {
+      voiceCancelProgressRef.current = cancelProgress;
+      voiceLockedSnapshotRef.current = voiceRecordModeRef.current === 'locked' || lockProgress >= 1;
+
+      RNAnimated.parallel([
+        RNAnimated.timing(voiceDragXAnimated, {
+          toValue: dragX,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(voiceDragYAnimated, {
+          toValue: dragY,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(voiceCancelProgressAnimated, {
+          toValue: cancelProgress,
+          duration: 160,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        RNAnimated.timing(voiceLockProgressAnimated, {
+          toValue: lockProgress,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start();
+    },
+    [
+      voiceCancelProgressAnimated,
+      voiceDragXAnimated,
+      voiceDragYAnimated,
+      voiceLockProgressAnimated,
+    ]
+  );
+
+  const resetVoiceGestureVisuals = useCallback(
+    (animate = true) => {
+      const nextLockProgress = voiceRecordModeRef.current === 'locked' ? 1 : 0;
+      if (animate) {
+        animateVoiceGestureState(0, 0, 0, nextLockProgress);
+        return;
+      }
+
+      updateVoiceGestureState(0, 0, 0, nextLockProgress);
+      voiceLockedSnapshotRef.current = voiceRecordModeRef.current === 'locked';
+    },
+    [animateVoiceGestureState, updateVoiceGestureState]
+  );
 
   const handleSend = useCallback(() => {
     const content = inputText.trim();
@@ -161,109 +245,158 @@ export function InputBar({
   }, []);
 
   useEffect(() => {
-    if (!isVoiceRecording) {
-      setVoiceElapsedMs(0);
-      return;
-    }
-
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      setVoiceElapsedMs(Date.now() - startedAt);
-    }, 200);
-
-    return () => clearInterval(timer);
-  }, [isVoiceRecording]);
-
-  useEffect(() => {
-    if (!isVoiceRecording) {
-      recordingPulse.stopAnimation();
-      recordingPulse.setValue(1);
-      return;
-    }
-
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(recordingPulse, {
-          toValue: 0.25,
-          duration: 520,
-          useNativeDriver: true,
-        }),
-        Animated.timing(recordingPulse, {
-          toValue: 1,
-          duration: 520,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    loop.start();
-
     return () => {
-      loop.stop();
-      recordingPulse.setValue(1);
-    };
-  }, [isVoiceRecording, recordingPulse]);
-
-  useEffect(() => {
-    return () => {
+      if (voiceHoldTimerRef.current) {
+        clearTimeout(voiceHoldTimerRef.current);
+        voiceHoldTimerRef.current = null;
+      }
       if (VoiceRecorderService.isRecording()) {
         VoiceRecorderService.stopRecording().catch(() => {});
       }
     };
   }, []);
 
-  const startVoiceRecording = useCallback(async () => {
-    if (voiceActionBusyRef.current || isVoiceRecording) return;
-    voiceActionBusyRef.current = true;
+  const beginVoiceRecording = useCallback(async () => {
+    if (canSend || voiceStartPendingRef.current || voiceFinalizePendingRef.current) return;
+    if (voiceRecordModeRef.current !== 'idle' || VoiceRecorderService.isRecording()) return;
+
+    voiceHoldActivatedRef.current = true;
+    pendingVoiceOutcomeRef.current = null;
+    voiceStartPendingRef.current = true;
+    voiceRecordingReadyRef.current = false;
+    Keyboard.dismiss();
+    setVoiceRecordingStartedAtMs(Date.now());
+    setVoiceRecordMode('holding');
+    resetVoiceGestureVisuals(false);
 
     try {
-      if (VoiceRecorderService.isRecording()) {
-        return;
-      }
       await VoiceRecorderService.startRecording();
-      setIsVoiceRecording(true);
-      setVoiceElapsedMs(0);
+      voiceRecordingReadyRef.current = true;
+
+      const pendingOutcome = pendingVoiceOutcomeRef.current;
+      pendingVoiceOutcomeRef.current = null;
+
+      if (pendingOutcome === 'cancel') {
+        VoiceRecorderService.stopRecording().catch(() => {});
+        voiceRecordingReadyRef.current = false;
+        setVoiceTouchTracking(false);
+        setVoiceRecordingStartedAtMs(0);
+        setVoiceRecordMode('idle');
+        resetVoiceGestureVisuals();
+      } else if (pendingOutcome === 'send') {
+        voiceFinalizePendingRef.current = true;
+        try {
+          const result = await VoiceRecorderService.stopRecording();
+          voiceRecordingReadyRef.current = false;
+          setVoiceTouchTracking(false);
+          setVoiceRecordingStartedAtMs(0);
+          setVoiceRecordMode('idle');
+          resetVoiceGestureVisuals();
+          await onSendVoice(result);
+        } catch (err) {
+          voiceRecordingReadyRef.current = false;
+          setVoiceTouchTracking(false);
+          setVoiceRecordingStartedAtMs(0);
+          setVoiceRecordMode('idle');
+          resetVoiceGestureVisuals();
+          if (__DEV__) console.warn('[InputBar] stop voice recording error:', err);
+          Alert.alert('Ошибка', 'Не удалось сохранить голосовое сообщение.');
+        } finally {
+          voiceFinalizePendingRef.current = false;
+        }
+      }
     } catch (err) {
+      voiceRecordingReadyRef.current = false;
+      setVoiceTouchTracking(false);
+      setVoiceRecordingStartedAtMs(0);
+      setVoiceRecordMode('idle');
+      resetVoiceGestureVisuals();
       if (__DEV__) console.warn('[InputBar] start voice recording error:', err);
       Alert.alert('Ошибка', 'Не удалось начать запись. Проверь доступ к микрофону.');
     } finally {
-      voiceActionBusyRef.current = false;
+      voiceStartPendingRef.current = false;
     }
-  }, [isVoiceRecording]);
+  }, [canSend, onSendVoice, resetVoiceGestureVisuals, setVoiceRecordMode]);
 
   const cancelVoiceRecording = useCallback(async () => {
-    if (voiceActionBusyRef.current || !isVoiceRecording) return;
-    voiceActionBusyRef.current = true;
+    if (voiceFinalizePendingRef.current || voiceRecordModeRef.current === 'idle') return;
+    if (voiceHoldTimerRef.current) {
+      clearTimeout(voiceHoldTimerRef.current);
+      voiceHoldTimerRef.current = null;
+    }
+    voiceHoldActivatedRef.current = false;
+    voiceGestureActiveRef.current = false;
+    setVoiceTouchTracking(false);
 
+    if (!voiceRecordingReadyRef.current) {
+      pendingVoiceOutcomeRef.current = 'cancel';
+      setVoiceRecordingStartedAtMs(0);
+      setVoiceRecordMode('idle');
+      resetVoiceGestureVisuals();
+      return;
+    }
+
+    voiceFinalizePendingRef.current = true;
     try {
       await VoiceRecorderService.stopRecording();
     } catch (err) {
       if (__DEV__) console.warn('[InputBar] cancel voice recording error:', err);
     } finally {
-      setIsVoiceRecording(false);
-      setVoiceElapsedMs(0);
-      voiceActionBusyRef.current = false;
+      voiceRecordingReadyRef.current = false;
+      pendingVoiceOutcomeRef.current = null;
+      setVoiceRecordingStartedAtMs(0);
+      setVoiceRecordMode('idle');
+      resetVoiceGestureVisuals();
+      voiceFinalizePendingRef.current = false;
     }
-  }, [isVoiceRecording]);
+  }, [resetVoiceGestureVisuals, setVoiceRecordMode]);
 
   const finishVoiceRecording = useCallback(async () => {
-    if (voiceActionBusyRef.current || !isVoiceRecording) return;
-    voiceActionBusyRef.current = true;
+    if (voiceFinalizePendingRef.current || voiceRecordModeRef.current === 'idle') return;
+    if (voiceHoldTimerRef.current) {
+      clearTimeout(voiceHoldTimerRef.current);
+      voiceHoldTimerRef.current = null;
+    }
+    voiceHoldActivatedRef.current = false;
+    voiceGestureActiveRef.current = false;
+    setVoiceTouchTracking(false);
 
+    if (!voiceRecordingReadyRef.current) {
+      pendingVoiceOutcomeRef.current = 'send';
+      return;
+    }
+
+    voiceFinalizePendingRef.current = true;
     try {
       const result = await VoiceRecorderService.stopRecording();
-      setIsVoiceRecording(false);
-      setVoiceElapsedMs(0);
+      voiceRecordingReadyRef.current = false;
+      pendingVoiceOutcomeRef.current = null;
+      setVoiceRecordingStartedAtMs(0);
+      setVoiceRecordMode('idle');
+      resetVoiceGestureVisuals();
       await onSendVoice(result);
     } catch (err) {
-      setIsVoiceRecording(false);
-      setVoiceElapsedMs(0);
+      voiceRecordingReadyRef.current = false;
+      setVoiceRecordingStartedAtMs(0);
+      setVoiceRecordMode('idle');
+      resetVoiceGestureVisuals();
       if (__DEV__) console.warn('[InputBar] stop voice recording error:', err);
       Alert.alert('Ошибка', 'Не удалось сохранить голосовое сообщение.');
     } finally {
-      voiceActionBusyRef.current = false;
+      voiceFinalizePendingRef.current = false;
     }
-  }, [isVoiceRecording, onSendVoice]);
+  }, [onSendVoice, resetVoiceGestureVisuals, setVoiceRecordMode]);
+
+  const lockVoiceRecording = useCallback(() => {
+    if (voiceRecordModeRef.current === 'idle') return;
+    if (voiceHoldTimerRef.current) {
+      clearTimeout(voiceHoldTimerRef.current);
+      voiceHoldTimerRef.current = null;
+    }
+    setVoiceRecordMode('locked');
+    voiceLockedSnapshotRef.current = true;
+    animateVoiceGestureState(0, 0, 0, 1);
+  }, [animateVoiceGestureState, setVoiceRecordMode]);
 
   const runAttachmentAction = useCallback(async (action: () => Promise<void>) => {
     setShowAttachmentSheet(false);
@@ -271,7 +404,7 @@ export function InputBar({
       await action();
     } catch (err) {
       if (__DEV__) console.warn('[InputBar] attachment error:', err);
-      Alert.alert('Ошибка', 'Не удалось прикрепить файл. Попробуй ещё раз.');
+      Alert.alert('Ошибка', 'Не удалось прикрепить файл. Попробуй еще раз.');
     }
   }, []);
 
@@ -350,6 +483,7 @@ export function InputBar({
   const handlePickGalleryItem = useCallback(
     async (item: GalleryItem) => {
       if (!onSendImage) return;
+
       setPendingImage({
         uri: item.uri,
         width: item.width,
@@ -367,35 +501,229 @@ export function InputBar({
     setShowAttachmentSheet(true);
   }, [showAttachmentButton]);
 
-  const voiceRecordGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(!canSend && !isVoiceRecording)
-        .activeOffsetY([-8, 8])
-        .failOffsetX([-24, 24])
-        .onBegin(() => {
-          voiceSwipeTriggeredRef.current = false;
-        })
-        .onUpdate((event) => {
-          if (voiceSwipeTriggeredRef.current) return;
-          if (event.translationY <= -18) {
-            voiceSwipeTriggeredRef.current = true;
-            runOnJS(startVoiceRecording)();
-          }
-        })
-        .onFinalize(() => {
-          voiceSwipeTriggeredRef.current = false;
-        }),
-    [canSend, isVoiceRecording, startVoiceRecording]
+  const updateVoiceDrag = useCallback(
+    (dx: number, dy: number) => {
+      if (voiceRecordModeRef.current !== 'holding') return;
+
+      const translateX = Math.max(-VOICE_MAX_LEFT_DRAG, Math.min(0, dx));
+      const translateY = Math.max(-VOICE_MAX_UP_DRAG, Math.min(0, dy));
+      const cancelProgress = Math.max(0, Math.min(1, -translateX / VOICE_CANCEL_THRESHOLD));
+      const lockProgress = Math.max(0, Math.min(1, -translateY / VOICE_LOCK_THRESHOLD));
+
+      updateVoiceGestureState(translateX, translateY, cancelProgress, lockProgress);
+
+      if (lockProgress >= 1) {
+        lockVoiceRecording();
+      }
+    },
+    [lockVoiceRecording, updateVoiceGestureState]
   );
 
-  const voiceElapsedLabel = useMemo(() => {
-    const minutes = Math.floor(voiceElapsedMs / 60000).toString();
-    const seconds = Math.floor((voiceElapsedMs % 60000) / 1000)
-      .toString()
-      .padStart(2, '0');
-    return `${minutes}:${seconds}`;
-  }, [voiceElapsedMs]);
+  const handleVoicePanRelease = useCallback(() => {
+    if (voiceHoldTimerRef.current) {
+      clearTimeout(voiceHoldTimerRef.current);
+      voiceHoldTimerRef.current = null;
+    }
+
+    if (!voiceHoldActivatedRef.current && voiceRecordModeRef.current === 'idle') {
+      voiceGestureActiveRef.current = false;
+      setVoiceTouchTracking(false);
+      resetVoiceGestureVisuals(false);
+      return;
+    }
+
+    if (!voiceGestureActiveRef.current && voiceRecordModeRef.current !== 'holding') return;
+
+    if (voiceRecordModeRef.current === 'locked') {
+      voiceHoldActivatedRef.current = false;
+      voiceGestureActiveRef.current = false;
+      setVoiceTouchTracking(false);
+      return;
+    }
+
+    voiceHoldActivatedRef.current = false;
+    voiceGestureActiveRef.current = false;
+    if (voiceCancelProgressRef.current >= VOICE_CANCEL_TRIGGER_PROGRESS) {
+      void cancelVoiceRecording();
+      return;
+    }
+
+    void finishVoiceRecording();
+  }, [cancelVoiceRecording, finishVoiceRecording, resetVoiceGestureVisuals]);
+
+  const voicePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => !canSend && voiceRecordModeRef.current === 'idle',
+        onMoveShouldSetPanResponder: () =>
+          voiceTouchTracking && voiceRecordModeRef.current === 'holding',
+        onPanResponderGrant: () => {
+          voiceGestureActiveRef.current = true;
+          setVoiceTouchTracking(true);
+          updateVoiceGestureState(0, 0, 0, 0);
+          voiceHoldActivatedRef.current = false;
+          if (voiceHoldTimerRef.current) {
+            clearTimeout(voiceHoldTimerRef.current);
+          }
+          voiceHoldTimerRef.current = setTimeout(() => {
+            voiceHoldTimerRef.current = null;
+            if (!voiceGestureActiveRef.current || voiceRecordModeRef.current !== 'idle') return;
+            void beginVoiceRecording();
+          }, VOICE_HOLD_TO_RECORD_MS);
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          if (!voiceGestureActiveRef.current || !voiceHoldActivatedRef.current) return;
+          updateVoiceDrag(gestureState.dx, gestureState.dy);
+        },
+        onPanResponderRelease: () => {
+          handleVoicePanRelease();
+        },
+        onPanResponderTerminate: () => {
+          handleVoicePanRelease();
+        },
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [
+      beginVoiceRecording,
+      canSend,
+      handleVoicePanRelease,
+      updateVoiceDrag,
+      updateVoiceGestureState,
+      voiceTouchTracking,
+    ]
+  );
+
+  const recordingBubbleStyle = useMemo(
+    () => ({
+      transform: [
+        { translateX: RNAnimated.multiply(voiceDragXAnimated, 0.66) },
+        { translateY: RNAnimated.multiply(voiceDragYAnimated, 0.42) },
+      ] as ViewStyle['transform'],
+    }),
+    [voiceDragXAnimated, voiceDragYAnimated]
+  );
+
+  const recordingBubbleCancelTintStyle = useMemo(
+    () => ({
+      opacity: voiceCancelProgressAnimated.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+    }),
+    [voiceCancelProgressAnimated]
+  );
+
+  const recordingLiveContentStyle = useMemo(
+    () => ({
+      opacity: voiceCancelProgressAnimated.interpolate({
+        inputRange: [0, 0.72],
+        outputRange: [1, 0],
+        extrapolate: 'clamp',
+      }),
+      transform: [
+        {
+          translateX: voiceCancelProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, -12],
+            extrapolate: 'clamp',
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [voiceCancelProgressAnimated]
+  );
+
+  const recordingCancelContentStyle = useMemo(
+    () => ({
+      opacity: voiceCancelProgressAnimated.interpolate({
+        inputRange: [0.18, 1],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+      transform: [
+        {
+          translateX: voiceCancelProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [12, 0],
+            extrapolate: 'clamp',
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [voiceCancelProgressAnimated]
+  );
+
+  const recordingLockStyle = useMemo(
+    () => ({
+      transform: [
+        {
+          translateY: RNAnimated.add(
+            RNAnimated.multiply(voiceDragYAnimated, 0.12),
+            voiceLockProgressAnimated.interpolate({
+              inputRange: [0, 1],
+              outputRange: [2, 8],
+            })
+          ),
+        },
+        {
+          translateX: voiceLockProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 2],
+          }),
+        },
+        {
+          scaleY: voiceLockProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1.58, 1],
+          }),
+        },
+        {
+          scaleX: voiceLockProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.94, 1],
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [voiceDragYAnimated, voiceLockProgressAnimated]
+  );
+
+  const recordingUnlockIconStyle = useMemo(
+    () => ({
+      opacity: voiceLockProgressAnimated.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 0],
+      }),
+      transform: [
+        {
+          scale: voiceLockProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.84],
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [voiceLockProgressAnimated]
+  );
+
+  const recordingLockIconStyle = useMemo(
+    () => ({
+      opacity: voiceLockProgressAnimated.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+      }),
+      transform: [
+        {
+          scale: voiceLockProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.84, 1],
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [voiceLockProgressAnimated]
+  );
 
   return (
     <>
@@ -409,187 +737,116 @@ export function InputBar({
                 Можно добавить подпись и отправить одним сообщением
               </Text>
             </View>
-            <Pressable
-              style={styles.previewRemoveButton}
-              onPress={() => setPendingImage(null)}
-              accessibilityRole="button"
-              accessibilityLabel="Убрать выбранное фото"
-            >
+            <Pressable style={styles.previewRemoveButton} onPress={() => setPendingImage(null)}>
               <Feather name="x" size={16} color="#6B7280" />
             </Pressable>
           </View>
         ) : null}
 
-        {replyToMessage ? (
-          <View style={styles.replyComposerWrap}>
-            <ReplyPreview
-              author={replyAuthorName?.trim() || 'Message'}
-              text={replyPreviewText}
-              mode="composer"
-              onClose={onCancelReply}
-            />
-          </View>
-        ) : null}
-
         {isVoiceRecording ? (
-          <View style={styles.recordingComposer}>
-            <Pressable
-              style={styles.recordingCancelButton}
-              onPress={() => {
-                void cancelVoiceRecording();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Отменить запись голосового"
-            >
-              <Text style={styles.recordingCancelText}>Отмена</Text>
-            </Pressable>
-
-            <View style={styles.recordingCenter}>
-              <Animated.View style={[styles.recordingDot, { opacity: recordingPulse }]} />
-              <Text style={styles.recordingTime}>{voiceElapsedLabel}</Text>
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.recordingSendButton,
-                pressed && styles.recordingSendButtonPressed,
-              ]}
-              onPress={() => {
-                void finishVoiceRecording();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Отправить голосовое сообщение"
-            >
-              <VoiceSendIcon />
-            </Pressable>
-          </View>
+          <InputVoiceRecordingStage
+            key={voiceRecordingStartedAtMs || 'voice-recording-stage'}
+            recordingStartedAtMs={voiceRecordingStartedAtMs}
+            isLocked={isVoiceLocked}
+            voiceTouchTracking={voiceTouchTracking}
+            panHandlers={voicePanResponder.panHandlers}
+            recordingBubbleStyle={recordingBubbleStyle}
+            recordingBubbleCancelTintStyle={recordingBubbleCancelTintStyle}
+            recordingLiveContentStyle={recordingLiveContentStyle}
+            recordingCancelContentStyle={recordingCancelContentStyle}
+            recordingLockStyle={recordingLockStyle}
+            recordingUnlockIconStyle={recordingUnlockIconStyle}
+            recordingLockIconStyle={recordingLockIconStyle}
+            onCancel={() => {
+              void cancelVoiceRecording();
+            }}
+            onSend={() => {
+              void finishVoiceRecording();
+            }}
+          />
         ) : (
-          <View style={styles.composerShell}>
-            {showAttachmentButton ? (
-              <Pressable
-                style={styles.leadingAction}
-                onPress={openAttachmentSheet}
-                accessibilityRole="button"
-                accessibilityLabel="Открыть вложения"
-              >
-                <PaperclipIcon />
-              </Pressable>
+          <View style={[styles.composerDock, replyToMessage && styles.composerDockReply]}>
+            {replyToMessage ? (
+              <View style={styles.replyComposerWrap}>
+                <View style={styles.replyComposerInline}>
+                  <View style={styles.replyComposerAccent} />
+                  <View style={styles.replyComposerCopy}>
+                    <Text style={styles.replyComposerAuthor} numberOfLines={1}>
+                      {replyAuthorName?.trim() || 'Message'}
+                    </Text>
+                    <Text style={styles.replyComposerText} numberOfLines={1}>
+                      {replyPreviewText}
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel reply"
+                    hitSlop={10}
+                    onPress={onCancelReply}
+                    style={styles.replyComposerClose}
+                  >
+                    <Feather name="x" size={18} color="#9AA4B2" />
+                  </Pressable>
+                </View>
+              </View>
             ) : null}
 
-            <TextInput
-              style={styles.input}
-              placeholder={placeholder}
-              placeholderTextColor={colors.placeholder}
-              value={inputText}
-              onChangeText={handleInputChange}
-              multiline
-              maxLength={4096}
-            />
+            <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}>
+              {showAttachmentButton ? (
+                <Pressable style={styles.leadingAction} onPress={openAttachmentSheet}>
+                  <PaperclipIcon />
+                </Pressable>
+              ) : null}
 
-            {canSend ? (
-              <Pressable
-                style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
-                onPress={handleSend}
-                accessibilityRole="button"
-                accessibilityLabel="Отправить сообщение"
-              >
-                <SendIcon />
-              </Pressable>
-            ) : (
-              <GestureDetector gesture={voiceRecordGesture}>
+              <TextInput
+                style={styles.input}
+                placeholder={placeholder}
+                placeholderTextColor={colors.placeholder}
+                value={inputText}
+                onChangeText={handleInputChange}
+                multiline
+                maxLength={4096}
+              />
+
+              {canSend ? (
+                <Pressable style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]} onPress={handleSend}>
+                  <SendIcon />
+                </Pressable>
+              ) : (
                 <Pressable
-                  style={({ pressed }) => [
-                    styles.trailingAction,
-                    pressed && styles.trailingActionPressed,
-                  ]}
-                  onPress={() => {
-                    void startVoiceRecording();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Записать голосовое сообщение"
+                  style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
                 >
                   <MicIcon />
                 </Pressable>
-              </GestureDetector>
-            )}
+              )}
+            </View>
           </View>
-        )}
+          )}
+
+        {!canSend ? (
+          <View
+            pointerEvents={isVoiceLocked && !voiceTouchTracking ? 'none' : 'auto'}
+            style={[
+              styles.voiceTouchAnchor,
+              isVoiceRecording && styles.voiceTouchAnchorActive,
+              isVoiceLocked && !voiceTouchTracking && styles.voiceTouchAnchorHidden,
+            ]}
+            {...voicePanResponder.panHandlers}
+          />
+        ) : null}
       </View>
 
-      <Modal
+      <InputAttachmentSheet
         visible={showAttachmentSheet}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowAttachmentSheet(false)}
-      >
-        <View style={styles.sheetRoot}>
-          <Pressable style={styles.sheetBackdrop} onPress={() => setShowAttachmentSheet(false)} />
-          <View style={styles.sheetCard}>
-            <View style={styles.sheetHandle} />
-
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Недавние</Text>
-              {galleryItems.length > 0 ? (
-                <Text style={styles.sheetSubtitle}>Нажми на фото, чтобы добавить в сообщение</Text>
-              ) : null}
-            </View>
-
-            {onSendImage ? (
-              galleryLoading ? (
-                <View style={styles.galleryPlaceholder}>
-                  <Text style={styles.galleryHint}>Загружаем фото...</Text>
-                </View>
-              ) : galleryDenied ? (
-                <View style={styles.galleryPlaceholder}>
-                  <Text style={styles.galleryHint}>Нужен доступ к фото, чтобы показать галерею.</Text>
-                </View>
-              ) : galleryItems.length > 0 ? (
-                <View style={styles.galleryPanel}>
-                  <ScrollView
-                    style={styles.galleryScroll}
-                    contentContainerStyle={styles.galleryGrid}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {galleryItems.map((item) => (
-                      <Pressable
-                        key={item.id}
-                        style={styles.galleryCell}
-                        onPress={() => handlePickGalleryItem(item)}
-                      >
-                        <Image source={{ uri: item.uri }} style={styles.galleryImage} />
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-              ) : (
-                <View style={styles.galleryPlaceholder}>
-                  <Text style={styles.galleryHint}>Фото не найдены.</Text>
-                </View>
-              )
-            ) : null}
-
-            {attachmentActions.length > 0 ? (
-              <>
-                <Text style={styles.sheetSectionTitle}>Ещё</Text>
-                <View style={styles.sheetActionsRow}>
-                  {attachmentActions.map((action) => (
-                    <Pressable
-                      key={action.key}
-                      style={styles.sheetAction}
-                      onPress={() => runAttachmentAction(action.onPress)}
-                    >
-                      <View style={styles.sheetIconWrap}>
-                        <SheetActionIcon tone={action.tone} />
-                      </View>
-                      <Text style={styles.sheetActionLabel}>{action.title}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            ) : null}
-          </View>
-        </View>
-      </Modal>
+        galleryEnabled={onSendImage != null}
+        galleryItems={galleryItems}
+        galleryLoading={galleryLoading}
+        galleryDenied={galleryDenied}
+        attachmentActions={attachmentActions}
+        onClose={() => setShowAttachmentSheet(false)}
+        onPickGalleryItem={handlePickGalleryItem}
+        onRunAttachmentAction={runAttachmentAction}
+      />
 
       {onSendVideoNote != null && (
         <VideoNoteRecorder
@@ -604,6 +861,7 @@ export function InputBar({
 
 const styles = StyleSheet.create({
   inputRow: {
+    position: 'relative',
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 10,
@@ -656,61 +914,56 @@ const styles = StyleSheet.create({
     borderColor: '#E6EBF2',
   },
   replyComposerWrap: {
-    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF1F5',
   },
-  recordingComposer: {
+  replyComposerInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: '#2B2C30',
-    paddingLeft: 14,
-    paddingRight: 6,
-    paddingVertical: 4,
+    minHeight: 44,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
   },
-  recordingCancelButton: {
-    minWidth: 68,
-    paddingVertical: 10,
-    justifyContent: 'center',
+  replyComposerAccent: {
+    width: 3,
+    alignSelf: 'stretch',
+    borderRadius: 999,
+    backgroundColor: '#4B9DFF',
+    marginRight: 10,
   },
-  recordingCancelText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#67A4FF',
-  },
-  recordingCenter: {
+  replyComposerCopy: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    minWidth: 0,
   },
-  recordingDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#FF4B4B',
-    marginRight: 8,
-  },
-  recordingTime: {
-    fontSize: 15,
+  replyComposerAuthor: {
+    fontSize: 14,
+    lineHeight: 17,
     fontWeight: '700',
-    color: '#D1D5DB',
+    color: '#3497FF',
   },
-  recordingSendButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  replyComposerText: {
+    marginTop: 1,
+    fontSize: 13,
+    lineHeight: 17,
+    color: '#202327',
+  },
+  replyComposerClose: {
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#5BA3FF',
-    shadowColor: '#245DA8',
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
   },
-  recordingSendButtonPressed: {
-    opacity: 0.88,
+  composerDock: {
+    gap: 0,
+  },
+  composerDockReply: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E8EF',
+    borderRadius: 24,
+    overflow: 'hidden',
   },
   composerShell: {
     flexDirection: 'row',
@@ -724,6 +977,11 @@ const styles = StyleSheet.create({
     paddingRight: 6,
     paddingVertical: 4,
     gap: 6,
+  },
+  composerShellAttached: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
   },
   leadingAction: {
     width: MIN_TAP_TARGET,
@@ -753,123 +1011,22 @@ const styles = StyleSheet.create({
   trailingActionPressed: {
     opacity: 0.82,
   },
-  sheetRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
+  voiceTouchAnchor: {
+    position: 'absolute',
+    right: 12,
+    bottom: 14,
+    width: MIN_TAP_TARGET,
+    height: MIN_TAP_TARGET,
+    borderRadius: MIN_TAP_TARGET / 2,
+    backgroundColor: 'transparent',
+    zIndex: 12,
   },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(17, 24, 39, 0.18)',
+  voiceTouchAnchorActive: {
+    opacity: 0.02,
   },
-  sheetCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 10,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    maxHeight: '80%',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 8,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 38,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#D6DCE5',
-    marginBottom: 14,
-  },
-  sheetHeader: {
-    marginBottom: 10,
-    paddingHorizontal: 4,
-  },
-  sheetTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  sheetSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  galleryPanel: {
-    borderRadius: 22,
-    backgroundColor: '#F8FAFD',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-    padding: 7,
-  },
-  galleryScroll: {
-    maxHeight: 338,
-  },
-  galleryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingBottom: 4,
-  },
-  galleryCell: {
-    width: '31.5%',
-    aspectRatio: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#EEF2F7',
-  },
-  galleryImage: {
-    width: '100%',
-    height: '100%',
-  },
-  galleryPlaceholder: {
-    minHeight: 132,
-    borderRadius: 22,
-    backgroundColor: '#F8FAFD',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-  },
-  galleryHint: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  sheetSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
-    marginTop: 9,
-    marginBottom: 5,
-    paddingHorizontal: 4,
-  },
-  sheetActionsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  sheetAction: {
-    alignItems: 'center',
-    width: 56,
-  },
-  sheetIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: '#F8FAFD',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-  },
-  sheetActionLabel: {
-    fontSize: 11,
-    color: '#4B5563',
-    fontWeight: '600',
-    textAlign: 'center',
+  voiceTouchAnchorHidden: {
+    opacity: 0,
   },
 });
+
+

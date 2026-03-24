@@ -16,12 +16,19 @@ export interface VoicePlayerStatus {
   rate: number;
 }
 
+export interface VoicePlayerSnapshot {
+  currentVoiceUri: string | null;
+  status: VoicePlayerStatus;
+}
+
 export type VoicePlayerStatusListener = (status: VoicePlayerStatus) => void;
+export type VoicePlayerStoreListener = () => void;
 
 class VoicePlayerServiceClass {
   private soundRef: Audio.Sound | null = null;
   private playPromise: Promise<void> = Promise.resolve();
   private statusListeners = new Set<VoicePlayerStatusListener>();
+  private storeListeners = new Set<VoicePlayerStoreListener>();
   private voiceCacheDir: string | null = null;
   private currentUri: string | null = null;
   private lastStatus: VoicePlayerStatus = {
@@ -29,6 +36,15 @@ class VoicePlayerServiceClass {
     durationMs: 0,
     isPlaying: false,
     rate: 1,
+  };
+  private lastSnapshot: VoicePlayerSnapshot = {
+    currentVoiceUri: null,
+    status: {
+      positionMs: 0,
+      durationMs: 0,
+      isPlaying: false,
+      rate: 1,
+    },
   };
   private playbackRate = 1;
 
@@ -101,9 +117,17 @@ class VoicePlayerServiceClass {
     this.notifyListeners();
   }
 
+  private refreshSnapshot(): void {
+    this.lastSnapshot = {
+      currentVoiceUri: this.currentUri,
+      status: { ...this.lastStatus },
+    };
+  }
+
   private notifyListeners(): void {
-    const status = { ...this.lastStatus };
-    this.statusListeners.forEach((cb) => cb(status));
+    this.refreshSnapshot();
+    this.statusListeners.forEach((cb) => cb(this.lastSnapshot.status));
+    this.storeListeners.forEach((cb) => cb());
   }
 
   addStatusListener(cb: VoicePlayerStatusListener): void {
@@ -112,6 +136,13 @@ class VoicePlayerServiceClass {
 
   removeStatusListener(cb: VoicePlayerStatusListener): void {
     this.statusListeners.delete(cb);
+  }
+
+  subscribe(cb: VoicePlayerStoreListener): () => void {
+    this.storeListeners.add(cb);
+    return () => {
+      this.storeListeners.delete(cb);
+    };
   }
 
   private handlePlaybackStatusUpdate = (status: AVPlaybackStatus): void => {
@@ -291,7 +322,11 @@ class VoicePlayerServiceClass {
 
   /** Get current playback status (position, duration, isPlaying). */
   getStatus(): VoicePlayerStatus {
-    return { ...this.lastStatus };
+    return { ...this.lastSnapshot.status };
+  }
+
+  getSnapshot(): VoicePlayerSnapshot {
+    return this.lastSnapshot;
   }
 
   /** Check if any sound is currently loaded. */

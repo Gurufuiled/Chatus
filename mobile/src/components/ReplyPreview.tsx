@@ -94,7 +94,7 @@ export function ReplyPreview({
           onPress={onClose}
           style={styles.closeButton}
         >
-          <Feather name="x" size={18} color="#C46A23" />
+          <Feather name="x" size={18} color="rgba(255,255,255,0.72)" />
         </Pressable>
       ) : null}
     </View>
@@ -109,10 +109,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   rootComposer: {
-    backgroundColor: '#FFF7F2',
-    borderWidth: 1,
-    borderColor: '#F6DFC9',
-    minHeight: 48,
+    backgroundColor: '#232528',
+    minHeight: 50,
+    borderRadius: 18,
   },
   rootBubble: {
     backgroundColor: '#6FA4FF',
@@ -137,8 +136,9 @@ const styles = StyleSheet.create({
     color: '#B85E1C',
   },
   authorComposer: {
-    fontSize: 15,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 17,
+    color: '#FFFFFF',
   },
   text: {
     marginTop: 1,
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   textComposer: {
     fontSize: 13,
     lineHeight: 17,
-    color: '#2B2F33',
+    color: 'rgba(255,255,255,0.88)',
   },
   closeButton: {
     width: 36,

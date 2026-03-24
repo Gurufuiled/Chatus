@@ -14,7 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Reanimated, {
   useAnimatedKeyboard,
@@ -40,7 +40,10 @@ import {
   VoiceBubble,
   buildReplyPreviewText,
 } from '../components';
-import { useVoicePlayer } from '../contexts/VoicePlayerContext';
+import {
+  useVoicePlayerControls,
+  useVoicePlayerState,
+} from '../contexts/VoicePlayerContext';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
 import {
@@ -91,7 +94,8 @@ export function ChatScreen() {
   const route = useRoute<ChatRoute>();
   const { chatId, focusMessageId, startSearch } = route.params;
   const currentUserId = authStore((s) => s.user?.id ?? null);
-  const { play, pause, stop, setPlaybackRate, currentVoiceUri, status: voiceStatus } = useVoicePlayer();
+  const { play, pause, stop, setPlaybackRate } = useVoicePlayerControls();
+  const { currentVoiceUri, status: voiceStatus } = useVoicePlayerState();
   const listRef = useRef<FlatList<Message> | null>(null);
   const blurTargetRef = useRef<View | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
@@ -180,6 +184,19 @@ export function ChatScreen() {
       SyncService.fetchMessagesForChat(chatId).catch(() => {});
     }
   }, [chatId, messageById, pinnedMessageId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      chatStore.getState().setSelectedChat(chatId);
+      chatStore.getState().clearUnread(chatId);
+
+      return () => {
+        if (chatStore.getState().selectedChatId === chatId) {
+          chatStore.getState().setSelectedChat(null);
+        }
+      };
+    }, [chatId])
+  );
 
   useEffect(() => {
     if (replyToMessageId && !messageById.has(replyToMessageId)) {
@@ -891,7 +908,6 @@ export function ChatScreen() {
           listRef={listRef}
           listAnimatedStyle={listWrapAnimatedStyle}
           contentPaddingTop={inputBarHeight + 8}
-          extraDataKey={`${messages.length}-${selectedMessageIds.join(',')}-${pinnedMessageId ?? ''}`}
           canSwipeReply={canSwipeReply}
           onSwipeReply={handleSwipeReply}
           onMessagePress={handleMessagePress}

@@ -12,6 +12,8 @@ type ChatActions = {
   addChat: (chat: Chat) => void;
   addOrUpdateChat: (chat: Chat) => void;
   updateChat: (chat: Chat) => void;
+  incrementUnread: (chatId: string) => void;
+  clearUnread: (chatId: string) => void;
   removeChat: (chatId: string) => void;
   setSelectedChat: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
@@ -50,6 +52,30 @@ export const chatStore = create<ChatState & ChatActions>((set) => ({
   updateChat: (chat) =>
     set((state) => ({
       chats: state.chats.map((c) => (c.id === chat.id ? chat : c)),
+    })),
+
+  incrementUnread: (chatId) =>
+    set((state) => ({
+      chats: state.chats.map((chat) =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              unread_count: (chat.unread_count ?? 0) + 1,
+            }
+          : chat
+      ),
+    })),
+
+  clearUnread: (chatId) =>
+    set((state) => ({
+      chats: state.chats.map((chat) =>
+        chat.id === chatId && chat.unread_count !== 0
+          ? {
+              ...chat,
+              unread_count: 0,
+            }
+          : chat
+      ),
     })),
 
   removeChat: (chatId) =>

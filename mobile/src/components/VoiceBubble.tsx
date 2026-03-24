@@ -1,10 +1,12 @@
-﻿import React from 'react';
+import React, { useMemo, useState } from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
-import { useState } from 'react';
-import { Dimensions, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useVoicePlayer } from '../contexts/VoicePlayerContext';
-import { colors, bubbleRadius, typography } from '../theme/colors';
+import { Dimensions, type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  useVoicePlaybackForUri,
+  useVoicePlayerControls,
+} from '../contexts/VoicePlayerContext';
 import { buildUiWaveform } from '../services/waveformUtils';
+import { bubbleRadius, colors, typography } from '../theme/colors';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 export interface VoiceBubbleProps {
@@ -32,7 +34,7 @@ function clamp01(value: number): number {
 
 function createDeterministicSeed(uri: string, durationMs: number): number {
   let hash = durationMs || 1;
-  for (let i = 0; i < uri.length; i++) {
+  for (let i = 0; i < uri.length; i += 1) {
     hash = (hash * 31 + uri.charCodeAt(i)) >>> 0;
   }
   return hash || 1;
@@ -81,7 +83,19 @@ function buildTelegramLikeBars(
   });
 }
 
-export function VoiceBubble({
+function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
+  return (
+    prev.uri === next.uri &&
+    prev.durationMs === next.durationMs &&
+    prev.isMe === next.isMe &&
+    prev.time === next.time &&
+    prev.status === next.status &&
+    prev.embedded === next.embedded &&
+    prev.waveform === next.waveform
+  );
+}
+
+export const VoiceBubble = React.memo(function VoiceBubble({
   uri,
   waveform,
   durationMs,
@@ -90,26 +104,40 @@ export function VoiceBubble({
   status: messageStatus,
   embedded = false,
 }: VoiceBubbleProps) {
-  const { play, pause, seekTo, currentVoiceUri, status } = useVoicePlayer();
+  const { play, pause, seekTo } = useVoicePlayerControls();
+  const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
   const [waveformWidth, setWaveformWidth] = useState(0);
 
-  const isCurrent = currentVoiceUri === uri;
-  const isPlaying = isCurrent && status.isPlaying;
-  const progress =
-    isCurrent && status.durationMs > 0 ? status.positionMs / status.durationMs : 0;
-  const effectiveDurationMs = isCurrent
-    ? Math.max(durationMs - status.positionMs, 0)
-    : durationMs;
+  const effectiveDurationMs = remainingMs;
+
+  const bars = useMemo(
+    () => buildTelegramLikeBars(uri, waveform, durationMs, 44),
+    [durationMs, uri, waveform]
+  );
+  const barHeights = useMemo(
+    () =>
+      bars.map((value) => {
+        const normalized = Math.max(0, Math.min(1, value ?? 0.5));
+        return 3 + Math.pow(normalized, 1.35) * 13;
+      }),
+    [bars]
+  );
+
+  const barCount = bars.length;
+  const filledBarCount =
+    progress > 0 ? Math.max(0, Math.min(barCount, Math.round(progress * barCount))) : 0;
+  const hasPlaybackProgress = isCurrent && progress > 0;
 
   const handlePress = async () => {
     if (isPlaying) {
       await pause();
-    } else {
-      try {
-        await play(uri);
-      } catch (err) {
-        if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
-      }
+      return;
+    }
+
+    try {
+      await play(uri);
+    } catch (err) {
+      if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
     }
   };
 
@@ -135,12 +163,6 @@ export function VoiceBubble({
       if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
     }
   };
-
-  const bars = buildTelegramLikeBars(uri, waveform, durationMs, 44);
-  const barCount = bars.length;
-  const filledBarCount =
-    progress > 0 ? Math.max(0, Math.min(barCount, Math.round(progress * barCount))) : 0;
-  const hasPlaybackProgress = isCurrent && progress > 0;
 
   return (
     <View
@@ -189,13 +211,12 @@ export function VoiceBubble({
               ]}
             />
           ) : null}
-          {Array.from({ length: barCount }).map((_, i) => {
-            const value = Math.max(0, Math.min(1, bars[i] ?? 0.5));
-            const barHeight = 3 + Math.pow(value, 1.35) * 13;
-            const isFilled = progress > 0 && i / barCount <= progress;
+
+          {barHeights.map((barHeight, index) => {
+            const isFilled = progress > 0 && index / barCount <= progress;
             return (
               <View
-                key={i}
+                key={index}
                 style={[
                   styles.bar,
                   {
@@ -233,7 +254,7 @@ export function VoiceBubble({
       </View>
     </View>
   );
-}
+}, arePropsEqual);
 
 const styles = StyleSheet.create({
   container: {
@@ -339,5 +360,3 @@ const styles = StyleSheet.create({
     color: colors.textSecondaryMuted,
   },
 });
-
-

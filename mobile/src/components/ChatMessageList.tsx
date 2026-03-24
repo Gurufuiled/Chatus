@@ -44,7 +44,6 @@ type ChatMessageListProps = {
   listRef: React.RefObject<FlatList<Message> | null>;
   listAnimatedStyle: React.ComponentProps<typeof Reanimated.View>['style'];
   contentPaddingTop: number;
-  extraDataKey: string;
   canSwipeReply: (message: Message) => boolean;
   onSwipeReply: (message: Message) => void;
   onMessagePress: (messageId: string) => void;
@@ -399,7 +398,6 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   listRef,
   listAnimatedStyle,
   contentPaddingTop,
-  extraDataKey,
   canSwipeReply,
   onSwipeReply,
   onMessagePress,
@@ -450,13 +448,17 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     <Reanimated.View style={[styles.listWrap, listAnimatedStyle]}>
       <FlatList
         ref={listRef}
-        key={`${chatId}-${messages.length}`}
+        key={chatId}
         data={messages}
         keyExtractor={(message) => message.id}
         inverted
-        extraData={extraDataKey}
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
+        removeClippedSubviews
+        initialNumToRender={16}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={45}
+        windowSize={9}
         contentContainerStyle={[
           styles.listContent,
           { paddingTop: contentPaddingTop },
@@ -464,6 +466,26 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         renderItem={renderMessageRow}
       />
     </Reanimated.View>
+  );
+}, (prev, next) => {
+  return (
+    prev.chatId === next.chatId &&
+    prev.currentUserId === next.currentUserId &&
+    prev.messages === next.messages &&
+    prev.messageById === next.messageById &&
+    prev.selectedMessageIdSet === next.selectedMessageIdSet &&
+    prev.highlightedMessageId === next.highlightedMessageId &&
+    prev.contentPaddingTop === next.contentPaddingTop &&
+    prev.canSwipeReply === next.canSwipeReply &&
+    prev.onSwipeReply === next.onSwipeReply &&
+    prev.onMessagePress === next.onMessagePress &&
+    prev.onMessageLongPress === next.onMessageLongPress &&
+    prev.setContentRef === next.setContentRef &&
+    prev.onScrollToIndexFailed === next.onScrollToIndexFailed &&
+    prev.formatTime === next.formatTime &&
+    prev.getMessageAuthorName === next.getMessageAuthorName &&
+    prev.getDeletedPlaceholder === next.getDeletedPlaceholder &&
+    prev.repliedVoiceBubbleWidth === next.repliedVoiceBubbleWidth
   );
 });
 

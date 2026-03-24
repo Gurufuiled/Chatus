@@ -1,12 +1,6 @@
 import React from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors } from '../theme/colors';
 
 type ChatTopBannersProps = {
@@ -31,11 +25,49 @@ type ChatTopBannersProps = {
   searchInputRef: React.RefObject<TextInput | null>;
 };
 
-export function ChatTopBanners({
-  selectionMode,
+type SelectionBannerProps = {
+  selectedCount: number;
+  onClearSelection: () => void;
+};
+
+type VoiceBannerProps = {
+  activeVoiceAuthor: string | null;
+  activeVoiceIsPlaying: boolean;
+  activeVoiceRateLabel: string;
+  activeVoiceProgress: number;
+  onToggleVoicePlayback: () => void;
+  onCycleVoiceRate: () => void;
+  onStopVoice: () => void;
+};
+
+type PinnedBannerProps = {
+  pinnedMessageText: string;
+  onPinnedPress: () => void;
+  onPinnedClose: () => void;
+};
+
+type SearchBannerProps = {
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  onCancelSearch: () => void;
+  searchInputRef: React.RefObject<TextInput | null>;
+};
+
+const SelectionBanner = React.memo(function SelectionBanner({
   selectedCount,
   onClearSelection,
-  activeVoiceVisible,
+}: SelectionBannerProps) {
+  return (
+    <View style={styles.selectionBanner}>
+      <Text style={styles.selectionBannerText}>Выбрано: {selectedCount}</Text>
+      <Pressable onPress={onClearSelection} hitSlop={10}>
+        <Text style={styles.selectionBannerAction}>Очистить</Text>
+      </Pressable>
+    </View>
+  );
+});
+
+const VoiceBanner = React.memo(function VoiceBanner({
   activeVoiceAuthor,
   activeVoiceIsPlaying,
   activeVoiceRateLabel,
@@ -43,135 +75,202 @@ export function ChatTopBanners({
   onToggleVoicePlayback,
   onCycleVoiceRate,
   onStopVoice,
+}: VoiceBannerProps) {
+  return (
+    <View style={styles.voiceBannerWrap}>
+      <View style={styles.voiceBanner}>
+        <Pressable
+          onPress={onToggleVoicePlayback}
+          style={({ pressed }) => [
+            styles.voiceBannerPlayButton,
+            pressed && styles.voiceBannerButtonPressed,
+          ]}
+        >
+          <Feather
+            name={activeVoiceIsPlaying ? 'pause' : 'play'}
+            size={18}
+            color={colors.accent}
+            style={!activeVoiceIsPlaying ? styles.voiceBannerPlayIcon : undefined}
+          />
+        </Pressable>
+
+        <View style={styles.voiceBannerTextWrap}>
+          <Text numberOfLines={1} style={styles.voiceBannerAuthor}>
+            {activeVoiceAuthor ?? 'Голосовое сообщение'}
+          </Text>
+          <Text numberOfLines={1} style={styles.voiceBannerSubtitle}>
+            Голосовое сообщение
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={onCycleVoiceRate}
+          style={({ pressed }) => [
+            styles.voiceBannerRateButton,
+            pressed && styles.voiceBannerButtonPressed,
+          ]}
+        >
+          <Text style={styles.voiceBannerRateText}>{activeVoiceRateLabel}</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={onStopVoice}
+          style={({ pressed }) => [
+            styles.voiceBannerCloseButton,
+            pressed && styles.voiceBannerButtonPressed,
+          ]}
+        >
+          <Feather name="x" size={18} color="#8A94A6" />
+        </Pressable>
+
+        <View style={styles.voiceBannerProgressTrack}>
+          <View
+            style={[
+              styles.voiceBannerProgressFill,
+              { width: `${Math.max(activeVoiceProgress * 100, 0)}%` },
+            ]}
+          />
+        </View>
+      </View>
+    </View>
+  );
+});
+
+const PinnedBanner = React.memo(function PinnedBanner({
   pinnedMessageText,
   onPinnedPress,
   onPinnedClose,
-  isSearchMode,
+}: PinnedBannerProps) {
+  return (
+    <View style={styles.pinnedBannerWrap}>
+      <View style={styles.pinnedBanner}>
+        <View style={styles.pinnedAccent} />
+        <Pressable onPress={onPinnedPress} style={styles.pinnedMainPressable}>
+          <View style={styles.pinnedContent}>
+            <Text style={styles.pinnedTitle}>Закрепленное сообщение</Text>
+            <Text numberOfLines={1} style={styles.pinnedText}>
+              {pinnedMessageText}
+            </Text>
+          </View>
+        </Pressable>
+        <Pressable hitSlop={10} onPress={onPinnedClose} style={styles.pinnedClose}>
+          <Feather name="x" size={16} color="#65717E" />
+        </Pressable>
+      </View>
+    </View>
+  );
+});
+
+const SearchBanner = React.memo(function SearchBanner({
   searchQuery,
   onSearchQueryChange,
   onCancelSearch,
   searchInputRef,
-}: ChatTopBannersProps) {
+}: SearchBannerProps) {
   return (
-    <>
-      {selectionMode ? (
-        <View style={styles.selectionBanner}>
-          <Text style={styles.selectionBannerText}>
-            Выбрано: {selectedCount}
-          </Text>
-          <Pressable onPress={onClearSelection} hitSlop={10}>
-            <Text style={styles.selectionBannerAction}>Очистить</Text>
-          </Pressable>
-        </View>
-      ) : null}
-
-      {activeVoiceVisible ? (
-        <View style={styles.voiceBannerWrap}>
-          <View style={styles.voiceBanner}>
-            <Pressable
-              onPress={onToggleVoicePlayback}
-              style={({ pressed }) => [
-                styles.voiceBannerPlayButton,
-                pressed && styles.voiceBannerButtonPressed,
-              ]}
-            >
-              <Feather
-                name={activeVoiceIsPlaying ? 'pause' : 'play'}
-                size={18}
-                color={colors.accent}
-                style={!activeVoiceIsPlaying ? styles.voiceBannerPlayIcon : undefined}
-              />
-            </Pressable>
-
-            <View style={styles.voiceBannerTextWrap}>
-              <Text numberOfLines={1} style={styles.voiceBannerAuthor}>
-                {activeVoiceAuthor ?? 'Голосовое сообщение'}
-              </Text>
-              <Text numberOfLines={1} style={styles.voiceBannerSubtitle}>
-                Голосовое сообщение
-              </Text>
-            </View>
-
-            <Pressable
-              onPress={onCycleVoiceRate}
-              style={({ pressed }) => [
-                styles.voiceBannerRateButton,
-                pressed && styles.voiceBannerButtonPressed,
-              ]}
-            >
-              <Text style={styles.voiceBannerRateText}>{activeVoiceRateLabel}</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={onStopVoice}
-              style={({ pressed }) => [
-                styles.voiceBannerCloseButton,
-                pressed && styles.voiceBannerButtonPressed,
-              ]}
-            >
-              <Feather name="x" size={18} color="#8A94A6" />
-            </Pressable>
-
-            <View style={styles.voiceBannerProgressTrack}>
-              <View
-                style={[
-                  styles.voiceBannerProgressFill,
-                  { width: `${Math.max(activeVoiceProgress * 100, 0)}%` },
-                ]}
-              />
-            </View>
-          </View>
-        </View>
-      ) : null}
-
-      {pinnedMessageText ? (
-        <View style={styles.pinnedBannerWrap}>
-          <View style={styles.pinnedBanner}>
-            <View style={styles.pinnedAccent} />
-            <Pressable onPress={onPinnedPress} style={styles.pinnedMainPressable}>
-              <View style={styles.pinnedContent}>
-                <Text style={styles.pinnedTitle}>Закрепленное сообщение</Text>
-                <Text numberOfLines={1} style={styles.pinnedText}>
-                  {pinnedMessageText}
-                </Text>
-              </View>
-            </Pressable>
-            <Pressable
-              hitSlop={10}
-              onPress={onPinnedClose}
-              style={styles.pinnedClose}
-            >
-              <Feather name="x" size={16} color="#65717E" />
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-
-      {isSearchMode ? (
-        <View style={styles.searchBarRow}>
-          <View style={styles.searchBubble}>
-            <Feather name="search" size={17} color="#94A3B8" />
-            <TextInput
-              ref={searchInputRef}
-              value={searchQuery}
-              onChangeText={onSearchQueryChange}
-              placeholder="Искать в чате"
-              placeholderTextColor="#A0AEC0"
-              style={styles.searchInput}
-              returnKeyType="search"
-              autoCorrect={false}
-              autoCapitalize="none"
-              selectionColor={colors.accent}
-            />
-          </View>
-          <Pressable onPress={onCancelSearch} style={styles.searchCancelButton}>
-            <Text style={styles.searchCancelText}>Отмена</Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </>
+    <View style={styles.searchBarRow}>
+      <View style={styles.searchBubble}>
+        <Feather name="search" size={17} color="#94A3B8" />
+        <TextInput
+          ref={searchInputRef}
+          value={searchQuery}
+          onChangeText={onSearchQueryChange}
+          placeholder="Искать в чате"
+          placeholderTextColor="#A0AEC0"
+          style={styles.searchInput}
+          returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
+          selectionColor={colors.accent}
+        />
+      </View>
+      <Pressable onPress={onCancelSearch} style={styles.searchCancelButton}>
+        <Text style={styles.searchCancelText}>Отмена</Text>
+      </Pressable>
+    </View>
   );
-}
+});
+
+export const ChatTopBanners = React.memo(
+  function ChatTopBanners({
+    selectionMode,
+    selectedCount,
+    onClearSelection,
+    activeVoiceVisible,
+    activeVoiceAuthor,
+    activeVoiceIsPlaying,
+    activeVoiceRateLabel,
+    activeVoiceProgress,
+    onToggleVoicePlayback,
+    onCycleVoiceRate,
+    onStopVoice,
+    pinnedMessageText,
+    onPinnedPress,
+    onPinnedClose,
+    isSearchMode,
+    searchQuery,
+    onSearchQueryChange,
+    onCancelSearch,
+    searchInputRef,
+  }: ChatTopBannersProps) {
+    return (
+      <>
+        {selectionMode ? (
+          <SelectionBanner selectedCount={selectedCount} onClearSelection={onClearSelection} />
+        ) : null}
+
+        {activeVoiceVisible ? (
+          <VoiceBanner
+            activeVoiceAuthor={activeVoiceAuthor}
+            activeVoiceIsPlaying={activeVoiceIsPlaying}
+            activeVoiceRateLabel={activeVoiceRateLabel}
+            activeVoiceProgress={activeVoiceProgress}
+            onToggleVoicePlayback={onToggleVoicePlayback}
+            onCycleVoiceRate={onCycleVoiceRate}
+            onStopVoice={onStopVoice}
+          />
+        ) : null}
+
+        {pinnedMessageText ? (
+          <PinnedBanner
+            pinnedMessageText={pinnedMessageText}
+            onPinnedPress={onPinnedPress}
+            onPinnedClose={onPinnedClose}
+          />
+        ) : null}
+
+        {isSearchMode ? (
+          <SearchBanner
+            searchQuery={searchQuery}
+            onSearchQueryChange={onSearchQueryChange}
+            onCancelSearch={onCancelSearch}
+            searchInputRef={searchInputRef}
+          />
+        ) : null}
+      </>
+    );
+  },
+  (prev, next) =>
+    prev.selectionMode === next.selectionMode &&
+    prev.selectedCount === next.selectedCount &&
+    prev.onClearSelection === next.onClearSelection &&
+    prev.activeVoiceVisible === next.activeVoiceVisible &&
+    prev.activeVoiceAuthor === next.activeVoiceAuthor &&
+    prev.activeVoiceIsPlaying === next.activeVoiceIsPlaying &&
+    prev.activeVoiceRateLabel === next.activeVoiceRateLabel &&
+    prev.activeVoiceProgress === next.activeVoiceProgress &&
+    prev.onToggleVoicePlayback === next.onToggleVoicePlayback &&
+    prev.onCycleVoiceRate === next.onCycleVoiceRate &&
+    prev.onStopVoice === next.onStopVoice &&
+    prev.pinnedMessageText === next.pinnedMessageText &&
+    prev.onPinnedPress === next.onPinnedPress &&
+    prev.onPinnedClose === next.onPinnedClose &&
+    prev.isSearchMode === next.isSearchMode &&
+    prev.searchQuery === next.searchQuery &&
+    prev.onSearchQueryChange === next.onSearchQueryChange &&
+    prev.onCancelSearch === next.onCancelSearch &&
+    prev.searchInputRef === next.searchInputRef
+);
 
 const styles = StyleSheet.create({
   selectionBanner: {

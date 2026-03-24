@@ -1,63 +1,86 @@
-/**
- * VoicePlayerContext - Global singleton voice player via React Context.
- * One voice at a time. UI re-renders when playback status changes.
- */
-
 import React, {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useMemo,
+  useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   VoicePlayerService,
+  type VoicePlayerSnapshot,
   type VoicePlayerStatus,
 } from '../services/VoicePlayerService';
 
-type VoicePlayerContextType = {
+type VoicePlayerControls = {
   play: (uri: string, positionMs?: number) => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
   seekTo: (positionMs: number) => Promise<void>;
   setPlaybackRate: (rate: number) => Promise<void>;
-  currentVoiceUri: string | null;
-  status: VoicePlayerStatus;
 };
 
-const VoicePlayerContext = createContext<VoicePlayerContextType | null>(null);
+type VoicePlaybackForUri = {
+  isCurrent: boolean;
+  isPlaying: boolean;
+  progress: number;
+  positionMs: number;
+  remainingMs: number;
+  rate: number;
+};
+
+const VoicePlayerContext = createContext<VoicePlayerControls | null>(null);
+
+function subscribeToVoicePlayer(onStoreChange: () => void) {
+  return VoicePlayerService.subscribe(onStoreChange);
+}
+
+function getVoicePlayerSnapshot(): VoicePlayerSnapshot {
+  return VoicePlayerService.getSnapshot();
+}
+
+function buildVoicePlaybackSelection(
+  snapshot: VoicePlayerSnapshot,
+  uri: string | null,
+  fallbackDurationMs: number
+): VoicePlaybackForUri {
+  const isCurrent = Boolean(uri) && snapshot.currentVoiceUri === uri;
+  const positionMs = isCurrent ? snapshot.status.positionMs : 0;
+  const durationMs = isCurrent
+    ? Math.max(snapshot.status.durationMs, fallbackDurationMs)
+    : fallbackDurationMs;
+  const progress = isCurrent && durationMs > 0 ? Math.min(positionMs / durationMs, 1) : 0;
+
+  return {
+    isCurrent,
+    isPlaying: isCurrent && snapshot.status.isPlaying,
+    progress,
+    positionMs,
+    remainingMs: isCurrent ? Math.max(fallbackDurationMs - positionMs, 0) : fallbackDurationMs,
+    rate: snapshot.status.rate,
+  };
+}
+
+function isSameVoicePlaybackSelection(
+  prev: VoicePlaybackForUri,
+  next: VoicePlaybackForUri
+) {
+  return (
+    prev.isCurrent === next.isCurrent &&
+    prev.isPlaying === next.isPlaying &&
+    prev.progress === next.progress &&
+    prev.positionMs === next.positionMs &&
+    prev.remainingMs === next.remainingMs &&
+    prev.rate === next.rate
+  );
+}
 
 export function VoicePlayerProvider({ children }: { children: React.ReactNode }) {
-  const [currentVoiceUri, setCurrentVoiceUri] = useState<string | null>(null);
-  const [status, setStatus] = useState<VoicePlayerStatus>(() =>
-    VoicePlayerService.getStatus()
-  );
-
-  useEffect(() => {
-    const listener = (s: VoicePlayerStatus) => setStatus(s);
-    VoicePlayerService.addStatusListener(listener);
-    return () => VoicePlayerService.removeStatusListener(listener);
-  }, []);
-
   const play = useCallback(async (uri: string, positionMs?: number) => {
-    setStatus((prev) =>
-      currentVoiceUri === uri
-        ? prev
-        : {
-            positionMs: 0,
-            durationMs: 0,
-            isPlaying: false,
-            rate: prev.rate ?? 1,
-          }
-    );
-    setCurrentVoiceUri(uri);
-    try {
-      await VoicePlayerService.play(uri, positionMs);
-    } catch (err) {
-      setCurrentVoiceUri(null);
-      throw err;
-    }
-  }, [currentVoiceUri]);
+    await VoicePlayerService.play(uri, positionMs);
+  }, []);
 
   const pause = useCallback(async () => {
     await VoicePlayerService.pause();
@@ -65,7 +88,6 @@ export function VoicePlayerProvider({ children }: { children: React.ReactNode })
 
   const stop = useCallback(async () => {
     await VoicePlayerService.stop();
-    setCurrentVoiceUri(null);
   }, []);
 
   const seekTo = useCallback(async (positionMs: number) => {
@@ -76,15 +98,22 @@ export function VoicePlayerProvider({ children }: { children: React.ReactNode })
     await VoicePlayerService.setPlaybackRate(rate);
   }, []);
 
-  const value: VoicePlayerContextType = {
-    play,
-    pause,
-    stop,
-    seekTo,
-    setPlaybackRate,
-    currentVoiceUri,
-    status,
-  };
+  const value = useMemo<VoicePlayerControls>(
+    () => ({
+      play,
+      pause,
+      stop,
+      seekTo,
+      setPlaybackRate,
+    }),
+    [pause, play, seekTo, setPlaybackRate, stop]
+  );
+
+  useEffect(() => {
+    return () => {
+      void VoicePlayerService.stop().catch(() => {});
+    };
+  }, []);
 
   return (
     <VoicePlayerContext.Provider value={value}>
@@ -93,10 +122,64 @@ export function VoicePlayerProvider({ children }: { children: React.ReactNode })
   );
 }
 
-export function useVoicePlayer(): VoicePlayerContextType {
+export function useVoicePlayerControls(): VoicePlayerControls {
   const ctx = useContext(VoicePlayerContext);
   if (!ctx) {
-    throw new Error('useVoicePlayer must be used within VoicePlayerProvider');
+    throw new Error('useVoicePlayerControls must be used within VoicePlayerProvider');
   }
   return ctx;
+}
+
+export function useVoicePlayerState(): VoicePlayerSnapshot {
+  return useSyncExternalStore(
+    subscribeToVoicePlayer,
+    getVoicePlayerSnapshot,
+    getVoicePlayerSnapshot
+  );
+}
+
+export function useVoicePlaybackForUri(
+  uri: string | null,
+  fallbackDurationMs: number
+): VoicePlaybackForUri {
+  const [selection, setSelection] = useState<VoicePlaybackForUri>(() =>
+    buildVoicePlaybackSelection(getVoicePlayerSnapshot(), uri, fallbackDurationMs)
+  );
+  const selectionRef = useRef(selection);
+
+  useEffect(() => {
+    const syncSelection = () => {
+      const next = buildVoicePlaybackSelection(
+        getVoicePlayerSnapshot(),
+        uri,
+        fallbackDurationMs
+      );
+
+      if (isSameVoicePlaybackSelection(selectionRef.current, next)) {
+        return;
+      }
+
+      selectionRef.current = next;
+      setSelection(next);
+    };
+
+    syncSelection();
+    return subscribeToVoicePlayer(syncSelection);
+  }, [fallbackDurationMs, uri]);
+
+  return selection;
+}
+
+export function useVoicePlayer(): VoicePlayerControls & {
+  currentVoiceUri: string | null;
+  status: VoicePlayerStatus;
+} {
+  const controls = useVoicePlayerControls();
+  const snapshot = useVoicePlayerState();
+
+  return {
+    ...controls,
+    currentVoiceUri: snapshot.currentVoiceUri,
+    status: snapshot.status,
+  };
 }
