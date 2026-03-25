@@ -30,6 +30,7 @@ export interface CreateMessageMedia {
   duration_ms?: number;
   waveform?: number[];
   thumbnail_url?: string;
+  thumbnail_path?: string;
   is_round?: boolean;
   width?: number;
   height?: number;
@@ -41,6 +42,26 @@ export interface CreateMessageMedia {
 @Injectable()
 export class MessagesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private serializeWaveform(waveform?: number[]): Uint8Array | null {
+    if (!Array.isArray(waveform) || waveform.length === 0) {
+      return null;
+    }
+
+    const normalized = waveform.filter(
+      (value): value is number => typeof value === 'number' && Number.isFinite(value),
+    );
+    if (normalized.length === 0) {
+      return null;
+    }
+
+    const encoded = new TextEncoder().encode(JSON.stringify(normalized));
+    const buffer = encoded.buffer.slice(
+      encoded.byteOffset,
+      encoded.byteOffset + encoded.byteLength,
+    );
+    return new Uint8Array(buffer);
+  }
 
   async createMessage(
     chatId: string,
@@ -76,6 +97,10 @@ export class MessagesService {
       if (media && prismaMsgType !== MessageType.text) {
         const mediaType =
           MSG_TYPE_TO_MEDIA_TYPE[prismaMsgType] ?? MediaType.file;
+        const waveformBytes =
+          this.serializeWaveform(media.waveform) as Parameters<
+            typeof tx.media.create
+          >[0]['data']['waveform'];
         const mediaData: Parameters<typeof tx.media.create>[0]['data'] = {
           id: randomUUID(),
           messageId: message.id,
@@ -87,9 +112,8 @@ export class MessagesService {
           width: media.width ?? null,
           height: media.height ?? null,
           durationMs: media.duration_ms ?? null,
-          waveform: media.waveform
-            ? Buffer.from(new Uint8Array(media.waveform))
-            : null,
+          thumbnailUrl: media.thumbnail_url ?? media.thumbnail_path ?? null,
+          waveform: waveformBytes,
           isRound: media.is_round ?? false,
         };
         await tx.media.create({ data: mediaData });

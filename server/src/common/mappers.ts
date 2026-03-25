@@ -234,6 +234,7 @@ export type MappedMedia = {
   height: number | null;
   duration_ms: number | null;
   remote_url: string | null;
+  thumbnail_url: string | null;
   waveform: string | null;
   is_round: boolean;
   created_at: number;
@@ -251,6 +252,7 @@ export function mapMedia(media: Media): MappedMedia {
     height: media.height ?? null,
     duration_ms: media.durationMs ?? null,
     remote_url: media.remoteUrl ?? null,
+    thumbnail_url: media.thumbnailUrl ?? null,
     waveform: media.waveform
       ? Buffer.from(media.waveform).toString('base64')
       : null,

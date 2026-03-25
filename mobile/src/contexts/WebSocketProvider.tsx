@@ -16,6 +16,7 @@ import { messageStore } from '../stores/messageStore';
 import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
 import type { Message } from '../stores/types';
+import { decodeServerWaveform } from '../services/waveformTransport';
 
 /** Server message payload shape (MappedMessage from backend) */
 interface ServerMessagePayload {
@@ -31,24 +32,13 @@ interface ServerMessagePayload {
     duration_ms?: number | null;
     waveform?: string | null;
     remote_url?: string | null;
+    thumbnail_url?: string | null;
     width?: number | null;
     height?: number | null;
     file_name?: string | null;
     file_size?: number | null;
     is_round?: boolean;
   }[];
-}
-
-function base64ToWaveformArray(s: string | null | undefined): number[] {
-  if (!s) return [];
-  try {
-    const binary = atob(s);
-    const arr = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-    return Array.from(arr);
-  } catch {
-    return [];
-  }
 }
 
 function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
@@ -74,9 +64,10 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
   };
   if (payload.media?.length) {
     msg.media = payload.media.map((m) => ({
-      waveform: base64ToWaveformArray(m.waveform),
+      waveform: decodeServerWaveform(m.waveform),
       duration_ms: m.duration_ms ?? undefined,
       remote_url: m.remote_url ?? undefined,
+      thumbnail_url: m.thumbnail_url ?? undefined,
       width: m.width ?? undefined,
       height: m.height ?? undefined,
       file_name: m.file_name ?? undefined,

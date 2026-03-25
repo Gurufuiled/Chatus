@@ -10,6 +10,7 @@ import { API_BASE_URL } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import type { Chat, Message } from '../stores/types';
+import { decodeServerWaveform } from './waveformTransport';
 
 const MAX_RETRIES = 5;
 
@@ -86,6 +87,7 @@ interface ApiMessage {
   media?: {
     remote_url?: string;
     duration_ms?: number;
+    waveform?: string | null;
     thumbnail_url?: string;
     thumbnail_path?: string;
     is_round?: boolean;
@@ -112,6 +114,7 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
   const media =
     api.media?.map((m) => ({
       duration_ms: m.duration_ms ?? 0,
+      waveform: decodeServerWaveform(m.waveform),
       thumbnail_url: m.thumbnail_url,
       thumbnail_path: m.thumbnail_path,
       is_round: m.is_round,
@@ -183,8 +186,16 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
-          duration_ms: p.durationMs,
-          waveform: p.waveform,
+          duration_ms: p.durationMs || result.duration_ms || undefined,
+          waveform:
+            p.waveform && p.waveform.length > 0
+              ? p.waveform
+              : result.waveform && result.waveform.length > 0
+                ? result.waveform
+                : undefined,
+          mime_type: result.mime_type,
+          file_name: result.file_name,
+          file_size: result.file_size,
         },
       });
       return;
@@ -216,9 +227,14 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
-          duration_ms: p.durationMs,
+          duration_ms: p.durationMs || result.duration_ms || undefined,
           thumbnail_url: thumbnailUrl,
           is_round: true,
+          mime_type: result.mime_type,
+          file_name: result.file_name,
+          file_size: result.file_size,
+          width: result.width ?? undefined,
+          height: result.height ?? undefined,
         },
       });
       return;
@@ -241,8 +257,14 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
-          width: p.width,
-          height: p.height,
+          thumbnail_url: result.thumbnail_path
+            ? toFullUrl(baseUrl, result.thumbnail_path)
+            : undefined,
+          width: p.width ?? result.width ?? undefined,
+          height: p.height ?? result.height ?? undefined,
+          mime_type: result.mime_type,
+          file_name: result.file_name,
+          file_size: result.file_size,
         },
       });
       return;

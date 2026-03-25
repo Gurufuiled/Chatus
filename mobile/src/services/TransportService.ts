@@ -231,8 +231,16 @@ class TransportServiceClass {
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
-            duration_ms: payload.durationMs,
-            waveform: payload.waveform,
+            duration_ms: payload.durationMs || result.duration_ms || undefined,
+            waveform:
+              payload.waveform && payload.waveform.length > 0
+                ? payload.waveform
+                : result.waveform && result.waveform.length > 0
+                  ? result.waveform
+                  : undefined,
+            mime_type: result.mime_type,
+            file_name: result.file_name,
+            file_size: result.file_size,
           },
         });
       } catch {
@@ -304,9 +312,14 @@ class TransportServiceClass {
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
-            duration_ms: payload.durationMs,
+            duration_ms: payload.durationMs || result.duration_ms || undefined,
             thumbnail_url: thumbnailUrl,
             is_round: true,
+            mime_type: result.mime_type,
+            file_name: result.file_name,
+            file_size: result.file_size,
+            width: result.width ?? undefined,
+            height: result.height ?? undefined,
           },
         });
       } catch {
@@ -369,8 +382,14 @@ class TransportServiceClass {
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
-            width: payload.width,
-            height: payload.height,
+            thumbnail_url: result.thumbnail_path
+              ? `${getUploadBaseUrl()}${result.thumbnail_path.startsWith('/') ? '' : '/'}${result.thumbnail_path}`
+              : undefined,
+            width: payload.width ?? result.width ?? undefined,
+            height: payload.height ?? result.height ?? undefined,
+            mime_type: result.mime_type,
+            file_name: result.file_name,
+            file_size: result.file_size,
           },
         });
       } catch {

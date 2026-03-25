@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { MAX_FILE_SIZE } from './upload.constants';
+import { RustMediaWorkerService } from './rust-media-worker.service';
 
 const UPLOAD_DIR = 'uploads';
 const ALLOWED_MIME_REGEX = /^(image\/(?!svg)|audio\/|video\/|application\/pdf)/;
@@ -15,14 +16,25 @@ const ALLOWED_MIME_REGEX = /^(image\/(?!svg)|audio\/|video\/|application\/pdf)/;
 export class UploadService {
   private readonly uploadPath: string;
 
-  constructor() {
+  constructor(private readonly rustMediaWorkerService: RustMediaWorkerService) {
     this.uploadPath = join(process.cwd(), UPLOAD_DIR);
     if (!existsSync(this.uploadPath)) {
       mkdirSync(this.uploadPath, { recursive: true });
     }
   }
 
-  async saveFile(file: { originalname: string; mimetype: string; size: number; path?: string; buffer?: Buffer }): Promise<{ url: string }> {
+  async saveFile(file: { originalname: string; mimetype: string; size: number; path?: string; buffer?: Buffer }): Promise<{
+    url: string;
+    file_name: string;
+    mime_type: string;
+    file_size: number;
+    media_kind: string;
+    width: number | null;
+    height: number | null;
+    duration_ms: number | null;
+    thumbnail_path: string | null;
+    waveform: number[];
+  }> {
     if (!file || !file.originalname) {
       throw new BadRequestException('No file provided');
     }
@@ -54,6 +66,31 @@ export class UploadService {
       throw new InternalServerErrorException('Failed to save file');
     }
 
-    return { url: `/uploads/${filename}` };
+    const inspected = await this.rustMediaWorkerService.inspectSavedFile({
+      filePath: filepath,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+      fileSize: file.size,
+    });
+
+    return {
+      url: `/uploads/${filename}`,
+      file_name: inspected?.file_name ?? file.originalname,
+      mime_type: inspected?.mime_type ?? file.mimetype,
+      file_size: inspected?.file_size ?? file.size,
+      media_kind: inspected?.kind ?? this.inferFallbackKind(file.mimetype),
+      width: inspected?.width ?? null,
+      height: inspected?.height ?? null,
+      duration_ms: inspected?.duration_ms ?? null,
+      thumbnail_path: inspected?.thumbnail_path ?? null,
+      waveform: inspected?.waveform ?? [],
+    };
+  }
+
+  private inferFallbackKind(mimetype: string): string {
+    if (mimetype.startsWith('image/')) return 'image';
+    if (mimetype.startsWith('audio/')) return 'voice';
+    if (mimetype.startsWith('video/')) return 'video';
+    return 'file';
   }
 }
