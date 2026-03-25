@@ -151,6 +151,15 @@ export interface ApiUploadResult {
   waveform?: number[];
 }
 
+const VOICE_UPLOAD_MIME_CANDIDATES = ['audio/mp4', 'audio/m4a', 'audio/x-m4a'] as const;
+
+function inferUploadName(uri: string, fallback: string): string {
+  const normalized = uri.replace(/[?#].*$/, '');
+  const match = normalized.match(/([^/\\]+)$/);
+  const candidate = match?.[1]?.trim();
+  return candidate || fallback;
+}
+
 /**
  * Upload file via multipart/form-data POST to /upload.
  * Returns { url, file_name, mime_type, file_size }.
@@ -183,4 +192,35 @@ export async function apiUpload(file: {
   }
 
   return res.json() as Promise<ApiUploadResult>;
+}
+
+export async function apiUploadVoice(file: {
+  uri: string;
+  name?: string;
+}): Promise<ApiUploadResult> {
+  const name = file.name ?? inferUploadName(file.uri, 'voice.m4a');
+
+  let lastError: unknown = null;
+  for (const type of VOICE_UPLOAD_MIME_CANDIDATES) {
+    try {
+      return await apiUpload({
+        uri: file.uri,
+        name,
+        type,
+      });
+    } catch (err) {
+      lastError = err;
+      if (__DEV__) {
+        console.warn('[apiUploadVoice] upload failed, trying next MIME:', {
+          name,
+          type,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  throw (lastError instanceof Error
+    ? lastError
+    : new Error('Voice upload failed for all MIME candidates'));
 }

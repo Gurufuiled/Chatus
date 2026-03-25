@@ -5,6 +5,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -14,6 +15,8 @@ import { MAX_FILE_SIZE } from './upload.constants';
 @Controller('upload')
 @UseGuards(JwtAuthGuard)
 export class UploadController {
+  private readonly logger = new Logger(UploadController.name);
+
   constructor(private readonly uploadService: UploadService) {}
 
   @Post()
@@ -26,6 +29,13 @@ export class UploadController {
     if (!file) {
       throw new BadRequestException('No file provided');
     }
-    return this.uploadService.saveFile(file);
+    this.logger.log(
+      `POST /upload received: name=${file.originalname} mime=${file.mimetype} size=${file.size}`,
+    );
+    const result = await this.uploadService.saveFile(file);
+    this.logger.log(
+      `POST /upload success: kind=${result.media_kind} mime=${result.mime_type} size=${result.file_size} url=${result.url}`,
+    );
+    return result;
   }
 }

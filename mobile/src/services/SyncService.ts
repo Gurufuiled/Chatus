@@ -5,7 +5,7 @@
 
 import { SyncQueueDao } from '../db';
 import { WebSocketService } from './WebSocketService';
-import { apiGet, apiUpload } from './apiClient';
+import { apiGet, apiUpload, apiUploadVoice } from './apiClient';
 import { API_BASE_URL } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
@@ -173,10 +173,9 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
 
     case 'send_message_voice': {
       const p = payload as PayloadVoice;
-      const result = await apiUpload({
+      const result = await apiUploadVoice({
         uri: p.uri,
         name: 'voice.m4a',
-        type: 'audio/mp4',
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
       WebSocketService.sendEvent('send_message', {

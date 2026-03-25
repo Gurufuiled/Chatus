@@ -8,7 +8,7 @@
 import { WebSocketService } from './WebSocketService';
 import { SyncService } from './SyncService';
 import { SyncQueueDao } from '../db';
-import { apiUpload } from './apiClient';
+import { apiUpload, apiUploadVoice } from './apiClient';
 import { API_BASE_URL, USE_P2P } from '../config';
 import { encode, decode, MessageType } from './p2pProtocol';
 import { messageStore } from '../stores/messageStore';
@@ -218,10 +218,9 @@ class TransportServiceClass {
   ): Promise<void> {
     if (WebSocketService.isConnected()) {
       try {
-        const result = await apiUpload({
+        const result = await apiUploadVoice({
           uri: payload.uri,
           name: 'voice.m4a',
-          type: 'audio/mp4',
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
         WebSocketService.sendEvent('send_message', {
@@ -243,7 +242,15 @@ class TransportServiceClass {
             file_size: result.file_size,
           },
         });
-      } catch {
+      } catch (err) {
+        if (__DEV__) {
+          console.warn('[TransportService] voice upload failed, queueing for retry:', {
+            chatId,
+            tempId,
+            uri: payload.uri,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
         queueToSyncQueue(
           this.syncQueueDao,
           'send_message_voice',
