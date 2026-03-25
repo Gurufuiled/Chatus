@@ -4,7 +4,6 @@ import {
   Alert,
   GestureResponderEvent,
   Image,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -131,20 +130,8 @@ const FileRow = React.memo(function FileRow({
   item: FileItem;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
-  const handlePress = () => {
-    if (!item.uri) {
-      Alert.alert('Файл недоступен', 'У этого файла пока нет ссылки для открытия.');
-      return;
-    }
-
-    void Linking.openURL(item.uri).catch(() => {
-      Alert.alert('Не удалось открыть файл', 'Проверь ссылку или попробуй позже.');
-    });
-  };
-
   return (
     <Pressable
-      onPress={handlePress}
       onLongPress={(event) => onOpenMenu(item.id, event)}
       delayLongPress={220}
       style={({ pressed }) => [styles.fileRow, pressed && styles.fileRowPressed]}
@@ -160,7 +147,6 @@ const FileRow = React.memo(function FileRow({
           {item.subtitle}
         </Text>
       </View>
-      <Feather name="chevron-right" size={18} color="#A6AFBC" />
     </Pressable>
   );
 });
@@ -254,15 +240,8 @@ const LinkRow = React.memo(function LinkRow({
   item: LinkItem;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
-  const handlePress = () => {
-    void Linking.openURL(item.uri).catch(() => {
-      Alert.alert('Не удалось открыть ссылку', 'Попробуй еще раз чуть позже.');
-    });
-  };
-
   return (
     <Pressable
-      onPress={handlePress}
       onLongPress={(event) => onOpenMenu(item.id.split('-')[0] ?? item.id, event)}
       delayLongPress={220}
       style={({ pressed }) => [styles.linkRow, pressed && styles.linkRowPressed]}
@@ -290,7 +269,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
   voiceItems,
   linkItems,
   onChangeTab,
-  onOpenMedia,
+  onOpenMedia: _onOpenMedia,
   onOpenActionMenu,
 }: ChatProfileMediaSectionProps) {
   const tabCounts = useMemo<Record<ProfileTabKey, number>>(
@@ -321,7 +300,6 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
           {mediaItems.map((item) => (
             <Pressable
               key={item.id}
-              onPress={() => onOpenMedia(item.uri)}
               onLongPress={(event) => onOpenActionMenu(item.id, event)}
               delayLongPress={220}
               style={({ pressed }) => [styles.mediaTile, pressed && styles.mediaTilePressed]}
@@ -398,7 +376,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
         ))}
       </View>
     );
-  }, [activeTab, fileItems, linkItems, mediaItems, onOpenActionMenu, onOpenMedia, voiceItems]);
+  }, [activeTab, fileItems, linkItems, mediaItems, onOpenActionMenu, voiceItems]);
 
   return (
     <View style={styles.mediaSectionCard}>

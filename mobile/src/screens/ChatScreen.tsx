@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { BlurTargetView } from 'expo-blur';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
@@ -6,6 +6,7 @@ import {
   Alert,
   Animated,
   FlatList,
+  InteractionManager,
   Keyboard,
   LayoutChangeEvent,
   Pressable,
@@ -112,16 +113,13 @@ export function ChatScreen() {
   const messageContentRefs = useRef<Record<string, View | null>>({});
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const messages = useSyncExternalStore(
-    (onStoreChange) => messageStore.subscribe(onStoreChange),
-    () => messageStore.getState().messagesByChatId[chatId] ?? EMPTY_MESSAGES,
-    () => EMPTY_MESSAGES
+  const messages = messageStore(
+    useCallback(
+      (state) => state.messagesByChatId[chatId] ?? EMPTY_MESSAGES,
+      [chatId]
+    )
   );
-  const chats = useSyncExternalStore(
-    (onStoreChange) => chatStore.subscribe(onStoreChange),
-    () => chatStore.getState().chats,
-    () => []
-  );
+  const chats = chatStore((state) => state.chats);
 
   const messageById = useMemo(() => {
     const map = new Map<string, Message>();
@@ -175,13 +173,25 @@ export function ChatScreen() {
   useEffect(() => {
     const existing = messageStore.getState().messagesByChatId[chatId];
     if (!existing?.length) {
-      SyncService.fetchMessagesForChat(chatId).catch(() => {});
+      const task = InteractionManager.runAfterInteractions(() => {
+        SyncService.fetchMessagesForChat(chatId).catch(() => {});
+      });
+
+      return () => {
+        task.cancel();
+      };
     }
   }, [chatId]);
 
   useEffect(() => {
     if (pinnedMessageId && !messageById.has(pinnedMessageId)) {
-      SyncService.fetchMessagesForChat(chatId).catch(() => {});
+      const task = InteractionManager.runAfterInteractions(() => {
+        SyncService.fetchMessagesForChat(chatId).catch(() => {});
+      });
+
+      return () => {
+        task.cancel();
+      };
     }
   }, [chatId, messageById, pinnedMessageId]);
 
@@ -207,11 +217,15 @@ export function ChatScreen() {
   useEffect(() => {
     if (!startSearch) return;
     setIsSearchMode(true);
-    const focusTimer = setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 80);
+    const task = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    });
     navigation.setParams({ startSearch: undefined });
-    return () => clearTimeout(focusTimer);
+    return () => {
+      task.cancel();
+    };
   }, [navigation, startSearch]);
 
   const clearReplyState = useCallback(() => {
@@ -1089,6 +1103,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+
+
 
 
 

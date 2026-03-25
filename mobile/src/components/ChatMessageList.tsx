@@ -455,10 +455,10 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
         removeClippedSubviews
-        initialNumToRender={16}
-        maxToRenderPerBatch={8}
-        updateCellsBatchingPeriod={45}
-        windowSize={9}
+        initialNumToRender={10}
+        maxToRenderPerBatch={6}
+        updateCellsBatchingPeriod={55}
+        windowSize={7}
         contentContainerStyle={[
           styles.listContent,
           { paddingTop: contentPaddingTop },

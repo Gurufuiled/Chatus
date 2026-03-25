@@ -1,5 +1,7 @@
 export { BubbleTail } from './BubbleTail';
 export { ChatListRow } from './ChatListRow';
+export { ChatListActionsMenu } from './ChatListActionsMenu';
+export type { ChatListMenuState } from './ChatListActionsMenu';
 export { ChatContextMenuOverlay } from './ChatContextMenuOverlay';
 export { ChatForwardSheet } from './ChatForwardSheet';
 export { ChatProfileHero } from './ChatProfileHero';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { resolveAvatarUrl } from '../config';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
@@ -48,12 +48,14 @@ type ChatListRowProps = {
   chat: Chat;
   currentUserId: string | null;
   onPress: (chatId: string, chatTitle: string) => void;
+  onLongPress: (chat: Chat, event: GestureResponderEvent) => void;
 };
 
 export const ChatListRow = React.memo(function ChatListRow({
   chat,
   currentUserId,
   onPress,
+  onLongPress,
 }: ChatListRowProps) {
   const lastMessageSenderId = messageStore(
     React.useCallback(
@@ -99,6 +101,8 @@ export const ChatListRow = React.memo(function ChatListRow({
     <Pressable
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={() => onPress(chat.id, title)}
+      onLongPress={(event) => onLongPress(chat, event)}
+      delayLongPress={220}
     >
       {avatarUrl ? (
         <Image source={{ uri: avatarUrl }} style={styles.avatar} />
@@ -145,7 +149,8 @@ export const ChatListRow = React.memo(function ChatListRow({
   return (
     prev.chat === next.chat &&
     prev.currentUserId === next.currentUserId &&
-    prev.onPress === next.onPress
+    prev.onPress === next.onPress &&
+    prev.onLongPress === next.onLongPress
   );
 });
 

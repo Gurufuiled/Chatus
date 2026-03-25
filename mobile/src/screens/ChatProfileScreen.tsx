@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
   Alert,
@@ -14,9 +14,6 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChatDao } from '../db';
-import { useCall } from '../contexts/CallContext';
-import { resolveAvatarUrl } from '../config';
 import { ChatProfileHero } from '../components/ChatProfileHero';
 import {
   ChatProfileMediaSection,
@@ -27,13 +24,16 @@ import {
   type VoiceItem,
 } from '../components/ChatProfileMediaSection';
 import { ChatProfileOverlayLayer } from '../components/ChatProfileOverlayLayer';
+import { resolveAvatarUrl } from '../config';
+import { useCall } from '../contexts/CallContext';
+import { ChatDao } from '../db';
 import type { ChatsStackParamList } from '../navigation/types';
 import type { ApiUser } from '../services/AuthService';
 import { getUserProfile } from '../services/profileService';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
-import { uiStore } from '../stores/uiStore';
 import type { Message } from '../stores/types';
+import { uiStore } from '../stores/uiStore';
 import { colors } from '../theme/colors';
 
 type ChatProfileRoute = RouteProp<ChatsStackParamList, 'ChatProfile'>;
@@ -75,9 +75,9 @@ function getAvatarColor(seed: string) {
 }
 
 function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
-  if (isOnline) return 'РІ СЃРµС‚Рё';
-  if (lastSeen) return 'Р±С‹Р»(Р°) РЅРµРґР°РІРЅРѕ';
-  return 'Р±С‹Р»(Р°) РЅРµРґР°РІРЅРѕ';
+  if (isOnline) return 'в сети';
+  if (lastSeen) return 'был(а) недавно';
+  return 'был(а) недавно';
 }
 
 function buildDisplayName(profile: ApiUser | null, fallbackTitle: string) {
@@ -85,7 +85,7 @@ function buildDisplayName(profile: ApiUser | null, fallbackTitle: string) {
     profile?.display_name?.trim() ||
     profile?.username?.trim() ||
     fallbackTitle ||
-    'РџСЂРѕС„РёР»СЊ'
+    'Профиль'
   );
 }
 
@@ -98,10 +98,10 @@ function formatMessageDate(timestamp: number) {
 
 function formatFileSize(bytes?: number) {
   if (!bytes || bytes <= 0) return '';
-  if (bytes < 1024) return `${bytes} Р‘`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} РљР‘`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} РњР‘`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Р“Р‘`;
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
 }
 
 function extractMediaUri(message: Message): string | null {
@@ -126,7 +126,7 @@ function buildFileSubtitle(message: Message) {
   const media = message.media?.[0];
   const sizePart = formatFileSize(media?.file_size ?? undefined);
   const datePart = formatMessageDate(message.created_at);
-  return sizePart ? `${sizePart} вЂў ${datePart}` : datePart;
+  return sizePart ? `${sizePart} • ${datePart}` : datePart;
 }
 
 function buildInfoRows(profile: ApiUser | null): InfoRow[] {
@@ -135,7 +135,7 @@ function buildInfoRows(profile: ApiUser | null): InfoRow[] {
   if (profile?.phone?.trim()) {
     rows.push({
       id: 'phone',
-      label: 'РњРѕР±РёР»СЊРЅС‹Р№',
+      label: 'Мобильный',
       value: profile.phone.trim(),
       icon: 'phone',
     });
@@ -144,10 +144,10 @@ function buildInfoRows(profile: ApiUser | null): InfoRow[] {
   if (profile?.handle?.trim() || profile?.username?.trim()) {
     rows.push({
       id: 'username',
-      label: 'РРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ',
+      label: 'Имя пользователя',
       value: profile?.handle?.trim()
         ? `@${profile.handle.trim()}`
-        : profile?.username?.trim() || 'РќРµ СѓРєР°Р·Р°РЅРѕ',
+        : profile?.username?.trim() || 'Не указано',
       icon: 'at-sign',
     });
   }
@@ -160,7 +160,6 @@ function getFileExtension(fileName: string) {
   if (!ext || ext === fileName) return 'FILE';
   return ext.slice(0, 4).toUpperCase();
 }
-
 
 type ProfileInfoCardProps = {
   infoRows: InfoRow[];
@@ -236,7 +235,7 @@ export function ChatProfileScreen() {
         setProfile(data);
       } catch (e) {
         if (!isMounted) return;
-        setError(e instanceof Error ? e.message : 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РїСЂРѕС„РёР»СЊ');
+        setError(e instanceof Error ? e.message : 'Не удалось загрузить профиль');
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -305,7 +304,7 @@ export function ChatProfileScreen() {
         .filter((message) => !message.is_deleted && message.msg_type === 'file')
         .map((message) => ({
           id: message.id,
-          title: message.media?.[0]?.file_name || 'Р¤Р°Р№Р»',
+          title: message.media?.[0]?.file_name || 'Файл',
           subtitle: buildFileSubtitle(message),
           uri: extractMediaUri(message),
           extension: getFileExtension(message.media?.[0]?.file_name || 'FILE'),
@@ -339,7 +338,6 @@ export function ChatProfileScreen() {
       ),
     [chatMessages]
   );
-
 
   const handleMutePress = useCallback(() => {
     if (!chat) return;
@@ -386,10 +384,10 @@ export function ChatProfileScreen() {
     const nextBlocked = !isBlocked;
     uiStore.getState().setUserBlocked(userId, nextBlocked);
     Alert.alert(
-      nextBlocked ? 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅ' : 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ СЂР°Р·Р±Р»РѕРєРёСЂРѕРІР°РЅ',
+      nextBlocked ? 'Пользователь заблокирован' : 'Пользователь разблокирован',
       nextBlocked
-        ? `Р›РѕРєР°Р»СЊРЅРѕ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°Р»Рё ${displayName}. Р­С‚Рѕ СЃРѕСЃС‚РѕСЏРЅРёРµ РїРѕРєР° СЂР°Р±РѕС‚Р°РµС‚ С‚РѕР»СЊРєРѕ РЅР° СЌС‚РѕРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ.`
-        : `${displayName} СЃРЅРѕРІР° РґРѕСЃС‚СѓРїРµРЅ РЅР° СЌС‚РѕРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ.`
+        ? `Локально заблокировали ${displayName}. Это состояние пока работает только на этом устройстве.`
+        : `${displayName} снова доступен на этом устройстве.`
     );
   };
 
@@ -400,32 +398,32 @@ export function ChatProfileScreen() {
       chatStore.getState().removeChat(chatId);
       navigation.navigate('ChatList');
     } catch {
-      Alert.alert('РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ С‡Р°С‚', 'РџРѕРїСЂРѕР±СѓР№ РµС‰Рµ СЂР°Р· С‡СѓС‚СЊ РїРѕР·Р¶Рµ.');
+      Alert.alert('Не удалось удалить чат', 'Попробуй еще раз чуть позже.');
     }
   }, [chatId, navigation]);
 
   const handleDeleteChatPress = () => {
     closeMoreMenu();
-    Alert.alert('РЈРґР°Р»РёС‚СЊ С‡Р°С‚?', 'Р’С‹Р±РµСЂРё, РєР°Рє СѓРґР°Р»РёС‚СЊ СЌС‚РѕС‚ РґРёР°Р»РѕРі.', [
-      { text: 'РћС‚РјРµРЅР°', style: 'cancel' },
+    Alert.alert('Удалить чат?', 'Выбери, как удалить этот диалог.', [
+      { text: 'Отмена', style: 'cancel' },
       {
-        text: `РЈРґР°Р»РёС‚СЊ Сѓ РјРµРЅСЏ Рё Сѓ ${displayName}`,
+        text: `Удалить у меня и у ${displayName}`,
         style: 'destructive',
         onPress: () => {
           Alert.alert(
-            'РџРѕРєР° РЅРµРґРѕСЃС‚СѓРїРЅРѕ',
-            'Р­С‚РѕС‚ РІР°СЂРёР°РЅС‚ РїРѕС‚СЂРµР±СѓРµС‚ РѕС‚РґРµР»СЊРЅРѕРіРѕ СЃРµСЂРІРµСЂРЅРѕРіРѕ СѓРґР°Р»РµРЅРёСЏ С‡Р°С‚Р° РґР»СЏ РѕР±РѕРёС… СѓС‡Р°СЃС‚РЅРёРєРѕРІ. РЎРµР№С‡Р°СЃ РјРѕР¶РЅРѕ СѓРґР°Р»РёС‚СЊ С‡Р°С‚ С‚РѕР»СЊРєРѕ Р»РѕРєР°Р»СЊРЅРѕ Сѓ СЃРµР±СЏ.'
+            'Пока недоступно',
+            'Этот вариант потребует отдельного серверного удаления чата для обоих участников. Сейчас можно удалить чат только локально у себя.'
           );
         },
       },
       {
-        text: 'РЈРґР°Р»РёС‚СЊ Сѓ РјРµРЅСЏ',
+        text: 'Удалить у меня',
         style: 'destructive',
         onPress: () => {
-          Alert.alert('РЈРґР°Р»РёС‚СЊ С‚РѕР»СЊРєРѕ Сѓ С‚РµР±СЏ?', 'Р§Р°С‚ РёСЃС‡РµР·РЅРµС‚ С‚РѕР»СЊРєРѕ РЅР° СЌС‚РѕРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ.', [
-            { text: 'РћС‚РјРµРЅР°', style: 'cancel' },
+          Alert.alert('Удалить только у тебя?', 'Чат исчезнет только на этом устройстве.', [
+            { text: 'Отмена', style: 'cancel' },
             {
-              text: 'РЈРґР°Р»РёС‚СЊ',
+              text: 'Удалить',
               style: 'destructive',
               onPress: () => {
                 void deleteChatLocally();
@@ -608,5 +606,3 @@ const styles = StyleSheet.create({
     backgroundColor: '#E1E6EF',
   },
 });
-
-
