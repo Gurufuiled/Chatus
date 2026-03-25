@@ -37,10 +37,13 @@ export class UsersService {
     query: string,
     limit = 20,
   ): Promise<MappedUser[]> {
-    const q = query.trim().replace(/^@/, '');
+    const rawQuery = query.trim();
+    const searchingByHandle = rawQuery.startsWith('@');
+    const q = rawQuery.replace(/^@+/, '');
     if (!q) {
       return [];
     }
+    const cappedLimit = Math.max(1, Math.min(limit, 50));
     const users = await this.prisma.user.findMany({
       where: {
         id: { not: currentUserId },
@@ -50,9 +53,49 @@ export class UsersService {
           { handle: { contains: q, mode: 'insensitive' } },
         ],
       },
-      take: Math.max(1, Math.min(limit, 50)),
+      take: Math.min(cappedLimit * 3, 50),
     });
-    return users.map(mapUser);
+
+    const normalizedNeedle = q.toLowerCase();
+    const scored = users.map((user) => ({
+      user,
+      score: this.scoreSearchMatch(user, normalizedNeedle, searchingByHandle),
+    }));
+
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const aName = (a.user.displayName ?? a.user.username ?? a.user.handle ?? '').toLowerCase();
+      const bName = (b.user.displayName ?? b.user.username ?? b.user.handle ?? '').toLowerCase();
+      return aName.localeCompare(bName);
+    });
+
+    return scored.slice(0, cappedLimit).map(({ user }) => mapUser(user));
+  }
+
+  private scoreSearchMatch(
+    user: User,
+    needle: string,
+    searchingByHandle: boolean,
+  ): number {
+    const handle = user.handle?.toLowerCase() ?? '';
+    const username = user.username?.toLowerCase() ?? '';
+    const displayName = user.displayName?.toLowerCase() ?? '';
+
+    let score = 0;
+
+    if (handle === needle) score += searchingByHandle ? 1000 : 700;
+    else if (handle.startsWith(needle)) score += searchingByHandle ? 850 : 550;
+    else if (handle.includes(needle)) score += searchingByHandle ? 700 : 400;
+
+    if (username === needle) score += 320;
+    else if (username.startsWith(needle)) score += 220;
+    else if (username.includes(needle)) score += 140;
+
+    if (displayName === needle) score += 180;
+    else if (displayName.startsWith(needle)) score += 120;
+    else if (displayName.includes(needle)) score += 60;
+
+    return score;
   }
 
   async updateProfile(

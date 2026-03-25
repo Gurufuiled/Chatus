@@ -22,7 +22,7 @@ export async function getProfile(): Promise<ApiUser> {
   return res.json() as Promise<ApiUser>;
 }
 
-/** Search users by display name, username, or handle. Expects caller to pass trimmed query (no leading @). */
+/** Search users by display name, username, or handle. Leading `@` is supported and helps prioritize handle matches. */
 export async function searchUsers(query: string): Promise<ApiUser[]> {
   const res = await apiGet(`/users/search?q=${encodeURIComponent(query)}`);
   if (!res.ok) {

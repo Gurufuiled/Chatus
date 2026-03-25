@@ -45,8 +45,9 @@ export function ContactsScreen() {
   );
 
   const performSearch = useCallback(async (q: string) => {
-    const trimmed = q.trim().replace(/^@+/, '');
-    if (!trimmed) {
+    const trimmed = q.trim();
+    const normalized = trimmed.replace(/^@+/, '');
+    if (!normalized) {
       setResults([]);
       setLoading(false);
       return;
@@ -70,8 +71,9 @@ export function ContactsScreen() {
   }, []);
 
   useEffect(() => {
-    const trimmed = query.trim().replace(/^@+/, '');
-    if (!trimmed) {
+    const trimmed = query.trim();
+    const normalized = trimmed.replace(/^@+/, '');
+    if (!normalized) {
       setResults([]);
       setLoading(false);
       return;
