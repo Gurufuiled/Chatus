@@ -6,6 +6,7 @@
 import { Audio } from 'expo-av';
 import { Platform } from 'react-native';
 
+import { VoicePlayerService } from './VoicePlayerService';
 import { buildUiWaveform, dbToNormalized } from './waveformUtils';
 
 const RAW_WAVEFORM_LIMIT = 600;
@@ -41,6 +42,17 @@ class VoiceRecorderServiceClass {
     });
   }
 
+  /** Restore regular playback mode after recording so voice playback can work on all devices. */
+  private async restorePlaybackAudioMode(): Promise<void> {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+  }
+
   /** Start recording. Call stopRecording() to finish and get result. */
   async startRecording(): Promise<void> {
     if (this.recording) {
@@ -56,6 +68,7 @@ class VoiceRecorderServiceClass {
       );
     }
 
+    await VoicePlayerService.stop().catch(() => {});
     await this.ensureAudioMode();
     this.waveformSamples = [];
 
@@ -70,13 +83,18 @@ class VoiceRecorderServiceClass {
       }
     };
 
-    const { recording } = await Audio.Recording.createAsync(
-      options,
-      onStatusUpdate,
-      PROGRESS_INTERVAL_MS
-    );
+    try {
+      const { recording } = await Audio.Recording.createAsync(
+        options,
+        onStatusUpdate,
+        PROGRESS_INTERVAL_MS
+      );
 
-    this.recording = recording;
+      this.recording = recording;
+    } catch (err) {
+      await this.restorePlaybackAudioMode().catch(() => {});
+      throw err;
+    }
   }
 
   /** Stop recording and return { uri, durationMs, waveform }. */
@@ -86,19 +104,23 @@ class VoiceRecorderServiceClass {
       throw new Error('No active recording. Call startRecording() first.');
     }
 
-    const status = await rec.stopAndUnloadAsync();
     this.recording = null;
-    const uri = rec.getURI();
+    try {
+      const status = await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
 
-    if (!uri) {
-      throw new Error('Recording produced no file URI');
+      if (!uri) {
+        throw new Error('Recording produced no file URI');
+      }
+
+      return {
+        uri,
+        durationMs: status.durationMillis ?? 0,
+        waveform: buildUiWaveform(this.waveformSamples, UI_WAVEFORM_SAMPLE_COUNT),
+      };
+    } finally {
+      await this.restorePlaybackAudioMode().catch(() => {});
     }
-
-    return {
-      uri,
-      durationMs: status.durationMillis ?? 0,
-      waveform: buildUiWaveform(this.waveformSamples, UI_WAVEFORM_SAMPLE_COUNT),
-    };
   }
 
   /** Check if currently recording. */
