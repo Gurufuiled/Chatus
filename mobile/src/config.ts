@@ -7,46 +7,46 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-const envApiUrl =
-  (typeof process !== 'undefined' && (process as { env?: { EXPO_PUBLIC_API_URL?: string } }).env?.EXPO_PUBLIC_API_URL) ||
-  'http://localhost:4000/api';
+type PublicEnvKey =
+  | 'EXPO_PUBLIC_API_URL'
+  | 'EXPO_PUBLIC_USE_EMULATOR'
+  | 'EXPO_PUBLIC_USE_MOCKS'
+  | 'EXPO_PUBLIC_USE_P2P'
+  | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID';
 
-const forceEmulator =
-  typeof process !== 'undefined' &&
-  (process as { env?: { EXPO_PUBLIC_USE_EMULATOR?: string } }).env?.EXPO_PUBLIC_USE_EMULATOR === 'true';
-const forceDevice =
-  typeof process !== 'undefined' &&
-  (process as { env?: { EXPO_PUBLIC_USE_EMULATOR?: string } }).env?.EXPO_PUBLIC_USE_EMULATOR === 'false';
+function readExpoPublic(key: PublicEnvKey): string | undefined {
+  const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
+  const fromExtra = extra?.[key];
+  if (fromExtra !== undefined && fromExtra !== '') return fromExtra;
+  if (typeof process !== 'undefined') {
+    const fromProcess = (process as { env?: Record<string, string> }).env?.[key];
+    if (fromProcess !== undefined && fromProcess !== '') return fromProcess;
+  }
+  return undefined;
+}
+
+const envApiUrl = readExpoPublic('EXPO_PUBLIC_API_URL') || 'http://localhost:4000/api';
+
+const forceEmulator = readExpoPublic('EXPO_PUBLIC_USE_EMULATOR') === 'true';
+const forceDevice = readExpoPublic('EXPO_PUBLIC_USE_EMULATOR') === 'false';
 
 /**
  * Resolve API URL for Android:
- * - Physical device (USB + adb reverse): 127.0.0.1 - use as-is
- * - Physical device (WiFi): 192.168.x - use as-is
- * - Emulator: 127.0.0.1/localhost - replace with 10.0.2.2 (emulator's host alias)
- * - EXPO_PUBLIC_USE_EMULATOR=true/false overrides auto-detection when Constants.isDevice is wrong
+ * - Реальный прод/девайс с IP/доменом: всегда как в .env (extra).
+ * - Только при явном EXPO_PUBLIC_USE_EMULATOR=true: localhost/192.168.x → 10.0.2.2 для AVD.
+ * Раньше localhost + (!Constants.isDevice) давал 10.0.2.2 на части телефонов при пустом process.env.
  */
 function resolveApiUrl(): string {
   if (Platform.OS !== 'android') return envApiUrl;
   try {
     const url = new URL(envApiUrl);
-    // Explicit override: physical device (use env as-is)
     if (forceDevice) return envApiUrl;
-    // Explicit override: emulator (use 10.0.2.2)
     if (forceEmulator) {
       if (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname.startsWith('192.168.')) {
         url.hostname = '10.0.2.2';
         return url.toString();
       }
       return envApiUrl;
-    }
-    // Physical device: use env as-is (USB adb reverse or WiFi)
-    if (Constants.isDevice) return envApiUrl;
-    // 192.168.x (LAN IP) - works on both phone and emulator, do not replace
-    if (url.hostname.startsWith('192.168.')) return envApiUrl;
-    // Emulator: 127.0.0.1/localhost -> 10.0.2.2 to reach host
-    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
-      url.hostname = '10.0.2.2';
-      return url.toString();
     }
     return envApiUrl;
   } catch {
@@ -56,16 +56,10 @@ function resolveApiUrl(): string {
 
 export const API_BASE_URL = resolveApiUrl();
 
-export const USE_MOCKS =
-  (typeof process !== 'undefined' &&
-    (process as { env?: { EXPO_PUBLIC_USE_MOCKS?: string } }).env?.EXPO_PUBLIC_USE_MOCKS === 'true') ||
-  false;
+export const USE_MOCKS = readExpoPublic('EXPO_PUBLIC_USE_MOCKS') === 'true';
 
 /** P2P disabled for MVP (server storage). Set true when switching to decentralized. */
-export const USE_P2P =
-  (typeof process !== 'undefined' &&
-    (process as { env?: { EXPO_PUBLIC_USE_P2P?: string } }).env?.EXPO_PUBLIC_USE_P2P === 'true') ||
-  false;
+export const USE_P2P = readExpoPublic('EXPO_PUBLIC_USE_P2P') === 'true';
 
 /** WebSocket URL derived from API: http://host:4000/api -> ws://host:4001 */
 export function getWebSocketUrl(): string {
@@ -89,9 +83,7 @@ export function getSignalingUrl(): string {
   }
 }
 
-export const LOGINUS_CLIENT_ID =
-  (typeof process !== 'undefined' && (process as { env?: { EXPO_PUBLIC_LOGINUS_CLIENT_ID?: string } }).env?.EXPO_PUBLIC_LOGINUS_CLIENT_ID) ||
-  '';
+export const LOGINUS_CLIENT_ID = readExpoPublic('EXPO_PUBLIC_LOGINUS_CLIENT_ID') || '';
 
 export const OAUTH_REDIRECT_URI = 'messenger://auth/callback';
 

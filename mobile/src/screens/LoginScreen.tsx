@@ -19,6 +19,19 @@ type Props = {
 };
 
 const AUTH_BG = require('../../assets/splash/auth-bg-clean.png');
+
+/** Dev (USB / emulator) vs remote API — тексты ошибок не должны вводить в заблуждение на release. */
+function apiNetworkHint(): string {
+  try {
+    const u = new URL(API_BASE_URL);
+    if (u.hostname === '127.0.0.1' || u.hostname === 'localhost') {
+      return ' Запусти бэкенд и при USB с телефоном выполни `npm run adb:reverse`.';
+    }
+  } catch {
+    /* ignore */
+  }
+  return ' Проверь интернет и что с телефона открывается API (порты 4000–4002, сеть не блокирует IP).';
+}
 const LOGINUS_KEYBOARD_FIX_JS = `
   (function() {
     function looksLikeLoginField(input) {
@@ -224,7 +237,7 @@ export function LoginScreen({ onLogin }: Props) {
     setLoading(true);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       const res = await fetch(`${API_BASE_URL}/auth/login-url`, {
         signal: controller.signal,
       });
@@ -237,11 +250,17 @@ export function LoginScreen({ onLogin }: Props) {
         Alert.alert('Ошибка', 'Не удалось получить ссылку для входа.');
       }
     } catch (err) {
+      const hint = apiNetworkHint();
+      const detail =
+        err instanceof Error && err.message ? `\n\n(${err.message})` : '';
       const msg =
         err instanceof Error && err.name === 'AbortError'
-          ? 'Сервер не отвечает. Проверь, что сервер запущен и выполнен `npm run adb:reverse`.'
-          : 'Сервер недоступен. Запусти сервер и выполни `npm run adb:reverse`.';
-      Alert.alert('Ошибка сети', msg);
+          ? `Сервер не ответил за 30 с.${hint}${detail}`
+          : `Сервер недоступен.${hint}${detail}`;
+      Alert.alert(
+        'Ошибка сети',
+        `${msg}\n\nЗапрос к API:\n${API_BASE_URL}/auth/login-url`,
+      );
     } finally {
       setLoading(false);
     }
@@ -272,7 +291,9 @@ export function LoginScreen({ onLogin }: Props) {
         setLoginUrl(null);
         Alert.alert(
           'Ошибка входа',
-          e instanceof Error ? e.message : 'Не удалось обменять код. Проверь `adb reverse` и доступность сервера.'
+          e instanceof Error
+            ? e.message
+            : `Не удалось обменять код.${apiNetworkHint()}`
         );
       }
     },
@@ -294,7 +315,7 @@ export function LoginScreen({ onLogin }: Props) {
             setLoginUrl(null);
             Alert.alert(
               'Ошибка загрузки',
-              'Не удалось загрузить страницу входа. Проверь, что сервер запущен и выполнен `npm run adb:reverse`.'
+              `Не удалось загрузить страницу входа.${apiNetworkHint()}`
             );
           }}
         />
