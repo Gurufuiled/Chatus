@@ -29,3 +29,7 @@ target/
 *.p12
 *.key
 *.mobileprovision
+
+# Local notes / milestones (keep on disk, not in repo)
+/docs/
+/steps/
