@@ -1,0 +1,15 @@
+diff --git a/node_modules/react-native-webview/react-native-webview.podspec b/node_modules/react-native-webview/react-native-webview.podspec
+index 24e7a13..570138c 100644
+--- a/node_modules/react-native-webview/react-native-webview.podspec
++++ b/node_modules/react-native-webview/react-native-webview.podspec
+@@ -13,7 +13,9 @@ Pod::Spec.new do |s|
+ 
+   s.authors      = package['author']
+   s.homepage     = package['homepage']
+-  s.platforms    = { :ios => ios_platform, :osx => "10.13", :visionos => "1.0" }
++  wv_platforms = { :ios => ios_platform, :osx => "10.13" }
++  wv_platforms[:visionos] = "1.0" if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++  s.platforms    = wv_platforms
+ 
+   s.source       = { :git => "https://github.com/react-native-webview/react-native-webview.git", :tag => "v#{s.version}" }
+ 

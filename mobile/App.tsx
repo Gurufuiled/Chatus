@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { CallProvider } from './src/contexts/CallContext';
 import { VoicePlayerProvider } from './src/contexts/VoicePlayerContext';
 import { WebSocketProvider } from './src/contexts/WebSocketProvider';
+import { BootstrapErrorBoundary } from './src/components/BootstrapErrorBoundary';
 import { RootNavigator } from './src/navigation';
 import { initDatabase } from './src/services/DatabaseService';
 import { authService, type AuthSession } from './src/services/AuthService';
@@ -15,6 +16,7 @@ import { authService, type AuthSession } from './src/services/AuthService';
 export default function App() {
   const [isReady, setIsReady] = useState(false);
   const [initialSession, setInitialSession] = useState<AuthSession | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   useEffect(() => {
     initDatabase()
@@ -23,7 +25,12 @@ export default function App() {
         setInitialSession(session);
         setIsReady(true);
       })
-      .catch(() => setIsReady(true)); // Show app anyway for navigation testing
+      .catch((e: unknown) => {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[App bootstrap]', e);
+        setBootstrapError(message);
+        setIsReady(true);
+      });
   }, []);
 
   if (!isReady) {
@@ -35,23 +42,40 @@ export default function App() {
     );
   }
 
+  if (bootstrapError) {
+    return (
+      <View style={styles.errorWrap}>
+        <StatusBar style="auto" />
+        <Text style={styles.errorTitle}>Не удалось запустить (БД / сессия)</Text>
+        <Text selectable style={styles.errorText}>
+          {bootstrapError}
+        </Text>
+        <Text style={styles.errorHint}>
+          Полный лог смотри в терминале Metro (npx expo start) или в Xcode → Debug console.
+        </Text>
+      </View>
+    );
+  }
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <AuthProvider initialSession={initialSession}>
-        <WebSocketProvider>
-          <VoicePlayerProvider>
-            <CallProvider>
-              <NavigationContainer>
-                <RootNavigator />
-                <StatusBar style="auto" />
-              </NavigationContainer>
-            </CallProvider>
-          </VoicePlayerProvider>
-        </WebSocketProvider>
-      </AuthProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <BootstrapErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <AuthProvider initialSession={initialSession}>
+            <WebSocketProvider>
+              <VoicePlayerProvider>
+                <CallProvider>
+                  <NavigationContainer>
+                    <RootNavigator />
+                    <StatusBar style="auto" />
+                  </NavigationContainer>
+                </CallProvider>
+              </VoicePlayerProvider>
+            </WebSocketProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </BootstrapErrorBoundary>
   );
 }
 
@@ -62,4 +86,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
   },
+  errorWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#fff',
+  },
+  errorTitle: { fontSize: 18, fontWeight: '700', color: '#c00', marginBottom: 12 },
+  errorText: { fontSize: 15, color: '#111', marginBottom: 16 },
+  errorHint: { fontSize: 13, color: '#666' },
 });
