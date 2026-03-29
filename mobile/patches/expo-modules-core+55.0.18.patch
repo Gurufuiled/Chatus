@@ -1,0 +1,55 @@
+diff --git a/node_modules/expo-modules-core/ios/EXDefines.h b/node_modules/expo-modules-core/ios/EXDefines.h
+index 7412ee7..b09bf4e 100644
+--- a/node_modules/expo-modules-core/ios/EXDefines.h
++++ b/node_modules/expo-modules-core/ios/EXDefines.h
+@@ -93,3 +93,19 @@ typedef struct EXModuleInfo {
+ typedef void (^EXDirectEventBlock)(NSDictionary *body);
+ typedef void (NS_SWIFT_SENDABLE ^EXPromiseResolveBlock)(id result);
+ typedef void (NS_SWIFT_SENDABLE ^EXPromiseRejectBlock)(NSString *code, NSString *message, NSError *error);
++
++// Legacy helpers used by expo-av and older modules (removed from public API in newer cores).
++NS_INLINE NSError *_Nonnull EXErrorWithMessage(NSString *_Nonnull message) {
++  return [NSError errorWithDomain:@"expo.modules.core" code:0 userInfo:@{NSLocalizedDescriptionKey: message}];
++}
++
++NS_INLINE void EXFatal(NSError *_Nonnull error) {
++  NSLog(@"EXFatal: %@", error.localizedDescription);
++#if DEBUG
++  abort();
++#endif
++}
++
++#define EXLogInfo(fmt, ...) NSLog((fmt), ##__VA_ARGS__)
++#define EXLogWarn(fmt, ...) NSLog((fmt), ##__VA_ARGS__)
++#define EXLogError(fmt, ...) NSLog((fmt), ##__VA_ARGS__)
+diff --git a/node_modules/expo-modules-core/ios/Legacy/EXEventEmitterService.h b/node_modules/expo-modules-core/ios/Legacy/EXEventEmitterService.h
+new file mode 100644
+index 0000000..d9a150f
+--- /dev/null
++++ b/node_modules/expo-modules-core/ios/Legacy/EXEventEmitterService.h
+@@ -0,0 +1,10 @@
++// Legacy compatibility: event bridge for EXExportedModule-based native modules.
++#import <Foundation/Foundation.h>
++
++NS_ASSUME_NONNULL_BEGIN
++
++@protocol EXEventEmitterService <NSObject>
++- (void)sendEventWithName:(NSString *)eventName body:(nullable id)body;
++@end
++
++NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-modules-core/ios/Legacy/EXLegacyExpoViewProtocol.h b/node_modules/expo-modules-core/ios/Legacy/EXLegacyExpoViewProtocol.h
+new file mode 100644
+index 0000000..81afb75
+--- /dev/null
++++ b/node_modules/expo-modules-core/ios/Legacy/EXLegacyExpoViewProtocol.h
+@@ -0,0 +1,9 @@
++// Legacy marker protocol for view-based Expo modules (e.g. expo-av).
++#import <Foundation/Foundation.h>
++
++NS_ASSUME_NONNULL_BEGIN
++
++@protocol EXLegacyExpoViewProtocol
++@end
++
++NS_ASSUME_NONNULL_END

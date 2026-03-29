@@ -1,0 +1,169 @@
+diff --git a/node_modules/expo-av/ios/EXAV/EXAV.h b/node_modules/expo-av/ios/EXAV/EXAV.h
+index 42a79e1..c4c510d 100644
+--- a/node_modules/expo-av/ios/EXAV/EXAV.h
++++ b/node_modules/expo-av/ios/EXAV/EXAV.h
+@@ -7,7 +7,6 @@
+ #import <ExpoModulesCore/EXModuleRegistryConsumer.h>
+ #import <ExpoModulesCore/EXAppLifecycleListener.h>
+ #import <ExpoModulesCore/EXExportedModule.h>
+-#import <ExpoModulesCore/EXEventEmitter.h>
+ #import <EXAV/EXAVObject.h>
+ 
+ typedef NS_OPTIONS(NSUInteger, EXAudioInterruptionMode)
+@@ -57,7 +56,7 @@ typedef NS_OPTIONS(NSUInteger, EXAudioRecordingOptionBitRateStrategy)
+ 
+ @end
+ 
+-@interface EXAV : EXExportedModule <RCTBridgeModule, EXEventEmitter, EXAppLifecycleListener, EXModuleRegistryConsumer, EXAVInterface>
++@interface EXAV : EXExportedModule <RCTBridgeModule, EXAppLifecycleListener, EXModuleRegistryConsumer, EXAVInterface>
+ 
+ - (void)handleMediaServicesReset:(NSNotification *)notification;
+ - (void)handleAudioSessionInterruption:(NSNotification *)notification;
+diff --git a/node_modules/expo-av/ios/EXAV/EXAV.m b/node_modules/expo-av/ios/EXAV/EXAV.m
+index 7153d28..31a5a3f 100644
+--- a/node_modules/expo-av/ios/EXAV/EXAV.m
++++ b/node_modules/expo-av/ios/EXAV/EXAV.m
+@@ -2,6 +2,8 @@
+ 
+ #import <AVFoundation/AVFoundation.h>
+ 
++#import <React/RCTEventDispatcherProtocol.h>
++
+ #import <ExpoModulesCore/EXUIManager.h>
+ #import <ExpoModulesCore/EXEventEmitterService.h>
+ #import <ExpoModulesCore/EXAppLifecycleService.h>
+@@ -751,7 +753,15 @@ - (void)_removeAudioRecorder:(BOOL)removeFilenameAndSettings
+ 
+ - (void)sendEventWithName:(NSString *)eventName body:(NSDictionary *)body
+ {
+-  [[_expoModuleRegistry getModuleImplementingProtocol:@protocol(EXEventEmitterService)] sendEventWithName:eventName body:body];
++  id<EXEventEmitterService> emitter = [_expoModuleRegistry getModuleImplementingProtocol:@protocol(EXEventEmitterService)];
++  if (emitter) {
++    [emitter sendEventWithName:eventName body:body];
++  } else if (_bridge) {
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wdeprecated-declarations"
++    [_bridge.eventDispatcher sendDeviceEventWithName:eventName body:body];
++#pragma clang diagnostic pop
++  }
+ }
+ 
+ EX_EXPORT_METHOD_AS(unloadForSound,
+@@ -1013,8 +1023,8 @@ - (void)sendEventWithName:(NSString *)eventName body:(NSDictionary *)body
+ }
+ 
+ EX_EXPORT_METHOD_AS(getAvailableInputs,
+-                    resolver:(UMPromiseResolveBlock)resolve
+-                    rejecter:(UMPromiseRejectBlock)reject)
++                    resolver:(EXPromiseResolveBlock)resolve
++                    rejecter:(EXPromiseRejectBlock)reject)
+ {
+   NSMutableArray *inputs = [NSMutableArray new];
+   for (AVAudioSessionPortDescription *desc in [_kernelAudioSessionManagerDelegate availableInputs]){
+@@ -1028,8 +1038,8 @@ - (void)sendEventWithName:(NSString *)eventName body:(NSDictionary *)body
+ }
+ 
+ EX_EXPORT_METHOD_AS(getCurrentInput,
+-                    getCurrentInput:(UMPromiseResolveBlock)resolve
+-                    rejecter:(UMPromiseRejectBlock)reject)
++                    getCurrentInput:(EXPromiseResolveBlock)resolve
++                    rejecter:(EXPromiseRejectBlock)reject)
+ {
+   AVAudioSessionPortDescription *desc = [_kernelAudioSessionManagerDelegate activeInput];
+   if (desc) {
+@@ -1045,8 +1055,8 @@ - (void)sendEventWithName:(NSString *)eventName body:(NSDictionary *)body
+ 
+ EX_EXPORT_METHOD_AS(setInput,
+                     setInput:(NSString*)input
+-                    resolver:(UMPromiseResolveBlock)resolve
+-                    rejecter:(UMPromiseRejectBlock)reject)
++                    resolver:(EXPromiseResolveBlock)resolve
++                    rejecter:(EXPromiseRejectBlock)reject)
+ {
+   AVAudioSessionPortDescription* preferredInput = nil;
+   for (AVAudioSessionPortDescription *desc in [_kernelAudioSessionManagerDelegate availableInputs]){
+diff --git a/node_modules/expo-av/ios/EXAV/EXAVPlayerData.m b/node_modules/expo-av/ios/EXAV/EXAVPlayerData.m
+index 6f6998d..b601cfa 100644
+--- a/node_modules/expo-av/ios/EXAV/EXAVPlayerData.m
++++ b/node_modules/expo-av/ios/EXAV/EXAVPlayerData.m
+@@ -1,6 +1,7 @@
+ // Copyright 2017-present 650 Industries. All rights reserved.
+ 
+ #import <EXAV/EXAVPlayerData.h>
++#import <ExpoModulesCore/EXDefines.h>
+ #import <MobileCoreServices/MobileCoreServices.h>
+ 
+ // This struct is passed between the MTAudioProcessingTap callbacks.
+diff --git a/node_modules/expo-av/ios/EXAV/EXAVTV.m b/node_modules/expo-av/ios/EXAV/EXAVTV.m
+index b6fccda..9a0f00e 100644
+--- a/node_modules/expo-av/ios/EXAV/EXAVTV.m
++++ b/node_modules/expo-av/ios/EXAV/EXAVTV.m
+@@ -2,6 +2,8 @@
+ 
+ #import <AVFoundation/AVFoundation.h>
+ 
++#import <React/RCTEventDispatcherProtocol.h>
++
+ #import <ExpoModulesCore/EXUIManager.h>
+ #import <ExpoModulesCore/EXEventEmitterService.h>
+ #import <ExpoModulesCore/EXAppLifecycleService.h>
+@@ -547,7 +549,15 @@ - (UInt32)_getFormatIDFromString:(NSString *)typeString
+ 
+ - (void)sendEventWithName:(NSString *)eventName body:(NSDictionary *)body
+ {
+-  [[_expoModuleRegistry getModuleImplementingProtocol:@protocol(EXEventEmitterService)] sendEventWithName:eventName body:body];
++  id<EXEventEmitterService> emitter = [_expoModuleRegistry getModuleImplementingProtocol:@protocol(EXEventEmitterService)];
++  if (emitter) {
++    [emitter sendEventWithName:eventName body:body];
++  } else if (_bridge) {
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wdeprecated-declarations"
++    [_bridge.eventDispatcher sendDeviceEventWithName:eventName body:body];
++#pragma clang diagnostic pop
++  }
+ }
+ 
+ EX_EXPORT_METHOD_AS(unloadForSound,
+@@ -716,23 +726,23 @@ - (void)sendEventWithName:(NSString *)eventName body:(NSDictionary *)body
+ }
+ 
+ EX_EXPORT_METHOD_AS(getAvailableInputs,
+-                    resolver:(UMPromiseResolveBlock)resolve
+-                    rejecter:(UMPromiseRejectBlock)reject)
++                    resolver:(EXPromiseResolveBlock)resolve
++                    rejecter:(EXPromiseRejectBlock)reject)
+ {
+   reject(@"E_UNSUPPORTED_PLATFORM", @"Not available on TV.", nil);
+ }
+ 
+ EX_EXPORT_METHOD_AS(getCurrentInput,
+-                    getCurrentInput:(UMPromiseResolveBlock)resolve
+-                    rejecter:(UMPromiseRejectBlock)reject)
++                    getCurrentInput:(EXPromiseResolveBlock)resolve
++                    rejecter:(EXPromiseRejectBlock)reject)
+ {
+   reject(@"E_UNSUPPORTED_PLATFORM", @"Not available on TV.", nil);
+ }
+ 
+ EX_EXPORT_METHOD_AS(setInput,
+                     setInput:(NSString*)input
+-                    resolver:(UMPromiseResolveBlock)resolve
+-                    rejecter:(UMPromiseRejectBlock)reject)
++                    resolver:(EXPromiseResolveBlock)resolve
++                    rejecter:(EXPromiseRejectBlock)reject)
+ {
+   reject(@"E_UNSUPPORTED_PLATFORM", @"Not available on TV.", nil);
+ }
+diff --git a/node_modules/expo-av/ios/EXAV/EXAudioRecordingPermissionRequester.m b/node_modules/expo-av/ios/EXAV/EXAudioRecordingPermissionRequester.m
+index 7d8375a..d7437c9 100644
+--- a/node_modules/expo-av/ios/EXAV/EXAudioRecordingPermissionRequester.m
++++ b/node_modules/expo-av/ios/EXAV/EXAudioRecordingPermissionRequester.m
+@@ -27,7 +27,7 @@ - (NSDictionary *)getPermissions
+ 
+   NSString *microphoneUsageDescription = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"NSMicrophoneUsageDescription"];
+   if (!microphoneUsageDescription) {
+-    EXFatal(EXErrorWithMessage(@"This app is missing NSMicrophoneUsageDescription, so audio services will fail. Add one of these keys to your bundle's Info.plist."));
++    NSLog(@"[expo-av] Missing NSMicrophoneUsageDescription in Info.plist; audio recording may fail.");
+     systemStatus = AVAudioSessionRecordPermissionDenied;
+   } else {
+     systemStatus = [[AVAudioSession sharedInstance] recordPermission];

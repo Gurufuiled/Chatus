@@ -1,0 +1,15 @@
+diff --git a/node_modules/@react-native-community/netinfo/react-native-netinfo.podspec b/node_modules/@react-native-community/netinfo/react-native-netinfo.podspec
+index ec4e033..95a0e31 100644
+--- a/node_modules/@react-native-community/netinfo/react-native-netinfo.podspec
++++ b/node_modules/@react-native-community/netinfo/react-native-netinfo.podspec
+@@ -12,7 +12,9 @@ Pod::Spec.new do |s|
+ 
+   s.authors      = package['author']
+   s.homepage     = package['homepage']
+-  s.platforms    = { :ios => "9.0", :tvos => "9.2", :osx => "10.14", :visionos => "1.0" }
++  netinfo_platforms = { :ios => "9.0", :tvos => "9.2", :osx => "10.14" }
++  netinfo_platforms[:visionos] = "1.0" if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++  s.platforms    = netinfo_platforms
+ 
+   s.source       = { :git => "https://github.com/react-native-community/react-native-netinfo.git", :tag => "v#{s.version}" }
+   s.source_files  = "ios/**/*.{h,m,mm,swift}"

@@ -1,0 +1,15 @@
+diff --git a/node_modules/react-native-worklets/RNWorklets.podspec b/node_modules/react-native-worklets/RNWorklets.podspec
+index d658b49..5da8a2e 100644
+--- a/node_modules/react-native-worklets/RNWorklets.podspec
++++ b/node_modules/react-native-worklets/RNWorklets.podspec
+@@ -21,7 +21,9 @@ Pod::Spec.new do |s|
+   s.homepage     = "https://github.com/software-mansion/react-native-reanimated"
+   s.license      = package["license"]
+   s.authors      = { "author" => "author@domain.com" }
+-  s.platforms    = { :ios => ios_min_version, :tvos => "9.0", :osx => "10.14", :visionos => "1.0" }
++  worklets_platforms = { :ios => ios_min_version, :tvos => "9.0", :osx => "10.14" }
++  worklets_platforms[:visionos] = "1.0" if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++  s.platforms    = worklets_platforms
+   s.source       = { :git => "https://github.com/software-mansion/react-native-reanimated.git", :tag => "#{s.version}" }
+ 
+   s.subspec "worklets" do |ss|

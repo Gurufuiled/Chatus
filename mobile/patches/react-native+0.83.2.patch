@@ -1,0 +1,101 @@
+diff --git a/node_modules/react-native/React/CoreModules/React-CoreModules.podspec b/node_modules/react-native/React/CoreModules/React-CoreModules.podspec
+index e9e0955..0ffab15 100644
+--- a/node_modules/react-native/React/CoreModules/React-CoreModules.podspec
++++ b/node_modules/react-native/React/CoreModules/React-CoreModules.podspec
+@@ -37,7 +37,9 @@ Pod::Spec.new do |s|
+   s.ios.exclude_files      = "PlatformStubs/**/*"
+   exclude_files            = ["RCTStatusBarManager.mm"]
+   s.macos.exclude_files    = exclude_files
+-  s.visionos.exclude_files = exclude_files
++  if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++    s.visionos.exclude_files = exclude_files
++  end
+   s.tvos.exclude_files     = exclude_files
+ 
+   s.header_dir             = "CoreModules"
+diff --git a/node_modules/react-native/React/React-RCTFBReactNativeSpec.podspec b/node_modules/react-native/React/React-RCTFBReactNativeSpec.podspec
+index 1abb84e..ba6e552 100644
+--- a/node_modules/react-native/React/React-RCTFBReactNativeSpec.podspec
++++ b/node_modules/react-native/React/React-RCTFBReactNativeSpec.podspec
+@@ -76,12 +76,10 @@ Pod::Spec.new do |s|
+     ss.dependency "Yoga"
+   end
+ 
+-  s.script_phases = [
+-    {
+-      :name => '[RN]Check FBReactNativeSpec',
+-      :execution_position => :before_compile,
+-      :always_out_of_date => '1',
+-      :script => <<-EOS
++  fb_spec_script_phase = {
++    :name => '[RN]Check FBReactNativeSpec',
++    :execution_position => :before_compile,
++    :script => <<-EOS
+ echo "Checking whether Codegen has run..."
+ fbReactNativeSpecPath="$REACT_NATIVE_PATH/React/FBReactNativeSpec"
+ 
+@@ -90,6 +88,9 @@ if [[ ! -d "$fbReactNativeSpecPath" ]]; then
+   exit 1
+ fi
+       EOS
+-    }
+-  ]
++  }
++  if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++    fb_spec_script_phase[:always_out_of_date] = '1'
++  end
++  s.script_phases = [fb_spec_script_phase]
+ end
+diff --git a/node_modules/react-native/ReactCommon/yoga/Yoga.podspec b/node_modules/react-native/ReactCommon/yoga/Yoga.podspec
+index 64603c4..0cbcba2 100644
+--- a/node_modules/react-native/ReactCommon/yoga/Yoga.podspec
++++ b/node_modules/react-native/ReactCommon/yoga/Yoga.podspec
+@@ -16,7 +16,8 @@ end
+ 
+ Pod::Spec.new do |spec|
+   spec.name = 'Yoga'
+-  spec.version = '0.0.0'
++  # CocoaPods < 1.12 rejects version 0.0.0 ("must be higher than 0"); align with RN package.
++  spec.version = version
+   spec.license =  { :type => 'MIT' }
+   spec.homepage = 'https://yogalayout.dev'
+   spec.documentation_url = 'https://yogalayout.dev/docs/'
+diff --git a/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec b/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec
+index fb99142..c8da1cf 100644
+--- a/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec
++++ b/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec
+@@ -40,7 +40,11 @@ Pod::Spec.new do |spec|
+   spec.license     = package['license']
+   spec.author      = "Facebook"
+   spec.source      = source
+-  spec.platforms   = { :osx => "10.13", :ios => "15.1", :visionos => "1.0", :tvos => "15.1" }
++  hermes_platforms = { :osx => "10.13", :ios => "15.1", :tvos => "15.1" }
++  if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++    hermes_platforms[:visionos] = "1.0"
++  end
++  spec.platforms   = hermes_platforms
+ 
+   spec.preserve_paths      = '**/*.*'
+   spec.source_files        = ''
+@@ -54,7 +58,9 @@ Pod::Spec.new do |spec|
+   spec.ios.vendored_frameworks = "destroot/Library/Frameworks/ios/hermesvm.framework"
+   spec.tvos.vendored_frameworks = "destroot/Library/Frameworks/tvos/hermesvm.framework"
+   spec.osx.vendored_frameworks = "destroot/Library/Frameworks/macosx/hermesvm.framework"
+-  spec.visionos.vendored_frameworks = "destroot/Library/Frameworks/xros/hermesvm.framework"
++  if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++    spec.visionos.vendored_frameworks = "destroot/Library/Frameworks/xros/hermesvm.framework"
++  end
+ 
+   if HermesEngineSourceType::isPrebuilt(source_type) then
+ 
+@@ -63,7 +69,9 @@ Pod::Spec.new do |spec|
+       ss.source_files = "destroot/include/hermes/**/*.h"
+       ss.header_mappings_dir = "destroot/include"
+       ss.ios.vendored_frameworks = "destroot/Library/Frameworks/universal/hermesvm.xcframework"
+-      ss.visionos.vendored_frameworks = "destroot/Library/Frameworks/universal/hermesvm.xcframework"
++      if defined?(Pod::VERSION) && Gem::Version.new(Pod::VERSION) >= Gem::Version.new('1.13.0')
++        ss.visionos.vendored_frameworks = "destroot/Library/Frameworks/universal/hermesvm.xcframework"
++      end
+       ss.tvos.vendored_frameworks = "destroot/Library/Frameworks/universal/hermesvm.xcframework"
+       ss.osx.vendored_frameworks = "destroot/Library/Frameworks/macosx/hermesvm.framework"
+     end
