@@ -1,0 +1,52 @@
+# Деплой NestJS API (Docker Compose service `api`) на прод по SSH.
+#
+# Настройка GitHub (репозиторий → Settings → Secrets and variables → Actions):
+#   Secrets:
+#     DEPLOY_HOST       — IP или хост VPS (например teklxqggzl или 1.2.3.4)
+#     DEPLOY_USER       — SSH-пользователь (например root)
+#     DEPLOY_SSH_KEY    — приватный SSH-ключ (полный PEM), пара к ключу в authorized_keys на сервере
+#
+#   Variables (не секреты, удобно править в UI):
+#     DEPLOY_REPO_DIR    — каталог с git clone (git pull здесь). По умолчанию: /root/chatus
+#     DEPLOY_COMPOSE_DIR — каталог с docker-compose.yml. По умолчанию: /root/chatus/server
+#
+# На сервере отдельно нужен deploy key или SSH-доступ к GitHub для `git pull` (см. ранее в переписке).
+#
+name: Deploy server (API)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-chatus-api
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          REPO_DIR: ${{ vars.DEPLOY_REPO_DIR || '/root/chatus' }}
+          COMPOSE_DIR: ${{ vars.DEPLOY_COMPOSE_DIR || '/root/chatus/server' }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          envs: REPO_DIR,COMPOSE_DIR
+          script: |
+            set -euo pipefail
+            cd "$REPO_DIR"
+            git pull origin main
+            cd "$COMPOSE_DIR"
+            docker compose build api
+            docker compose up -d api
+            docker compose ps api
+            docker compose logs api --tail 25
