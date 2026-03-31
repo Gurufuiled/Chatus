@@ -507,7 +507,7 @@ export function ChatScreen() {
   );
 
   const handleSendImage = useCallback(
-    async (result: { uri: string; width?: number; height?: number; caption?: string }) => {
+    async (result: { uri: string; width?: number; height?: number; fileName?: string; mimeType?: string; caption?: string }) => {
       if (!currentUserId) return;
       const tempId = `temp-${Date.now()}`;
       const activeReplyId = replyToMessageId;
@@ -531,6 +531,7 @@ export function ChatScreen() {
             remote_url: result.uri,
             width: result.width,
             height: result.height,
+            file_name: result.fileName,
           },
         ],
       };
@@ -542,6 +543,8 @@ export function ChatScreen() {
           uri: result.uri,
           width: result.width,
           height: result.height,
+          fileName: result.fileName,
+          mimeType: result.mimeType,
           caption: result.caption,
         },
         tempId,

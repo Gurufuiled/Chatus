@@ -9,7 +9,7 @@ type ChatInputDockProps = {
   animatedStyle: StyleProp<ViewStyle>;
   onSendText: (text: string) => void;
   onSendVoice: (result: { uri: string; waveform: number[]; durationMs: number }) => void | Promise<void>;
-  onSendImage: (result: { uri: string; width?: number; height?: number; caption?: string }) => void | Promise<void>;
+  onSendImage: (result: { uri: string; width?: number; height?: number; fileName?: string; mimeType?: string; caption?: string }) => void | Promise<void>;
   onSendFile: (result: { uri: string; name: string; size: number; mimeType?: string }) => void | Promise<void>;
   replyToMessage: Message | null;
   replyAuthorName: string | null;

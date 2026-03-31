@@ -144,6 +144,7 @@ export class WebsocketGateway
       chat_id?: string;
       content?: string | null;
       msg_type?: string;
+      client_temp_id?: string | null;
       reply_to_id?: string | null;
       media?: {
         url?: string;
@@ -164,7 +165,14 @@ export class WebsocketGateway
       this.logger.warn('send_message: invalid payload');
       return;
     }
-    const { chat_id: chatId, content, msg_type: msgType, media, reply_to_id: replyToId } = payload;
+    const {
+      chat_id: chatId,
+      content,
+      msg_type: msgType,
+      client_temp_id: clientTempId,
+      media,
+      reply_to_id: replyToId,
+    } = payload;
     if (!chatId) return;
 
     this.logger.log(`send_message received: chatId=${chatId} sender=${client.userId} content=${typeof content === 'string' ? content.slice(0, 50) : content} msgType=${msgType}`);
@@ -191,7 +199,10 @@ export class WebsocketGateway
       this.logger.log(`send_message broadcast: msgId=${message.id} content=${message.content?.slice(0, 50)} to ${members.length} members: ${members.join(',')}`);
       const data = JSON.stringify({
         type: 'message',
-        message,
+        message: {
+          ...message,
+          client_temp_id: clientTempId ?? null,
+        },
       });
       members.forEach((uid) => this.sendToUser(uid, data));
     } catch (err) {

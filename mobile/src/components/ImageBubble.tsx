@@ -16,6 +16,10 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const MAX_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 320);
 const MAX_BUBBLE_HEIGHT = Math.min(SCREEN_HEIGHT * 0.5, 380);
 const MIN_PORTRAIT_WIDTH = 154;
+const DEFAULT_PLACEHOLDER_SIZE = {
+  width: Math.min(MAX_BUBBLE_WIDTH, 192),
+  height: Math.min(MAX_BUBBLE_HEIGHT, 192),
+};
 
 const STATUS_ICONS: Record<string, string> = {
   sending: '\u23F1',
@@ -61,6 +65,14 @@ function computeDisplaySize(
   return { width, height };
 }
 
+function resolveKnownDisplaySize(
+  width?: number,
+  height?: number,
+): { width: number; height: number } | null {
+  if (width == null || height == null) return null;
+  return computeDisplaySize(width, height);
+}
+
 export function ImageBubble({
   uri,
   isMe,
@@ -71,19 +83,26 @@ export function ImageBubble({
   status,
   embedded = false,
 }: ImageBubbleProps) {
-  const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
+  const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
+    resolveKnownDisplaySize(propWidth, propHeight)
+  );
+  const [imageLoaded, setImageLoaded] = useState(false);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
+    setImageLoaded(false);
+
+    const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight);
     if (!uri?.trim()) {
-      setDisplaySize({ width: MAX_BUBBLE_WIDTH, height: MAX_BUBBLE_HEIGHT });
+      setDisplaySize(DEFAULT_PLACEHOLDER_SIZE);
       return;
     }
-    if (propWidth != null && propHeight != null) {
-      setDisplaySize(computeDisplaySize(propWidth, propHeight));
+    if (knownDisplaySize) {
+      setDisplaySize(knownDisplaySize);
       return;
     }
+
     let cancelled = false;
     Image.getSize(
       uri,
@@ -94,7 +113,7 @@ export function ImageBubble({
       },
       () => {
         if (!cancelled) {
-          setDisplaySize({ width: MAX_BUBBLE_WIDTH, height: MAX_BUBBLE_HEIGHT });
+          setDisplaySize(DEFAULT_PLACEHOLDER_SIZE);
         }
       }
     );
@@ -111,8 +130,8 @@ export function ImageBubble({
     setFullscreenVisible(false);
   }, []);
 
-  const w = displaySize?.width ?? MAX_BUBBLE_WIDTH;
-  const h = displaySize?.height ?? MAX_BUBBLE_HEIGHT;
+  const w = displaySize?.width ?? DEFAULT_PLACEHOLDER_SIZE.width;
+  const h = displaySize?.height ?? DEFAULT_PLACEHOLDER_SIZE.height;
   const hasCaption = (caption ?? '').trim().length > 0;
   const statusIcon = isMe ? STATUS_ICONS[status ?? ''] ?? STATUS_ICONS.sending : null;
 
@@ -128,11 +147,30 @@ export function ImageBubble({
           accessibilityRole="button"
           accessibilityLabel="View image fullscreen"
           onPress={handlePress}
-          style={styles.imageWrapper}
+          style={[
+            styles.imageWrapper,
+            { width: w, height: h },
+            isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
+          ]}
         >
+          {!imageLoaded ? (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.imagePlaceholder,
+                { width: w, height: h },
+              ]}
+            />
+          ) : null}
           <Image
             source={{ uri }}
-            style={[styles.image, { width: w, height: h }]}
+            onError={() => setImageLoaded(true)}
+            onLoad={() => setImageLoaded(true)}
+            style={[
+              styles.image,
+              { width: w, height: h },
+              !imageLoaded && styles.imageHidden,
+            ]}
             resizeMode="cover"
           />
 
@@ -205,9 +243,22 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     position: 'relative',
   },
+  imageWrapperMe: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  imageWrapperOther: {
+    backgroundColor: '#E9EEF5',
+  },
+  imagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
   image: {
     maxWidth: MAX_BUBBLE_WIDTH,
     maxHeight: MAX_BUBBLE_HEIGHT,
+  },
+  imageHidden: {
+    opacity: 0,
   },
   overlayMeta: {
     position: 'absolute',

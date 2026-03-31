@@ -43,6 +43,19 @@ function getUploadBaseUrl(): string {
   return API_BASE_URL.replace(/\/api\/?$/, '') || API_BASE_URL;
 }
 
+function getSafeFileContent(content: string | null | undefined, fileName?: string | null): string | null {
+  const normalizedFileName = fileName?.trim();
+  if (normalizedFileName) return normalizedFileName;
+
+  const normalizedContent = content?.trim();
+  if (!normalizedContent) return null;
+  if (/^https?:\/\//i.test(normalizedContent) || normalizedContent.startsWith('/uploads/')) {
+    return null;
+  }
+
+  return normalizedContent;
+}
+
 function buildForwardPayload(message: Message): {
   content: string | null;
   msg_type: string;
@@ -96,7 +109,7 @@ function buildForwardPayload(message: Message): {
     case 'file':
       if (!remoteUrl) return null;
       return {
-        content: remoteUrl,
+        content: getSafeFileContent(message.content, media?.file_name),
         msg_type: 'file',
         media: {
           url: remoteUrl,
@@ -192,6 +205,7 @@ class TransportServiceClass {
         chat_id: chatId,
         content,
         msg_type: msgType,
+        client_temp_id: tempId,
         reply_to_id: replyToId,
       });
       return;
@@ -227,6 +241,7 @@ class TransportServiceClass {
           chat_id: chatId,
           content: fullUrl,
           msg_type: 'voice',
+          client_temp_id: tempId,
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
@@ -316,6 +331,7 @@ class TransportServiceClass {
           chat_id: chatId,
           content: fullUrl,
           msg_type: 'video_note',
+          client_temp_id: tempId,
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
@@ -386,6 +402,7 @@ class TransportServiceClass {
           chat_id: chatId,
           content: payload.caption ?? null,
           msg_type: 'image',
+          client_temp_id: tempId,
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
@@ -456,10 +473,12 @@ class TransportServiceClass {
           type: payload.mimeType ?? 'application/octet-stream',
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
+        const fileName = result.file_name || payload.name;
         WebSocketService.sendEvent('send_message', {
           chat_id: chatId,
-          content: fullUrl,
+          content: fileName,
           msg_type: 'file',
+          client_temp_id: tempId,
           reply_to_id: replyToId,
           media: {
             url: fullUrl,

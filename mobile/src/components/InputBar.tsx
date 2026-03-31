@@ -29,6 +29,8 @@ export interface ImagePickResult {
   uri: string;
   width?: number;
   height?: number;
+  fileName?: string;
+  mimeType?: string;
   caption?: string;
 }
 
@@ -64,6 +66,7 @@ type GalleryItem = {
   uri: string;
   width?: number;
   height?: number;
+  fileName?: string;
 };
 
 type VoiceRecordMode = 'idle' | 'holding' | 'locked';
@@ -85,6 +88,17 @@ function MicIcon() {
 
 function SendIcon() {
   return <Feather name="send" size={18} color={colors.accent} />;
+}
+
+function inferMimeTypeFromFileName(fileName?: string): string | undefined {
+  const normalized = fileName?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.heic')) return 'image/heic';
+  if (normalized.endsWith('.heif')) return 'image/heif';
+  if (normalized.endsWith('.gif')) return 'image/gif';
+  return 'image/jpeg';
 }
 
 export function InputBar({
@@ -465,6 +479,7 @@ export function InputBar({
           uri: asset.uri,
           width: asset.width,
           height: asset.height,
+          fileName: asset.filename,
         }))
       );
     } catch (err) {
@@ -485,10 +500,16 @@ export function InputBar({
     async (item: GalleryItem) => {
       if (!onSendImage) return;
 
+      const assetInfo = await MediaLibrary.getAssetInfoAsync(item.id).catch(() => null);
+      const resolvedFileName = assetInfo?.filename ?? item.fileName;
+      const resolvedUri = assetInfo?.localUri?.trim() || assetInfo?.uri?.trim() || item.uri;
+
       setPendingImage({
-        uri: item.uri,
-        width: item.width,
-        height: item.height,
+        uri: resolvedUri,
+        width: assetInfo?.width ?? item.width,
+        height: assetInfo?.height ?? item.height,
+        fileName: resolvedFileName,
+        mimeType: inferMimeTypeFromFileName(resolvedFileName),
       });
       setShowAttachmentSheet(false);
     },

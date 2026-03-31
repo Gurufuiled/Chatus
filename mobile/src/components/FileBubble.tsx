@@ -29,10 +29,20 @@ function formatFileSize(bytes?: number): string | null {
   return `${gigaBytes.toFixed(gigaBytes >= 10 ? 0 : 1)} GB`;
 }
 
-function normalizeCaption(caption: string | null | undefined, fileName: string): string | null {
+function looksLikeFileUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value) || value.startsWith('/uploads/') || value.startsWith('file://');
+}
+
+function normalizeCaption(
+  caption: string | null | undefined,
+  fileName: string,
+  uri?: string,
+): string | null {
   const trimmed = caption?.trim();
   if (!trimmed) return null;
   if (trimmed === fileName.trim()) return null;
+  if (uri?.trim() && trimmed === uri.trim()) return null;
+  if (looksLikeFileUrl(trimmed)) return null;
   return trimmed;
 }
 
@@ -46,7 +56,10 @@ export function FileBubble({
   status,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
-  const fileCaption = useMemo(() => normalizeCaption(caption, fileName), [caption, fileName]);
+  const fileCaption = useMemo(
+    () => normalizeCaption(caption, fileName, uri),
+    [caption, fileName, uri],
+  );
 
   const handlePress = useCallback(() => {
     if (!uri?.trim()) return;
@@ -114,10 +127,13 @@ export function FileBubble({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
     paddingHorizontal: 12,
     paddingVertical: 10,
     maxWidth: '100%',
-    alignSelf: 'flex-start',
+    minWidth: 0,
+    alignSelf: 'stretch',
+    overflow: 'hidden',
   },
   bubbleMe: {
     backgroundColor: colors.bubbleMe,
@@ -128,9 +144,11 @@ const styles = StyleSheet.create({
     ...bubbleRadius.other,
   },
   card: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
+    maxWidth: '100%',
   },
   cardPressed: {
     opacity: 0.86,
@@ -193,6 +211,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 19,
     fontWeight: '600',
+    flexShrink: 1,
   },
   fileNameMe: {
     color: '#FFFFFF',
@@ -206,6 +225,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: 10,
+    minWidth: 0,
   },
   fileSize: {
     fontSize: typography.timeStatus,
@@ -222,6 +242,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     lineHeight: 19,
+    flexShrink: 1,
   },
   captionMe: {
     color: '#FFFFFF',

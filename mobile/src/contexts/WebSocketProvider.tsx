@@ -21,6 +21,7 @@ import { decodeServerWaveform } from '../services/waveformTransport';
 /** Server message payload shape (MappedMessage from backend) */
 interface ServerMessagePayload {
   id: string;
+  client_temp_id?: string | null;
   chat_id: string;
   sender_id: string;
   content: string | null;
@@ -168,22 +169,40 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           const mapped = mapServerMessageToMessage(msg);
           const currentUserId = authStore.getState().user?.id ?? null;
           const selectedChatId = chatStore.getState().selectedChatId;
-          const sendingCandidates = existing.filter(
-            (m) =>
-              m.status === 'sending' &&
-              m.sender_id === currentUserId &&
-              msg.sender_id === currentUserId &&
-              m.msg_type === msg.msg_type &&
-              (m.msg_type === 'text' ? m.content === msg.content : true)
-          );
+          const clientTempId =
+            typeof msg.client_temp_id === 'string' && msg.client_temp_id.trim().length > 0
+              ? msg.client_temp_id.trim()
+              : null;
+          const sendingByTempId = clientTempId
+            ? existing.find(
+                (m) =>
+                  m.id === clientTempId &&
+                  m.status === 'sending' &&
+                  m.sender_id === currentUserId &&
+                  msg.sender_id === currentUserId
+              )
+            : undefined;
+          const sendingCandidates = sendingByTempId
+            ? []
+            : existing.filter(
+                (m) =>
+                  m.status === 'sending' &&
+                  m.sender_id === currentUserId &&
+                  msg.sender_id === currentUserId &&
+                  m.msg_type === msg.msg_type &&
+                  (m.msg_type === 'text' ? m.content === msg.content : true)
+              );
           // Take oldest (first sent) - array is [newest..oldest], confirmations arrive in order
           const sending =
-            sendingCandidates.length > 0 ? sendingCandidates[sendingCandidates.length - 1] : undefined;
+            sendingByTempId ??
+            (sendingCandidates.length > 0 ? sendingCandidates[sendingCandidates.length - 1] : undefined);
           if (sending) {
             messageStore.getState().updateMessage(msg.chat_id, sending.id, {
               id: mapped.id,
               content: mapped.content ?? null,
+              reply_to_id: mapped.reply_to_id,
               status: mapped.status,
+              transport: mapped.transport,
               created_at: mapped.created_at,
               updated_at: mapped.updated_at,
               ...(mapped.media?.length && { media: mapped.media }),

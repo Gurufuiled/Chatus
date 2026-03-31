@@ -1,6 +1,7 @@
 import React from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
+  Dimensions,
   FlatList,
   FlatListProps,
   Pressable,
@@ -32,6 +33,7 @@ import { VoiceBubble } from './VoiceBubble';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
+const FILE_ROW_WIDTH = Math.min(Dimensions.get('window').width * 0.76, 320);
 
 function clampReplySwipe(value: number) {
   'worklet';
@@ -340,7 +342,7 @@ const MessageRow = React.memo(function MessageRow({
 
     if (item.msg_type === 'file' && item.media?.[0]) {
       return (
-        <View style={[styles.mediaStack, isSelected && styles.selectedBubble]}>
+        <View style={[styles.fileStack, isSelected && styles.selectedBubble]}>
           {renderReplySnippet()}
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
@@ -573,6 +575,10 @@ const styles = StyleSheet.create({
   },
   mediaStack: {
     maxWidth: '82%',
+  },
+  fileStack: {
+    width: FILE_ROW_WIDTH,
+    minWidth: 0,
   },
   repliedMediaBubble: {
     maxWidth: '82%',

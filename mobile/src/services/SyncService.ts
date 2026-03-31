@@ -24,6 +24,19 @@ function toFullUrl(baseUrl: string, url: string): string {
   return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
+function getSafeFileContent(content: string | null | undefined, fileName?: string | null): string | null {
+  const normalizedFileName = fileName?.trim();
+  if (normalizedFileName) return normalizedFileName;
+
+  const normalizedContent = content?.trim();
+  if (!normalizedContent) return null;
+  if (/^https?:\/\//i.test(normalizedContent) || normalizedContent.startsWith('/uploads/')) {
+    return null;
+  }
+
+  return normalizedContent;
+}
+
 /** API chat response (snake_case from server). */
 interface ApiChat {
   id: string;
@@ -166,6 +179,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         chat_id: p.chatId,
         content: p.content,
         msg_type: p.msgType ?? 'text',
+        client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
       });
       return;
@@ -182,6 +196,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         chat_id: p.chatId,
         content: fullUrl,
         msg_type: 'voice',
+        client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
@@ -223,6 +238,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         chat_id: p.chatId,
         content: fullUrl,
         msg_type: 'video_note',
+        client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
@@ -253,6 +269,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         chat_id: p.chatId,
         content: p.caption ?? null,
         msg_type: 'image',
+        client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
@@ -277,10 +294,12 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         type: p.mimeType ?? 'application/octet-stream',
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
+      const fileName = result.file_name || p.name;
       WebSocketService.sendEvent('send_message', {
         chat_id: p.chatId,
-        content: fullUrl,
+        content: fileName,
         msg_type: 'file',
+        client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
@@ -368,7 +387,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           if (!remoteUrl) throw new Error('Forward file missing remote_url');
           WebSocketService.sendEvent('send_message', {
             chat_id: p.chatId,
-            content: remoteUrl,
+            content: getSafeFileContent(message.content, media?.file_name),
             msg_type: 'file',
             media: {
               url: remoteUrl,
