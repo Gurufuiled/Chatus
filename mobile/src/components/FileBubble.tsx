@@ -1,77 +1,122 @@
-/**
- * FileBubble - File message bubble with icon, filename, and optional size.
- * Matches VoiceBubble/ImageBubble styling patterns (bubbleMe, bubbleOther).
- */
-
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, bubbleRadius } from '../theme/colors';
-
-/** Unicode icon for file/attach: ⊕ */
-const ICON_FILE = '\u2295';
+import { bubbleRadius, colors, typography } from '../theme/colors';
+import { MessageTimeStatus } from './MessageTimeStatus';
 
 export interface FileBubbleProps {
   fileName: string;
   fileSize?: number;
   uri?: string;
   isMe: boolean;
+  caption?: string | null;
+  time?: string;
+  status?: string;
 }
 
-function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '';
+function formatFileSize(bytes?: number): string | null {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return null;
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes < 1024 * 1024) {
+    const kiloBytes = bytes / 1024;
+    return `${kiloBytes.toFixed(kiloBytes >= 10 ? 0 : 1)} KB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    const megaBytes = bytes / (1024 * 1024);
+    return `${megaBytes.toFixed(megaBytes >= 10 ? 0 : 1)} MB`;
+  }
+
+  const gigaBytes = bytes / (1024 * 1024 * 1024);
+  return `${gigaBytes.toFixed(gigaBytes >= 10 ? 0 : 1)} GB`;
 }
 
-export function FileBubble({ fileName, fileSize, uri, isMe }: FileBubbleProps) {
-  const sizeText = fileSize != null ? formatFileSize(fileSize) : null;
+function normalizeCaption(caption: string | null | undefined, fileName: string): string | null {
+  const trimmed = caption?.trim();
+  if (!trimmed) return null;
+  if (trimmed === fileName.trim()) return null;
+  return trimmed;
+}
+
+export function FileBubble({
+  fileName,
+  fileSize,
+  uri,
+  isMe,
+  caption,
+  time,
+  status,
+}: FileBubbleProps) {
+  const sizeText = formatFileSize(fileSize);
+  const fileCaption = useMemo(() => normalizeCaption(caption, fileName), [caption, fileName]);
 
   const handlePress = useCallback(() => {
-    if (uri?.trim()) {
-      Linking.openURL(uri).catch(() => {
-        // Ignore - file may not be openable
-      });
-    }
+    if (!uri?.trim()) return;
+
+    Linking.openURL(uri).catch(() => {
+      // Ignore: some files may not be openable on the device yet.
+    });
   }, [uri]);
+
+  const hasMetaRow = !!sizeText || !!time;
 
   return (
     <View style={[styles.container, isMe ? styles.bubbleMe : styles.bubbleOther]}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={uri ? 'Open file' : 'File'}
-        style={({ pressed }) => [styles.content, pressed && styles.contentPressed]}
-        onPress={handlePress}
+        accessibilityLabel={uri?.trim() ? 'Open file' : 'File'}
+        disabled={!uri?.trim()}
         hitSlop={8}
+        onPress={handlePress}
+        style={({ pressed }) => [styles.card, pressed && uri?.trim() ? styles.cardPressed : null]}
       >
-        <Text style={[styles.icon, isMe && styles.iconMe]}>{ICON_FILE}</Text>
-        <View style={styles.textContainer}>
+        <View style={[styles.iconBadge, isMe ? styles.iconBadgeMe : styles.iconBadgeOther]}>
+          <View style={styles.documentIcon}>
+            <View style={[styles.documentFold, isMe ? styles.documentFoldMe : styles.documentFoldOther]} />
+            <View style={styles.documentLine} />
+            <View style={[styles.documentLine, styles.documentLineShort]} />
+          </View>
+        </View>
+
+        <View style={styles.infoColumn}>
           <Text
-            style={[styles.fileName, isMe && styles.fileNameMe]}
+            style={[styles.fileName, isMe ? styles.fileNameMe : styles.fileNameOther]}
             numberOfLines={2}
-            ellipsizeMode="middle"
+            ellipsizeMode="tail"
           >
             {fileName || 'Unnamed file'}
           </Text>
-          {sizeText != null && (
-            <Text style={[styles.fileSize, isMe && styles.fileSizeMe]}>
-              {sizeText}
-            </Text>
-          )}
+
+          {hasMetaRow ? (
+            <View style={styles.metaRow}>
+              <Text style={[styles.fileSize, isMe ? styles.fileSizeMe : styles.fileSizeOther]}>
+                {sizeText ?? ' '}
+              </Text>
+              {time ? (
+                <MessageTimeStatus
+                  time={time}
+                  status={status ?? 'sent'}
+                  isMe={isMe}
+                  compact
+                />
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </Pressable>
+
+      {fileCaption ? (
+        <Text style={[styles.caption, isMe ? styles.captionMe : styles.captionOther]}>
+          {fileCaption}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    maxWidth: '80%',
+    paddingVertical: 10,
+    maxWidth: '100%',
     alignSelf: 'flex-start',
   },
   bubbleMe: {
@@ -82,41 +127,106 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bubbleOther,
     ...bubbleRadius.other,
   },
-  content: {
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    flex: 1,
     minWidth: 0,
   },
-  contentPressed: {
-    opacity: 0.8,
+  cardPressed: {
+    opacity: 0.86,
   },
-  icon: {
-    fontSize: 24,
-    color: colors.textPrimary,
+  iconBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    flexShrink: 0,
   },
-  iconMe: {
-    color: colors.textPrimary,
+  iconBadgeMe: {
+    backgroundColor: '#2E73F3',
   },
-  textContainer: {
+  iconBadgeOther: {
+    backgroundColor: 'rgba(77, 141, 255, 0.14)',
+  },
+  documentIcon: {
+    width: 22,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 4,
+    paddingTop: 9,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  documentFold: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderBottomWidth: 8,
+    borderLeftColor: 'transparent',
+  },
+  documentFoldMe: {
+    borderBottomColor: '#2E73F3',
+  },
+  documentFoldOther: {
+    borderBottomColor: '#4D8DFF',
+  },
+  documentLine: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: '#D4DEEA',
+    marginBottom: 3,
+  },
+  documentLineShort: {
+    width: '62%',
+  },
+  infoColumn: {
     flex: 1,
     minWidth: 0,
   },
   fileName: {
     fontSize: 15,
-    color: colors.textPrimary,
-    fontWeight: '500',
+    lineHeight: 19,
+    fontWeight: '600',
   },
   fileNameMe: {
+    color: '#FFFFFF',
+  },
+  fileNameOther: {
     color: colors.textPrimary,
   },
+  metaRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   fileSize: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
+    fontSize: typography.timeStatus,
+    lineHeight: 15,
+    flexShrink: 1,
   },
   fileSizeMe: {
     color: colors.textSecondaryMuted,
+  },
+  fileSizeOther: {
+    color: colors.textSecondary,
+  },
+  caption: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 19,
+  },
+  captionMe: {
+    color: '#FFFFFF',
+  },
+  captionOther: {
+    color: colors.textPrimary,
   },
 });

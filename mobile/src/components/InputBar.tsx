@@ -22,7 +22,7 @@ import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderServ
 import type { Message } from '../stores/types';
 import { InputAttachmentSheet } from './InputAttachmentSheet';
 import { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
-import { buildReplyPreviewText } from './ReplyPreview';
+import { buildReplyPreviewText, getReplyPreviewThumbnailUri } from './ReplyPreview';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
 
 export interface ImagePickResult {
@@ -131,6 +131,7 @@ export function InputBar({
   const isVoiceRecording = voiceRecordModeState !== 'idle';
   const isVoiceLocked = voiceRecordModeState === 'locked';
   const replyPreviewText = buildReplyPreviewText(replyToMessage);
+  const replyPreviewThumbnailUri = getReplyPreviewThumbnailUri(replyToMessage);
 
   const setVoiceRecordMode = useCallback((mode: VoiceRecordMode) => {
     voiceRecordModeRef.current = mode;
@@ -770,6 +771,12 @@ export function InputBar({
               <View style={styles.replyComposerWrap}>
                 <View style={styles.replyComposerInline}>
                   <View style={styles.replyComposerAccent} />
+                  {replyPreviewThumbnailUri ? (
+                    <Image
+                      source={{ uri: replyPreviewThumbnailUri }}
+                      style={styles.replyComposerThumbnail}
+                    />
+                  ) : null}
                   <View style={styles.replyComposerCopy}>
                     <Text style={styles.replyComposerAuthor} numberOfLines={1}>
                       {replyAuthorName?.trim() || 'Message'}
@@ -936,6 +943,13 @@ const styles = StyleSheet.create({
   replyComposerCopy: {
     flex: 1,
     minWidth: 0,
+  },
+  replyComposerThumbnail: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    marginRight: 10,
+    backgroundColor: '#EEF2F7',
   },
   replyComposerAuthor: {
     fontSize: 14,

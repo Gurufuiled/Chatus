@@ -40,6 +40,7 @@ import {
   ReplyPreview,
   VoiceBubble,
   buildReplyPreviewText,
+  getReplyPreviewThumbnailUri,
 } from '../components';
 import {
   useVoicePlayerControls,
@@ -296,6 +297,10 @@ export function ChatScreen() {
     if (!pinnedMessageId) return;
     scrollToMessageId(pinnedMessageId, 'Сообщение не найдено');
   }, [pinnedMessageId, scrollToMessageId]);
+
+  const handleReplyPreviewPress = useCallback((messageId: string) => {
+    scrollToMessageId(messageId, 'Сообщение недоступно');
+  }, [scrollToMessageId]);
 
   useEffect(() => {
     if (!focusMessageId) return;
@@ -717,6 +722,7 @@ export function ChatScreen() {
           backgroundColor={isMe ? '#6A9EFF' : '#F2F4D9'}
           textColor={isMe ? 'rgba(255,255,255,0.88)' : '#5F6368'}
           authorColor={isMe ? '#FFD08A' : '#D1782B'}
+          thumbnailUri={getReplyPreviewThumbnailUri(replied)}
         />
       );
     };
@@ -852,6 +858,9 @@ export function ChatScreen() {
             fileSize={item.media[0].file_size}
             uri={item.media[0].remote_url ?? undefined}
             isMe={isMe}
+            caption={item.content ?? undefined}
+            time={formatTime(item.created_at)}
+            status={item.status}
           />
         </View>
       );
@@ -926,6 +935,7 @@ export function ChatScreen() {
           onSwipeReply={handleSwipeReply}
           onMessagePress={handleMessagePress}
           onMessageLongPress={openMessageMenu}
+          onReplyPreviewPress={selectionMode ? undefined : handleReplyPreviewPress}
           setContentRef={setMessageContentRef}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           formatTime={formatTime}

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { GestureResponderEvent } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import type { Message } from '../stores/types';
 
@@ -32,6 +33,16 @@ export function buildReplyPreviewText(message: Message | null | undefined): stri
   return getMediaLabel(message);
 }
 
+export function getReplyPreviewThumbnailUri(message: Message | null | undefined): string | null {
+  if (!message || message.is_deleted || message.msg_type !== 'image') return null;
+
+  const thumbnailUri = message.media?.[0]?.thumbnail_url?.trim();
+  if (thumbnailUri) return thumbnailUri;
+
+  const remoteUri = message.media?.[0]?.remote_url?.trim();
+  return remoteUri || null;
+}
+
 type ReplyPreviewProps = {
   author: string;
   text: string;
@@ -40,6 +51,8 @@ type ReplyPreviewProps = {
   backgroundColor?: string;
   textColor?: string;
   authorColor?: string;
+  thumbnailUri?: string | null;
+  onPress?: () => void;
   onClose?: () => void;
 };
 
@@ -51,19 +64,32 @@ export function ReplyPreview({
   backgroundColor,
   textColor,
   authorColor,
+  thumbnailUri,
+  onPress,
   onClose,
 }: ReplyPreviewProps) {
   const isComposer = mode === 'composer';
+  const hasThumbnail = !!thumbnailUri?.trim();
 
-  return (
-    <View
-      style={[
-        styles.root,
-        isComposer ? styles.rootComposer : styles.rootBubble,
-        backgroundColor ? { backgroundColor } : null,
-      ]}
-    >
+  const handlePress = React.useCallback((event: GestureResponderEvent) => {
+    event.stopPropagation?.();
+    onPress?.();
+  }, [onPress]);
+
+  const handleClose = React.useCallback((event: GestureResponderEvent) => {
+    event.stopPropagation?.();
+    onClose?.();
+  }, [onClose]);
+
+  const content = (
+    <>
       <View style={[styles.accent, { backgroundColor: accentColor }]} />
+      {hasThumbnail ? (
+        <Image
+          source={{ uri: thumbnailUri! }}
+          style={[styles.thumbnail, isComposer ? styles.thumbnailComposer : styles.thumbnailBubble]}
+        />
+      ) : null}
       <View style={styles.content}>
         <Text
           style={[
@@ -91,12 +117,42 @@ export function ReplyPreview({
           accessibilityRole="button"
           accessibilityLabel="Cancel reply"
           hitSlop={10}
-          onPress={onClose}
+          onPress={handleClose}
           style={styles.closeButton}
         >
           <Feather name="x" size={18} color="rgba(255,255,255,0.72)" />
         </Pressable>
       ) : null}
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open replied message"
+        onPress={handlePress}
+        style={({ pressed }) => [
+          styles.root,
+          isComposer ? styles.rootComposer : styles.rootBubble,
+          backgroundColor ? { backgroundColor } : null,
+          pressed && styles.rootPressed,
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.root,
+        isComposer ? styles.rootComposer : styles.rootBubble,
+        backgroundColor ? { backgroundColor } : null,
+      ]}
+    >
+      {content}
     </View>
   );
 }
@@ -107,6 +163,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 14,
     overflow: 'hidden',
+  },
+  rootPressed: {
+    opacity: 0.9,
   },
   rootComposer: {
     backgroundColor: '#232528',
@@ -122,6 +181,20 @@ const styles = StyleSheet.create({
   accent: {
     width: 3,
     alignSelf: 'stretch',
+  },
+  thumbnail: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginLeft: 10,
+  },
+  thumbnailBubble: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+  },
+  thumbnailComposer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
   },
   content: {
     flex: 1,

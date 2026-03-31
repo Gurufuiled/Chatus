@@ -23,7 +23,11 @@ import { bubbleRadius, colors } from '../theme/colors';
 import { FileBubble } from './FileBubble';
 import { ImageBubble } from './ImageBubble';
 import { MessageTimeStatus } from './MessageTimeStatus';
-import { ReplyPreview, buildReplyPreviewText } from './ReplyPreview';
+import {
+  ReplyPreview,
+  buildReplyPreviewText,
+  getReplyPreviewThumbnailUri,
+} from './ReplyPreview';
 import { VoiceBubble } from './VoiceBubble';
 
 const REPLY_SWIPE_TRIGGER = 34;
@@ -48,6 +52,7 @@ type ChatMessageListProps = {
   onSwipeReply: (message: Message) => void;
   onMessagePress: (messageId: string) => void;
   onMessageLongPress: (message: Message) => void;
+  onReplyPreviewPress?: (messageId: string) => void;
   setContentRef: (messageId: string, node: View | null) => void;
   onScrollToIndexFailed?: FlatListProps<Message>['onScrollToIndexFailed'];
   formatTime: (timestamp: number) => string;
@@ -152,6 +157,7 @@ type MessageRowProps = {
   onReply: () => void;
   onPressMessage: (messageId: string) => void;
   onLongPressMessage: (message: Message) => void;
+  onReplyPreviewPress?: (messageId: string) => void;
   setContentRef: (messageId: string, node: View | null) => void;
   formatTime: (timestamp: number) => string;
   getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
@@ -170,6 +176,7 @@ const MessageRow = React.memo(function MessageRow({
   onReply,
   onPressMessage,
   onLongPressMessage,
+  onReplyPreviewPress,
   setContentRef,
   formatTime,
   getMessageAuthorName,
@@ -180,6 +187,7 @@ const MessageRow = React.memo(function MessageRow({
 
   const renderReplySnippet = () => {
     if (!item.reply_to_id) return null;
+    const replyThumbnailUri = getReplyPreviewThumbnailUri(repliedMessage);
     const author = repliedMessage
       ? getMessageAuthorName(repliedMessage, chatId, currentUserId)
       : 'Исходное сообщение';
@@ -195,6 +203,8 @@ const MessageRow = React.memo(function MessageRow({
         backgroundColor={isMe ? '#6A9EFF' : '#F2F4D9'}
         textColor={isMe ? 'rgba(255,255,255,0.88)' : '#5F6368'}
         authorColor={isMe ? '#FFD08A' : '#D1782B'}
+        thumbnailUri={replyThumbnailUri}
+        onPress={onReplyPreviewPress ? () => onReplyPreviewPress(item.reply_to_id!) : undefined}
       />
     );
   };
@@ -337,6 +347,9 @@ const MessageRow = React.memo(function MessageRow({
             fileSize={item.media[0].file_size}
             uri={item.media[0].remote_url ?? undefined}
             isMe={isMe}
+            caption={item.content ?? undefined}
+            time={formatTime(item.created_at)}
+            status={item.status}
           />
         </View>
       );
@@ -384,7 +397,8 @@ const MessageRow = React.memo(function MessageRow({
     prev.isHighlighted === next.isHighlighted &&
     prev.canSwipe === next.canSwipe &&
     prev.currentUserId === next.currentUserId &&
-    prev.chatId === next.chatId
+    prev.chatId === next.chatId &&
+    prev.onReplyPreviewPress === next.onReplyPreviewPress
   );
 });
 
@@ -402,6 +416,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   onSwipeReply,
   onMessagePress,
   onMessageLongPress,
+  onReplyPreviewPress,
   setContentRef,
   onScrollToIndexFailed,
   formatTime,
@@ -421,6 +436,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       onReply={() => onSwipeReply(item)}
       onPressMessage={onMessagePress}
       onLongPressMessage={onMessageLongPress}
+      onReplyPreviewPress={onReplyPreviewPress}
       setContentRef={setContentRef}
       formatTime={formatTime}
       getMessageAuthorName={getMessageAuthorName}
@@ -438,6 +454,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     messageById,
     onMessageLongPress,
     onMessagePress,
+    onReplyPreviewPress,
     onSwipeReply,
     repliedVoiceBubbleWidth,
     selectedMessageIdSet,
@@ -480,6 +497,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.onSwipeReply === next.onSwipeReply &&
     prev.onMessagePress === next.onMessagePress &&
     prev.onMessageLongPress === next.onMessageLongPress &&
+    prev.onReplyPreviewPress === next.onReplyPreviewPress &&
     prev.setContentRef === next.setContentRef &&
     prev.onScrollToIndexFailed === next.onScrollToIndexFailed &&
     prev.formatTime === next.formatTime &&
