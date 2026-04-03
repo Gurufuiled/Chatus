@@ -32,13 +32,16 @@ type ChatContextMenuOverlayProps = {
   menuActions: {
     key: string;
     label: string;
-    icon: React.ComponentProps<typeof Feather>['name'];
+    icon?: React.ComponentProps<typeof Feather>['name'] | null;
     color: string;
     disabled: boolean;
+    textOnly?: boolean;
   }[];
   menuAnim: Animated.Value;
   blurTargetRef: React.RefObject<View | null>;
   screenWidth: number;
+  showReactions?: boolean;
+  menuCardWidth?: number;
   onClose: () => void;
   onMenuAction: (key: string) => void;
   renderMenuPreviewBody: (message: Message, forcedWidth?: number) => React.ReactNode;
@@ -51,6 +54,8 @@ export function ChatContextMenuOverlay({
   menuAnim,
   blurTargetRef,
   screenWidth,
+  showReactions = true,
+  menuCardWidth = MENU_WIDTH,
   onClose,
   onMenuAction,
   renderMenuPreviewBody,
@@ -115,42 +120,45 @@ export function ChatContextMenuOverlay({
         </Animated.View>
       ) : null}
 
-      <Animated.View
-        style={[
-          styles.reactionBar,
-          {
-            top: Math.max(
-              MENU_EDGE_GAP,
-              menuState.previewTop - REACTION_BAR_HEIGHT - 8
-            ),
-            left: Math.max(
-              MENU_EDGE_GAP,
-              Math.min(
-                menuState.isMe
-                  ? menuState.previewLeft + menuState.previewWidth - REACTION_BAR_WIDTH
-                  : menuState.previewLeft,
-                screenWidth - REACTION_BAR_WIDTH - MENU_EDGE_GAP
-              )
-            ),
-            opacity: menuAnim,
-            transform: [{ translateY: reactionTranslateY }, { scale: menuScale }],
-          },
-        ]}
-      >
-        {MENU_REACTIONS.map((reaction) => (
-          <Text key={reaction} style={styles.reactionEmoji}>
-            {reaction}
-          </Text>
-        ))}
-        <View style={styles.reactionCheck}>
-          <Feather name="check" size={18} color="#FFFFFF" />
-        </View>
-      </Animated.View>
+      {showReactions ? (
+        <Animated.View
+          style={[
+            styles.reactionBar,
+            {
+              top: Math.max(
+                MENU_EDGE_GAP,
+                menuState.previewTop - REACTION_BAR_HEIGHT - 8
+              ),
+              left: Math.max(
+                MENU_EDGE_GAP,
+                Math.min(
+                  menuState.isMe
+                    ? menuState.previewLeft + menuState.previewWidth - REACTION_BAR_WIDTH
+                    : menuState.previewLeft,
+                  screenWidth - REACTION_BAR_WIDTH - MENU_EDGE_GAP
+                )
+              ),
+              opacity: menuAnim,
+              transform: [{ translateY: reactionTranslateY }, { scale: menuScale }],
+            },
+          ]}
+        >
+          {MENU_REACTIONS.map((reaction) => (
+            <Text key={reaction} style={styles.reactionEmoji}>
+              {reaction}
+            </Text>
+          ))}
+          <View style={styles.reactionCheck}>
+            <Feather name="check" size={18} color="#FFFFFF" />
+          </View>
+        </Animated.View>
+      ) : null}
 
       <Animated.View
         style={[
           styles.menuCard,
           {
+            width: menuCardWidth,
             top: menuState.menuTop,
             left: menuState.menuLeft ?? MENU_EDGE_GAP,
             opacity: menuAnim,
@@ -164,6 +172,7 @@ export function ChatContextMenuOverlay({
             disabled={action.disabled}
             style={[
               styles.menuAction,
+              action.textOnly && styles.menuActionTextOnly,
               action.disabled && styles.menuActionDisabled,
               index < menuActions.length - 1 && styles.menuActionBorder,
             ]}
@@ -172,7 +181,9 @@ export function ChatContextMenuOverlay({
             <Text style={[styles.menuActionLabel, { color: action.color }]}>
               {action.label}
             </Text>
-            <Feather name={action.icon as never} size={18} color={action.color} />
+            {action.icon ? (
+              <Feather name={action.icon as never} size={18} color={action.color} />
+            ) : null}
           </Pressable>
         ))}
       </Animated.View>
@@ -251,6 +262,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 12,
+  },
+  menuActionTextOnly: {
+    minHeight: 50,
+    justifyContent: 'center',
   },
   menuActionBorder: {
     borderBottomWidth: 1,

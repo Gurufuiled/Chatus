@@ -25,8 +25,15 @@ function queueToSyncQueue(
   payload: object,
   entityId: string
 ): void {
+  const currentUserId = authStore.getState().user?.id ?? null;
+  if (!currentUserId) {
+    console.warn('[TransportService] Skipping queue insert without authenticated user', { action, entityId });
+    return;
+  }
+
   dao
     .insert({
+      user_id: currentUserId,
       action,
       payload: JSON.stringify(payload),
       entity_id: entityId,
@@ -35,6 +42,9 @@ function queueToSyncQueue(
       status: 'pending',
       created_at: Date.now(),
       next_retry_at: null,
+    })
+    .then(() => {
+      void SyncService.onQueueUpdated();
     })
     .catch((e) => console.warn('[TransportService] SyncQueueDao.insert failed:', e));
 }
@@ -56,27 +66,54 @@ function getSafeFileContent(content: string | null | undefined, fileName?: strin
   return normalizedContent;
 }
 
-function buildForwardPayload(message: Message): {
+type ForwardMetadata = {
+  messageId?: string | null;
+  name?: string | null;
+  chatId?: string | null;
+  senderId?: string | null;
+};
+
+function buildForwardPayload(message: Message, forwardedFrom?: ForwardMetadata): {
   content: string | null;
   msg_type: string;
   media?: Record<string, unknown>;
+  forwarded_from_message_id: string | null;
+  forwarded_from_name: string | null;
+  forwarded_from_chat_id: string | null;
+  forwarded_from_sender_id: string | null;
 } | null {
   if (message.is_deleted) return null;
 
   const media = message.media?.[0];
   const remoteUrl = media?.remote_url ?? null;
+  const forwardedFromMessageId =
+    forwardedFrom?.messageId ?? message.forwarded_from_message_id ?? message.id;
+  const forwardedFromName =
+    forwardedFrom?.name ?? message.forwarded_from_name ?? null;
+  const forwardedFromChatId =
+    forwardedFrom?.chatId ?? message.forwarded_from_chat_id ?? message.chat_id;
+  const forwardedFromSenderId =
+    forwardedFrom?.senderId ?? message.forwarded_from_sender_id ?? message.sender_id;
 
   switch (message.msg_type) {
     case 'text':
       return {
         content: message.content ?? '',
         msg_type: 'text',
+        forwarded_from_message_id: forwardedFromMessageId,
+        forwarded_from_name: forwardedFromName,
+        forwarded_from_chat_id: forwardedFromChatId,
+        forwarded_from_sender_id: forwardedFromSenderId,
       };
     case 'image':
       if (!remoteUrl) return null;
       return {
         content: message.content ?? null,
         msg_type: 'image',
+        forwarded_from_message_id: forwardedFromMessageId,
+        forwarded_from_name: forwardedFromName,
+        forwarded_from_chat_id: forwardedFromChatId,
+        forwarded_from_sender_id: forwardedFromSenderId,
         media: {
           url: remoteUrl,
           width: media?.width,
@@ -88,6 +125,10 @@ function buildForwardPayload(message: Message): {
       return {
         content: remoteUrl,
         msg_type: 'voice',
+        forwarded_from_message_id: forwardedFromMessageId,
+        forwarded_from_name: forwardedFromName,
+        forwarded_from_chat_id: forwardedFromChatId,
+        forwarded_from_sender_id: forwardedFromSenderId,
         media: {
           url: remoteUrl,
           duration_ms: media?.duration_ms,
@@ -99,6 +140,10 @@ function buildForwardPayload(message: Message): {
       return {
         content: remoteUrl,
         msg_type: 'video_note',
+        forwarded_from_message_id: forwardedFromMessageId,
+        forwarded_from_name: forwardedFromName,
+        forwarded_from_chat_id: forwardedFromChatId,
+        forwarded_from_sender_id: forwardedFromSenderId,
         media: {
           url: remoteUrl,
           duration_ms: media?.duration_ms,
@@ -111,6 +156,10 @@ function buildForwardPayload(message: Message): {
       return {
         content: getSafeFileContent(message.content, media?.file_name),
         msg_type: 'file',
+        forwarded_from_message_id: forwardedFromMessageId,
+        forwarded_from_name: forwardedFromName,
+        forwarded_from_chat_id: forwardedFromChatId,
+        forwarded_from_sender_id: forwardedFromSenderId,
         media: {
           url: remoteUrl,
           file_name: media?.file_name,
@@ -416,7 +465,15 @@ class TransportServiceClass {
             file_size: result.file_size,
           },
         });
-      } catch {
+      } catch (err) {
+        if (__DEV__) {
+          console.warn('[TransportService] image upload/send failed, queueing for retry:', {
+            chatId,
+            tempId,
+            uri: payload.uri,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
         queueToSyncQueue(
           this.syncQueueDao,
           'send_message_image',
@@ -556,8 +613,8 @@ class TransportServiceClass {
     );
   }
 
-  forwardMessage(chatId: string, sourceMessage: Message): boolean {
-    const payload = buildForwardPayload(sourceMessage);
+  forwardMessage(chatId: string, sourceMessage: Message, forwardedFrom?: ForwardMetadata): boolean {
+    const payload = buildForwardPayload(sourceMessage, forwardedFrom);
     if (!payload) return false;
 
     if (WebSocketService.isConnected()) {
@@ -565,6 +622,10 @@ class TransportServiceClass {
         chat_id: chatId,
         content: payload.content,
         msg_type: payload.msg_type,
+        forwarded_from_message_id: payload.forwarded_from_message_id,
+        forwarded_from_name: payload.forwarded_from_name,
+        forwarded_from_chat_id: payload.forwarded_from_chat_id,
+        forwarded_from_sender_id: payload.forwarded_from_sender_id,
         media: payload.media,
       });
       return true;
@@ -573,7 +634,7 @@ class TransportServiceClass {
     queueToSyncQueue(
       this.syncQueueDao,
       'forward_message',
-      { chatId, sourceMessage },
+      { chatId, sourceMessage, forwardedFrom },
       sourceMessage.id
     );
     return true;

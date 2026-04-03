@@ -1,7 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import { ChatListScreen, ChatProfileScreen, ChatScreen } from '../screens';
 import type { ChatsStackParamList } from './types';
 import { resolveAvatarUrl } from '../config';
@@ -69,13 +68,6 @@ function ChatHeaderActions({
 }) {
   return (
     <View style={styles.headerActions}>
-      <Pressable
-        style={({ pressed }) => [styles.callButton, pressed && styles.callButtonPressed]}
-        accessibilityRole="button"
-        accessibilityLabel="Позвонить"
-      >
-        <Feather name="phone" size={16} color={colors.textPrimary} />
-      </Pressable>
       <ChatHeaderAvatar avatarUrl={avatarUrl} title={title} />
     </View>
   );
@@ -181,28 +173,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   headerActions: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
   },
   headerActionsPressable: {
     borderRadius: 20,
   },
   headerPressablePressed: {
     opacity: 0.7,
-  },
-  callButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.58)',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.28)',
-  },
-  callButtonPressed: {
-    opacity: 0.72,
   },
   headerAvatar: {
     width: 34,

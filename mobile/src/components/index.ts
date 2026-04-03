@@ -13,6 +13,7 @@ export { ChatInputDock } from './ChatInputDock';
 export { ChatMessageList } from './ChatMessageList';
 export { ChatTopBanners } from './ChatTopBanners';
 export { FileBubble } from './FileBubble';
+export { ForwardHeader } from './ForwardHeader';
 export { MessageTimeStatus } from './MessageTimeStatus';
 export { ImageBubble } from './ImageBubble';
 export { InputBar } from './InputBar';

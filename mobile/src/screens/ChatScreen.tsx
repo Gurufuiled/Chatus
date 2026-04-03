@@ -17,7 +17,10 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, {
+  FadeInDown,
+  FadeOutDown,
   useAnimatedKeyboard,
   useAnimatedStyle,
   withTiming,
@@ -35,6 +38,7 @@ import {
   ChatMessageList,
   ChatTopBanners,
   FileBubble,
+  ForwardHeader,
   ImageBubble,
   MessageTimeStatus,
   ReplyPreview,
@@ -70,6 +74,8 @@ import {
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
 type ChatNavigation = NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
 type MessageMenuActionKey = 'reply' | 'copy' | 'pin' | 'forward' | 'delete' | 'select';
+type OverlayActionKey = MessageMenuActionKey | 'delete_confirm' | 'delete_cancel';
+type MenuMode = 'actions' | 'deleteConfirm';
 
 type MenuState = {
   messageId: string;
@@ -84,11 +90,12 @@ type MenuState = {
 } | null;
 
 type MenuAction = {
-  key: MessageMenuActionKey;
+  key: OverlayActionKey;
   label: string;
-  icon: React.ComponentProps<typeof Feather>['name'];
+  icon?: React.ComponentProps<typeof Feather>['name'] | null;
   color: string;
   disabled: boolean;
+  textOnly?: boolean;
 };
 
 export function ChatScreen() {
@@ -98,15 +105,19 @@ export function ChatScreen() {
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const { play, pause, stop, setPlaybackRate } = useVoicePlayerControls();
   const { currentVoiceUri, status: voiceStatus } = useVoicePlayerState();
+  const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<Message> | null>(null);
   const blurTargetRef = useRef<View | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
   const animatedKeyboard = useAnimatedKeyboard();
   const [inputBarHeight, setInputBarHeight] = useState(82);
+  const [selectionActionBarHeight, setSelectionActionBarHeight] = useState(104);
   const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null);
   const [menuState, setMenuState] = useState<MenuState>(null);
+  const [menuMode, setMenuMode] = useState<MenuMode>('actions');
   const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
-  const [forwardSourceMessageId, setForwardSourceMessageId] = useState<string | null>(null);
+  const [forwardSourceMessageIds, setForwardSourceMessageIds] = useState<string[]>([]);
+  const [forwardFromSelection, setForwardFromSelection] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,6 +148,17 @@ export function ChatScreen() {
   const activeMenuMessage = menuState ? messageById.get(menuState.messageId) ?? null : null;
   const selectionMode = selectedMessageIds.length > 0;
   const selectedMessageIdSet = useMemo(() => new Set(selectedMessageIds), [selectedMessageIds]);
+  const selectedMessages = useMemo(
+    () =>
+      selectedMessageIds
+        .map((id) => messageById.get(id) ?? null)
+        .filter((message): message is Message => message != null),
+    [messageById, selectedMessageIds]
+  );
+  const selectedMessagesSorted = useMemo(
+    () => [...selectedMessages].sort((a, b) => a.created_at - b.created_at),
+    [selectedMessages]
+  );
   const currentChat = chats.find((chat) => chat.id === chatId) ?? null;
   const pinnedMessageId = currentChat?.pinned_message_id ?? null;
   const pinnedMessage = pinnedMessageId ? messageById.get(pinnedMessageId) ?? null : null;
@@ -170,6 +192,14 @@ export function ChatScreen() {
     : null;
   const activeVoiceProgress =
     voiceStatus.durationMs > 0 ? Math.min(voiceStatus.positionMs / voiceStatus.durationMs, 1) : 0;
+  const canDeleteSelectedMessages =
+    selectedMessages.length > 0 &&
+    selectedMessages.every((message) => message.sender_id === currentUserId && message.is_deleted !== 1);
+  const forwardableSelectedMessages = useMemo(
+    () => selectedMessagesSorted.filter((message) => canForwardMessage(message)),
+    [selectedMessagesSorted]
+  );
+  const canForwardSelectedMessages = forwardableSelectedMessages.length > 0;
 
   useEffect(() => {
     const existing = messageStore.getState().messagesByChatId[chatId];
@@ -231,6 +261,10 @@ export function ChatScreen() {
 
   const clearReplyState = useCallback(() => {
     setReplyToMessageId(null);
+  }, []);
+
+  const clearSelectionMode = useCallback(() => {
+    setSelectedMessageIds([]);
   }, []);
 
   const handleCancelSearch = useCallback(() => {
@@ -365,6 +399,7 @@ export function ChatScreen() {
     if (!target) return;
 
     Keyboard.dismiss();
+    setMenuMode('actions');
 
     target.measureInWindow((pageX, pageY, width, height) => {
       const previewLeft = Math.max(MENU_EDGE_GAP, Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP));
@@ -420,6 +455,7 @@ export function ChatScreen() {
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) {
+        setMenuMode('actions');
         setMenuState(null);
       }
     });
@@ -574,33 +610,35 @@ export function ChatScreen() {
     [chatId, currentUserId, replyToMessageId]
   );
 
-  const handleDeleteMessage = useCallback((message: Message) => {
-    closeMenu();
+  const confirmDeleteMessage = useCallback((message: Message) => {
     if (message.sender_id !== currentUserId) {
+      closeMenu();
       Alert.alert('Удаление недоступно', 'Сейчас можно удалить только свои сообщения.');
       return;
     }
 
-    Alert.alert('Удалить сообщение?', 'Сообщение исчезнет из этого чата.', [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Удалить',
-        style: 'destructive',
-        onPress: () => {
-          messageStore.getState().updateMessage(chatId, message.id, {
-            is_deleted: 1,
-            content: null,
-          });
-          if (pinnedMessageId === message.id && currentChat) {
-            chatStore.getState().updateChat({
-              ...currentChat,
-              pinned_message_id: null,
-            });
-          }
-          TransportService.deleteMessage(chatId, message.id);
-        },
-      },
-    ]);
+    closeMenu();
+    messageStore.getState().updateMessage(chatId, message.id, {
+      is_deleted: 1,
+      content: null,
+    });
+    if (pinnedMessageId === message.id && currentChat) {
+      chatStore.getState().updateChat({
+        ...currentChat,
+        pinned_message_id: null,
+      });
+    }
+    TransportService.deleteMessage(chatId, message.id);
+  }, [chatId, closeMenu, currentChat, currentUserId, pinnedMessageId]);
+
+  const handleDeleteMessage = useCallback((message: Message) => {
+    if (message.sender_id !== currentUserId) {
+      closeMenu();
+      Alert.alert('Удаление недоступно', 'Сейчас можно удалить только свои сообщения.');
+      return;
+    }
+
+    setMenuMode('deleteConfirm');
   }, [chatId, closeMenu, currentChat, currentUserId, pinnedMessageId]);
 
   const handlePinToggle = useCallback((message: Message) => {
@@ -618,21 +656,70 @@ export function ChatScreen() {
   const handleForwardMessage = useCallback((message: Message) => {
     closeMenu();
     setTimeout(() => {
-      setForwardSourceMessageId(message.id);
+      setForwardFromSelection(false);
+      setForwardSourceMessageIds([message.id]);
     }, 150);
   }, [closeMenu]);
 
   const handleForwardToChat = useCallback((targetChatId: string) => {
-    const source = forwardSourceMessageId ? messageById.get(forwardSourceMessageId) ?? null : null;
-    if (!source) {
-      setForwardSourceMessageId(null);
+    const sourceMessages = forwardSourceMessageIds
+      .map((id) => messageById.get(id) ?? null)
+      .filter((message): message is Message => message != null)
+      .sort((a, b) => a.created_at - b.created_at);
+
+    if (sourceMessages.length === 0) {
+      setForwardSourceMessageIds([]);
+      setForwardFromSelection(false);
       return;
     }
 
-    const sent = TransportService.forwardMessage(targetChatId, source);
-    setForwardSourceMessageId(null);
+    let sentCount = 0;
+    for (const message of sourceMessages) {
+      const sourceAuthorName = (() => {
+        if (message.forwarded_from_name?.trim()) {
+          return message.forwarded_from_name.trim();
+        }
+        if (message.sender_id === currentUserId) {
+          return (
+            authStore.getState().user?.display_name?.trim() ||
+            authStore.getState().user?.username?.trim() ||
+            'Вы'
+          );
+        }
+        if (currentChat?.chat_type === 'private') {
+          return getMessageAuthorName(message, chatId, currentUserId).trim();
+        }
+        return message.sender_id;
+      })();
+      const forwardedFromName =
+        sourceAuthorName || null;
+      const forwardedFromMessageId =
+        message.forwarded_from_message_id ?? message.id;
+      const forwardedFromChatId =
+        message.forwarded_from_chat_id ?? message.chat_id;
+      const forwardedFromSenderId =
+        message.forwarded_from_sender_id ?? message.sender_id;
 
-    if (!sent) {
+      if (
+        TransportService.forwardMessage(targetChatId, message, {
+          messageId: forwardedFromMessageId,
+          name: forwardedFromName,
+          chatId: forwardedFromChatId,
+          senderId: forwardedFromSenderId,
+        })
+      ) {
+        sentCount += 1;
+      }
+    }
+
+    setForwardSourceMessageIds([]);
+
+    if (forwardFromSelection) {
+      setSelectedMessageIds([]);
+      setForwardFromSelection(false);
+    }
+
+    if (sentCount === 0) {
       Alert.alert('Не удалось переслать', 'Этот тип сообщения пока нельзя переслать.');
       return;
     }
@@ -640,9 +727,104 @@ export function ChatScreen() {
     const targetChat = chats.find((chat) => chat.id === targetChatId);
     Alert.alert(
       'Переслано',
-      `Сообщение отправлено в чат «${targetChat?.peer_display_name || targetChat?.name || 'Чат'}».`
+      sentCount === 1
+        ? `Сообщение отправлено в чат «${targetChat?.peer_display_name || targetChat?.name || 'Чат'}».`
+        : `${sentCount} сообщений отправлено в чат «${targetChat?.peer_display_name || targetChat?.name || 'Чат'}».`
     );
-  }, [chats, forwardSourceMessageId, messageById]);
+  }, [chatId, chats, currentChat?.chat_type, currentUserId, forwardFromSelection, forwardSourceMessageIds, messageById]);
+
+  const handleForwardSheetClose = useCallback(() => {
+    setForwardSourceMessageIds([]);
+    setForwardFromSelection(false);
+  }, []);
+
+  const handleForwardHeaderPress = useCallback((message: Message) => {
+    const sourceChatId = message.forwarded_from_chat_id ?? null;
+    const sourceMessageId = message.forwarded_from_message_id ?? null;
+    const sourceSenderId = message.forwarded_from_sender_id ?? null;
+
+    if (!sourceChatId) {
+      return;
+    }
+
+    const sourceChat = chats.find((chat) => chat.id === sourceChatId) ?? null;
+    const sourceChatTitle =
+      sourceChat?.peer_display_name?.trim() ||
+      sourceChat?.name?.trim() ||
+      message.forwarded_from_name?.trim() ||
+      'Чат';
+
+    if (sourceChatId === chatId && sourceMessageId) {
+      scrollToMessageId(sourceMessageId, 'Исходное сообщение недоступно');
+      return;
+    }
+
+    if (sourceChat) {
+      navigation.navigate('Chat', {
+        chatId: sourceChatId,
+        chatTitle: sourceChatTitle,
+        focusMessageId: sourceMessageId ?? undefined,
+      });
+      return;
+    }
+
+    if (sourceSenderId) {
+      navigation.navigate('ChatProfile', {
+        chatId: sourceChatId,
+        userId: sourceSenderId,
+        chatTitle: sourceChatTitle,
+      });
+    }
+  }, [chatId, chats, navigation, scrollToMessageId]);
+
+  const handleForwardSelectedMessages = useCallback(() => {
+    if (!canForwardSelectedMessages) {
+      Alert.alert('Нечего переслать', 'Среди выбранных сообщений нет поддерживаемых для пересылки.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    setForwardFromSelection(true);
+    setForwardSourceMessageIds(forwardableSelectedMessages.map((message) => message.id));
+  }, [canForwardSelectedMessages, forwardableSelectedMessages]);
+
+  const handleDeleteSelectedMessages = useCallback(() => {
+    if (!canDeleteSelectedMessages) {
+      Alert.alert('Удаление недоступно', 'Пока можно удалить только свои выбранные сообщения.');
+      return;
+    }
+
+    const count = selectedMessages.length;
+    Alert.alert(
+      count > 1 ? 'Удалить выбранные сообщения?' : 'Удалить сообщение?',
+      count > 1
+        ? `Будет удалено ${count} сообщений из этого чата.`
+        : 'Сообщение исчезнет из этого чата.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () => {
+            for (const message of selectedMessages) {
+              messageStore.getState().updateMessage(chatId, message.id, {
+                is_deleted: 1,
+                content: null,
+              });
+              if (pinnedMessageId === message.id && currentChat) {
+                chatStore.getState().updateChat({
+                  ...currentChat,
+                  pinned_message_id: null,
+                });
+              }
+              TransportService.deleteMessage(chatId, message.id);
+            }
+            setSelectedMessageIds([]);
+          },
+        },
+      ]
+    );
+  }, [canDeleteSelectedMessages, chatId, currentChat, pinnedMessageId, selectedMessages]);
 
   const handleMenuAction = useCallback(async (key: MessageMenuActionKey) => {
     if (!activeMenuMessage) return;
@@ -678,12 +860,32 @@ export function ChatScreen() {
     }
   }, [activeMenuMessage, closeMenu, handleDeleteMessage, handleForwardMessage, handlePinToggle, toggleSelectedMessage]);
 
+  const handleDeleteConfirmAction = useCallback((key: string) => {
+    if (!activeMenuMessage) return;
+
+    if (key === 'delete_confirm') {
+      confirmDeleteMessage(activeMenuMessage);
+      return;
+    }
+
+    if (key === 'delete_cancel') {
+      setMenuMode('actions');
+    }
+  }, [activeMenuMessage, confirmDeleteMessage]);
+
   const handleInputBarLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = Math.ceil(event.nativeEvent.layout.height);
     if (nextHeight > 0 && nextHeight !== inputBarHeight) {
       setInputBarHeight(nextHeight);
     }
   }, [inputBarHeight]);
+
+  const handleSelectionActionBarLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+    if (nextHeight > 0 && nextHeight !== selectionActionBarHeight) {
+      setSelectionActionBarHeight(nextHeight);
+    }
+  }, [selectionActionBarHeight]);
 
   const inputBarAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }],
@@ -730,6 +932,20 @@ export function ChatScreen() {
       );
     };
 
+    const renderForwardHeader = () => {
+      if (!item.forwarded_from_name && !item.forwarded_from_message_id) {
+        return null;
+      }
+
+      return (
+        <ForwardHeader
+          isMe={isMe}
+          name={item.forwarded_from_name}
+          onPress={() => handleForwardHeaderPress(item)}
+        />
+      );
+    };
+
     if (item.is_deleted === 1) {
       return (
         <View
@@ -758,6 +974,7 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.bubble, fixedWidthStyle, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+          {renderForwardHeader()}
           {renderReplySnippet()}
           <View style={styles.bubbleContentRow}>
             <Text style={[styles.textContent, isMe && styles.textContentMe]}>
@@ -798,6 +1015,7 @@ export function ChatScreen() {
               fixedWidthStyle,
             ]}
           >
+            {renderForwardHeader()}
             {replySnippet}
             {voiceContent}
           </View>
@@ -806,6 +1024,7 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
+          {renderForwardHeader()}
           {voiceContent}
         </View>
       );
@@ -839,6 +1058,7 @@ export function ChatScreen() {
               fixedWidthStyle,
             ]}
           >
+            {renderForwardHeader()}
             {replySnippet}
             {imageContent}
           </View>
@@ -847,6 +1067,7 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
+          {renderForwardHeader()}
           {imageContent}
         </View>
       );
@@ -855,6 +1076,7 @@ export function ChatScreen() {
     if (item.msg_type === 'file' && item.media?.[0]) {
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
+          {renderForwardHeader()}
           {renderReplySnippet()}
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
@@ -870,10 +1092,31 @@ export function ChatScreen() {
     }
 
     return null;
-  }, [chatId, currentUserId, messageById]);
+  }, [chatId, currentUserId, handleForwardHeaderPress, messageById]);
 
   const menuActions = useMemo<MenuAction[]>(() => {
     if (!activeMenuMessage) return [];
+
+    if (menuMode === 'deleteConfirm') {
+      return [
+        {
+          key: 'delete_confirm',
+          label: 'Удалить для всех',
+          icon: null,
+          color: '#E53935',
+          disabled: false,
+          textOnly: true,
+        },
+        {
+          key: 'delete_cancel',
+          label: 'Отмена',
+          icon: null,
+          color: '#111827',
+          disabled: false,
+          textOnly: true,
+        },
+      ];
+    }
 
     const isPinned = pinnedMessageId === activeMenuMessage.id;
     const canForward = canForwardMessage(activeMenuMessage);
@@ -886,7 +1129,7 @@ export function ChatScreen() {
       { key: 'delete', label: 'Удалить', icon: 'trash-2', color: '#E53935', disabled: false },
       { key: 'select', label: 'Выбрать', icon: 'check-circle', color: '#111827', disabled: false },
     ];
-  }, [activeMenuMessage, pinnedMessageId]);
+  }, [activeMenuMessage, menuMode, pinnedMessageId]);
 
   return (
     <View style={styles.container}>
@@ -895,7 +1138,7 @@ export function ChatScreen() {
         <ChatTopBanners
           selectionMode={selectionMode}
           selectedCount={selectedMessageIds.length}
-          onClearSelection={() => setSelectedMessageIds([])}
+          onClearSelection={clearSelectionMode}
           activeVoiceVisible={!!activeVoiceMessage}
           activeVoiceAuthor={activeVoiceAuthor}
           activeVoiceIsPlaying={voiceStatus.isPlaying}
@@ -929,15 +1172,17 @@ export function ChatScreen() {
           currentUserId={currentUserId}
           messages={messages}
           messageById={messageById}
+          selectionMode={selectionMode}
           selectedMessageIdSet={selectedMessageIdSet}
           highlightedMessageId={highlightedMessageId}
           listRef={listRef}
           listAnimatedStyle={listWrapAnimatedStyle}
-          contentPaddingTop={inputBarHeight + 8}
+          contentPaddingTop={(selectionMode ? selectionActionBarHeight : inputBarHeight) + 8}
           canSwipeReply={canSwipeReply}
           onSwipeReply={handleSwipeReply}
           onMessagePress={handleMessagePress}
           onMessageLongPress={openMessageMenu}
+          onForwardHeaderPress={selectionMode ? undefined : handleForwardHeaderPress}
           onReplyPreviewPress={selectionMode ? undefined : handleReplyPreviewPress}
           setContentRef={setMessageContentRef}
           onScrollToIndexFailed={handleScrollToIndexFailed}
@@ -947,17 +1192,103 @@ export function ChatScreen() {
           repliedVoiceBubbleWidth={REPLIED_VOICE_BUBBLE_WIDTH}
         />
 
-        <ChatInputDock
-          onLayout={handleInputBarLayout}
-          animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle]}
-          onSendText={handleSendText}
-          onSendVoice={handleSendVoice}
-          onSendImage={handleSendImage}
-          onSendFile={handleSendFile}
-          replyToMessage={replyToMessage}
-          replyAuthorName={replyAuthorName}
-          onCancelReply={clearReplyState}
-        />
+        {selectionMode ? (
+          <Reanimated.View
+            entering={FadeInDown.springify().damping(18).stiffness(220)}
+            exiting={FadeOutDown.duration(150)}
+            onLayout={handleSelectionActionBarLayout}
+            style={[styles.selectionDockWrap, inputBarAnimatedStyle]}
+          >
+            <View
+              style={[
+                styles.selectionDockRow,
+                { paddingBottom: Math.max(insets.bottom, 10) },
+              ]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Удалить выбранные сообщения"
+                disabled={!canDeleteSelectedMessages}
+                onPress={handleDeleteSelectedMessages}
+                style={({ pressed }) => [
+                  styles.selectionDockAction,
+                  styles.selectionDockActionLeft,
+                  !canDeleteSelectedMessages && styles.selectionDockActionDisabled,
+                  pressed && canDeleteSelectedMessages && styles.selectionDockActionPressed,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.selectionDockIconCircle,
+                    styles.selectionDockDeleteCircle,
+                    !canDeleteSelectedMessages && styles.selectionDockIconCircleDisabled,
+                  ]}
+                >
+                  <Feather
+                    name="trash-2"
+                    size={20}
+                    color={canDeleteSelectedMessages ? '#DB4F55' : '#A0A9B8'}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.selectionDockActionLabel,
+                    !canDeleteSelectedMessages && styles.selectionDockActionLabelDisabled,
+                  ]}
+                >
+                  Удалить
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Переслать выбранные сообщения"
+                disabled={!canForwardSelectedMessages}
+                onPress={handleForwardSelectedMessages}
+                style={({ pressed }) => [
+                  styles.selectionDockAction,
+                  styles.selectionDockActionRight,
+                  !canForwardSelectedMessages && styles.selectionDockActionDisabled,
+                  pressed && canForwardSelectedMessages && styles.selectionDockActionPressed,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.selectionDockIconCircle,
+                    styles.selectionDockForwardCircle,
+                    !canForwardSelectedMessages && styles.selectionDockIconCircleDisabled,
+                  ]}
+                >
+                  <Feather
+                    name="corner-up-right"
+                    size={20}
+                    color={canForwardSelectedMessages ? '#4D8DFF' : '#A0A9B8'}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.selectionDockActionLabel,
+                    !canForwardSelectedMessages && styles.selectionDockActionLabelDisabled,
+                  ]}
+                >
+                  Переслать
+                </Text>
+              </Pressable>
+            </View>
+          </Reanimated.View>
+        ) : (
+          <ChatInputDock
+            onLayout={handleInputBarLayout}
+            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle]}
+            onSendText={handleSendText}
+            onSendVoice={handleSendVoice}
+            onSendImage={handleSendImage}
+            onSendFile={handleSendFile}
+            replyToMessage={replyToMessage}
+            replyAuthorName={replyAuthorName}
+            onCancelReply={clearReplyState}
+          />
+        )}
       </BlurTargetView>
 
       <ChatContextMenuOverlay
@@ -968,16 +1299,22 @@ export function ChatScreen() {
         blurTargetRef={blurTargetRef}
         screenWidth={SCREEN_WIDTH}
         onClose={closeMenu}
+        showReactions={menuMode === 'actions'}
+        menuCardWidth={menuMode === 'deleteConfirm' ? 224 : undefined}
         onMenuAction={(key) => {
+          if (menuMode === 'deleteConfirm') {
+            handleDeleteConfirmAction(key);
+            return;
+          }
           void handleMenuAction(key as MessageMenuActionKey);
         }}
         renderMenuPreviewBody={renderMenuPreviewBody}
       />
 
       <ChatForwardSheet
-        visible={forwardSourceMessageId != null}
+        visible={forwardSourceMessageIds.length > 0}
         chats={forwardTargets}
-        onClose={() => setForwardSourceMessageId(null)}
+        onClose={handleForwardSheetClose}
         onSelectChat={handleForwardToChat}
       />
     </View>
@@ -994,6 +1331,76 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  selectionDockWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+  },
+  selectionDockRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 4,
+  },
+  selectionDockAction: {
+    alignItems: 'center',
+    minWidth: 90,
+    paddingBottom: 2,
+  },
+  selectionDockActionLeft: {
+    alignSelf: 'flex-start',
+    marginLeft: 2,
+  },
+  selectionDockActionRight: {
+    alignSelf: 'flex-start',
+    marginRight: 2,
+  },
+  selectionDockActionPressed: {
+    opacity: 0.74,
+  },
+  selectionDockActionDisabled: {
+    opacity: 0.45,
+  },
+  selectionDockIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(248,251,255,0.95)',
+    backgroundColor: 'rgba(255,255,255,0.84)',
+  },
+  selectionDockDeleteCircle: {
+    borderColor: 'rgba(248,207,212,0.98)',
+  },
+  selectionDockForwardCircle: {
+    borderColor: 'rgba(198,222,255,0.98)',
+  },
+  selectionDockIconCircleDisabled: {
+    backgroundColor: 'rgba(231,236,243,0.96)',
+    shadowOpacity: 0,
+    elevation: 0,
+    borderColor: 'rgba(214,221,230,0.92)',
+  },
+  selectionDockActionLabel: {
+    marginTop: 9,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: '#163047',
+  },
+  selectionDockActionLabelDisabled: {
+    color: '#94A3B8',
   },
   messagePressable: {
     width: '100%',

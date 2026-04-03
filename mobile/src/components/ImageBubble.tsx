@@ -20,6 +20,7 @@ const DEFAULT_PLACEHOLDER_SIZE = {
   width: Math.min(MAX_BUBBLE_WIDTH, 192),
   height: Math.min(MAX_BUBBLE_HEIGHT, 192),
 };
+const loadedImageUris = new Set<string>();
 
 const STATUS_ICONS: Record<string, string> = {
   sending: '\u23F1',
@@ -83,18 +84,21 @@ export function ImageBubble({
   status,
   embedded = false,
 }: ImageBubbleProps) {
+  const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
     resolveKnownDisplaySize(propWidth, propHeight)
   );
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(() =>
+    normalizedUri.length > 0 && loadedImageUris.has(normalizedUri)
+  );
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
-    setImageLoaded(false);
+    setImageLoaded(normalizedUri.length > 0 && loadedImageUris.has(normalizedUri));
 
     const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight);
-    if (!uri?.trim()) {
+    if (!normalizedUri) {
       setDisplaySize(DEFAULT_PLACEHOLDER_SIZE);
       return;
     }
@@ -105,7 +109,7 @@ export function ImageBubble({
 
     let cancelled = false;
     Image.getSize(
-      uri,
+      normalizedUri,
       (w, h) => {
         if (!cancelled) {
           setDisplaySize(computeDisplaySize(w, h));
@@ -120,7 +124,7 @@ export function ImageBubble({
     return () => {
       cancelled = true;
     };
-  }, [uri, propWidth, propHeight]);
+  }, [normalizedUri, propWidth, propHeight]);
 
   const handlePress = useCallback(() => {
     setFullscreenVisible(true);
@@ -163,9 +167,15 @@ export function ImageBubble({
             />
           ) : null}
           <Image
-            source={{ uri }}
+            source={{ uri: normalizedUri }}
+            fadeDuration={0}
             onError={() => setImageLoaded(true)}
-            onLoad={() => setImageLoaded(true)}
+            onLoad={() => {
+              if (normalizedUri) {
+                loadedImageUris.add(normalizedUri);
+              }
+              setImageLoaded(true);
+            }}
             style={[
               styles.image,
               { width: w, height: h },
@@ -244,14 +254,14 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   imageWrapperMe: {
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'transparent',
   },
   imageWrapperOther: {
-    backgroundColor: '#E9EEF5',
+    backgroundColor: 'transparent',
   },
   imagePlaceholder: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+    backgroundColor: colors.placeholderBg,
   },
   image: {
     maxWidth: MAX_BUBBLE_WIDTH,

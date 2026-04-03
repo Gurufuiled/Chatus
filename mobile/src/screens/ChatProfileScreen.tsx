@@ -24,7 +24,7 @@ import {
   type VoiceItem,
 } from '../components/ChatProfileMediaSection';
 import { ChatProfileOverlayLayer } from '../components/ChatProfileOverlayLayer';
-import { resolveAvatarUrl } from '../config';
+import { API_BASE_URL, resolveAvatarUrl } from '../config';
 import { useCall } from '../contexts/CallContext';
 import { ChatDao } from '../db';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -118,8 +118,60 @@ function extractMediaUri(message: Message): string | null {
 
 function extractLinks(content: string | null | undefined): string[] {
   if (!content) return [];
-  const matches = content.match(/https?:\/\/[^\s]+/gi);
-  return matches ?? [];
+  const matches = content.match(/https?:\/\/[^\s]+/gi) ?? [];
+  return matches.filter(isExternalLinkCandidate);
+}
+
+function isPrivateIpv4(hostname: string): boolean {
+  const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!match) return false;
+
+  const octets = match.slice(1).map((part) => Number(part));
+  if (octets.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
+    return false;
+  }
+
+  const [first, second] = octets;
+  if (first === 10) return true;
+  if (first === 127) return true;
+  if (first === 169 && second === 254) return true;
+  if (first === 192 && second === 168) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  return false;
+}
+
+function isExternalLinkCandidate(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    if (!hostname) return false;
+    if (hostname === 'localhost' || hostname === '::1' || hostname.endsWith('.local')) {
+      return false;
+    }
+    if (isPrivateIpv4(hostname)) {
+      return false;
+    }
+    if (url.pathname.startsWith('/uploads/')) {
+      return false;
+    }
+
+    try {
+      const apiHost = new URL(API_BASE_URL).hostname.toLowerCase();
+      if (hostname === apiHost) {
+        return false;
+      }
+    } catch {
+      // Ignore API url parse issues and keep external candidate check.
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function buildFileSubtitle(message: Message) {
@@ -329,6 +381,9 @@ export function ChatProfileScreen() {
   const linkItems = useMemo<LinkItem[]>(
     () =>
       chatMessages.flatMap((message) =>
+        message.is_deleted
+          ? []
+          :
         extractLinks(message.content).map((link, index) => ({
           id: `${message.id}-${index}`,
           title: link.replace(/^https?:\/\//, ''),

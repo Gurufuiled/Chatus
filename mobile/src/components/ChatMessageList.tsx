@@ -17,11 +17,13 @@ import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
   withSequence,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
 import { FileBubble } from './FileBubble';
+import { ForwardHeader } from './ForwardHeader';
 import { ImageBubble } from './ImageBubble';
 import { MessageTimeStatus } from './MessageTimeStatus';
 import {
@@ -45,6 +47,7 @@ type ChatMessageListProps = {
   currentUserId: string | null;
   messages: Message[];
   messageById: Map<string, Message>;
+  selectionMode: boolean;
   selectedMessageIdSet: Set<string>;
   highlightedMessageId: string | null;
   listRef: React.RefObject<FlatList<Message> | null>;
@@ -54,6 +57,7 @@ type ChatMessageListProps = {
   onSwipeReply: (message: Message) => void;
   onMessagePress: (messageId: string) => void;
   onMessageLongPress: (message: Message) => void;
+  onForwardHeaderPress?: (message: Message) => void;
   onReplyPreviewPress?: (messageId: string) => void;
   setContentRef: (messageId: string, node: View | null) => void;
   onScrollToIndexFailed?: FlatListProps<Message>['onScrollToIndexFailed'];
@@ -153,12 +157,14 @@ type MessageRowProps = {
   chatId: string;
   currentUserId: string | null;
   repliedMessage: Message | null;
+  selectionMode: boolean;
   isSelected: boolean;
   isHighlighted: boolean;
   canSwipe: boolean;
   onReply: () => void;
   onPressMessage: (messageId: string) => void;
   onLongPressMessage: (message: Message) => void;
+  onForwardHeaderPress?: (message: Message) => void;
   onReplyPreviewPress?: (messageId: string) => void;
   setContentRef: (messageId: string, node: View | null) => void;
   formatTime: (timestamp: number) => string;
@@ -172,12 +178,14 @@ const MessageRow = React.memo(function MessageRow({
   chatId,
   currentUserId,
   repliedMessage,
+  selectionMode,
   isSelected,
   isHighlighted,
   canSwipe,
   onReply,
   onPressMessage,
   onLongPressMessage,
+  onForwardHeaderPress,
   onReplyPreviewPress,
   setContentRef,
   formatTime,
@@ -186,9 +194,28 @@ const MessageRow = React.memo(function MessageRow({
   repliedVoiceBubbleWidth,
 }: MessageRowProps) {
   const isMe = item.sender_id === currentUserId;
+  const selectionProgress = useSharedValue(isSelected ? 1 : 0);
+
+  React.useEffect(() => {
+    selectionProgress.value = withSpring(isSelected ? 1 : 0, {
+      damping: 16,
+      stiffness: 240,
+      mass: 0.9,
+    });
+  }, [isSelected, selectionProgress]);
+
+  const selectionIndicatorScaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 0.92 + selectionProgress.value * 0.08 }],
+  }));
+
+  const selectionCheckStyle = useAnimatedStyle(() => ({
+    opacity: selectionProgress.value,
+    transform: [{ scale: 0.7 + selectionProgress.value * 0.3 }],
+  }));
 
   const renderReplySnippet = () => {
     if (!item.reply_to_id) return null;
+
     const replyThumbnailUri = getReplyPreviewThumbnailUri(repliedMessage);
     const author = repliedMessage
       ? getMessageAuthorName(repliedMessage, chatId, currentUserId)
@@ -211,6 +238,20 @@ const MessageRow = React.memo(function MessageRow({
     );
   };
 
+  const renderForwardHeader = () => {
+    if (!item.forwarded_from_name && !item.forwarded_from_message_id) {
+      return null;
+    }
+
+    return (
+      <ForwardHeader
+        isMe={isMe}
+        name={item.forwarded_from_name}
+        onPress={onForwardHeaderPress ? () => onForwardHeaderPress(item) : undefined}
+      />
+    );
+  };
+
   const renderBody = () => {
     if (item.is_deleted === 1) {
       return (
@@ -218,7 +259,6 @@ const MessageRow = React.memo(function MessageRow({
           style={[
             styles.deletedBubble,
             isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
-            isSelected && styles.selectedBubble,
           ]}
         >
           <Text style={[styles.deletedText, isMe && styles.deletedTextMe]}>
@@ -239,13 +279,8 @@ const MessageRow = React.memo(function MessageRow({
       const displayContent = rawContent.trim() || ' ';
 
       return (
-        <View
-          style={[
-            styles.bubble,
-            isMe ? styles.bubbleMe : styles.bubbleOther,
-            isSelected && styles.selectedBubble,
-          ]}
-        >
+        <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+          {renderForwardHeader()}
           {renderReplySnippet()}
           <View style={styles.bubbleContentRow}>
             <Text style={[styles.textContent, isMe && styles.textContentMe]}>
@@ -283,9 +318,9 @@ const MessageRow = React.memo(function MessageRow({
               styles.repliedMediaBubble,
               { width: repliedVoiceBubbleWidth, maxWidth: '82%' },
               isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
-              isSelected && styles.selectedBubble,
             ]}
           >
+            {renderForwardHeader()}
             {replySnippet}
             {voiceContent}
           </View>
@@ -293,7 +328,8 @@ const MessageRow = React.memo(function MessageRow({
       }
 
       return (
-        <View style={[styles.mediaStack, isSelected && styles.selectedBubble]}>
+        <View style={styles.mediaStack}>
+          {renderForwardHeader()}
           {voiceContent}
         </View>
       );
@@ -324,9 +360,9 @@ const MessageRow = React.memo(function MessageRow({
             style={[
               styles.repliedMediaBubble,
               isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
-              isSelected && styles.selectedBubble,
             ]}
           >
+            {renderForwardHeader()}
             {replySnippet}
             {imageContent}
           </View>
@@ -334,7 +370,8 @@ const MessageRow = React.memo(function MessageRow({
       }
 
       return (
-        <View style={[styles.mediaStack, isSelected && styles.selectedBubble]}>
+        <View style={styles.mediaStack}>
+          {renderForwardHeader()}
           {imageContent}
         </View>
       );
@@ -342,7 +379,8 @@ const MessageRow = React.memo(function MessageRow({
 
     if (item.msg_type === 'file' && item.media?.[0]) {
       return (
-        <View style={[styles.fileStack, isSelected && styles.selectedBubble]}>
+        <View style={styles.fileStack}>
+          {renderForwardHeader()}
           {renderReplySnippet()}
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
@@ -364,19 +402,46 @@ const MessageRow = React.memo(function MessageRow({
     <Pressable
       delayLongPress={220}
       onPress={() => onPressMessage(item.id)}
-      onLongPress={() => onLongPressMessage(item)}
+      onLongPress={selectionMode ? undefined : () => onLongPressMessage(item)}
       style={styles.messagePressable}
     >
-      <View style={[styles.messageWrap, isMe ? styles.messageWrapMe : styles.messageWrapOther]}>
-        <View
-          ref={(node) => setContentRef(item.id, node)}
-          collapsable={false}
-          style={[
-            styles.messageContentMeasure,
-            isHighlighted && styles.messageContentHighlighted,
-          ]}
-        >
-          {renderBody()}
+      <View style={styles.messageRowShell}>
+        {selectionMode ? (
+          <View style={styles.selectionIndicatorSlot}>
+            <Reanimated.View style={selectionIndicatorScaleStyle}>
+              <View
+                style={[
+                  styles.selectionIndicator,
+                  isSelected ? styles.selectionIndicatorActive : styles.selectionIndicatorIdle,
+                ]}
+              >
+                <Reanimated.View style={selectionCheckStyle}>
+                  <Feather name="check" size={14} color="#FFFFFF" />
+                </Reanimated.View>
+              </View>
+            </Reanimated.View>
+          </View>
+        ) : null}
+
+        <View style={styles.messageCardColumn}>
+          <View
+            style={[
+              styles.messageWrap,
+              selectionMode && styles.messageWrapSelection,
+              isMe ? styles.messageWrapMe : styles.messageWrapOther,
+            ]}
+          >
+            <View
+              ref={(node) => setContentRef(item.id, node)}
+              collapsable={false}
+              style={[
+                styles.messageContentMeasure,
+                isHighlighted && styles.messageContentHighlighted,
+              ]}
+            >
+              {renderBody()}
+            </View>
+          </View>
         </View>
       </View>
     </Pressable>
@@ -395,11 +460,13 @@ const MessageRow = React.memo(function MessageRow({
   return (
     prev.item === next.item &&
     prev.repliedMessage === next.repliedMessage &&
+    prev.selectionMode === next.selectionMode &&
     prev.isSelected === next.isSelected &&
     prev.isHighlighted === next.isHighlighted &&
     prev.canSwipe === next.canSwipe &&
     prev.currentUserId === next.currentUserId &&
     prev.chatId === next.chatId &&
+    prev.onForwardHeaderPress === next.onForwardHeaderPress &&
     prev.onReplyPreviewPress === next.onReplyPreviewPress
   );
 });
@@ -409,6 +476,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   currentUserId,
   messages,
   messageById,
+  selectionMode,
   selectedMessageIdSet,
   highlightedMessageId,
   listRef,
@@ -418,6 +486,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   onSwipeReply,
   onMessagePress,
   onMessageLongPress,
+  onForwardHeaderPress,
   onReplyPreviewPress,
   setContentRef,
   onScrollToIndexFailed,
@@ -432,12 +501,14 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       chatId={chatId}
       currentUserId={currentUserId}
       repliedMessage={item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null}
+      selectionMode={selectionMode}
       isSelected={selectedMessageIdSet.has(item.id)}
       isHighlighted={highlightedMessageId === item.id}
       canSwipe={canSwipeReply(item)}
       onReply={() => onSwipeReply(item)}
       onPressMessage={onMessagePress}
       onLongPressMessage={onMessageLongPress}
+      onForwardHeaderPress={onForwardHeaderPress}
       onReplyPreviewPress={onReplyPreviewPress}
       setContentRef={setContentRef}
       formatTime={formatTime}
@@ -455,10 +526,12 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     highlightedMessageId,
     messageById,
     onMessageLongPress,
+    onForwardHeaderPress,
     onMessagePress,
     onReplyPreviewPress,
     onSwipeReply,
     repliedVoiceBubbleWidth,
+    selectionMode,
     selectedMessageIdSet,
     setContentRef,
   ]);
@@ -492,6 +565,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.currentUserId === next.currentUserId &&
     prev.messages === next.messages &&
     prev.messageById === next.messageById &&
+    prev.selectionMode === next.selectionMode &&
     prev.selectedMessageIdSet === next.selectedMessageIdSet &&
     prev.highlightedMessageId === next.highlightedMessageId &&
     prev.contentPaddingTop === next.contentPaddingTop &&
@@ -499,6 +573,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.onSwipeReply === next.onSwipeReply &&
     prev.onMessagePress === next.onMessagePress &&
     prev.onMessageLongPress === next.onMessageLongPress &&
+    prev.onForwardHeaderPress === next.onForwardHeaderPress &&
     prev.onReplyPreviewPress === next.onReplyPreviewPress &&
     prev.setContentRef === next.setContentRef &&
     prev.onScrollToIndexFailed === next.onScrollToIndexFailed &&
@@ -519,6 +594,48 @@ const styles = StyleSheet.create({
   messagePressable: {
     width: '100%',
   },
+  messageRowShell: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  selectionIndicatorSlot: {
+    width: 38,
+    paddingLeft: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectionIndicator: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionIndicatorActive: {
+    backgroundColor: '#4D8DFF',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#4D8DFF',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  selectionIndicatorIdle: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1.8,
+    borderColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  messageCardColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
   replyGestureContainer: {
     width: '100%',
     justifyContent: 'center',
@@ -530,6 +647,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginVertical: 4,
     width: '100%',
+  },
+  messageWrapSelection: {
+    paddingLeft: 2,
   },
   messageWrapMe: {
     alignItems: 'flex-end',
@@ -554,8 +674,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     maxWidth: '82%',
   },
-  bubbleMe: { backgroundColor: '#007AFF' },
-  bubbleOther: { backgroundColor: '#E5E5EA' },
+  bubbleMe: {
+    backgroundColor: '#007AFF',
+  },
+  bubbleOther: {
+    backgroundColor: '#E5E5EA',
+  },
   bubbleContentRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -567,11 +691,8 @@ const styles = StyleSheet.create({
     color: '#000',
     flexShrink: 1,
   },
-  textContentMe: { color: '#fff' },
-  selectedBubble: {
-    borderWidth: 2,
-    borderColor: '#F28C28',
-    borderRadius: 18,
+  textContentMe: {
+    color: '#fff',
   },
   mediaStack: {
     maxWidth: '82%',
@@ -632,7 +753,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backgroundColor: 'rgba(255,255,255,0.94)',
     shadowColor: '#0F172A',
     shadowOpacity: 0.12,
     shadowRadius: 10,

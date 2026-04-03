@@ -52,6 +52,16 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
         // Column may already exist
       }
     }
+    // v4->v5: scope sync queue by user to prevent cross-account replay of pending media
+    if (currentVersion >= 4 && currentVersion < 5) {
+      try {
+        await db.execAsync('ALTER TABLE sync_queue ADD COLUMN user_id TEXT;');
+      } catch {
+        // Column may already exist
+      }
+      // Legacy pending queue entries were not tied to a user and are unsafe after account switch.
+      await db.execAsync('DELETE FROM sync_queue WHERE user_id IS NULL;');
+    }
     await db.execAsync(SCHEMA_SQL);
     await db.runAsync('PRAGMA user_version = ' + DB_VERSION);
   }

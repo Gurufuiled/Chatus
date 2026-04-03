@@ -28,6 +28,10 @@ interface ServerMessagePayload {
   msg_type: string;
   status: string;
   reply_to_id?: string | null;
+  forwarded_from_message_id?: string | null;
+  forwarded_from_name?: string | null;
+  forwarded_from_chat_id?: string | null;
+  forwarded_from_sender_id?: string | null;
   created_at: number | string;
   media?: {
     duration_ms?: number | null;
@@ -55,6 +59,10 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
     msg_type: payload.msg_type,
     content: payload.content,
     reply_to_id: payload.reply_to_id ?? null,
+    forwarded_from_message_id: payload.forwarded_from_message_id ?? null,
+    forwarded_from_name: payload.forwarded_from_name ?? null,
+    forwarded_from_chat_id: payload.forwarded_from_chat_id ?? null,
+    forwarded_from_sender_id: payload.forwarded_from_sender_id ?? null,
     is_edited: 0,
     is_deleted: 0,
     status: payload.status,
@@ -201,6 +209,10 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               id: mapped.id,
               content: mapped.content ?? null,
               reply_to_id: mapped.reply_to_id,
+              forwarded_from_message_id: mapped.forwarded_from_message_id ?? null,
+              forwarded_from_name: mapped.forwarded_from_name ?? null,
+              forwarded_from_chat_id: mapped.forwarded_from_chat_id ?? null,
+              forwarded_from_sender_id: mapped.forwarded_from_sender_id ?? null,
               status: mapped.status,
               transport: mapped.transport,
               created_at: mapped.created_at,

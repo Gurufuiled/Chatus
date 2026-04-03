@@ -190,6 +190,10 @@ export type MappedMessage = {
   msg_type: string;
   content: string | null;
   reply_to_id: string | null;
+  forwarded_from_message_id: string | null;
+  forwarded_from_name: string | null;
+  forwarded_from_chat_id: string | null;
+  forwarded_from_sender_id: string | null;
   is_edited: boolean;
   is_deleted: boolean;
   status: string;
@@ -210,6 +214,10 @@ export function mapMessage(
     msg_type: message.msgType,
     content: message.content ?? null,
     reply_to_id: message.replyToId ?? null,
+    forwarded_from_message_id: message.forwardedFromMessageId ?? null,
+    forwarded_from_name: message.forwardedFromName ?? null,
+    forwarded_from_chat_id: message.forwardedFromChatId ?? null,
+    forwarded_from_sender_id: message.forwardedFromSenderId ?? null,
     is_edited: message.isEdited,
     is_deleted: message.isDeleted,
     status: message.status,

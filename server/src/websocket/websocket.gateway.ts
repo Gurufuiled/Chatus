@@ -146,6 +146,10 @@ export class WebsocketGateway
       msg_type?: string;
       client_temp_id?: string | null;
       reply_to_id?: string | null;
+      forwarded_from_message_id?: string | null;
+      forwarded_from_name?: string | null;
+      forwarded_from_chat_id?: string | null;
+      forwarded_from_sender_id?: string | null;
       media?: {
         url?: string;
         duration_ms?: number;
@@ -172,6 +176,10 @@ export class WebsocketGateway
       client_temp_id: clientTempId,
       media,
       reply_to_id: replyToId,
+      forwarded_from_message_id: forwardedFromMessageId,
+      forwarded_from_name: forwardedFromName,
+      forwarded_from_chat_id: forwardedFromChatId,
+      forwarded_from_sender_id: forwardedFromSenderId,
     } = payload;
     if (!chatId) return;
 
@@ -194,6 +202,12 @@ export class WebsocketGateway
         content ?? null,
         media,
         replyToId ?? null,
+        {
+          forwarded_from_message_id: forwardedFromMessageId ?? null,
+          forwarded_from_name: forwardedFromName ?? null,
+          forwarded_from_chat_id: forwardedFromChatId ?? null,
+          forwarded_from_sender_id: forwardedFromSenderId ?? null,
+        },
       );
       const members = await this.getChatMemberIds(chatId);
       this.logger.log(`send_message broadcast: msgId=${message.id} content=${message.content?.slice(0, 50)} to ${members.length} members: ${members.join(',')}`);

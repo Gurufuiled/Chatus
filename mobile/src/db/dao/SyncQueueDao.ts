@@ -13,8 +13,9 @@ export class SyncQueueDao {
 
   async insert(row: Omit<SyncQueueRow, 'id'>): Promise<number> {
     const result = await this.db.runAsync(
-      `INSERT INTO sync_queue (action, payload, entity_id, retry_count, max_retries, status, created_at, next_retry_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sync_queue (user_id, action, payload, entity_id, retry_count, max_retries, status, created_at, next_retry_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      row.user_id ?? null,
       row.action,
       row.payload,
       row.entity_id ?? null,
@@ -43,7 +44,7 @@ export class SyncQueueDao {
     const values: unknown[] = [];
 
     const fields = [
-      'action', 'payload', 'entity_id', 'retry_count', 'max_retries',
+      'user_id', 'action', 'payload', 'entity_id', 'retry_count', 'max_retries',
       'status', 'created_at', 'next_retry_at'
     ] as const;
     for (const f of fields) {
@@ -65,17 +66,29 @@ export class SyncQueueDao {
     await this.db.runAsync('DELETE FROM sync_queue WHERE id = ?', id);
   }
 
-  async getPending(): Promise<SyncQueueRow[]> {
+  async getPending(userId: string): Promise<SyncQueueRow[]> {
     return this.db.getAllAsync<SyncQueueRow>(
-      "SELECT * FROM sync_queue WHERE status = 'pending' ORDER BY next_retry_at ASC"
+      "SELECT * FROM sync_queue WHERE user_id = ? AND status = 'pending' ORDER BY next_retry_at ASC",
+      userId
     );
   }
 
-  async getReadyForRetry(now: number): Promise<SyncQueueRow[]> {
+  async getReadyForRetry(userId: string, now: number): Promise<SyncQueueRow[]> {
     return this.db.getAllAsync<SyncQueueRow>(
-      "SELECT * FROM sync_queue WHERE status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= ?) ORDER BY created_at ASC",
+      "SELECT * FROM sync_queue WHERE user_id = ? AND status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= ?) ORDER BY created_at ASC",
+      userId,
       now
     );
+  }
+
+  async getNextRetryAt(userId: string): Promise<number | null> {
+    const row = await this.db.getFirstAsync<{ next_retry_at: number | null }>(
+      `SELECT COALESCE(MIN(next_retry_at), MIN(created_at)) AS next_retry_at
+       FROM sync_queue
+       WHERE user_id = ? AND status = 'pending'`,
+      userId
+    );
+    return row?.next_retry_at ?? null;
   }
 
   /** Schedules retry with exponential backoff: next_retry_at = now + 2^retryCount * 1000 ms */
@@ -94,6 +107,13 @@ export class SyncQueueDao {
     await this.db.runAsync(
       "UPDATE sync_queue SET status = 'failed' WHERE id = ?",
       id
+    );
+  }
+
+  async deleteForUser(userId: string): Promise<void> {
+    await this.db.runAsync(
+      'DELETE FROM sync_queue WHERE user_id = ? OR user_id IS NULL',
+      userId
     );
   }
 }

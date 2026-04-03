@@ -400,13 +400,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 10,
     gap: 8,
+    alignItems: 'center',
   },
   tabButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    height: 38,
     borderRadius: 999,
     backgroundColor: '#F2F5FA',
   },
@@ -418,6 +420,7 @@ const styles = StyleSheet.create({
   },
   tabButtonText: {
     fontSize: 14,
+    lineHeight: 18,
     fontWeight: '600',
     color: '#7D8795',
   },
@@ -426,6 +429,7 @@ const styles = StyleSheet.create({
   },
   tabCount: {
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: '700',
     color: '#A0A9B6',
   },

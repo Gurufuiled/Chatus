@@ -39,6 +39,13 @@ export interface CreateMessageMedia {
   mime_type?: string;
 }
 
+export interface CreateForwardMetadata {
+  forwarded_from_message_id?: string | null;
+  forwarded_from_name?: string | null;
+  forwarded_from_chat_id?: string | null;
+  forwarded_from_sender_id?: string | null;
+}
+
 @Injectable()
 export class MessagesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -70,6 +77,7 @@ export class MessagesService {
     content: string | null,
     media?: CreateMessageMedia,
     replyToId?: string | null,
+    forwardedFrom?: CreateForwardMetadata,
   ): Promise<MappedMessage> {
     const member = await this.prisma.chatMember.findUnique({
       where: { chatId_userId: { chatId, userId: senderId } },
@@ -89,6 +97,10 @@ export class MessagesService {
           msgType: prismaMsgType,
           content,
           replyToId: replyToId ?? null,
+          forwardedFromMessageId: forwardedFrom?.forwarded_from_message_id ?? null,
+          forwardedFromName: forwardedFrom?.forwarded_from_name ?? null,
+          forwardedFromChatId: forwardedFrom?.forwarded_from_chat_id ?? null,
+          forwardedFromSenderId: forwardedFrom?.forwarded_from_sender_id ?? null,
           status: MessageStatus.sent,
           transport: Transport.websocket,
         },

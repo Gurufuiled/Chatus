@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 export const SCHEMA_SQL = `
 -- users
@@ -117,6 +117,7 @@ INSERT OR IGNORE INTO auth_session (id, created_at) VALUES (1, 0);
 -- sync_queue
 CREATE TABLE IF NOT EXISTS sync_queue (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT,
   action TEXT NOT NULL,
   payload TEXT NOT NULL,
   entity_id TEXT,
@@ -135,5 +136,6 @@ CREATE INDEX IF NOT EXISTS idx_chats_sort ON chats(is_pinned DESC, last_message_
 CREATE INDEX IF NOT EXISTS idx_media_message ON media(message_id);
 CREATE INDEX IF NOT EXISTS idx_media_upload ON media(upload_status) WHERE upload_status != 'done';
 CREATE INDEX IF NOT EXISTS idx_sync_pending ON sync_queue(status, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_sync_user_pending ON sync_queue(user_id, status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 `;

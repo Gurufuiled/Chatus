@@ -98,6 +98,7 @@ export interface MediaRow {
 
 export interface SyncQueueRow {
   id: number;
+  user_id: string | null;
   action: string;
   payload: string;
   entity_id: string | null;

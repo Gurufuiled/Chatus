@@ -135,18 +135,22 @@ model ChatMember {
 }
 
 model Message {
-  id        String       @id @default(uuid())
-  chatId    String       @map("chat_id")
-  senderId  String       @map("sender_id")
-  msgType   MessageType  @map("msg_type")
-  content   String?
-  replyToId String?      @map("reply_to_id")
-  isEdited  Boolean      @default(false) @map("is_edited")
-  isDeleted Boolean      @default(false) @map("is_deleted")
-  status    MessageStatus @default(pending)
-  transport Transport?   // p2p or websocket
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
+  id                     String        @id @default(uuid())
+  chatId                 String        @map("chat_id")
+  senderId               String        @map("sender_id")
+  msgType                MessageType   @map("msg_type")
+  content                String?
+  replyToId              String?       @map("reply_to_id")
+  forwardedFromMessageId String?       @map("forwarded_from_message_id")
+  forwardedFromName      String?       @map("forwarded_from_name")
+  forwardedFromChatId    String?       @map("forwarded_from_chat_id")
+  forwardedFromSenderId  String?       @map("forwarded_from_sender_id")
+  isEdited               Boolean       @default(false) @map("is_edited")
+  isDeleted              Boolean       @default(false) @map("is_deleted")
+  status                 MessageStatus @default(pending)
+  transport              Transport?    // p2p or websocket
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
 
   chat       Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender     User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
@@ -159,6 +163,9 @@ model Message {
   @@index([chatId])
   @@index([senderId])
   @@index([replyToId])
+  @@index([forwardedFromMessageId])
+  @@index([forwardedFromChatId])
+  @@index([forwardedFromSenderId])
   @@index([createdAt])
   @@map("messages")
 }

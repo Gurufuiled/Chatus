@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, LOGINUS_CLIENT_ID, OAUTH_REDIRECT_URI } from '../config';
 import { initDatabase } from './DatabaseService';
 import { AuthSessionDao } from '../db/dao/AuthSessionDao';
+import { SyncQueueDao } from '../db/dao/SyncQueueDao';
 import { UserDao } from '../db/dao/UserDao';
 import type { UserRow } from '../db/types';
 
@@ -73,6 +74,7 @@ function userRowToApiUser(r: UserRow): ApiUser {
 
 export class AuthService {
   private readonly authSessionDao = new AuthSessionDao();
+  private readonly syncQueueDao = new SyncQueueDao();
   private readonly userDao = new UserDao();
 
   /** Returns { url, redirect_uri } for Loginus. redirect_uri must match Loginus config (HTTP). */
@@ -212,9 +214,18 @@ export class AuthService {
   async logout(): Promise<{ slo_url?: string }> {
     const session = await this.authSessionDao.get();
     const accessToken = session?.access_token;
+    const userId = session?.user_id ?? null;
     const idToken = await SecureStore.getItemAsync(ID_TOKEN_KEY);
 
     await this.authSessionDao.clear();
+    if (userId) {
+      try {
+        await initDatabase();
+        await this.syncQueueDao.deleteForUser(userId);
+      } catch (e) {
+        console.warn('[Auth] Failed to clear sync queue on logout:', e);
+      }
+    }
     try {
       await SecureStore.deleteItemAsync(ID_TOKEN_KEY);
     } catch {

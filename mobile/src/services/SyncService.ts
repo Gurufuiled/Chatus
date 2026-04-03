@@ -9,6 +9,7 @@ import { apiGet, apiUpload, apiUploadVoice } from './apiClient';
 import { API_BASE_URL } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
+import { authStore } from '../stores/authStore';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
 
@@ -90,6 +91,10 @@ interface ApiMessage {
   msg_type: string;
   content: string | null;
   reply_to_id?: string | null;
+  forwarded_from_message_id?: string | null;
+  forwarded_from_name?: string | null;
+  forwarded_from_chat_id?: string | null;
+  forwarded_from_sender_id?: string | null;
   is_edited?: number;
   is_deleted?: number;
   status: string;
@@ -146,6 +151,10 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
     msg_type: api.msg_type,
     content: api.content,
     reply_to_id: api.reply_to_id ?? null,
+    forwarded_from_message_id: api.forwarded_from_message_id ?? null,
+    forwarded_from_name: api.forwarded_from_name ?? null,
+    forwarded_from_chat_id: api.forwarded_from_chat_id ?? null,
+    forwarded_from_sender_id: api.forwarded_from_sender_id ?? null,
     is_edited: api.is_edited ?? 0,
     is_deleted: api.is_deleted ?? 0,
     status: api.status,
@@ -167,6 +176,12 @@ type PayloadPin = { chatId: string; messageId: string | null };
 type PayloadForward = {
   chatId: string;
   sourceMessage: Message;
+  forwardedFrom?: {
+    messageId?: string | null;
+    name?: string | null;
+    chatId?: string | null;
+    senderId?: string | null;
+  };
 };
 
 async function executeAction(action: string, payload: unknown): Promise<void> {
@@ -334,6 +349,14 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
       const message = p.sourceMessage;
       const media = message.media?.[0];
       const remoteUrl = media?.remote_url ?? null;
+      const forwardedFromMessageId =
+        p.forwardedFrom?.messageId ?? message.forwarded_from_message_id ?? message.id;
+      const forwardedFromName =
+        p.forwardedFrom?.name ?? message.forwarded_from_name ?? null;
+      const forwardedFromChatId =
+        p.forwardedFrom?.chatId ?? message.forwarded_from_chat_id ?? message.chat_id;
+      const forwardedFromSenderId =
+        p.forwardedFrom?.senderId ?? message.forwarded_from_sender_id ?? message.sender_id;
 
       switch (message.msg_type) {
         case 'text':
@@ -341,6 +364,10 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: message.content ?? '',
             msg_type: 'text',
+            forwarded_from_message_id: forwardedFromMessageId,
+            forwarded_from_name: forwardedFromName,
+            forwarded_from_chat_id: forwardedFromChatId,
+            forwarded_from_sender_id: forwardedFromSenderId,
           });
           return;
         case 'image':
@@ -349,6 +376,10 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: message.content ?? null,
             msg_type: 'image',
+            forwarded_from_message_id: forwardedFromMessageId,
+            forwarded_from_name: forwardedFromName,
+            forwarded_from_chat_id: forwardedFromChatId,
+            forwarded_from_sender_id: forwardedFromSenderId,
             media: {
               url: remoteUrl,
               width: media?.width,
@@ -362,6 +393,10 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: remoteUrl,
             msg_type: 'voice',
+            forwarded_from_message_id: forwardedFromMessageId,
+            forwarded_from_name: forwardedFromName,
+            forwarded_from_chat_id: forwardedFromChatId,
+            forwarded_from_sender_id: forwardedFromSenderId,
             media: {
               url: remoteUrl,
               duration_ms: media?.duration_ms,
@@ -375,6 +410,10 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: remoteUrl,
             msg_type: 'video_note',
+            forwarded_from_message_id: forwardedFromMessageId,
+            forwarded_from_name: forwardedFromName,
+            forwarded_from_chat_id: forwardedFromChatId,
+            forwarded_from_sender_id: forwardedFromSenderId,
             media: {
               url: remoteUrl,
               duration_ms: media?.duration_ms,
@@ -389,6 +428,10 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: getSafeFileContent(message.content, media?.file_name),
             msg_type: 'file',
+            forwarded_from_message_id: forwardedFromMessageId,
+            forwarded_from_name: forwardedFromName,
+            forwarded_from_chat_id: forwardedFromChatId,
+            forwarded_from_sender_id: forwardedFromSenderId,
             media: {
               url: remoteUrl,
               file_name: media?.file_name,
@@ -409,18 +452,54 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
 class SyncServiceClass {
   private dao = new SyncQueueDao();
   private processing = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private clearRetryTimer(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+  }
+
+  private async scheduleNextRetry(userId: string): Promise<void> {
+    this.clearRetryTimer();
+
+    if (!WebSocketService.isConnected()) return;
+
+    const nextRetryAt = await this.dao.getNextRetryAt(userId);
+    if (nextRetryAt == null) return;
+
+    const delay = Math.max(0, nextRetryAt - Date.now());
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.processSyncQueue();
+    }, delay);
+  }
+
+  async onQueueUpdated(): Promise<void> {
+    const currentUserId = authStore.getState().user?.id ?? null;
+    if (!currentUserId) return;
+
+    if (WebSocketService.isConnected()) {
+      await this.processSyncQueue();
+      return;
+    }
+
+    this.clearRetryTimer();
+  }
 
   /**
    * Process sync queue: get ready items, execute each action via WebSocket.
    * On success: delete. On failure: scheduleRetry or markFailed (max 5 retries).
    */
   async processSyncQueue(): Promise<void> {
-    if (!WebSocketService.isConnected()) return;
+    const currentUserId = authStore.getState().user?.id ?? null;
+    if (!WebSocketService.isConnected() || !currentUserId) return;
     if (this.processing) return;
 
     this.processing = true;
     try {
-      const items = await this.dao.getReadyForRetry(Date.now());
+      const items = await this.dao.getReadyForRetry(currentUserId, Date.now());
 
       for (const item of items) {
         let payload: unknown;
@@ -448,6 +527,7 @@ class SyncServiceClass {
       }
     } finally {
       this.processing = false;
+      await this.scheduleNextRetry(currentUserId);
     }
   }
 

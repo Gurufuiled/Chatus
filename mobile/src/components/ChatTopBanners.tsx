@@ -1,6 +1,7 @@
 import React from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import Reanimated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { colors } from '../theme/colors';
 
 type ChatTopBannersProps = {
@@ -53,17 +54,39 @@ type SearchBannerProps = {
   searchInputRef: React.RefObject<TextInput | null>;
 };
 
+const selectionBannerEntering = FadeInDown.springify().damping(18).stiffness(220);
+const selectionBannerExiting = FadeOutUp.duration(140);
+
 const SelectionBanner = React.memo(function SelectionBanner({
   selectedCount,
   onClearSelection,
 }: SelectionBannerProps) {
   return (
-    <View style={styles.selectionBanner}>
-      <Text style={styles.selectionBannerText}>Выбрано: {selectedCount}</Text>
-      <Pressable onPress={onClearSelection} hitSlop={10}>
-        <Text style={styles.selectionBannerAction}>Очистить</Text>
-      </Pressable>
-    </View>
+    <Reanimated.View
+      entering={selectionBannerEntering}
+      exiting={selectionBannerExiting}
+      style={styles.selectionBannerWrap}
+    >
+      <View style={styles.selectionBannerRow}>
+        <View style={[styles.selectionPill, styles.selectionPillPrimary]}>
+          <View style={styles.selectionPillIconAccent}>
+            <Feather name="check" size={14} color="#FFFFFF" />
+          </View>
+          <Text style={styles.selectionBannerText}>Выбрано {selectedCount}</Text>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Отменить выбор сообщений"
+          hitSlop={10}
+          onPress={onClearSelection}
+          style={({ pressed }) => [styles.selectionPill, pressed && styles.selectionPillPressed]}
+        >
+          <Feather name="x" size={15} color="#475569" />
+          <Text style={styles.selectionBannerAction}>Отмена</Text>
+        </Pressable>
+      </View>
+    </Reanimated.View>
   );
 });
 
@@ -213,12 +236,12 @@ export const ChatTopBanners = React.memo(
     onCancelSearch,
     searchInputRef,
   }: ChatTopBannersProps) {
+    if (selectionMode) {
+      return <SelectionBanner selectedCount={selectedCount} onClearSelection={onClearSelection} />;
+    }
+
     return (
       <>
-        {selectionMode ? (
-          <SelectionBanner selectedCount={selectedCount} onClearSelection={onClearSelection} />
-        ) : null}
-
         {activeVoiceVisible ? (
           <VoiceBanner
             activeVoiceAuthor={activeVoiceAuthor}
@@ -273,25 +296,64 @@ export const ChatTopBanners = React.memo(
 );
 
 const styles = StyleSheet.create({
-  selectionBanner: {
+  selectionBannerWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  selectionBannerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E7EBF0',
+    gap: 10,
+  },
+  selectionPill: {
+    minHeight: 42,
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(223,230,240,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  selectionPillPrimary: {
+    flex: 1,
+    backgroundColor: 'rgba(248,252,255,0.94)',
+    borderColor: 'rgba(214,229,255,0.95)',
+  },
+  selectionPillPressed: {
+    opacity: 0.82,
+  },
+  selectionPillIconAccent: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4D8DFF',
+    shadowColor: '#4D8DFF',
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   selectionBannerText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#142235',
   },
   selectionBannerAction: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#F28C28',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#334155',
   },
   voiceBannerWrap: {
     paddingTop: 2,
@@ -380,7 +442,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: 'rgba(210, 224, 235, 0.9)',
+    borderColor: 'rgba(210,224,235,0.9)',
   },
   pinnedAccent: {
     width: 3,
@@ -422,7 +484,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: 6,
-    backgroundColor: 'rgba(246, 248, 251, 0.92)',
+    backgroundColor: 'rgba(246,248,251,0.92)',
   },
   searchBubble: {
     flex: 1,
