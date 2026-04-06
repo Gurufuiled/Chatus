@@ -70,8 +70,8 @@ export function ChatThemePickerModal({
             <Text style={styles.captionTitle}>{selectedTheme.name}</Text>
             <Text style={styles.captionText}>
               {selectedThemeId === DEFAULT_CHAT_THEME_ID
-                ? 'Ваши дефолтные зелёные обои без дополнительной темы.'
-                : 'Фон и ваши bubble-акценты будут подстроены под выбранную тему.'}
+                ? 'Ваши стандартные зелёные обои без дополнительной темы.'
+                : 'Фон и цвет ваших сообщений будут подстроены под выбранную тему.'}
             </Text>
           </View>
 
@@ -126,18 +126,18 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   previewRow: {
-    gap: 12,
-    paddingRight: 6,
+    gap: 14,
+    paddingRight: 10,
   },
   previewPressable: {
-    width: 88,
+    width: 108,
     alignItems: 'center',
   },
   previewLabel: {
-    marginTop: 8,
-    fontSize: 12,
-    lineHeight: 14,
-    fontWeight: '600',
+    marginTop: 10,
+    fontSize: 13,
+    lineHeight: 15,
+    fontWeight: '700',
     color: '#6B7280',
     textAlign: 'center',
   },
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     color: '#1D6E3B',
   },
   captionWrap: {
-    marginTop: 14,
+    marginTop: 16,
     marginBottom: 18,
     paddingHorizontal: 4,
   },

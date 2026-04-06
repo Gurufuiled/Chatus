@@ -634,19 +634,17 @@ export function ChatProfileScreen() {
         key: 'change-wallpaper',
         label: 'Изменить обои',
         icon: 'feather',
-        color: '#2AA04F',
       },
       {
         key: 'toggle-block',
         label: isBlocked ? 'Разблокировать' : 'Заблокировать',
         icon: 'slash',
-        color: isBlocked ? '#64748B' : '#F97316',
+        color: isBlocked ? undefined : '#D04857',
       },
       {
         key: 'delete-chat',
         label: 'Удалить чат',
         icon: 'trash-2',
-        color: '#D04857',
       },
     ],
     [isBlocked]
