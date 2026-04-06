@@ -31,6 +31,7 @@ import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import { canForwardMessage, TransportService } from '../services/TransportService';
 import { SyncService } from '../services/SyncService';
+import { uiStore } from '../stores/uiStore';
 import {
   ChatContextMenuOverlay,
   ChatForwardSheet,
@@ -52,6 +53,7 @@ import {
 } from '../contexts/VoicePlayerContext';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
+import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
 import {
   ChatBackgroundPattern,
   EMPTY_MESSAGES,
@@ -98,6 +100,28 @@ type MenuAction = {
   textOnly?: boolean;
 };
 
+function buildForwardPreview(message: Message): string {
+  switch (message.msg_type) {
+    case 'text':
+      return message.content?.trim() || 'Сообщение';
+    case 'image':
+      return message.content?.trim() || 'Фото';
+    case 'voice':
+      return 'Голосовое сообщение';
+    case 'video_note':
+      return 'Видеосообщение';
+    case 'file':
+      return message.media?.[0]?.file_name?.trim() || 'Файл';
+    default:
+      return 'Сообщение';
+  }
+}
+
+function cloneForwardMedia(message: Message): Message['media'] | undefined {
+  if (!message.media?.length) return undefined;
+  return message.media.map((item) => ({ ...item }));
+}
+
 export function ChatScreen() {
   const navigation = useNavigation<ChatNavigation>();
   const route = useRoute<ChatRoute>();
@@ -132,6 +156,8 @@ export function ChatScreen() {
     )
   );
   const chats = chatStore((state) => state.chats);
+  const chatThemeId = uiStore((state) => state.chatThemeIdByChatId[chatId] ?? DEFAULT_CHAT_THEME_ID);
+  const chatTheme = React.useMemo(() => getChatTheme(chatThemeId), [chatThemeId]);
 
   const messageById = useMemo(() => {
     const map = new Map<string, Message>();
@@ -203,7 +229,18 @@ export function ChatScreen() {
 
   useEffect(() => {
     const existing = messageStore.getState().messagesByChatId[chatId];
-    if (!existing?.length) {
+    const hasOnlyOptimisticMessages =
+      Array.isArray(existing) &&
+      existing.length > 0 &&
+      existing.every(
+        (message) =>
+          message.status === 'sending' &&
+          !message.server_id &&
+          typeof message.id === 'string' &&
+          message.id.startsWith('temp-')
+      );
+
+    if (!existing?.length || hasOnlyOptimisticMessages) {
       const task = InteractionManager.runAfterInteractions(() => {
         SyncService.fetchMessagesForChat(chatId).catch(() => {});
       });
@@ -402,9 +439,14 @@ export function ChatScreen() {
     setMenuMode('actions');
 
     target.measureInWindow((pageX, pageY, width, height) => {
+      const bottomReserved = Math.max(
+        OVERLAY_BOTTOM_INSET,
+        inputBarHeight + insets.bottom + 22
+      );
+      const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
       const previewLeft = Math.max(MENU_EDGE_GAP, Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP));
       const minPreviewTop = OVERLAY_TOP_INSET;
-      const maxPreviewTop = SCREEN_HEIGHT - OVERLAY_BOTTOM_INSET - height;
+      const maxPreviewTop = SCREEN_HEIGHT - bottomReserved - height;
       const anchoredTop = Math.max(minPreviewTop, Math.min(pageY, maxPreviewTop));
       const menuLeftBase = message.sender_id === currentUserId
         ? previewLeft + width - MENU_WIDTH
@@ -418,7 +460,6 @@ export function ChatScreen() {
       let menuTop = previewTop + height + MENU_TO_MESSAGE_GAP;
       let placement: 'above' | 'below' = 'below';
 
-      const bottomLimit = SCREEN_HEIGHT - MENU_EDGE_GAP;
       const overflowBottom = menuTop + MENU_HEIGHT - bottomLimit;
 
       if (overflowBottom > 0) {
@@ -446,7 +487,7 @@ export function ChatScreen() {
         placement,
       });
     });
-  }, [currentUserId]);
+  }, [currentUserId, insets.bottom, inputBarHeight]);
 
   const closeMenu = useCallback(() => {
     Animated.timing(menuAnim, {
@@ -662,6 +703,13 @@ export function ChatScreen() {
   }, [closeMenu]);
 
   const handleForwardToChat = useCallback((targetChatId: string) => {
+    if (!currentUserId) {
+      Alert.alert('Не удалось переслать', 'Сначала нужно заново авторизоваться.');
+      setForwardSourceMessageIds([]);
+      setForwardFromSelection(false);
+      return;
+    }
+
     const sourceMessages = forwardSourceMessageIds
       .map((id) => messageById.get(id) ?? null)
       .filter((message): message is Message => message != null)
@@ -674,7 +722,7 @@ export function ChatScreen() {
     }
 
     let sentCount = 0;
-    for (const message of sourceMessages) {
+    for (const [index, message] of sourceMessages.entries()) {
       const sourceAuthorName = (() => {
         if (message.forwarded_from_name?.trim()) {
           return message.forwarded_from_name.trim();
@@ -699,6 +747,28 @@ export function ChatScreen() {
         message.forwarded_from_chat_id ?? message.chat_id;
       const forwardedFromSenderId =
         message.forwarded_from_sender_id ?? message.sender_id;
+      const tempId = `temp-forward-${Date.now()}-${index}-${message.id}`;
+      const now = Date.now();
+      const optimisticMessage: Message = {
+        id: tempId,
+        chat_id: targetChatId,
+        sender_id: currentUserId,
+        msg_type: message.msg_type,
+        content: message.content ?? null,
+        reply_to_id: null,
+        forwarded_from_message_id: forwardedFromMessageId,
+        forwarded_from_name: forwardedFromName,
+        forwarded_from_chat_id: forwardedFromChatId,
+        forwarded_from_sender_id: forwardedFromSenderId,
+        is_edited: 0,
+        is_deleted: 0,
+        status: 'sending',
+        transport: 'ws',
+        server_id: null,
+        created_at: now,
+        updated_at: now,
+        media: cloneForwardMedia(message),
+      };
 
       if (
         TransportService.forwardMessage(targetChatId, message, {
@@ -706,8 +776,18 @@ export function ChatScreen() {
           name: forwardedFromName,
           chatId: forwardedFromChatId,
           senderId: forwardedFromSenderId,
-        })
+        }, tempId)
       ) {
+        messageStore.getState().prependMessage(targetChatId, optimisticMessage);
+        const targetChat = chats.find((chat) => chat.id === targetChatId);
+        if (targetChat) {
+          chatStore.getState().updateChat({
+            ...targetChat,
+            last_message_id: tempId,
+            last_message_at: now,
+            last_message_preview: buildForwardPreview(optimisticMessage),
+          });
+        }
         sentCount += 1;
       }
     }
@@ -723,6 +803,10 @@ export function ChatScreen() {
       Alert.alert('Не удалось переслать', 'Этот тип сообщения пока нельзя переслать.');
       return;
     }
+
+    setTimeout(() => {
+      SyncService.fetchMessagesForChat(targetChatId).catch(() => {});
+    }, 250);
 
     const targetChat = chats.find((chat) => chat.id === targetChatId);
     Alert.alert(
@@ -993,6 +1077,7 @@ export function ChatScreen() {
 
     if (item.msg_type === 'voice' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
+      const forwardHeader = replySnippet ? null : renderForwardHeader();
       const voiceContent = (
         <VoiceBubble
           uri={item.media[0].remote_url ?? `file://${item.id}`}
@@ -1002,6 +1087,7 @@ export function ChatScreen() {
           time={formatTime(item.created_at)}
           status={item.status}
           embedded={!!replySnippet}
+          header={forwardHeader}
         />
       );
 
@@ -1024,7 +1110,6 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
-          {renderForwardHeader()}
           {voiceContent}
         </View>
       );
@@ -1036,6 +1121,7 @@ export function ChatScreen() {
       if (!imageUri.trim()) return null;
 
       const replySnippet = renderReplySnippet();
+      const forwardHeader = replySnippet ? null : renderForwardHeader();
       const imageContent = (
         <ImageBubble
           uri={imageUri}
@@ -1046,6 +1132,7 @@ export function ChatScreen() {
           time={formatTime(item.created_at)}
           status={item.status}
           embedded={!!replySnippet}
+          header={forwardHeader}
         />
       );
 
@@ -1067,17 +1154,16 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
-          {renderForwardHeader()}
           {imageContent}
         </View>
       );
     }
 
     if (item.msg_type === 'file' && item.media?.[0]) {
+      const replySnippet = renderReplySnippet();
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
-          {renderForwardHeader()}
-          {renderReplySnippet()}
+          {replySnippet}
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
             fileSize={item.media[0].file_size}
@@ -1086,6 +1172,7 @@ export function ChatScreen() {
             caption={item.content ?? undefined}
             time={formatTime(item.created_at)}
             status={item.status}
+            header={renderForwardHeader()}
           />
         </View>
       );
@@ -1132,9 +1219,9 @@ export function ChatScreen() {
   }, [activeMenuMessage, menuMode, pinnedMessageId]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: chatTheme.canvasColor }]}>
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.chatContentLayer}>
-        <ChatBackgroundPattern />
+        <ChatBackgroundPattern themeId={chatThemeId} />
         <ChatTopBanners
           selectionMode={selectionMode}
           selectedCount={selectedMessageIds.length}
@@ -1190,6 +1277,7 @@ export function ChatScreen() {
           getMessageAuthorName={getMessageAuthorName}
           getDeletedPlaceholder={getDeletedPlaceholder}
           repliedVoiceBubbleWidth={REPLIED_VOICE_BUBBLE_WIDTH}
+          chatTheme={chatTheme}
         />
 
         {selectionMode ? (

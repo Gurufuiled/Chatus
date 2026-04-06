@@ -39,6 +39,9 @@ export interface ImageBubbleProps {
   time?: string;
   status?: string;
   embedded?: boolean;
+  header?: React.ReactNode;
+  bubbleMeColor?: string;
+  outgoingTextColor?: string;
 }
 
 function computeDisplaySize(
@@ -83,6 +86,9 @@ export function ImageBubble({
   time,
   status,
   embedded = false,
+  header,
+  bubbleMeColor,
+  outgoingTextColor,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
@@ -145,8 +151,11 @@ export function ImageBubble({
         style={[
           styles.container,
           embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+          isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
         ]}
       >
+        {header}
+
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="View image fullscreen"
@@ -193,7 +202,15 @@ export function ImageBubble({
         </Pressable>
 
         {hasCaption ? (
-          <Text style={[styles.caption, isMe && styles.captionMe]}>{caption}</Text>
+          <Text
+            style={[
+              styles.caption,
+              isMe && styles.captionMe,
+              isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+            ]}
+          >
+            {caption}
+          </Text>
         ) : null}
       </View>
 

@@ -16,6 +16,8 @@ type UIState = {
   presenceByUserId: Record<string, PresenceEntry>;
   pinnedMessageIdByChatId: Record<string, string | null>;
   isPinnedMessagesHydrated: boolean;
+  chatThemeIdByChatId: Record<string, string>;
+  isChatThemesHydrated: boolean;
   blockedUserIds: Record<string, true>;
   isBlockedUsersHydrated: boolean;
 };
@@ -31,12 +33,15 @@ type UIActions = {
   setPresence: (userId: string, entry: PresenceEntry) => void;
   setPinnedMessage: (chatId: string, messageId: string | null) => void;
   hydratePinnedMessages: () => Promise<void>;
+  setChatTheme: (chatId: string, themeId: string) => void;
+  hydrateChatThemes: () => Promise<void>;
   setUserBlocked: (userId: string, blocked: boolean) => void;
   hydrateBlockedUsers: () => Promise<void>;
 };
 
 const TYPING_STALE_MS = 5000;
 const PINNED_MESSAGES_KEY = 'ui.pinnedMessageIdByChatId';
+const CHAT_THEMES_KEY = 'ui.chatThemeIdByChatId';
 const BLOCKED_USERS_KEY = 'ui.blockedUserIds';
 
 const initialState: UIState = {
@@ -48,6 +53,8 @@ const initialState: UIState = {
   presenceByUserId: {},
   pinnedMessageIdByChatId: {},
   isPinnedMessagesHydrated: false,
+  chatThemeIdByChatId: {},
+  isChatThemesHydrated: false,
   blockedUserIds: {},
   isBlockedUsersHydrated: false,
 };
@@ -118,6 +125,31 @@ export const uiStore = create<UIState & UIActions>((set) => ({
       });
     } catch {
       set({ isPinnedMessagesHydrated: true });
+    }
+  },
+
+  setChatTheme: (chatId, themeId) =>
+    set((s) => {
+      const next = {
+        ...s.chatThemeIdByChatId,
+        [chatId]: themeId,
+      };
+      void SecureStore.setItemAsync(CHAT_THEMES_KEY, JSON.stringify(next)).catch(() => {});
+      return {
+        chatThemeIdByChatId: next,
+      };
+    }),
+
+  hydrateChatThemes: async () => {
+    try {
+      const raw = await SecureStore.getItemAsync(CHAT_THEMES_KEY);
+      const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      set({
+        chatThemeIdByChatId: parsed,
+        isChatThemesHydrated: true,
+      });
+    } catch {
+      set({ isChatThemesHydrated: true });
     }
   },
 

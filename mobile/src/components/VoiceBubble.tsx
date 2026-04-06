@@ -11,12 +11,17 @@ import { MessageTimeStatus } from './MessageTimeStatus';
 
 export interface VoiceBubbleProps {
   uri: string;
-  waveform: number[];
+  waveform: number[]; 
   durationMs: number;
   isMe: boolean;
   time?: string;
   status?: string;
   embedded?: boolean;
+  header?: React.ReactNode;
+  bubbleMeColor?: string;
+  outgoingTextColor?: string;
+  outgoingMetaColor?: string;
+  outgoingAccentColor?: string;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -91,6 +96,11 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.time === next.time &&
     prev.status === next.status &&
     prev.embedded === next.embedded &&
+    prev.header === next.header &&
+    prev.bubbleMeColor === next.bubbleMeColor &&
+    prev.outgoingTextColor === next.outgoingTextColor &&
+    prev.outgoingMetaColor === next.outgoingMetaColor &&
+    prev.outgoingAccentColor === next.outgoingAccentColor &&
     prev.waveform === next.waveform
   );
 }
@@ -103,6 +113,11 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   time,
   status: messageStatus,
   embedded = false,
+  header,
+  bubbleMeColor,
+  outgoingTextColor,
+  outgoingMetaColor,
+  outgoingAccentColor,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -169,87 +184,93 @@ export const VoiceBubble = React.memo(function VoiceBubble({
       style={[
         styles.container,
         embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+        isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
       ]}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={isPlaying ? 'Pause voice message' : 'Play voice message'}
-        accessibilityState={{ selected: isPlaying }}
-        style={({ pressed }) => [
-          styles.playButton,
-          isMe ? styles.playButtonMe : styles.playButtonOther,
-          isPlaying && styles.playButtonActive,
-          pressed && styles.playButtonPressed,
-        ]}
-        onPress={handlePress}
-        hitSlop={8}
-      >
-        <Feather
-          name={isPlaying ? 'pause' : 'play'}
-          size={14}
-          color={isMe ? '#4D8DFF' : '#605719'}
-          style={isPlaying ? undefined : styles.playIconPlay}
-        />
-      </Pressable>
-
-      <View style={styles.contentColumn}>
+      {header}
+      <View style={styles.mainRow}>
         <Pressable
-          onLayout={handleWaveformLayout}
-          onPress={(event) => {
-            void handleWaveformPress(event.nativeEvent.locationX);
-          }}
-          style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={isPlaying ? 'Pause voice message' : 'Play voice message'}
+          accessibilityState={{ selected: isPlaying }}
+          style={({ pressed }) => [
+            styles.playButton,
+            isMe ? styles.playButtonMe : styles.playButtonOther,
+            isPlaying && styles.playButtonActive,
+            pressed && styles.playButtonPressed,
+          ]}
+          onPress={handlePress}
+          hitSlop={8}
         >
-          {filledBarCount > 0 ? (
-            <View
-              pointerEvents="none"
-              style={[
-                styles.waveformTrack,
-                styles.waveformTrackFilled,
-                isMe ? styles.waveformTrackFilledMe : styles.waveformTrackFilledOther,
-                { width: `${(filledBarCount / barCount) * 100}%` },
-              ]}
-            />
-          ) : null}
+          <Feather
+            name={isPlaying ? 'pause' : 'play'}
+            size={14}
+            color={isMe ? outgoingAccentColor ?? '#4D8DFF' : '#605719'}
+            style={isPlaying ? undefined : styles.playIconPlay}
+          />
+        </Pressable>
 
-          {barHeights.map((barHeight, index) => {
-            const isFilled = progress > 0 && index / barCount <= progress;
-            return (
+        <View style={styles.contentColumn}>
+          <Pressable
+            onLayout={handleWaveformLayout}
+            onPress={(event) => {
+              void handleWaveformPress(event.nativeEvent.locationX);
+            }}
+            style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
+          >
+            {filledBarCount > 0 ? (
               <View
-                key={index}
+                pointerEvents="none"
                 style={[
-                  styles.bar,
-                  {
-                    height: barHeight,
-                    backgroundColor: isFilled
+                  styles.waveformTrack,
+                  styles.waveformTrackFilled,
+                  isMe ? styles.waveformTrackFilledMe : styles.waveformTrackFilledOther,
+                  { width: `${(filledBarCount / barCount) * 100}%` },
+                ]}
+              />
+            ) : null}
+
+            {barHeights.map((barHeight, index) => {
+              const isFilled = progress > 0 && index / barCount <= progress;
+              return (
+                <View
+                  key={index}
+                  style={[
+                    styles.bar,
+                    {
+                      height: barHeight,
+                      backgroundColor: isFilled
                       ? isMe
-                        ? '#FFFFFF'
-                        : '#B8B8BE'
+                          ? outgoingTextColor ?? '#FFFFFF'
+                          : '#B8B8BE'
                       : isMe
                         ? hasPlaybackProgress
                           ? '#C8D0DC'
-                          : '#FFFFFF'
+                          : outgoingTextColor ?? '#FFFFFF'
                         : 'rgba(188, 188, 194, 0.72)',
                   },
                 ]}
+                />
+              );
+            })}
+          </Pressable>
+
+          <View style={styles.metaRow}>
+            <Text style={[styles.duration, isMe && styles.durationMe]}>
+              {formatDuration(effectiveDurationMs)}
+            </Text>
+
+            {time ? (
+              <MessageTimeStatus
+                time={time}
+                status={messageStatus ?? 'sent'}
+                isMe={isMe}
+                compact
+                timeColor={isMe ? outgoingMetaColor : undefined}
+                iconColor={isMe ? outgoingMetaColor : undefined}
               />
-            );
-          })}
-        </Pressable>
-
-        <View style={styles.metaRow}>
-          <Text style={[styles.duration, isMe && styles.durationMe]}>
-            {formatDuration(effectiveDurationMs)}
-          </Text>
-
-          {time ? (
-            <MessageTimeStatus
-              time={time}
-              status={messageStatus ?? 'sent'}
-              isMe={isMe}
-              compact
-            />
-          ) : null}
+            ) : null}
+          </View>
         </View>
       </View>
     </View>
@@ -258,14 +279,13 @@ export const VoiceBubble = React.memo(function VoiceBubble({
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     paddingHorizontal: 10,
     paddingVertical: 8,
     marginVertical: 4,
-    gap: 10,
     width: VOICE_BUBBLE_WIDTH,
     maxWidth: '100%',
+    minWidth: 0,
   },
   containerEmbedded: {
     paddingHorizontal: 0,
@@ -281,6 +301,13 @@ const styles = StyleSheet.create({
   bubbleOther: {
     backgroundColor: '#FFFFFF',
     ...bubbleRadius.other,
+  },
+  mainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    minWidth: 0,
   },
   playButton: {
     width: 36,

@@ -394,11 +394,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingTop: 12,
     paddingBottom: 12,
-    minHeight: 320,
   },
   tabsRow: {
     paddingHorizontal: 12,
-    paddingBottom: 10,
+    paddingBottom: 6,
     gap: 8,
     alignItems: 'center',
   },

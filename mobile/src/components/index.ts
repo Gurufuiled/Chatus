@@ -7,6 +7,7 @@ export { ChatForwardSheet } from './ChatForwardSheet';
 export { ChatProfileHero } from './ChatProfileHero';
 export { ChatProfileMediaSection } from './ChatProfileMediaSection';
 export { ChatProfileOverlayLayer } from './ChatProfileOverlayLayer';
+export { ChatThemePickerModal } from './ChatThemePickerModal';
 export { InputAttachmentSheet } from './InputAttachmentSheet';
 export { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 export { ChatInputDock } from './ChatInputDock';

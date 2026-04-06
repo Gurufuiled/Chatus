@@ -1,0 +1,502 @@
+import React from 'react';
+import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import {
+  ActivityIndicator,
+  Animated as RNAnimated,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { colors } from '../../theme/colors';
+
+type GroupProfileHeaderSectionProps = {
+  isOwner: boolean;
+  isEditMode: boolean;
+  saving: boolean;
+  avatarUploading: boolean;
+  avatarUrl: string | null;
+  displayName: string;
+  memberCountLabel: string;
+  description: string;
+  nameDraft: string;
+  descriptionDraft: string;
+  isMuted: boolean;
+  isExpanded: boolean;
+  expandedHeroWidth: number;
+  expandedHeroHeight: number;
+  moreButtonRef: React.RefObject<View | null>;
+  moreWaveStyle: any;
+  moreIconScale: RNAnimated.Value;
+  onBackOrCancel: () => void;
+  onPrimaryPress: () => void;
+  onPickAvatar: () => void;
+  onToggleHeroExpanded: () => void;
+  onChangeName: (value: string) => void;
+  onChangeDescription: (value: string) => void;
+  onToggleMute: () => void;
+  onSearch: () => void;
+  onOpenMoreMenu: () => void;
+};
+
+const HERO_COLLAPSED_SIZE = 116;
+
+export function GroupProfileHeaderSection({
+  isOwner,
+  isEditMode,
+  saving,
+  avatarUploading,
+  avatarUrl,
+  displayName,
+  memberCountLabel,
+  description,
+  nameDraft,
+  descriptionDraft,
+  isMuted,
+  isExpanded,
+  expandedHeroWidth,
+  expandedHeroHeight,
+  moreButtonRef,
+  moreWaveStyle,
+  moreIconScale,
+  onBackOrCancel,
+  onPrimaryPress,
+  onPickAvatar,
+  onToggleHeroExpanded,
+  onChangeName,
+  onChangeDescription,
+  onToggleMute,
+  onSearch,
+  onOpenMoreMenu,
+}: GroupProfileHeaderSectionProps) {
+  const progress = useSharedValue(isExpanded ? 1 : 0);
+
+  React.useEffect(() => {
+    progress.value = withSpring(isExpanded && !isEditMode ? 1 : 0, {
+      damping: 22,
+      stiffness: 185,
+      mass: 0.94,
+      overshootClamping: true,
+    });
+  }, [isEditMode, isExpanded, progress]);
+
+  const heroGesture = React.useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!isEditMode)
+        .maxPointers(1)
+        .activeOffsetY(8)
+        .failOffsetX([-18, 18])
+        .onEnd((event) => {
+          if (isEditMode) return;
+
+          if (!isExpanded && event.translationY > 34) {
+            runOnJS(onToggleHeroExpanded)();
+            return;
+          }
+
+          if (isExpanded && event.translationY < -28) {
+            runOnJS(onToggleHeroExpanded)();
+          }
+        }),
+    [isEditMode, isExpanded, onToggleHeroExpanded]
+  );
+
+  const avatarFrameStyle = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, [0, 1], [HERO_COLLAPSED_SIZE, expandedHeroWidth]),
+    height: interpolate(progress.value, [0, 1], [HERO_COLLAPSED_SIZE, expandedHeroHeight]),
+    borderRadius: interpolate(progress.value, [0, 1], [58, 30]),
+    borderWidth: interpolate(progress.value, [0, 1], [2, 0]),
+  }));
+
+  return (
+    <View>
+      <View style={styles.topBarWrap}>
+        <View style={styles.topBar}>
+          <Pressable
+            onPress={onBackOrCancel}
+            style={({ pressed }) => [styles.pillButton, pressed && styles.cardPressed]}
+          >
+            <Text style={styles.pillButtonText}>{isEditMode ? 'Отмена' : 'Назад'}</Text>
+          </Pressable>
+
+          {isOwner ? (
+            <Pressable
+              onPress={onPrimaryPress}
+              disabled={saving}
+              style={({ pressed }) => [
+                styles.pillButton,
+                styles.primaryPillButton,
+                pressed && !saving && styles.cardPressed,
+                saving && styles.disabledButton,
+              ]}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color={colors.textPrimary} />
+              ) : (
+                <Text style={[styles.pillButtonText, styles.primaryPillButtonText]}>
+                  {isEditMode ? 'Готово' : 'Изм.'}
+                </Text>
+              )}
+            </Pressable>
+          ) : (
+            <View style={styles.topBarSpacer} />
+          )}
+        </View>
+      </View>
+
+      <View style={styles.heroCard}>
+        <GestureDetector gesture={heroGesture}>
+          <Pressable
+            onPress={isEditMode ? onPickAvatar : onToggleHeroExpanded}
+            disabled={avatarUploading}
+            style={({ pressed }) => [styles.avatarPressable, pressed && styles.cardPressed]}
+          >
+            <Reanimated.View style={[styles.avatarFrame, avatarFrameStyle]}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarMedia} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarFallbackText}>
+                    {(displayName.trim()[0] || '?').toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              {avatarUploading ? (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color="#FFFFFF" />
+                </View>
+              ) : null}
+            </Reanimated.View>
+          </Pressable>
+        </GestureDetector>
+
+        {isEditMode ? (
+          <Pressable
+            onPress={onPickAvatar}
+            style={({ pressed }) => [styles.changePhotoButton, pressed && styles.cardPressed]}
+          >
+            <Text style={styles.changePhotoText}>Выбрать фотографию</Text>
+          </Pressable>
+        ) : null}
+
+        {isEditMode ? (
+          <View style={styles.editCard}>
+            <TextInput
+              value={nameDraft}
+              onChangeText={onChangeName}
+              placeholder="Название группы"
+              placeholderTextColor="#8E97A4"
+              style={styles.nameInput}
+            />
+            <View style={styles.inputDivider} />
+            <TextInput
+              value={descriptionDraft}
+              onChangeText={onChangeDescription}
+              placeholder="Описание"
+              placeholderTextColor="#8E97A4"
+              style={styles.descriptionInput}
+              multiline
+            />
+          </View>
+        ) : (
+          <>
+            <View style={styles.heroTextSlot}>
+              <View style={styles.heroTextWrap}>
+                <Text style={styles.groupTitle} numberOfLines={2}>
+                  {displayName}
+                </Text>
+                <Text style={styles.groupSubtitle} numberOfLines={1}>
+                  {memberCountLabel}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.actionsSlot}>
+              <View style={styles.actionsRow}>
+                <Pressable
+                  onPress={onToggleMute}
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    pressed && styles.cardPressed,
+                    isMuted && styles.actionButtonActive,
+                  ]}
+                >
+                  <Feather
+                    name={isMuted ? 'bell-off' : 'bell'}
+                    size={20}
+                    color={isMuted ? '#FFFFFF' : colors.accent}
+                  />
+                  <Text style={[styles.actionButtonLabel, isMuted && styles.actionButtonLabelActive]}>
+                    Звук
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={onSearch}
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.cardPressed]}
+                >
+                  <Feather name="search" size={20} color={colors.accent} />
+                  <Text style={styles.actionButtonLabel}>Поиск</Text>
+                </Pressable>
+
+                <Pressable
+                  ref={moreButtonRef}
+                  onPress={onOpenMoreMenu}
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.cardPressed]}
+                >
+                  <View style={styles.actionButtonIconWrap}>
+                    <RNAnimated.View
+                      pointerEvents="none"
+                      style={[styles.actionButtonWave, moreWaveStyle]}
+                    />
+                    <RNAnimated.View style={{ transform: [{ scale: moreIconScale }] }}>
+                      <Feather name="more-horizontal" size={20} color={colors.accent} />
+                    </RNAnimated.View>
+                  </View>
+                  <Text style={styles.actionButtonLabel}>Ещё</Text>
+                </Pressable>
+              </View>
+            </View>
+          </>
+        )}
+      </View>
+
+      {!isEditMode ? (
+        <View style={styles.descriptionCard}>
+          <Text style={styles.descriptionTitle}>Описание</Text>
+          <Text style={styles.descriptionText}>{description || 'Пока без описания'}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  topBarWrap: {
+    marginBottom: 14,
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  topBarSpacer: {
+    width: 84,
+  },
+  pillButton: {
+    minWidth: 84,
+    height: 42,
+    paddingHorizontal: 16,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#9EAAC0',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  primaryPillButton: {
+    backgroundColor: '#FFFFFF',
+  },
+  pillButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  primaryPillButtonText: {
+    fontWeight: '700',
+  },
+  disabledButton: {
+    opacity: 0.72,
+  },
+  heroCard: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 18,
+  },
+  avatarPressable: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  avatarFrame: {
+    width: HERO_COLLAPSED_SIZE,
+    height: HERO_COLLAPSED_SIZE,
+    borderRadius: 58,
+    overflow: 'hidden',
+    backgroundColor: '#DCE7F8',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.95)',
+  },
+  avatarMedia: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5B8DEF',
+  },
+  avatarFallbackText: {
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17, 24, 39, 0.35)',
+  },
+  changePhotoButton: {
+    marginTop: 12,
+  },
+  changePhotoText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.accent,
+  },
+  heroTextSlot: {
+    width: '100%',
+    marginTop: 14,
+  },
+  heroTextWrap: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  groupTitle: {
+    fontSize: 24,
+    lineHeight: 28,
+    fontWeight: '700',
+    color: '#1F2937',
+    textAlign: 'center',
+  },
+  groupSubtitle: {
+    marginTop: 4,
+    fontSize: 16,
+    color: '#7B8594',
+    textAlign: 'center',
+  },
+  actionsSlot: {
+    width: '100%',
+    marginTop: 10,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    width: '100%',
+  },
+  actionButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(216,224,234,0.8)',
+    shadowColor: '#A3AEC2',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  actionButtonIconWrap: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: 13,
+  },
+  actionButtonWave: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(77,141,255,0.82)',
+  },
+  actionButtonActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  actionButtonLabel: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  actionButtonLabelActive: {
+    color: '#FFFFFF',
+  },
+  descriptionCard: {
+    marginTop: 16,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    shadowColor: '#A3AEC2',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  descriptionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6F7A8C',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  descriptionText: {
+    marginTop: 8,
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#1F2937',
+  },
+  editCard: {
+    width: '100%',
+    marginTop: 18,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  nameInput: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    paddingVertical: 8,
+  },
+  inputDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#DFE5EF',
+  },
+  descriptionInput: {
+    minHeight: 72,
+    paddingTop: 10,
+    paddingBottom: 8,
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#1F2937',
+    textAlignVertical: 'top',
+  },
+  cardPressed: {
+    opacity: 0.84,
+  },
+});

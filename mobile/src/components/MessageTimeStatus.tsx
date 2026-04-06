@@ -16,6 +16,8 @@ interface MessageTimeStatusProps {
   status: string;
   isMe: boolean;
   compact?: boolean;
+  timeColor?: string;
+  iconColor?: string;
 }
 
 /**
@@ -23,14 +25,37 @@ interface MessageTimeStatusProps {
  * For "my" messages (isMe): shows time + status icon (e.g. "10:30 ✓").
  * For "other" messages: shows only time.
  */
-export function MessageTimeStatus({ time, status, isMe, compact = false }: MessageTimeStatusProps) {
+export function MessageTimeStatus({
+  time,
+  status,
+  isMe,
+  compact = false,
+  timeColor,
+  iconColor,
+}: MessageTimeStatusProps) {
   const icon = isMe ? STATUS_ICONS[status] ?? STATUS_ICONS.sending : null;
 
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      <Text style={[styles.time, isMe && styles.timeMe, compact && styles.timeCompact]}>{time}</Text>
+      <Text
+        style={[
+          styles.time,
+          isMe && styles.timeMe,
+          compact && styles.timeCompact,
+          timeColor ? { color: timeColor } : null,
+        ]}
+      >
+        {time}
+      </Text>
       {icon != null && (
-        <Text style={[styles.icon, isMe && styles.iconMe, compact && styles.iconCompact]}>
+        <Text
+          style={[
+            styles.icon,
+            isMe && styles.iconMe,
+            compact && styles.iconCompact,
+            iconColor ? { color: iconColor } : null,
+          ]}
+        >
           {icon}
         </Text>
       )}

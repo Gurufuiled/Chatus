@@ -1,7 +1,13 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ChatListScreen, ChatProfileScreen, ChatScreen } from '../screens';
+import {
+  ChatListScreen,
+  ChatProfileScreen,
+  ChatScreen,
+  CreateGroupChatScreen,
+  GroupProfileScreen,
+} from '../screens';
 import type { ChatsStackParamList } from './types';
 import { resolveAvatarUrl } from '../config';
 import { authStore } from '../stores/authStore';
@@ -17,10 +23,27 @@ function formatPresence(isOnline?: boolean, lastSeen?: number) {
   return 'был(а) недавно';
 }
 
+function formatGroupSubtitle(memberCount?: number) {
+  if (typeof memberCount === 'number' && memberCount > 0) {
+    if (memberCount % 10 === 1 && memberCount % 100 !== 11) {
+      return `${memberCount} участник`;
+    }
+    if (
+      memberCount % 10 >= 2 &&
+      memberCount % 10 <= 4 &&
+      (memberCount % 100 < 10 || memberCount % 100 >= 20)
+    ) {
+      return `${memberCount} участника`;
+    }
+    return `${memberCount} участников`;
+  }
+  return 'Групповой чат';
+}
+
 function getChatPeerId(chatId: string): string | null {
   const currentUserId = authStore.getState().user?.id;
   const chat = chatStore.getState().chats.find((item) => item.id === chatId);
-  if (!chat || !currentUserId) return null;
+  if (!chat || !currentUserId || chat.chat_type !== 'private') return null;
   return chat.members?.find((member) => member.user_id !== currentUserId)?.user_id ?? null;
 }
 
@@ -95,13 +118,25 @@ export function ChatsStack() {
         name="Chat"
         component={ChatScreen}
         options={({ route, navigation }) => {
-          const title = route.params.chatTitle ?? 'Chat';
+          const title = route.params.chatTitle ?? 'Чат';
           const chat = chatStore.getState().chats.find((item) => item.id === route.params.chatId);
+          const isGroupChat = chat?.chat_type === 'group';
           const peerId = getChatPeerId(route.params.chatId);
           const presence = peerId ? uiStore.getState().presenceByUserId[peerId] : undefined;
           const avatarUrl = resolveAvatarUrl(chat?.avatar_url);
-          const subtitle = formatPresence(presence?.is_online, presence?.last_seen);
+          const subtitle = isGroupChat
+            ? formatGroupSubtitle(chat?.members?.length)
+            : formatPresence(presence?.is_online, presence?.last_seen);
+
           const openProfile = () => {
+            if (isGroupChat) {
+              navigation.navigate('GroupProfile', {
+                chatId: route.params.chatId,
+                chatTitle: title,
+              });
+              return;
+            }
+
             if (!peerId) return;
             navigation.navigate('ChatProfile', {
               chatId: route.params.chatId,
@@ -115,11 +150,11 @@ export function ChatsStack() {
             headerBackTitle: 'Назад',
             headerTitle: () => (
               <Pressable
-                onPress={peerId ? openProfile : undefined}
-                disabled={!peerId}
+                onPress={isGroupChat || peerId ? openProfile : undefined}
+                disabled={!isGroupChat && !peerId}
                 style={({ pressed }) => [
                   styles.headerTitlePressable,
-                  pressed && peerId && styles.headerPressablePressed,
+                  pressed && (isGroupChat || peerId) && styles.headerPressablePressed,
                 ]}
               >
                 <ChatHeaderTitle title={title} subtitle={subtitle} />
@@ -127,11 +162,11 @@ export function ChatsStack() {
             ),
             headerRight: () => (
               <Pressable
-                onPress={peerId ? openProfile : undefined}
-                disabled={!peerId}
+                onPress={isGroupChat || peerId ? openProfile : undefined}
+                disabled={!isGroupChat && !peerId}
                 style={({ pressed }) => [
                   styles.headerActionsPressable,
-                  pressed && peerId && styles.headerPressablePressed,
+                  pressed && (isGroupChat || peerId) && styles.headerPressablePressed,
                 ]}
               >
                 <ChatHeaderActions avatarUrl={avatarUrl} title={title} />
@@ -146,6 +181,21 @@ export function ChatsStack() {
         options={{
           title: 'Профиль',
           headerBackTitle: 'Назад',
+        }}
+      />
+      <Stack.Screen
+        name="CreateGroupChat"
+        component={CreateGroupChatScreen}
+        options={{
+          title: 'Новая группа',
+          headerBackTitle: 'Назад',
+        }}
+      />
+      <Stack.Screen
+        name="GroupProfile"
+        component={GroupProfileScreen}
+        options={{
+          headerShown: false,
         }}
       />
     </Stack.Navigator>

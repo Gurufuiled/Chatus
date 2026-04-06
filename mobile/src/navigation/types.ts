@@ -10,6 +10,8 @@ export type ChatsStackParamList = {
   ChatList: undefined;
   Chat: { chatId: string; chatTitle?: string; focusMessageId?: string; startSearch?: boolean };
   ChatProfile: { chatId: string; userId: string; chatTitle?: string };
+  GroupProfile: { chatId: string; chatTitle?: string };
+  CreateGroupChat: undefined;
 };
 
 export type MainTabParamList = {

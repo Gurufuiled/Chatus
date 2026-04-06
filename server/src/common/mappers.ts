@@ -92,15 +92,40 @@ export type MappedChatMember = {
   chat_id: string;
   user_id: string;
   role: string;
+  tag: string | null;
+  tag_color: string | null;
   joined_at: number;
+  user?: {
+    id: string;
+    username: string | null;
+    handle: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+    is_online: boolean;
+    last_seen: number | null;
+  };
 };
 
-export function mapChatMember(member: ChatMember): MappedChatMember {
+export function mapChatMember(member: ChatMember & { user?: User | null }): MappedChatMember {
   return {
     chat_id: member.chatId,
     user_id: member.userId,
     role: member.role,
+    tag: member.tag ?? null,
+    tag_color: member.tagColor ?? null,
     joined_at: dateToUnixMs(member.joinedAt) ?? 0,
+    user:
+      'user' in member && member.user
+        ? {
+            id: member.user.id,
+            username: member.user.username ?? null,
+            handle: member.user.handle ?? null,
+            display_name: member.user.displayName ?? null,
+            avatar_url: member.user.avatarUrl ?? null,
+            is_online: member.user.isOnline,
+            last_seen: dateToUnixMs(member.user.lastSeen),
+          }
+        : undefined,
   };
 }
 
@@ -108,6 +133,7 @@ export type MappedChat = {
   id: string;
   chat_type: string;
   name: string | null;
+  description: string | null;
   avatar_url: string | null;
   peer_display_name?: string | null;
   created_by_id: string;
@@ -145,6 +171,7 @@ export function mapChat(
     id: chat.id,
     chat_type: chat.chatType,
     name: chat.name ?? null,
+    description: chat.description ?? null,
     avatar_url:
       chat.chatType === 'private'
         ? peer?.user?.avatarUrl ?? null

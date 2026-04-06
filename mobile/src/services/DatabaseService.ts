@@ -9,6 +9,57 @@ const DB_NAME = 'messenger.db';
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 
+async function hasColumn(
+  db: SQLite.SQLiteDatabase,
+  tableName: string,
+  columnName: string
+): Promise<boolean> {
+  const rows = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${tableName})`);
+  return rows.some((row) => row.name === columnName);
+}
+
+async function ensureSchemaColumns(db: SQLite.SQLiteDatabase): Promise<void> {
+  const repairs: Array<{ table: string; column: string; sql: string }> = [
+    {
+      table: 'users',
+      column: 'handle',
+      sql: 'ALTER TABLE users ADD COLUMN handle TEXT;',
+    },
+    {
+      table: 'chats',
+      column: 'pinned_message_id',
+      sql: 'ALTER TABLE chats ADD COLUMN pinned_message_id TEXT;',
+    },
+    {
+      table: 'chats',
+      column: 'description',
+      sql: 'ALTER TABLE chats ADD COLUMN description TEXT;',
+    },
+    {
+      table: 'sync_queue',
+      column: 'user_id',
+      sql: 'ALTER TABLE sync_queue ADD COLUMN user_id TEXT;',
+    },
+    {
+      table: 'chat_members',
+      column: 'tag',
+      sql: 'ALTER TABLE chat_members ADD COLUMN tag TEXT;',
+    },
+    {
+      table: 'chat_members',
+      column: 'tag_color',
+      sql: 'ALTER TABLE chat_members ADD COLUMN tag_color TEXT;',
+    },
+  ];
+
+  for (const repair of repairs) {
+    const exists = await hasColumn(db, repair.table, repair.column);
+    if (!exists) {
+      await db.execAsync(repair.sql);
+    }
+  }
+}
+
 export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (dbInstance) {
     return dbInstance;
@@ -62,9 +113,38 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
       // Legacy pending queue entries were not tied to a user and are unsafe after account switch.
       await db.execAsync('DELETE FROM sync_queue WHERE user_id IS NULL;');
     }
+    // v5->v6: add chat description for group profile/edit support
+    if (currentVersion >= 5 && currentVersion < 6) {
+      try {
+        await db.execAsync('ALTER TABLE chats ADD COLUMN description TEXT;');
+      } catch {
+        // Column may already exist
+      }
+    }
+    // v6->v7: add optional local tag to chat members for group moderation labels
+    if (currentVersion >= 6 && currentVersion < 7) {
+      try {
+        await db.execAsync('ALTER TABLE chat_members ADD COLUMN tag TEXT;');
+      } catch {
+        // Column may already exist
+      }
+    }
+    // v7->v8: add optional tag color for member labels
+    if (currentVersion >= 7 && currentVersion < 8) {
+      try {
+        await db.execAsync('ALTER TABLE chat_members ADD COLUMN tag_color TEXT;');
+      } catch {
+        // Column may already exist
+      }
+    }
     await db.execAsync(SCHEMA_SQL);
     await db.runAsync('PRAGMA user_version = ' + DB_VERSION);
   }
+
+  // Repair drifted local schemas even when user_version was already bumped earlier.
+  await db.execAsync(SCHEMA_SQL);
+  await ensureSchemaColumns(db);
+  await db.runAsync('PRAGMA user_version = ' + DB_VERSION);
 
   dbInstance = db;
   return db;

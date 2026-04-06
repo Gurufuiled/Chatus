@@ -11,6 +11,11 @@ export interface FileBubbleProps {
   caption?: string | null;
   time?: string;
   status?: string;
+  header?: React.ReactNode;
+  bubbleMeColor?: string;
+  outgoingTextColor?: string;
+  outgoingMetaColor?: string;
+  outgoingAccentColor?: string;
 }
 
 function formatFileSize(bytes?: number): string | null {
@@ -54,6 +59,11 @@ export function FileBubble({
   caption,
   time,
   status,
+  header,
+  bubbleMeColor,
+  outgoingTextColor,
+  outgoingMetaColor,
+  outgoingAccentColor,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
   const fileCaption = useMemo(
@@ -72,7 +82,15 @@ export function FileBubble({
   const hasMetaRow = !!sizeText || !!time;
 
   return (
-    <View style={[styles.container, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+    <View
+      style={[
+        styles.container,
+        isMe ? styles.bubbleMe : styles.bubbleOther,
+        isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+      ]}
+    >
+      {header}
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={uri?.trim() ? 'Open file' : 'File'}
@@ -81,9 +99,21 @@ export function FileBubble({
         onPress={handlePress}
         style={({ pressed }) => [styles.card, pressed && uri?.trim() ? styles.cardPressed : null]}
       >
-        <View style={[styles.iconBadge, isMe ? styles.iconBadgeMe : styles.iconBadgeOther]}>
+        <View
+          style={[
+            styles.iconBadge,
+            isMe ? styles.iconBadgeMe : styles.iconBadgeOther,
+            isMe && outgoingAccentColor ? { backgroundColor: outgoingAccentColor } : null,
+          ]}
+        >
           <View style={styles.documentIcon}>
-            <View style={[styles.documentFold, isMe ? styles.documentFoldMe : styles.documentFoldOther]} />
+            <View
+              style={[
+                styles.documentFold,
+                isMe ? styles.documentFoldMe : styles.documentFoldOther,
+                isMe && outgoingAccentColor ? { borderBottomColor: outgoingAccentColor } : null,
+              ]}
+            />
             <View style={styles.documentLine} />
             <View style={[styles.documentLine, styles.documentLineShort]} />
           </View>
@@ -91,7 +121,11 @@ export function FileBubble({
 
         <View style={styles.infoColumn}>
           <Text
-            style={[styles.fileName, isMe ? styles.fileNameMe : styles.fileNameOther]}
+            style={[
+              styles.fileName,
+              isMe ? styles.fileNameMe : styles.fileNameOther,
+              isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+            ]}
             numberOfLines={2}
             ellipsizeMode="tail"
           >
@@ -100,7 +134,13 @@ export function FileBubble({
 
           {hasMetaRow ? (
             <View style={styles.metaRow}>
-              <Text style={[styles.fileSize, isMe ? styles.fileSizeMe : styles.fileSizeOther]}>
+              <Text
+                style={[
+                  styles.fileSize,
+                  isMe ? styles.fileSizeMe : styles.fileSizeOther,
+                  isMe && outgoingMetaColor ? { color: outgoingMetaColor } : null,
+                ]}
+              >
                 {sizeText ?? ' '}
               </Text>
               {time ? (
@@ -109,6 +149,8 @@ export function FileBubble({
                   status={status ?? 'sent'}
                   isMe={isMe}
                   compact
+                  timeColor={isMe ? outgoingMetaColor : undefined}
+                  iconColor={isMe ? outgoingMetaColor : undefined}
                 />
               ) : null}
             </View>
@@ -117,7 +159,13 @@ export function FileBubble({
       </Pressable>
 
       {fileCaption ? (
-        <Text style={[styles.caption, isMe ? styles.captionMe : styles.captionOther]}>
+        <Text
+          style={[
+            styles.caption,
+            isMe ? styles.captionMe : styles.captionOther,
+            isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+          ]}
+        >
           {fileCaption}
         </Text>
       ) : null}

@@ -15,6 +15,11 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatProfileHero } from '../components/ChatProfileHero';
+import type {
+  AnchoredMenuState,
+  AnchoredPopoverMenuItem,
+} from '../components/AnchoredPopoverMenu';
+import { ChatThemePickerModal } from '../components/ChatThemePickerModal';
 import {
   ChatProfileMediaSection,
   type FileItem,
@@ -35,9 +40,11 @@ import { messageStore } from '../stores/messageStore';
 import type { Message } from '../stores/types';
 import { uiStore } from '../stores/uiStore';
 import { colors } from '../theme/colors';
+import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
 
 type ChatProfileRoute = RouteProp<ChatsStackParamList, 'ChatProfile'>;
 type ChatProfileNavigation = NativeStackNavigationProp<ChatsStackParamList, 'ChatProfile'>;
+const EMPTY_PROFILE_MESSAGES: Message[] = [];
 
 type InfoRow = {
   id: string;
@@ -256,9 +263,13 @@ export function ChatProfileScreen() {
   const [selectedMediaUri, setSelectedMediaUri] = useState<string | null>(null);
   const [actionMenu, setActionMenu] = useState<ProfileActionMenuState>(null);
   const [isHeroExpanded, setIsHeroExpanded] = useState(false);
-  const [isMoreMenuVisible, setIsMoreMenuVisible] = useState(false);
+  const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
+  const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
+  const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
   const actionMenuAnimation = useRef(new Animated.Value(0)).current;
-  const heroAnimation = useRef(new Animated.Value(0)).current;
+  const moreMenuAnimation = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const moreButtonRef = useRef<View | null>(null);
 
   const chat = chatStore(
     useCallback(
@@ -268,12 +279,15 @@ export function ChatProfileScreen() {
   );
   const chatMessages = messageStore(
     useCallback(
-      (state) => state.messagesByChatId[chatId] ?? [],
+      (state) => state.messagesByChatId[chatId] ?? EMPTY_PROFILE_MESSAGES,
       [chatId]
     )
   );
   const livePresence = uiStore((s) => s.presenceByUserId[userId]);
   const isBlocked = uiStore((s) => Boolean(s.blockedUserIds[userId]));
+  const currentThemeId = uiStore(
+    (s) => (s.chatThemeIdByChatId[chatId] as ChatThemeId | undefined) ?? DEFAULT_CHAT_THEME_ID
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -303,15 +317,22 @@ export function ChatProfileScreen() {
   }, []);
 
   useEffect(() => {
-    heroAnimation.stopAnimation();
-    Animated.timing(heroAnimation, {
-      toValue: isHeroExpanded ? 1 : 0,
-      duration: isHeroExpanded ? 320 : 260,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
-      useNativeDriver: false,
-      isInteraction: false,
-    }).start();
-  }, [heroAnimation, isHeroExpanded]);
+    if (!isThemePickerVisible) {
+      setDraftThemeId(currentThemeId);
+    }
+  }, [currentThemeId, isThemePickerVisible]);
+
+  useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      if (value > 24 && isHeroExpanded) {
+        setIsHeroExpanded(false);
+      }
+    });
+
+    return () => {
+      scrollY.removeListener(listenerId);
+    };
+  }, [isHeroExpanded, scrollY]);
 
   const displayName = buildDisplayName(
     profile,
@@ -426,25 +447,64 @@ export function ChatProfileScreen() {
     }
   }, [avatarUrl, chatId, displayName, startCall, userId]);
 
+  const openMoreMenu = useCallback(() => {
+    const target = moreButtonRef.current;
+    if (!target) return;
+
+    target.measureInWindow((left, top, width, height) => {
+      moreMenuAnimation.setValue(0);
+      setMoreMenu({ left, top, width, height });
+    });
+  }, [moreMenuAnimation]);
+
+  const closeMoreMenu = useCallback(
+    (onClosed?: unknown) => {
+      const callback = typeof onClosed === 'function' ? onClosed : undefined;
+      if (!moreMenu) {
+        callback?.();
+        return;
+      }
+
+      Animated.timing(moreMenuAnimation, {
+        toValue: 0,
+        duration: 90,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }).start(() => {
+        setMoreMenu(null);
+        callback?.();
+      });
+    },
+    [moreMenu, moreMenuAnimation]
+  );
+
   const handleMorePress = useCallback(() => {
-    setIsMoreMenuVisible(true);
-  }, []);
+    openMoreMenu();
+  }, [openMoreMenu]);
 
-  const closeMoreMenu = useCallback(() => {
-    setIsMoreMenuVisible(false);
-  }, []);
+  const openThemePicker = useCallback(() => {
+    closeMoreMenu(() => {
+      setDraftThemeId(currentThemeId);
+      setIsThemePickerVisible(true);
+    });
+  }, [closeMoreMenu, currentThemeId]);
 
-  const handleToggleBlocked = () => {
+  const handleApplyTheme = useCallback(() => {
+    uiStore.getState().setChatTheme(chatId, draftThemeId);
+    setIsThemePickerVisible(false);
+  }, [chatId, draftThemeId]);
+
+  const handleToggleBlocked = useCallback(() => {
     closeMoreMenu();
     const nextBlocked = !isBlocked;
     uiStore.getState().setUserBlocked(userId, nextBlocked);
     Alert.alert(
       nextBlocked ? 'Пользователь заблокирован' : 'Пользователь разблокирован',
-      nextBlocked
-        ? `Локально заблокировали ${displayName}. Это состояние пока работает только на этом устройстве.`
-        : `${displayName} снова доступен на этом устройстве.`
-    );
-  };
+        nextBlocked
+          ? `Локально заблокировали ${displayName}. Это состояние пока работает только на этом устройстве.`
+          : `${displayName} снова доступен на этом устройстве.`
+      );
+  }, [closeMoreMenu, displayName, isBlocked, userId]);
 
   const deleteChatLocally = useCallback(async () => {
     try {
@@ -457,7 +517,7 @@ export function ChatProfileScreen() {
     }
   }, [chatId, navigation]);
 
-  const handleDeleteChatPress = () => {
+  const handleDeleteChatPress = useCallback(() => {
     closeMoreMenu();
     Alert.alert('Удалить чат?', 'Выбери, как удалить этот диалог.', [
       { text: 'Отмена', style: 'cancel' },
@@ -488,7 +548,7 @@ export function ChatProfileScreen() {
         },
       },
     ]);
-  };
+  }, [closeMoreMenu, deleteChatLocally, displayName]);
 
   const toggleHeroExpanded = useCallback(() => {
     if (!avatarUrl) return;
@@ -556,11 +616,75 @@ export function ChatProfileScreen() {
     }).start();
   }, [actionMenu, actionMenuAnimation]);
 
+  useEffect(() => {
+    if (!moreMenu) return;
+
+    Animated.spring(moreMenuAnimation, {
+      toValue: 1,
+      damping: 17,
+      stiffness: 230,
+      mass: 0.8,
+      useNativeDriver: true,
+    }).start();
+  }, [moreMenu, moreMenuAnimation]);
+
+  const moreMenuItems = useMemo<AnchoredPopoverMenuItem[]>(
+    () => [
+      {
+        key: 'change-wallpaper',
+        label: 'Изменить обои',
+        icon: 'feather',
+        color: '#2AA04F',
+      },
+      {
+        key: 'toggle-block',
+        label: isBlocked ? 'Разблокировать' : 'Заблокировать',
+        icon: 'slash',
+        color: isBlocked ? '#64748B' : '#F97316',
+      },
+      {
+        key: 'delete-chat',
+        label: 'Удалить чат',
+        icon: 'trash-2',
+        color: '#D04857',
+      },
+    ],
+    [isBlocked]
+  );
+
+  const handleMoreMenuAction = useCallback(
+    (key: string) => {
+      if (key === 'change-wallpaper') {
+        openThemePicker();
+        return;
+      }
+
+      if (key === 'toggle-block') {
+        handleToggleBlocked();
+        return;
+      }
+
+      if (key === 'delete-chat') {
+        handleDeleteChatPress();
+      }
+    },
+    [handleDeleteChatPress, handleToggleBlocked, openThemePicker]
+  );
+
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" />
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <Animated.ScrollView
+        bounces
+        overScrollMode="always"
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        contentContainerStyle={styles.scrollContent}
+      >
         <ChatProfileHero
           avatarUrl={avatarUrl}
           avatarColor={avatarColor}
@@ -571,7 +695,7 @@ export function ChatProfileScreen() {
           loading={loading}
           error={error}
           isMuted={isMuted}
-          heroAnimation={heroAnimation}
+          isExpanded={isHeroExpanded}
           expandedHeroWidth={expandedHeroWidth}
           expandedHeroHeight={expandedHeroHeight}
           onToggleHeroExpanded={toggleHeroExpanded}
@@ -579,6 +703,7 @@ export function ChatProfileScreen() {
           onMutePress={handleMutePress}
           onSearchPress={handleSearchPress}
           onMorePress={handleMorePress}
+          moreButtonRef={moreButtonRef}
         />
 
         <ProfileInfoCard infoRows={infoRows} />
@@ -593,19 +718,26 @@ export function ChatProfileScreen() {
           onOpenMedia={setSelectedMediaUri}
           onOpenActionMenu={openActionMenu}
         />
-      </ScrollView>
+      </Animated.ScrollView>
       <ChatProfileOverlayLayer
-        isMoreMenuVisible={isMoreMenuVisible}
-        isBlocked={isBlocked}
+        moreMenu={moreMenu}
+        moreMenuAnimation={moreMenuAnimation}
+        moreMenuItems={moreMenuItems}
         onCloseMoreMenu={closeMoreMenu}
-        onToggleBlocked={handleToggleBlocked}
-        onDeleteChatPress={handleDeleteChatPress}
+        onMoreMenuAction={handleMoreMenuAction}
         selectedMediaUri={selectedMediaUri}
         onCloseMedia={() => setSelectedMediaUri(null)}
         actionMenu={actionMenu}
         actionMenuAnimation={actionMenuAnimation}
         onCloseActionMenu={() => closeActionMenu()}
         onShowInChat={handleShowInChat}
+      />
+      <ChatThemePickerModal
+        visible={isThemePickerVisible}
+        selectedThemeId={draftThemeId}
+        onSelectTheme={setDraftThemeId}
+        onApply={handleApplyTheme}
+        onClose={() => setIsThemePickerVisible(false)}
       />
     </View>
   );

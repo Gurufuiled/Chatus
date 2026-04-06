@@ -22,6 +22,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
+import type { ChatTheme } from '../theme/chatThemes';
 import { FileBubble } from './FileBubble';
 import { ForwardHeader } from './ForwardHeader';
 import { ImageBubble } from './ImageBubble';
@@ -65,6 +66,7 @@ type ChatMessageListProps = {
   getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
+  chatTheme: ChatTheme;
 };
 
 type ReplySwipeWrapperProps = {
@@ -171,6 +173,7 @@ type MessageRowProps = {
   getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
+  chatTheme: ChatTheme;
 };
 
 const MessageRow = React.memo(function MessageRow({
@@ -192,6 +195,7 @@ const MessageRow = React.memo(function MessageRow({
   getMessageAuthorName,
   getDeletedPlaceholder,
   repliedVoiceBubbleWidth,
+  chatTheme,
 }: MessageRowProps) {
   const isMe = item.sender_id === currentUserId;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
@@ -228,10 +232,10 @@ const MessageRow = React.memo(function MessageRow({
       <ReplyPreview
         author={author}
         text={text}
-        accentColor={isMe ? '#DFF2A8' : '#F28C28'}
-        backgroundColor={isMe ? '#6A9EFF' : '#F2F4D9'}
-        textColor={isMe ? 'rgba(255,255,255,0.88)' : '#5F6368'}
-        authorColor={isMe ? '#FFD08A' : '#D1782B'}
+        accentColor={isMe ? chatTheme.replyAccentMe : '#F28C28'}
+        backgroundColor={isMe ? chatTheme.replyBubbleMe : '#F2F4D9'}
+        textColor={isMe ? chatTheme.replyTextMe : '#5F6368'}
+        authorColor={isMe ? chatTheme.replyAuthorMe : '#D1782B'}
         thumbnailUri={replyThumbnailUri}
         onPress={onReplyPreviewPress ? () => onReplyPreviewPress(item.reply_to_id!) : undefined}
       />
@@ -247,6 +251,7 @@ const MessageRow = React.memo(function MessageRow({
       <ForwardHeader
         isMe={isMe}
         name={item.forwarded_from_name}
+        meColor={chatTheme.forwardHeaderMe}
         onPress={onForwardHeaderPress ? () => onForwardHeaderPress(item) : undefined}
       />
     );
@@ -259,9 +264,16 @@ const MessageRow = React.memo(function MessageRow({
           style={[
             styles.deletedBubble,
             isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
+            isMe ? { backgroundColor: chatTheme.deletedBubbleMe } : null,
           ]}
         >
-          <Text style={[styles.deletedText, isMe && styles.deletedTextMe]}>
+          <Text
+            style={[
+              styles.deletedText,
+              isMe && styles.deletedTextMe,
+              isMe ? { color: chatTheme.deletedTextMe } : null,
+            ]}
+          >
             {getDeletedPlaceholder(isMe)}
           </Text>
           <MessageTimeStatus
@@ -269,6 +281,8 @@ const MessageRow = React.memo(function MessageRow({
             status={item.status}
             isMe={isMe}
             compact
+            timeColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+            iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
           />
         </View>
       );
@@ -279,11 +293,23 @@ const MessageRow = React.memo(function MessageRow({
       const displayContent = rawContent.trim() || ' ';
 
       return (
-        <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+        <View
+          style={[
+            styles.bubble,
+            isMe ? styles.bubbleMe : styles.bubbleOther,
+            isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+          ]}
+        >
           {renderForwardHeader()}
           {renderReplySnippet()}
           <View style={styles.bubbleContentRow}>
-            <Text style={[styles.textContent, isMe && styles.textContentMe]}>
+            <Text
+              style={[
+                styles.textContent,
+                isMe && styles.textContentMe,
+                isMe ? { color: chatTheme.bubbleMeText } : null,
+              ]}
+            >
               {displayContent}
             </Text>
             <MessageTimeStatus
@@ -291,6 +317,8 @@ const MessageRow = React.memo(function MessageRow({
               status={item.status}
               isMe={isMe}
               compact
+              timeColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+              iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
             />
           </View>
         </View>
@@ -299,6 +327,7 @@ const MessageRow = React.memo(function MessageRow({
 
     if (item.msg_type === 'voice' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
+      const forwardHeader = replySnippet ? null : renderForwardHeader();
       const voiceContent = (
         <VoiceBubble
           uri={item.media[0].remote_url ?? `file://${item.id}`}
@@ -308,6 +337,11 @@ const MessageRow = React.memo(function MessageRow({
           time={formatTime(item.created_at)}
           status={item.status}
           embedded={!!replySnippet}
+          header={forwardHeader}
+          bubbleMeColor={chatTheme.bubbleMe}
+          outgoingTextColor={chatTheme.bubbleMeText}
+          outgoingMetaColor={chatTheme.bubbleMeMeta}
+          outgoingAccentColor={chatTheme.bubbleMeAccent}
         />
       );
 
@@ -318,6 +352,7 @@ const MessageRow = React.memo(function MessageRow({
               styles.repliedMediaBubble,
               { width: repliedVoiceBubbleWidth, maxWidth: '82%' },
               isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
             ]}
           >
             {renderForwardHeader()}
@@ -329,7 +364,6 @@ const MessageRow = React.memo(function MessageRow({
 
       return (
         <View style={styles.mediaStack}>
-          {renderForwardHeader()}
           {voiceContent}
         </View>
       );
@@ -341,6 +375,7 @@ const MessageRow = React.memo(function MessageRow({
       if (!imageUri.trim()) return null;
 
       const replySnippet = renderReplySnippet();
+      const forwardHeader = replySnippet ? null : renderForwardHeader();
       const imageContent = (
         <ImageBubble
           uri={imageUri}
@@ -351,6 +386,9 @@ const MessageRow = React.memo(function MessageRow({
           time={formatTime(item.created_at)}
           status={item.status}
           embedded={!!replySnippet}
+          header={forwardHeader}
+          bubbleMeColor={chatTheme.bubbleMe}
+          outgoingTextColor={chatTheme.bubbleMeText}
         />
       );
 
@@ -360,6 +398,7 @@ const MessageRow = React.memo(function MessageRow({
             style={[
               styles.repliedMediaBubble,
               isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
             ]}
           >
             {renderForwardHeader()}
@@ -371,17 +410,16 @@ const MessageRow = React.memo(function MessageRow({
 
       return (
         <View style={styles.mediaStack}>
-          {renderForwardHeader()}
           {imageContent}
         </View>
       );
     }
 
     if (item.msg_type === 'file' && item.media?.[0]) {
+      const replySnippet = renderReplySnippet();
       return (
         <View style={styles.fileStack}>
-          {renderForwardHeader()}
-          {renderReplySnippet()}
+          {replySnippet}
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
             fileSize={item.media[0].file_size}
@@ -390,6 +428,11 @@ const MessageRow = React.memo(function MessageRow({
             caption={item.content ?? undefined}
             time={formatTime(item.created_at)}
             status={item.status}
+            header={renderForwardHeader()}
+            bubbleMeColor={chatTheme.bubbleMe}
+            outgoingTextColor={chatTheme.bubbleMeText}
+            outgoingMetaColor={chatTheme.bubbleMeMeta}
+            outgoingAccentColor={chatTheme.bubbleMeAccent}
           />
         </View>
       );
@@ -466,6 +509,7 @@ const MessageRow = React.memo(function MessageRow({
     prev.canSwipe === next.canSwipe &&
     prev.currentUserId === next.currentUserId &&
     prev.chatId === next.chatId &&
+    prev.chatTheme === next.chatTheme &&
     prev.onForwardHeaderPress === next.onForwardHeaderPress &&
     prev.onReplyPreviewPress === next.onReplyPreviewPress
   );
@@ -494,6 +538,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   getMessageAuthorName,
   getDeletedPlaceholder,
   repliedVoiceBubbleWidth,
+  chatTheme,
 }: ChatMessageListProps) {
   const renderMessageRow = React.useCallback(({ item }: { item: Message }) => (
     <MessageRow
@@ -515,10 +560,12 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       getMessageAuthorName={getMessageAuthorName}
       getDeletedPlaceholder={getDeletedPlaceholder}
       repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
+      chatTheme={chatTheme}
     />
   ), [
     canSwipeReply,
     chatId,
+    chatTheme,
     currentUserId,
     formatTime,
     getDeletedPlaceholder,
@@ -580,7 +627,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.formatTime === next.formatTime &&
     prev.getMessageAuthorName === next.getMessageAuthorName &&
     prev.getDeletedPlaceholder === next.getDeletedPlaceholder &&
-    prev.repliedVoiceBubbleWidth === next.repliedVoiceBubbleWidth
+    prev.repliedVoiceBubbleWidth === next.repliedVoiceBubbleWidth &&
+    prev.chatTheme === next.chatTheme
   );
 });
 

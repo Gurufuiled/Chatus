@@ -6,30 +6,43 @@ type ForwardHeaderProps = {
   isMe: boolean;
   name?: string | null;
   onPress?: (() => void) | undefined;
+  meColor?: string;
 };
 
 export const ForwardHeader = React.memo(function ForwardHeader({
   isMe,
   name,
   onPress,
+  meColor,
 }: ForwardHeaderProps) {
-  const label = name?.trim() ? `Переслано от ${name.trim()}` : 'Пересланное сообщение';
+  const label = name?.trim()
+    ? `Переслано от ${name.trim()}`
+    : 'Пересланное сообщение';
+  const resolvedMeColor = meColor ?? '#DFF2A8';
+
   const content = (
     <>
       <Feather
         name="corner-up-right"
         size={12}
-        color={isMe ? '#DFF2A8' : '#4D8DFF'}
+        color={isMe ? resolvedMeColor : '#4D8DFF'}
         style={styles.icon}
       />
-      <Text numberOfLines={1} style={[styles.text, isMe ? styles.textMe : styles.textOther]}>
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.text,
+          isMe ? styles.textMe : styles.textOther,
+          isMe && meColor ? { color: meColor } : null,
+        ]}
+      >
         {label}
       </Text>
       {onPress ? (
         <Feather
           name="chevron-right"
           size={12}
-          color={isMe ? 'rgba(223,242,168,0.92)' : 'rgba(77,141,255,0.92)'}
+          color={isMe ? resolvedMeColor : 'rgba(77,141,255,0.92)'}
         />
       ) : null}
     </>

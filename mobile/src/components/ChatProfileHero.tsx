@@ -2,14 +2,22 @@ import React from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
-  Animated,
+  Animated as RNAnimated,
+  Easing,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
-  type ImageStyle,
-  type ViewStyle,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { colors } from '../theme/colors';
 
 type ChatProfileHeroProps = {
@@ -22,7 +30,7 @@ type ChatProfileHeroProps = {
   loading: boolean;
   error: string | null;
   isMuted: boolean;
-  heroAnimation: Animated.Value;
+  isExpanded: boolean;
   expandedHeroWidth: number;
   expandedHeroHeight: number;
   onToggleHeroExpanded: () => void;
@@ -30,6 +38,7 @@ type ChatProfileHeroProps = {
   onMutePress: () => void;
   onSearchPress: () => void;
   onMorePress: () => void;
+  moreButtonRef?: React.RefObject<View | null>;
 };
 
 type QuickActionButtonProps = {
@@ -37,21 +46,89 @@ type QuickActionButtonProps = {
   label: string;
   active?: boolean;
   onPress: () => void;
+  buttonRef?: React.RefObject<View | null>;
+  waveOnPress?: boolean;
 };
+
+const HERO_COLLAPSED_SIZE = 108;
 
 const QuickActionButton = React.memo(function QuickActionButton({
   icon,
   label,
   active = false,
   onPress,
+  buttonRef,
+  waveOnPress = false,
 }: QuickActionButtonProps) {
+  const waveAnimation = React.useRef(new RNAnimated.Value(0)).current;
+  const iconScale = React.useRef(new RNAnimated.Value(1)).current;
+
+  const handlePress = React.useCallback(() => {
+    if (waveOnPress) {
+      waveAnimation.stopAnimation();
+      iconScale.stopAnimation();
+      waveAnimation.setValue(0);
+      iconScale.setValue(1);
+
+      RNAnimated.parallel([
+        RNAnimated.timing(waveAnimation, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        RNAnimated.sequence([
+          RNAnimated.timing(iconScale, {
+            toValue: 0.92,
+            duration: 90,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          RNAnimated.spring(iconScale, {
+            toValue: 1,
+            damping: 12,
+            stiffness: 240,
+            mass: 0.75,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    }
+
+    onPress();
+  }, [iconScale, onPress, waveAnimation, waveOnPress]);
+
+  const waveStyle = React.useMemo(
+    () => ({
+      opacity: waveAnimation.interpolate({
+        inputRange: [0, 0.18, 1],
+        outputRange: [0, 0.2, 0],
+      }),
+      transform: [
+        {
+          scale: waveAnimation.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.32, 1.45],
+          }),
+        },
+      ],
+    }),
+    [waveAnimation]
+  );
+
   return (
     <Pressable
-      onPress={onPress}
+      ref={buttonRef}
+      onPress={handlePress}
       style={({ pressed }) => [styles.quickAction, pressed && styles.quickActionPressed]}
     >
       <View style={[styles.quickActionIconWrap, active && styles.quickActionIconWrapActive]}>
-        <Feather name={icon} size={18} color={active ? '#FFFFFF' : colors.accent} />
+        {waveOnPress ? (
+          <RNAnimated.View pointerEvents="none" style={[styles.quickActionWave, waveStyle]} />
+        ) : null}
+        <RNAnimated.View style={{ transform: [{ scale: iconScale }] }}>
+          <Feather name={icon} size={18} color={active ? '#FFFFFF' : colors.accent} />
+        </RNAnimated.View>
       </View>
       <Text style={[styles.quickActionLabel, active && styles.quickActionLabelActive]}>
         {label}
@@ -70,7 +147,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   loading,
   error,
   isMuted,
-  heroAnimation,
+  isExpanded,
   expandedHeroWidth,
   expandedHeroHeight,
   onToggleHeroExpanded,
@@ -78,86 +155,98 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   onMutePress,
   onSearchPress,
   onMorePress,
+  moreButtonRef,
 }: ChatProfileHeroProps) {
-  const heroCardStyle: Animated.WithAnimatedObject<ViewStyle> = {
-    paddingTop: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [24, 0],
-    }),
-    paddingBottom: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [18, 24],
-    }),
-  };
+  const progress = useSharedValue(isExpanded ? 1 : 0);
 
-  const heroAvatarStyle: Animated.WithAnimatedObject<ImageStyle> = {
-    width: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [108, expandedHeroWidth],
-    }),
-    height: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [108, expandedHeroHeight],
-    }),
-    borderRadius: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [54, 0],
-    }),
-    marginBottom: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [14, 18],
-    }),
-    borderWidth: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [3, 0],
-    }),
-  };
+  React.useEffect(() => {
+    progress.value = withSpring(isExpanded ? 1 : 0, {
+      damping: 22,
+      stiffness: 190,
+      mass: 0.92,
+      overshootClamping: true,
+    });
+  }, [isExpanded, progress]);
 
-  const heroContentStyle: Animated.WithAnimatedObject<ViewStyle> = {
-    paddingHorizontal: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [16, 18],
-    }),
-  };
+  const heroGesture = React.useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(Boolean(avatarUrl))
+        .maxPointers(1)
+        .activeOffsetY(8)
+        .failOffsetX([-18, 18])
+        .onEnd((event) => {
+          if (!avatarUrl) return;
 
-  const heroActionsStyle: Animated.WithAnimatedObject<ViewStyle> = {
-    marginTop: heroAnimation.interpolate({
-      inputRange: [0, 1],
-      outputRange: [20, 16],
-    }),
-  };
+          if (!isExpanded && event.translationY > 34) {
+            runOnJS(onToggleHeroExpanded)();
+            return;
+          }
+
+          if (isExpanded && event.translationY < -28) {
+            runOnJS(onToggleHeroExpanded)();
+          }
+        }),
+    [avatarUrl, isExpanded, onToggleHeroExpanded]
+  );
+
+  const heroCardStyle = useAnimatedStyle(() => ({
+    paddingTop: interpolate(progress.value, [0, 1], [24, 0]),
+    paddingBottom: interpolate(progress.value, [0, 1], [18, 16]),
+  }));
+
+  const heroFrameStyle = useAnimatedStyle(() => ({
+    width: interpolate(progress.value, [0, 1], [HERO_COLLAPSED_SIZE, expandedHeroWidth]),
+    height: interpolate(progress.value, [0, 1], [HERO_COLLAPSED_SIZE, expandedHeroHeight]),
+    borderRadius: interpolate(progress.value, [0, 1], [54, 28]),
+    borderWidth: interpolate(progress.value, [0, 1], [3, 0]),
+    marginBottom: interpolate(progress.value, [0, 1], [14, 12]),
+  }));
+
+  const heroContentStyle = useAnimatedStyle(() => ({
+    paddingHorizontal: interpolate(progress.value, [0, 1], [16, 18]),
+    marginTop: interpolate(progress.value, [0, 1], [0, 6]),
+  }));
+
+  const actionsStyle = useAnimatedStyle(() => ({
+    marginTop: interpolate(progress.value, [0, 1], [20, 10]),
+  }));
 
   return (
-    <Animated.View style={[styles.heroCard, heroCardStyle]}>
-      <Pressable
-        onPress={onToggleHeroExpanded}
-        disabled={!avatarUrl}
-        style={({ pressed }) => [
-          styles.avatarPressable,
-          pressed && avatarUrl ? styles.avatarPressablePressed : null,
-        ]}
-      >
-        {avatarUrl ? (
-          <Animated.Image source={{ uri: avatarUrl }} style={[styles.avatar, heroAvatarStyle]} />
-        ) : (
-          <Animated.View
+    <Reanimated.View style={[styles.heroCard, heroCardStyle]}>
+      <GestureDetector gesture={heroGesture}>
+        <Pressable
+          onPress={onToggleHeroExpanded}
+          disabled={!avatarUrl}
+          style={({ pressed }) => [
+            styles.avatarPressable,
+            pressed && avatarUrl ? styles.avatarPressablePressed : null,
+          ]}
+        >
+          <Reanimated.View
             style={[
-              styles.avatarFallback,
-              heroAvatarStyle,
-              { backgroundColor: avatarColor },
+              styles.avatarFrame,
+              heroFrameStyle,
+              !avatarUrl ? { backgroundColor: avatarColor } : null,
             ]}
           >
-            <Text style={styles.avatarFallbackText}>{initial}</Text>
-          </Animated.View>
-        )}
-      </Pressable>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarMedia} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarFallbackText}>{initial}</Text>
+              </View>
+            )}
+          </Reanimated.View>
+        </Pressable>
+      </GestureDetector>
 
-      <Animated.View style={[styles.heroContent, heroContentStyle]}>
+      <Reanimated.View style={[styles.heroContent, heroContentStyle]}>
         <Text style={styles.name}>{displayName}</Text>
         <Text style={styles.status}>{statusLabel}</Text>
         {handleLabel ? <Text style={styles.handle}>{handleLabel}</Text> : null}
 
-        <Animated.View style={[styles.quickActionsRow, heroActionsStyle]}>
+        <Reanimated.View style={[styles.quickActionsRow, actionsStyle]}>
           <QuickActionButton
             icon="phone"
             label="Звонок"
@@ -172,8 +261,14 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
             onPress={onMutePress}
           />
           <QuickActionButton icon="search" label="Поиск" onPress={onSearchPress} />
-          <QuickActionButton icon="more-horizontal" label="Еще" onPress={onMorePress} />
-        </Animated.View>
+          <QuickActionButton
+            icon="more-horizontal"
+            label="Ещё"
+            onPress={onMorePress}
+            buttonRef={moreButtonRef}
+            waveOnPress
+          />
+        </Reanimated.View>
 
         {loading ? (
           <View style={styles.loaderRow}>
@@ -183,8 +278,8 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
         ) : null}
 
         {!loading && error ? <Text style={styles.errorText}>{error}</Text> : null}
-      </Animated.View>
-    </Animated.View>
+      </Reanimated.View>
+    </Reanimated.View>
   );
 });
 
@@ -203,23 +298,24 @@ const styles = StyleSheet.create({
   avatarPressablePressed: {
     opacity: 0.96,
   },
-  avatar: {
-    width: 108,
-    height: 108,
+  avatarFrame: {
+    width: HERO_COLLAPSED_SIZE,
+    height: HERO_COLLAPSED_SIZE,
     borderRadius: 54,
     marginBottom: 14,
+    overflow: 'hidden',
+    backgroundColor: '#DCE7F8',
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.95)',
   },
+  avatarMedia: {
+    width: '100%',
+    height: '100%',
+  },
   avatarFallback: {
-    width: 108,
-    height: 108,
-    borderRadius: 54,
-    marginBottom: 14,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.95)',
   },
   avatarFallbackText: {
     fontSize: 40,
@@ -270,6 +366,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: 'rgba(216,224,234,0.8)',
@@ -292,6 +389,13 @@ const styles = StyleSheet.create({
   },
   quickActionLabelActive: {
     color: colors.accent,
+  },
+  quickActionWave: {
+    position: 'absolute',
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: 'rgba(77,141,255,0.82)',
   },
   loaderRow: {
     marginTop: 16,

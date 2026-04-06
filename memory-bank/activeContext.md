@@ -1,254 +1,71 @@
 # Active Context
 
 ## Current Focus
-- Account-plan-gated channels and externally paid access are now the active product direction for channel rollout.
-- Telegram-like polishing of the mobile chat experience.
-- Telegram-like selection mode with cleaner pills, animated checkmarks, and floating bulk actions.
-- Forwarded-message semantics that clearly preserve source identity and do not look like plain sends.
-- Peer-profile polish around tabs, links, and chat-adjacent navigation.
-- Stable, real message actions in chat: reply, delete, forward, pin.
-- Server-synced pinned messages with consistent behavior across devices.
-- Better in-chat navigation and usability, including jump-to-pinned.
-- Telegram-like profile screen for the chat peer, with media-first layout and quick actions.
-- Better Telegram-like UX inside the peer profile tabs, including jump-back to the source message in chat.
-- Better Telegram-like playback and search UX inside chat, including top search mode and a voice playback banner.
-- First real in-app audio-call flow from the peer profile.
-- Ongoing structural optimization of mobile chat/profile/composer layers to reduce renderer pressure and make future polish safer.
-- P2P planning now needs to account for the current richer messenger surface, not just basic text delivery.
-- Step 2 of the Rust adoption plan is now complete: the server media pipeline already uses a real Rust worker behind a safe optional path.
+- Telegram-like group chats are now part of the active product surface, not just planned scope.
+- Group profile UX is now a first-class mobile area: participants, tags, media/files/voice tabs, and owner actions.
+- Channel rollout is still planned around internal billing plus `Loginus account type` capability gating.
+- The messenger continues to move toward a familiar Telegram-like UX across chat, profile, groups, and calls.
+- Large mobile screens are being decomposed into orchestration screens plus focused child components to keep future polish safer.
 
 ## Recent Changes
-- **Channel/access strategy shift (Apr 2026):**
-  - Built-in creator billing was deprioritized for the first rollout.
-  - The preferred product direction is now:
-    - account plans unlock the ability to create groups/channels
-    - creator monetization happens through an external payment service
-    - the app itself remains responsible for access control, membership allowlists, and moderation actions
-  - YooKassa is the current preferred external payment option for that path.
-  - Architecture/planning docs for this direction now live in `Improvements/2026-04-03-channel-access-external-payments/`.
-- **Telegram-like chat/polish pass (Apr 2026):**
-  - Multi-select mode was upgraded to feel closer to Telegram:
-    - top selection pills are cleaner and animated
-    - bottom `Delete` / `Forward` actions are floating left/right actions instead of a white dock
-    - selection circles now animate and feel more native
-  - Inline delete confirmation inside chat now stays within the blur/menu surface instead of dropping to a plain system alert.
-  - Forwarded messages now keep explicit source metadata through server + mobile:
-    - forwarded message id
-    - forwarded source name
-    - forwarded source chat id
-    - forwarded source sender id
-  - Chat bubbles now show a real forwarded header instead of making forwarded content look like a fresh normal send.
-  - Forwarded header is now clickable when source context exists:
-    - can open the original chat
-    - can jump to the original message
-    - can fall back to peer profile when only source-user context is available
-  - Profile `Links` tab now excludes local/dev/internal URLs:
-    - LAN IP addresses
-    - localhost
-    - upload URLs
-    - deleted-message content
-  - Profile tab pills (`Files`, `Links`, etc.) were stabilized so they no longer visually stretch downward on press/switch.
-  - Recent stability fixes in the same polish window:
-    - sync queue is user-scoped, preventing cross-account replay of pending media
-    - image-bubble flash on chat re-entry was reduced
-    - forwarded/message-selection UI files were cleaned and kept type-safe
-- **iOS / Xcode / корпоративный Git (Mar 2026):**
-  - Ветка **`dev-vlad`** смержена в основную линию: в репозитории закоммичены **`mobile/ios/`** (Xcode-проект, **Podfile**, **Podfile.lock**, workspace, схема), скрипт **`mobile/open-in-xcode.sh`** (npm → при необходимости prebuild → `pod install` → открыть workspace).
-  - Добавлены **patch-package** патчи под RN 0.83 / Expo 55 (в т.ч. `react-native`, `expo-av`, `expo-modules-core`, навигация, webview, reanimated, screens и др.) — важно для стабильной сборки на симуляторе.
-  - **`App.tsx`**: загрузка БД/сессии с экраном ошибки при сбое; обёртка **`BootstrapErrorBoundary`** для видимых ошибок рендера в симуляторе.
-  - **`app.json`**: **ATS** (`NSAppTransportSecurity`) для HTTP к VPS **`45.11.93.210`** (iOS не режет cleartext к прод-API).
-  - После мержа восстановлен полноразмерный **`mobile/assets/splash/auth-bg-clean.png`** (в ветке затесался 70-байтный placeholder — регрессия фона логина).
-  - **`mobile/.env.example`**: прод **`EXPO_PUBLIC_API_URL`**, публичный **`EXPO_PUBLIC_LOGINUS_CLIENT_ID`**, флаги режимов и краткая инструкция для Mac/Xcode (`cp .env.example .env`, `npm install`, `./open-in-xcode.sh` / `npx expo run:ios`).
-  - Всё запушено в **Startupus-Team/chatus** (`main`), ветка одна; личный remote **`origin`** (Gurufuiled/Chatus) синхронизирован с той же историей.
-  - **`docs/`** и **`steps/`** убраны из отслеживаемых файлов (остались только локально + `.gitignore`).
-- **Deploy & mobile release (Mar 2026):**
-  - Корпоративный репозиторий **Startupus-Team/chatus** (`main`); типичный деплой бэкенда: клон на VPS, **`/root/chatus/server`**, `docker compose up -d --build`, порты **4000/4001/4002**.
-  - Мобильный **release APK**: `mobile/android` → `gradlew assembleRelease`; Metro не нужен; `EXPO_PUBLIC_*` задаются в **`mobile/.env`** и продублированы в **`mobile/app.config.js`** → **`expo.extra`** (иначе в Hermes release не инлайнился API URL → ложный `10.0.2.2` и таймаут входа).
-  - **`config.ts`**: чтение публичных переменных из `Constants.expoConfig.extra` первым; подмена `localhost` → `10.0.2.2` только при **`EXPO_PUBLIC_USE_EMULATOR=true`**.
-  - **`LoginScreen`**: таймаут запроса login-url увеличен, в алерте показывается фактический URL API, тексты ошибок различают локальную разработку и удалённый VPS.
-  - **iOS**: отдельная сборка (Xcode на Mac или EAS Build); TestFlight для тестеров — не тот же файл, что Android APK.
-- Fixed private-chat avatar mapping on the server:
-  - `server/src/common/mappers.ts` now returns the peer avatar in `chat.avatar_url`
-  - chat list and chat header now show the real avatar for private dialogs instead of fallback initials
-- Added a dedicated peer profile screen:
-  - tapping the chat title or avatar in `mobile/src/navigation/ChatsStack.tsx` opens `ChatProfile`
-  - new screen `mobile/src/screens/ChatProfileScreen.tsx`
-  - new backend endpoint `GET /users/:id`
-  - mobile profile fetch added via `getUserProfile`
-- Built the first Telegram-like profile blocks for a private chat peer:
-  - large avatar / name / status header
-  - quick action row under the header
-  - info card with user-facing fields like phone and username
-  - media section with tabs for media / files / voice / links
-  - media grid opens fullscreen viewer on tap
-- Continued profile UX polish to make tabs closer to Telegram:
-  - files tab now uses richer attachment rows with extension badge and metadata
-  - voice tab now supports inline play / pause with mini waveform preview
-  - account ID was removed from the info card; username remains the primary identity field
-- Refined the peer profile header:
-  - softer display-name typography closer to Telegram
-  - removed the old blue glow behind the avatar
-  - tapping avatar now expands it with a smooth animated reveal that pushes content downward
-- Added real `More` actions to the peer profile:
-  - compact bottom sheet with messenger-style icons
-  - local persistent block / unblock action
-  - delete-chat flow with nested confirmation
-  - `Delete for me` is real local deletion from store + SQLite
-  - `Delete for me and <peer>` is present in UX but still blocked on missing server API
-- Added real search handoff from peer profile into chat:
-  - profile search button opens `Chat` with `startSearch`
-  - `ChatScreen` shows a search bubble under the header
-  - keyboard auto-focuses and `Cancel` exits search mode
-  - search currently scrolls to the first local message match
-- Added real in-app audio calls from the peer profile:
-  - video quick action was removed from the profile
-  - profile `Call` now starts a real app-level audio call flow instead of a placeholder
-  - new global `CallProvider` shows a full-screen call overlay for outgoing / incoming / active states
-  - call overlay supports accept, decline, end, and local mic mute
-  - calls use `react-native-webrtc` audio streams and the existing signaling server on port `4002`
-  - `CallProvider` is mounted globally in `mobile/App.tsx`, so incoming calls can appear above the current screen
-- Fixed signaling integration so call setup can really work:
-  - mobile `SignalingService` now sends Nest-style `{ event, data }` messages like the rest of the app sockets
-  - offer / answer / ICE parsing was normalized on the client
-  - server signaling gateway now also relays `call_cancel`, `call_decline`, `call_end`, and `call_busy`
-  - server `ice` relay now emits `ice_candidate` consistently for the mobile client
-- Started real `ChatScreen` decomposition work without changing chat behavior:
-  - extracted `ChatMessageList` with `FlatList`, `MessageRow`, and custom swipe-to-reply
-  - extracted `ChatTopBanners` for selection banner, search mode, voice banner, and pinned banner
-  - extracted `ChatContextMenuOverlay` for long-press blur/menu/reaction UI
-  - extracted `ChatInputDock` for the bottom input/reply/attachment layer
-  - extracted `ChatForwardSheet` for forward-target picker UI
-  - extracted `chatScreen.shared.tsx` for shared constants, formatters, copy helpers, author-name lookup, and wallpaper background
-  - cleaned old dead styles/imports from `ChatScreen.tsx` after each extraction step
-  - after each extraction step, `mobile` typecheck remained green
-- Continued broader mobile optimization outside `ChatScreen`:
-  - optimized voice playback state flow in `VoicePlayerService`, `VoicePlayerContext`, and `VoiceBubble`
-  - extracted `InputAttachmentSheet` and `InputVoiceRecordingStage` from `InputBar`
-  - optimized chat list rendering with memoized `ChatListRow`
-  - isolated active-call ticking so `CallProvider` no longer needlessly re-renders wide app surfaces during calls
-- Continued structural cleanup of the peer profile screen:
-  - extracted `ChatProfileHero`
-  - extracted `ChatProfileMediaSection`
-  - extracted `ChatProfileOverlayLayer`
-  - removed legacy inline tabs / overlay code / dead styles from `ChatProfileScreen.tsx`
-- Added a dedicated optimization note:
-  - `docs/optimization.md` now documents what was split, which new files were introduced, and why the optimization pass was done
-- Closed Step 2 of the Rust rollout plan:
-  - added Rust workspace and `media-worker` binary
-  - integrated Rust inspection into the Nest upload pipeline through `RustMediaWorkerService`
-  - enabled richer metadata extraction for image/audio/video formats
-  - added server-side image thumbnail generation
-  - propagated `thumbnail_url`, `duration_ms`, `waveform`, and normalized media metadata through server mapping and mobile sync paths
-  - fixed waveform persistence/decoding end-to-end so Rust-generated waveform survives realtime and later sync
-  - hardened voice upload with MIME fallbacks on mobile and confirmed voice upload now reaches `/upload` and `send_message`
-  - rewrote `steps/step2.md` as a completed step documenting the actual implemented scope
-- Rewrote `docs/hranenie.md` in clean UTF-8 and updated it to reflect the current messenger surface for future P2P work:
-  - separates message events, chat-state events, user-local state, and derived views
-  - documents how reply / forward / delete / media / profile / unread / calls map into a future P2P model
-  - clarifies that mailbox is currently the most realistic compromise for offline delivery
-  - clarifies that current server-backed pinning, unread badge semantics, and call signaling are not the final P2P model
-- Added a top in-chat voice playback banner:
-  - appears under the chat header while a voice message from this chat is active
-  - supports play / pause, close, and playback speed switching `1x / 1.5x / 2x`
-- Improved voice playback behavior:
-  - finished voice messages now reset to initial state instead of requiring playback of another clip first
-  - tapping the waveform now seeks playback
-  - tapping the waveform on an inactive voice message starts directly from the tapped position
-  - playback speed is now part of shared voice-player state and is applied to real audio playback
-  - completed voice playback returns to the idle state with full duration shown again, not looping
-- Added local chat-management support behind the profile screen:
-  - `uiStore` now persists blocked user ids in `SecureStore`
-  - `chatStore.removeChat(chatId)` removes a chat locally and clears `selectedChatId` if needed
-  - profile `Delete for me` now performs a real local delete and returns to chat list
-- Expanded photo previews in chat:
-  - removed extra inner width restriction from `ImageBubble`
-  - increased preview sizing for a more Telegram-like photo bubble
-- Added long-press action flow inside profile tabs:
-  - media / files / voice / links items open a compact context menu
-  - only action is `Show in chat`
-  - tap outside dismisses the menu
-  - menu now has a soft animated open / close transition
-- Added jump-from-profile back into chat:
-  - profile actions navigate back to `Chat` with `focusMessageId`
-  - `ChatScreen` scrolls to that message and briefly highlights it after arrival
-- Added long-press message menu in `mobile/src/screens/ChatScreen.tsx` with:
-  - reply
-  - copy
-  - pin / unpin
-  - forward
-  - delete
-  - select
-- Reply flow is fully wired end-to-end:
-  - `reply_to_id` is sent from mobile
-  - goes through `TransportService` and `SyncService`
-  - accepted by websocket gateway on the server
-  - saved in `MessagesService`
-  - rendered as preview above input and as reply snippet inside bubbles
-- Forward flow is now real, not a placeholder:
-  - chat picker modal in `ChatScreen`
-  - actual send via `TransportService.forwardMessage`
-  - offline queue support through `SyncService`
-- Message deletion works through WebSocket with optimistic client update and realtime broadcast.
-- Chat wallpaper now uses the real asset from `mobile/chat/chat-bg.png`.
-- Connected true blur for long-press menu via `expo-blur`.
-- Reworked pinned messages from local-only UI state to server-backed state:
-  - new `pinned_message_id` on chats
-  - Prisma schema updated
-  - migration `20260320000100_add_chat_pinned_message` created and applied
-  - websocket event `pin_message` added
-  - broadcast event `chat_pinned_message_updated` added
-  - mobile chat data now reads pinned state from `chatStore`, not local UI memory
-  - deleting a pinned message clears the pin on the server
-- Added tap on pinned banner to scroll to the pinned message inside the chat:
-  - `FlatList` ref
-  - `scrollToIndex`
-  - fallback via `onScrollToIndexFailed`
-  - alert when the pinned message is not loaded in the current message window
+- Added a real group-chat creation flow on mobile:
+  - long-press on the `Chats` tab
+  - quick action to create a group
+  - dedicated create-group screen with member search and initial participant selection
+- Added a Telegram-like group profile screen with:
+  - avatar / title / member count hero
+  - quick actions for mute / search / more
+  - owner-only edit mode for photo / title / description
+  - owner-only add-members flow
+  - leave-group / delete-group actions
+- Added participant long-press actions in groups:
+  - write to participant
+  - set/update member tag
+  - remove participant (owner-only)
+- Added server-backed group metadata:
+  - chat `description`
+  - member `tag`
+  - member `tag_color`
+- Group member tags now support four base colors and render as right-side badges similar to owner/admin pills.
+- Group profile tabs now work as real interaction surfaces:
+  - `Media` opens a fullscreen viewer and can jump back to the source message
+  - `Files` can open directly or jump to the source message
+  - `Voice` can play inline or jump to the source message
+- Group profile now has compact sticky-header behavior on scroll, closer to Telegram.
+- Anchored `More` popovers for peer/group profiles now open under the button instead of from the bottom of the screen.
+- `GroupProfileScreen` was heavily decomposed into focused pieces:
+  - `GroupProfileHeaderSection`
+  - `GroupProfileStickyTabs`
+  - `GroupParticipantsSection`
+  - `GroupProfileMediaContent`
+  - `GroupProfileMediaViewerModal`
+  - `GroupMemberTagModal`
+  - `GroupAddMembersModal`
+  - `groupProfile.constants.ts`
+  - `groupProfile.utils.ts`
+- Local SQLite startup repair was strengthened so missing group-related columns can be added on-device even when old `user_version` state drifted.
 
 ## Current Constraints
-- Pinned banner can scroll only to messages currently present in the loaded message set; if the pinned message is older than the fetched batch, the UI currently shows a fallback alert instead of fetching deep history.
-- Some Russian strings in older chat/profile files still need cleanup because earlier edits left mojibake fragments in a few places.
-- Profile quick actions are only partially real right now:
-  - mute toggles local chat state
-  - search is now real and opens in-chat search mode
-  - more now opens a real action sheet
-  - call is now real
-  - video was intentionally removed from the profile quick actions
-- The profile context menu uses local item coordinates and animation only; there is no richer multi-action sheet there yet.
-- In-chat search currently works on the locally loaded message batch only; there is no deep-history search fetch yet.
-- Local block / unblock currently affects only this device because there is no backend block list yet.
-- In-chat search currently jumps only to the first local match; there is no next / previous result navigation yet.
-- Voice waveform seeking is much faster now, but it still uses local client-side duration math rather than a richer scrubber with drag gestures.
-- In-app audio calls currently assume both apps are already open:
-  - there is no CallKit / system incoming-call UI
-  - there is no background push wake-up flow yet
-  - the current call UX is app-level, not OS-level
-- `ChatScreen` is now structurally lighter than before, and `ChatProfileScreen` is no longer carrying its old inline media/overlay layers.
-- `InputBar` is much cleaner than before, but the voice-record interaction still remains one of the heaviest remaining UX hotspots.
-- The Rust media worker path is now real, but video thumbnails and some deeper media-edge-case polish are still optional follow-up work, not blockers.
-- The current backend remains the source of truth for several features that will need redesign, not direct reuse, in a future P2P mode:
-  - pinned message in chat
-  - unread/read semantics
-  - profile source of truth
-  - call signaling / connectivity help
+- Group profile `Media / Files / Voice` tabs are derived from the locally loaded message set for that group; there is no dedicated deep-history media index API yet.
+- Group-profile editing, descriptions, member tags, and tag colors require the updated backend and Prisma migrations on the target server.
+- Group permissions are still simple:
+  - owner-only edit/delete/add/remove flows
+  - no full owner/admin/member permission matrix yet
+- Channel/account-type capability implementation is still planning/design work, not shipped behavior.
+- Some older files in the app still contain mojibake from earlier encoding damage; new work should stay UTF-8 clean.
 
 ## Next Likely Steps
-1. Continue structural cleanup / performance work where it still matters:
-   - validate on-device FPS / responsiveness after the decomposition pass
-   - revisit remaining heavy recording / composer paths in `InputBar` if needed
-   - decide whether any remaining chat-only helpers/styles should move closer to the extracted components
-2. Continue polishing the in-app call UX:
-   - better Telegram-like call screen visuals
-   - ringing / connection tones
-   - clearer states for busy / declined / failed
-3. Add richer in-chat search UX if needed:
-   - result counter
-   - next / previous match navigation
-   - deep-history search beyond the loaded batch
-4. Clean remaining mojibake / string encoding leftovers in older chat/profile code where needed.
-5. If needed, support fetching older history when pinned message or search result is outside the currently loaded batch.
-6. Add real backend support for block / unblock and delete-for-both chat actions if those flows become product requirements.
-7. If call UX becomes a core feature, add system-level incoming call behavior and background wake-up support.
-8. When returning to P2P planning/implementation, use `docs/hranenie.md` as the migration guide (файл локальный, не в Git — держи копию у себя).
-9. Decide whether to begin `step3` of the Rust plan or pause Rust rollout and let the team test the current application more broadly first.
-10. Закрепить раздачу iOS тестерам (TestFlight или ad hoc) и при необходимости EAS; нативный проект и ассеты под `app.json` уже в репо — дальше подпись и загрузка в App Store Connect.
+1. Continue group-chat work:
+   - richer roles/permissions
+   - better deep-history behavior for group profile tabs
+   - more Telegram-like group-management polish
+2. Continue call work:
+   - better call screen polish
+   - clearer failed/busy/declined states
+   - later video-call work after the current audio flow is more solid
+3. Start the next familiar-UX features from the sprint:
+   - circles / video notes polish
+   - broader group-chat behavior
+   - private-channel/account-type gating
+4. Keep cleaning remaining monolithic mobile screens when there is real maintainability value, not just for cosmetic file splitting.
+5. Clean remaining mojibake where it still leaks into user-facing strings.

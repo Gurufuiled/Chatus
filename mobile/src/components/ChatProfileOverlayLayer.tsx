@@ -1,6 +1,11 @@
 import React, { useMemo } from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import { Animated, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  AnchoredPopoverMenu,
+  type AnchoredMenuState,
+  type AnchoredPopoverMenuItem,
+} from './AnchoredPopoverMenu';
 
 type ProfileActionMenuState = {
   messageId: string;
@@ -9,11 +14,11 @@ type ProfileActionMenuState = {
 } | null;
 
 type ChatProfileOverlayLayerProps = {
-  isMoreMenuVisible: boolean;
-  isBlocked: boolean;
+  moreMenu: AnchoredMenuState;
+  moreMenuAnimation: Animated.Value;
+  moreMenuItems: AnchoredPopoverMenuItem[];
   onCloseMoreMenu: () => void;
-  onToggleBlocked: () => void;
-  onDeleteChatPress: () => void;
+  onMoreMenuAction: (key: string) => void;
   selectedMediaUri: string | null;
   onCloseMedia: () => void;
   actionMenu: ProfileActionMenuState;
@@ -23,11 +28,11 @@ type ChatProfileOverlayLayerProps = {
 };
 
 export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLayer({
-  isMoreMenuVisible,
-  isBlocked,
+  moreMenu,
+  moreMenuAnimation,
+  moreMenuItems,
   onCloseMoreMenu,
-  onToggleBlocked,
-  onDeleteChatPress,
+  onMoreMenuAction,
   selectedMediaUri,
   onCloseMedia,
   actionMenu,
@@ -67,58 +72,15 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
 
   return (
     <>
-      <Modal
-        visible={isMoreMenuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={onCloseMoreMenu}
-      >
-        <View style={styles.moreMenuRoot}>
-          <Pressable style={styles.moreMenuBackdrop} onPress={onCloseMoreMenu} />
-          <View style={styles.moreMenuSheet}>
-            <View style={styles.moreMenuHandle} />
-
-            <Pressable
-              onPress={onToggleBlocked}
-              style={({ pressed }) => [styles.moreMenuItem, pressed && styles.moreMenuItemPressed]}
-            >
-              <View
-                style={[
-                  styles.moreMenuIconWrap,
-                  isBlocked ? styles.moreMenuIconWrapNeutral : styles.moreMenuIconWrapWarning,
-                ]}
-              >
-                <Feather
-                  name="slash"
-                  size={18}
-                  color={isBlocked ? '#64748B' : '#F97316'}
-                />
-              </View>
-              <View style={styles.moreMenuTextWrap}>
-                <Text style={styles.moreMenuLabel}>
-                  {isBlocked ? 'Разблокировать' : 'Заблокировать'}
-                </Text>
-                <Text style={styles.moreMenuCaption}>Локально на этом устройстве</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              onPress={onDeleteChatPress}
-              style={({ pressed }) => [styles.moreMenuItem, pressed && styles.moreMenuItemPressed]}
-            >
-              <View style={[styles.moreMenuIconWrap, styles.moreMenuIconWrapDanger]}>
-                <Feather name="trash-2" size={18} color="#EF4444" />
-              </View>
-              <View style={styles.moreMenuTextWrap}>
-                <Text style={[styles.moreMenuLabel, styles.moreMenuLabelDanger]}>
-                  Удалить чат
-                </Text>
-                <Text style={styles.moreMenuCaption}>С выбором способа удаления</Text>
-              </View>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
+      <AnchoredPopoverMenu
+        menu={moreMenu}
+        animation={moreMenuAnimation}
+        items={moreMenuItems}
+        onClose={onCloseMoreMenu}
+        onSelect={onMoreMenuAction}
+        horizontalAlign="end"
+        offsetY={8}
+      />
 
       <Modal
         visible={selectedMediaUri != null}
@@ -180,77 +142,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.92)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  moreMenuRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  moreMenuBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15,23,42,0.28)',
-  },
-  moreMenuSheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 10,
-    paddingHorizontal: 16,
-    paddingBottom: 22,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 16,
-  },
-  moreMenuHandle: {
-    alignSelf: 'center',
-    width: 38,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#D5DCE7',
-    marginBottom: 14,
-  },
-  moreMenuItem: {
-    minHeight: 68,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 4,
-  },
-  moreMenuItemPressed: {
-    opacity: 0.78,
-  },
-  moreMenuIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  moreMenuIconWrapWarning: {
-    backgroundColor: 'rgba(249, 115, 22, 0.12)',
-  },
-  moreMenuIconWrapNeutral: {
-    backgroundColor: 'rgba(100, 116, 139, 0.12)',
-  },
-  moreMenuIconWrapDanger: {
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
-  },
-  moreMenuTextWrap: {
-    flex: 1,
-  },
-  moreMenuLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  moreMenuLabelDanger: {
-    color: '#DC2626',
-  },
-  moreMenuCaption: {
-    marginTop: 2,
-    fontSize: 13,
-    color: '#7A8699',
   },
   viewerContent: {
     width: '100%',

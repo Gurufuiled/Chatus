@@ -95,6 +95,7 @@ model Chat {
   id                  String    @id @default(uuid())
   chatType            ChatType  @map("chat_type")
   name                String?
+  description         String?
   avatarUrl           String?   @map("avatar_url")
   createdById         String    @map("created_by_id")
   lastMessageId       String?   @map("last_message_id")
@@ -124,6 +125,8 @@ model ChatMember {
   chatId   String        @map("chat_id")
   userId   String        @map("user_id")
   role     ChatMemberRole @default(member)
+  tag      String?
+  tagColor String?       @map("tag_color")
   joinedAt DateTime      @default(now()) @map("joined_at")
 
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)

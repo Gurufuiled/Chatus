@@ -1,7 +1,14 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
-import { StyleSheet, Text, View } from 'react-native';
+import {
+  createBottomTabNavigator,
+  type BottomTabBarButtonProps,
+} from '@react-navigation/bottom-tabs';
+import {
+  getFocusedRouteNameFromRoute,
+  useNavigation,
+  type NavigationProp,
+} from '@react-navigation/native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChatsStack } from './ChatsStack';
 import { ContactsScreen, SettingsScreen } from '../screens';
 import type { MainTabParamList } from './types';
@@ -98,56 +105,185 @@ function TabBarItem({
   );
 }
 
-export function MainTabs() {
+function GroupChatIcon() {
   return (
-    <Tab.Navigator
-      id={undefined as never}
-      screenOptions={({ route }) => ({
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: '#EAF3FF',
-        },
-        headerShadowVisible: false,
-        headerTintColor: '#111827',
-        headerTitleStyle: {
-          color: '#111827',
-          fontWeight: '700',
-        },
-        tabBarShowLabel: false,
-        tabBarActiveTintColor: '#4D8DFF',
-        tabBarInactiveTintColor: '#273142',
-        tabBarItemStyle: styles.nativeTabItem,
-        tabBarStyle: styles.tabBar,
-        tabBarIcon: ({ color, focused }) => (
-          <TabBarItem routeName={route.name} color={color} focused={focused} />
-        ),
-      })}
-    >
-      <Tab.Screen
-        name="Contacts"
-        component={ContactsScreen}
-        options={{ title: 'Контакты' }}
-      />
-      <Tab.Screen
-        name="Chats"
-        component={ChatsStack}
-        options={({ route }) => {
-          const focusedRoute = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
-          const isChatOpen = focusedRoute === 'Chat';
+    <View style={styles.quickActionIcon}>
+      <View style={styles.groupBackHead} />
+      <View style={styles.groupBackBody} />
+      <View style={styles.groupFrontHead} />
+      <View style={styles.groupFrontBody} />
+    </View>
+  );
+}
 
-          return {
-            title: 'Чаты',
-            headerShown: false,
-            tabBarStyle: isChatOpen ? styles.hiddenTabBar : styles.tabBar,
-          };
+function ChatsQuickActionsMenu({
+  visible,
+  onClose,
+  onCreateGroup,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onCreateGroup: () => void;
+}) {
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.menuRoot}>
+        <Pressable style={styles.menuBackdrop} onPress={onClose} />
+        <View style={styles.quickMenuCard}>
+          <Pressable
+            onPress={onCreateGroup}
+            style={({ pressed }) => [
+              styles.quickMenuButton,
+              pressed && styles.quickMenuButtonPressed,
+            ]}
+          >
+            <View style={styles.quickMenuIconWrap}>
+              <GroupChatIcon />
+            </View>
+            <View style={styles.quickMenuTextWrap}>
+              <Text style={styles.quickMenuTitle}>Создать групповой чат</Text>
+            </View>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+type ChatsTabButtonProps = BottomTabBarButtonProps & {
+  onOpenQuickMenu: () => void;
+  onBeforePress: () => void;
+  ignoreNextPressRef: React.MutableRefObject<boolean>;
+};
+
+function ChatsTabButton({
+  accessibilityState,
+  accessibilityLabel,
+  children,
+  onLongPress,
+  onOpenQuickMenu,
+  onPress,
+  onBeforePress,
+  testID,
+  style,
+  ignoreNextPressRef,
+}: ChatsTabButtonProps) {
+  return (
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="tab"
+      accessibilityState={accessibilityState}
+      testID={testID}
+      onPress={(event) => {
+        if (ignoreNextPressRef.current) {
+          ignoreNextPressRef.current = false;
+          return;
+        }
+        onBeforePress();
+        onPress?.(event);
+      }}
+      onLongPress={(event) => {
+        ignoreNextPressRef.current = true;
+        onOpenQuickMenu();
+        onLongPress?.(event);
+      }}
+      delayLongPress={220}
+      style={style}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+export function MainTabs() {
+  const navigation = useNavigation<NavigationProp<MainTabParamList>>();
+  const [isChatsQuickMenuVisible, setIsChatsQuickMenuVisible] = React.useState(false);
+  const ignoreNextChatsPressRef = React.useRef(false);
+
+  const closeChatsQuickMenu = React.useCallback(() => {
+    setIsChatsQuickMenuVisible(false);
+  }, []);
+
+  const openChatsQuickMenu = React.useCallback(() => {
+    setIsChatsQuickMenuVisible(true);
+  }, []);
+
+  const handleCreateGroup = React.useCallback(() => {
+    closeChatsQuickMenu();
+    navigation.navigate('Chats', { screen: 'CreateGroupChat' });
+  }, [closeChatsQuickMenu, navigation]);
+
+  return (
+    <>
+      <Tab.Navigator
+        id={undefined as never}
+        screenListeners={{
+          tabPress: closeChatsQuickMenu,
         }}
+        screenOptions={({ route }) => ({
+          headerShown: true,
+          headerStyle: {
+            backgroundColor: '#EAF3FF',
+          },
+          headerShadowVisible: false,
+          headerTintColor: '#111827',
+          headerTitleStyle: {
+            color: '#111827',
+            fontWeight: '700',
+          },
+          tabBarShowLabel: false,
+          tabBarActiveTintColor: '#4D8DFF',
+          tabBarInactiveTintColor: '#273142',
+          tabBarItemStyle: styles.nativeTabItem,
+          tabBarStyle: styles.tabBar,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarItem routeName={route.name} color={color} focused={focused} />
+          ),
+        })}
+      >
+        <Tab.Screen
+          name="Contacts"
+          component={ContactsScreen}
+          options={{ title: 'Контакты' }}
+        />
+        <Tab.Screen
+          name="Chats"
+          component={ChatsStack}
+          options={({ route }) => {
+            const focusedRoute = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
+            const shouldHideTabBar =
+              focusedRoute === 'Chat' ||
+              focusedRoute === 'CreateGroupChat' ||
+              focusedRoute === 'GroupProfile';
+
+            return {
+              title: 'Чаты',
+              headerShown: false,
+              tabBarStyle: shouldHideTabBar ? styles.hiddenTabBar : styles.tabBar,
+              tabBarButton: (props) => (
+                <ChatsTabButton
+                  {...props}
+                  ignoreNextPressRef={ignoreNextChatsPressRef}
+                  onBeforePress={closeChatsQuickMenu}
+                  onOpenQuickMenu={openChatsQuickMenu}
+                />
+              ),
+            };
+          }}
+        />
+        <Tab.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{ title: 'Настройки' }}
+        />
+      </Tab.Navigator>
+
+      <ChatsQuickActionsMenu
+        visible={isChatsQuickMenuVisible}
+        onClose={closeChatsQuickMenu}
+        onCreateGroup={handleCreateGroup}
       />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{ title: 'Настройки' }}
-      />
-    </Tab.Navigator>
+    </>
   );
 }
 
@@ -328,5 +464,102 @@ const styles = StyleSheet.create({
     height: 6,
     borderWidth: 1.4,
     borderRadius: 999,
+  },
+  menuRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  menuBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(17, 24, 39, 0.12)',
+  },
+  quickMenuCard: {
+    width: 228,
+    marginBottom: 86,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#1F2937',
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  quickMenuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  quickMenuButtonPressed: {
+    opacity: 0.92,
+  },
+  quickMenuIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAF3FF',
+  },
+  quickActionIcon: {
+    width: 22,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupBackHead: {
+    position: 'absolute',
+    left: 2,
+    top: 1,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    borderWidth: 1.6,
+    borderColor: '#7AA9FF',
+    backgroundColor: 'transparent',
+  },
+  groupBackBody: {
+    position: 'absolute',
+    left: 0,
+    top: 8,
+    width: 11,
+    height: 7,
+    borderRadius: 4,
+    borderWidth: 1.6,
+    borderColor: '#7AA9FF',
+    backgroundColor: 'transparent',
+  },
+  groupFrontHead: {
+    position: 'absolute',
+    right: 3,
+    top: 0,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.8,
+    borderColor: '#4D8DFF',
+    backgroundColor: 'transparent',
+  },
+  groupFrontBody: {
+    position: 'absolute',
+    right: 1,
+    top: 8,
+    width: 12,
+    height: 8,
+    borderRadius: 4.5,
+    borderWidth: 1.8,
+    borderColor: '#4D8DFF',
+    backgroundColor: 'transparent',
+  },
+  quickMenuTextWrap: {
+    flex: 1,
+  },
+  quickMenuTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+    lineHeight: 20,
   },
 });

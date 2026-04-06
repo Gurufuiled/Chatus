@@ -1,17 +1,20 @@
 import React from 'react';
-import { Dimensions, ImageBackground, StyleSheet, View } from 'react-native';
+import { Dimensions } from 'react-native';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { Message } from '../stores/types';
-
-const CHAT_BACKGROUND = require('../../chat/chat-bg.png');
+import { ChatWallpaper } from '../theme/chatThemes';
 
 export const EMPTY_MESSAGES: Message[] = [];
 export const SCREEN_WIDTH = Dimensions.get('window').width;
 export const SCREEN_HEIGHT = Dimensions.get('window').height;
 export const MENU_WIDTH = Math.min(202, SCREEN_WIDTH - 24);
 export const MENU_ITEM_HEIGHT = 39;
-export const MENU_HEIGHT = MENU_ITEM_HEIGHT * 6 + 2;
+export const MENU_ACTION_COUNT = 6;
+export const MENU_ITEM_BORDER_WIDTH = 1;
+export const MENU_HEIGHT =
+  MENU_ITEM_HEIGHT * MENU_ACTION_COUNT +
+  MENU_ITEM_BORDER_WIDTH * (MENU_ACTION_COUNT - 1);
 export const MENU_EDGE_GAP = 12;
 export const MENU_TO_MESSAGE_GAP = 6;
 export const OVERLAY_TOP_INSET = 86;
@@ -67,31 +70,6 @@ export function getCopyableContent(message: Message): string {
   return message.content?.trim() ?? '';
 }
 
-export function ChatBackgroundPattern() {
-  return (
-    <View pointerEvents="none" style={styles.backgroundLayer}>
-      <ImageBackground
-        source={CHAT_BACKGROUND}
-        resizeMode="cover"
-        style={styles.backgroundLayer}
-        imageStyle={styles.backgroundImage}
-      >
-        <View style={styles.backgroundTint} />
-      </ImageBackground>
-    </View>
-  );
+export function ChatBackgroundPattern({ themeId }: { themeId?: string | null }) {
+  return <ChatWallpaper themeId={themeId} />;
 }
-
-const styles = StyleSheet.create({
-  backgroundLayer: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  backgroundImage: {
-    opacity: 0.9,
-  },
-  backgroundTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(244, 251, 224, 0.16)',
-  },
-});

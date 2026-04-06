@@ -1,5 +1,10 @@
 # Final Decision
 
+> Superseded on `2026-04-05` by:
+> `../2026-04-05-channel-internal-billing-loginus/final-decision-current.md`
+>
+> This file remains as history for the temporary external-payments-first direction.
+
 ## Название задачи
 
 `Channel access with external payments`

@@ -1,5 +1,12 @@
 # Improvements
 
+## Current Active Branch
+
+- `2026-04-05-channel-internal-billing-loginus` - current direction:
+  - internal billing (`Schetus` / internal billing service)
+  - `Loginus account type` as the practical entitlement signal
+  - capability-based access for channels/groups
+
 Эта папка хранит новые продуктовые и технические доработки проекта.
 
 Цель:

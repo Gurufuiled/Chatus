@@ -13,11 +13,13 @@ export class ChatMemberDao {
 
   async insert(row: ChatMemberRow): Promise<void> {
     await this.db.runAsync(
-      `INSERT INTO chat_members (chat_id, user_id, role, joined_at)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO chat_members (chat_id, user_id, role, tag, tag_color, joined_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
       row.chat_id,
       row.user_id,
       row.role ?? 'member',
+      row.tag ?? null,
+      row.tag_color ?? null,
       row.joined_at
     );
   }
@@ -55,6 +57,14 @@ export class ChatMemberDao {
     if (row.role !== undefined) {
       updates.push('role = ?');
       values.push(row.role);
+    }
+    if (row.tag !== undefined) {
+      updates.push('tag = ?');
+      values.push(row.tag ?? null);
+    }
+    if (row.tag_color !== undefined) {
+      updates.push('tag_color = ?');
+      values.push(row.tag_color ?? null);
     }
     if (row.joined_at !== undefined) {
       updates.push('joined_at = ?');

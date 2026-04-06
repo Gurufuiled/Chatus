@@ -138,6 +138,16 @@ export async function apiPatch(
   });
 }
 
+export async function apiDelete(
+  path: string,
+  init?: ApiFetchOptions
+): Promise<Response> {
+  return apiFetch(path, {
+    ...init,
+    method: 'DELETE',
+  });
+}
+
 export interface ApiUploadResult {
   url: string;
   file_name: string;

@@ -43,6 +43,7 @@ interface ApiChat {
   id: string;
   chat_type: string;
   name: string | null;
+  description?: string | null;
   avatar_url: string | null;
   created_by_id: string;
   last_message_id: string | null;
@@ -56,7 +57,22 @@ interface ApiChat {
   draft: string | null;
   created_at: number;
   updated_at: number;
-  members?: { user_id: string }[];
+  members?: {
+    user_id: string;
+    role?: string;
+    tag?: string | null;
+    tag_color?: string | null;
+    joined_at?: number;
+    user?: {
+      id: string;
+      username: string | null;
+      handle: string | null;
+      display_name: string | null;
+      avatar_url: string | null;
+      is_online: boolean;
+      last_seen: number | null;
+    };
+  }[];
   peer_display_name?: string | null;
 }
 
@@ -65,6 +81,7 @@ function mapApiChatToChat(api: ApiChat): Chat {
     id: api.id,
     chat_type: api.chat_type as 'private' | 'group',
     name: api.name,
+    description: api.description ?? null,
     avatar_url: api.avatar_url,
     created_by: api.created_by_id,
     last_message_id: api.last_message_id,
@@ -176,6 +193,7 @@ type PayloadPin = { chatId: string; messageId: string | null };
 type PayloadForward = {
   chatId: string;
   sourceMessage: Message;
+  clientTempId?: string | null;
   forwardedFrom?: {
     messageId?: string | null;
     name?: string | null;
@@ -349,6 +367,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
       const message = p.sourceMessage;
       const media = message.media?.[0];
       const remoteUrl = media?.remote_url ?? null;
+      const clientTempId = p.clientTempId ?? null;
       const forwardedFromMessageId =
         p.forwardedFrom?.messageId ?? message.forwarded_from_message_id ?? message.id;
       const forwardedFromName =
@@ -364,6 +383,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: message.content ?? '',
             msg_type: 'text',
+            client_temp_id: clientTempId,
             forwarded_from_message_id: forwardedFromMessageId,
             forwarded_from_name: forwardedFromName,
             forwarded_from_chat_id: forwardedFromChatId,
@@ -376,6 +396,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: message.content ?? null,
             msg_type: 'image',
+            client_temp_id: clientTempId,
             forwarded_from_message_id: forwardedFromMessageId,
             forwarded_from_name: forwardedFromName,
             forwarded_from_chat_id: forwardedFromChatId,
@@ -393,6 +414,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: remoteUrl,
             msg_type: 'voice',
+            client_temp_id: clientTempId,
             forwarded_from_message_id: forwardedFromMessageId,
             forwarded_from_name: forwardedFromName,
             forwarded_from_chat_id: forwardedFromChatId,
@@ -410,6 +432,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: remoteUrl,
             msg_type: 'video_note',
+            client_temp_id: clientTempId,
             forwarded_from_message_id: forwardedFromMessageId,
             forwarded_from_name: forwardedFromName,
             forwarded_from_chat_id: forwardedFromChatId,
@@ -428,6 +451,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             chat_id: p.chatId,
             content: getSafeFileContent(message.content, media?.file_name),
             msg_type: 'file',
+            client_temp_id: clientTempId,
             forwarded_from_message_id: forwardedFromMessageId,
             forwarded_from_name: forwardedFromName,
             forwarded_from_chat_id: forwardedFromChatId,

@@ -29,6 +29,7 @@ export interface ChatRow {
   id: string;
   chat_type: 'private' | 'group';
   name: string | null;
+  description?: string | null;
   avatar_url: string | null;
   created_by: string | null;
   last_message_id: string | null;
@@ -42,8 +43,23 @@ export interface ChatRow {
   draft: string | null;
   created_at: number;
   updated_at: number;
-  /** From API: members with user_id (for private chat peer lookup). */
-  members?: { user_id: string }[];
+  /** From API: members with user_id and optional user details. */
+  members?: {
+    user_id: string;
+    role?: string;
+    tag?: string | null;
+    tag_color?: string | null;
+    joined_at?: number;
+    user?: {
+      id: string;
+      username: string | null;
+      handle: string | null;
+      display_name: string | null;
+      avatar_url: string | null;
+      is_online: boolean;
+      last_seen: number | null;
+    };
+  }[];
   /** From API: display name of peer in private chat. */
   peer_display_name?: string | null;
 }
@@ -52,6 +68,8 @@ export interface ChatMemberRow {
   chat_id: string;
   user_id: string;
   role: string;
+  tag?: string | null;
+  tag_color?: string | null;
   joined_at: number;
 }
 

@@ -1,0 +1,48 @@
+{
+  "files.encoding": "utf8",
+  "files.autoGuessEncoding": false,
+  "files.exclude": {
+    "**/.expo": true,
+    "**/.turbo": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/coverage": true,
+    "mobile/dist-linking-check": true,
+    "mobile/dist-babel-check": true,
+    "mobile/android/build": true,
+    "mobile/android/app/build": true,
+    "server/dist": true
+  },
+  "search.exclude": {
+    "**/.expo": true,
+    "**/.turbo": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/coverage": true,
+    "mobile/dist-linking-check": true,
+    "mobile/dist-babel-check": true,
+    "mobile/android/build": true,
+    "mobile/android/app/build": true,
+    "server/dist": true
+  },
+  "files.watcherExclude": {
+    "**/.expo/**": true,
+    "**/.turbo/**": true,
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/coverage/**": true,
+    "mobile/dist-linking-check/**": true,
+    "mobile/dist-babel-check/**": true,
+    "mobile/android/build/**": true,
+    "mobile/android/app/build/**": true,
+    "server/dist/**": true
+  },
+  "typescript.tsserver.watchOptions": {
+    "watchDirectory": "useFsEvents",
+    "watchFile": "useFsEvents"
+  },
+  "specstory.cloudSync.enabled": "never"
+}

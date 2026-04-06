@@ -1,9 +1,9 @@
 # Final Decision
 
-> Superseded on `2026-04-03` by:
-> `../2026-04-03-channel-access-external-payments/final-decision-current.md`
+> Superseded on `2026-04-05` by:
+> `../2026-04-05-channel-internal-billing-loginus/final-decision-current.md`
 >
-> This file remains as history for the earlier internal billing / Schetus / creator payout approach.
+> This file remains as history for the earlier heavier internal subscription / ledger / payout model.
 
 ## Task Name
 

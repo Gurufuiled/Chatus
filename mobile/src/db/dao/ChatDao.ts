@@ -13,11 +13,12 @@ export class ChatDao {
 
   async insert(row: ChatRow): Promise<void> {
     await this.db.runAsync(
-      `INSERT INTO chats (id, chat_type, name, avatar_url, created_by, last_message_id, pinned_message_id, last_message_at, last_message_preview, unread_count, is_muted, is_pinned, is_archived, draft, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chats (id, chat_type, name, description, avatar_url, created_by, last_message_id, pinned_message_id, last_message_at, last_message_preview, unread_count, is_muted, is_pinned, is_archived, draft, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       row.id,
       row.chat_type,
       row.name ?? null,
+      row.description ?? null,
       row.avatar_url ?? null,
       row.created_by ?? null,
       row.last_message_id ?? null,
@@ -50,7 +51,7 @@ export class ChatDao {
     const values: unknown[] = [];
 
     const fields = [
-      'chat_type', 'name', 'avatar_url', 'created_by', 'last_message_id',
+      'chat_type', 'name', 'description', 'avatar_url', 'created_by', 'last_message_id',
       'pinned_message_id', 'last_message_at', 'last_message_preview', 'unread_count', 'is_muted',
       'is_pinned', 'is_archived', 'draft', 'created_at', 'updated_at'
     ] as const;

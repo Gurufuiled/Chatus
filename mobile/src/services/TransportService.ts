@@ -613,7 +613,12 @@ class TransportServiceClass {
     );
   }
 
-  forwardMessage(chatId: string, sourceMessage: Message, forwardedFrom?: ForwardMetadata): boolean {
+  forwardMessage(
+    chatId: string,
+    sourceMessage: Message,
+    forwardedFrom?: ForwardMetadata,
+    clientTempId?: string | null
+  ): boolean {
     const payload = buildForwardPayload(sourceMessage, forwardedFrom);
     if (!payload) return false;
 
@@ -622,6 +627,7 @@ class TransportServiceClass {
         chat_id: chatId,
         content: payload.content,
         msg_type: payload.msg_type,
+        client_temp_id: clientTempId ?? null,
         forwarded_from_message_id: payload.forwarded_from_message_id,
         forwarded_from_name: payload.forwarded_from_name,
         forwarded_from_chat_id: payload.forwarded_from_chat_id,
@@ -634,8 +640,8 @@ class TransportServiceClass {
     queueToSyncQueue(
       this.syncQueueDao,
       'forward_message',
-      { chatId, sourceMessage, forwardedFrom },
-      sourceMessage.id
+      { chatId, sourceMessage, forwardedFrom, clientTempId: clientTempId ?? null },
+      clientTempId ?? sourceMessage.id
     );
     return true;
   }
