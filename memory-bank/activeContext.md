@@ -3,6 +3,8 @@
 ## Current Focus
 - Telegram-like group chats are now part of the active product surface, not just planned scope.
 - Group profile UX is now a first-class mobile area: participants, tags, media/files/voice tabs, and owner actions.
+- Incoming group-chat messages now need to feel clearly multi-user, not like direct chats.
+- Video notes / circles are now active implementation work, not just a future polish item.
 - Channel rollout is still planned around internal billing plus `Loginus account type` capability gating.
 - The messenger continues to move toward a familiar Telegram-like UX across chat, profile, groups, and calls.
 - Large mobile screens are being decomposed into orchestration screens plus focused child components to keep future polish safer.
@@ -33,6 +35,16 @@
   - `Voice` can play inline or jump to the source message
 - Group profile now has compact sticky-header behavior on scroll, closer to Telegram.
 - Anchored `More` popovers for peer/group profiles now open under the button instead of from the bottom of the screen.
+- Profile quick actions for peer + group profiles now use a shared custom SVG icon system instead of mixed library icons.
+- Group chats now render incoming sender identity more clearly:
+  - colored sender name
+  - circular avatar near incoming message groups
+  - message layout no longer pretends group dialogs are direct chats
+- Video-note work moved from prototype into a real chat surface:
+  - input can switch from mic to video-note mode
+  - recording stage now uses a Telegram-like blurred backdrop and compact bottom controls
+  - chat video-note bubble is now a real circular surface instead of a square card-like preview
+  - tapping a video note expands it inline inside the chat list and auto-collapses after playback ends
 - `GroupProfileScreen` was heavily decomposed into focused pieces:
   - `GroupProfileHeaderSection`
   - `GroupProfileStickyTabs`
@@ -51,21 +63,27 @@
 - Group permissions are still simple:
   - owner-only edit/delete/add/remove flows
   - no full owner/admin/member permission matrix yet
+- Group sender names / avatars in chat depend on locally available member data; missing or stale member state can reduce fidelity.
+- Video-note recording now depends on the `expo-camera` native plugin configuration, so fresh native builds are required after related `app.json` changes.
+- Inline expanded video notes currently animate within the message flow, but do not yet force viewport-aware scroll correction when opened near the top/bottom edge.
 - Channel/account-type capability implementation is still planning/design work, not shipped behavior.
 - Some older files in the app still contain mojibake from earlier encoding damage; new work should stay UTF-8 clean.
 
 ## Next Likely Steps
 1. Continue group-chat work:
-   - richer roles/permissions
-   - better deep-history behavior for group profile tabs
-   - more Telegram-like group-management polish
-2. Continue call work:
-   - better call screen polish
-   - clearer failed/busy/declined states
-   - later video-call work after the current audio flow is more solid
-3. Start the next familiar-UX features from the sprint:
-   - circles / video notes polish
+  - richer roles/permissions
+  - better deep-history behavior for group profile tabs
+  - more Telegram-like group-management polish
+2. Continue video-note work:
+  - viewport-aware expansion / keep-in-view behavior
+  - more Telegram-like motion polish
+  - playback / viewed-state refinements
+3. Continue call work:
+  - better call screen polish
+  - clearer failed/busy/declined states
+  - later video-call work after the current audio flow is more solid
+4. Start the next familiar-UX features from the sprint:
    - broader group-chat behavior
    - private-channel/account-type gating
-4. Keep cleaning remaining monolithic mobile screens when there is real maintainability value, not just for cosmetic file splitting.
-5. Clean remaining mojibake where it still leaks into user-facing strings.
+5. Keep cleaning remaining monolithic mobile screens when there is real maintainability value, not just for cosmetic file splitting.
+6. Clean remaining mojibake where it still leaks into user-facing strings.

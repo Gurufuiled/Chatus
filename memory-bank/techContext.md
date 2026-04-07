@@ -30,6 +30,32 @@
   - chat `description`
   - member `tag_color`
 
+## Mobile Chat UX Notes
+- Group incoming message presentation now depends on local member data for:
+  - sender name
+  - sender avatar
+  - sender display color
+- Profile quick actions use a shared custom SVG icon set so peer + group profile surfaces stay visually aligned.
+- Video-note recording now relies on:
+  - `expo-camera`
+  - permission strings / plugin setup in `mobile/app.json`
+  - rebuild of the native app when those native config changes move
+- Video-note playback currently uses inline circular expansion in `VideoNoteBubble` instead of a modal-style fullscreen viewer.
+
+## Video-Note Implementation Notes
+- Input mode switching and recording stage live across:
+  - `ChatScreen`
+  - `ChatInputDock`
+  - `InputBar`
+  - `VideoNoteRecorder`
+- `ChatScreen` already provides `blurTargetRef`, and the recorder stage reuses the same blur target concept as the message context menu overlay.
+- `VideoNoteBubble` now follows this behavior:
+  - collapsed state is a circular in-chat note
+  - tap expands it inline
+  - `expo-video` playback runs inside the expanded circle
+  - `playToEnd` triggers auto-collapse
+- On Android, the circular video rendering path uses `surfaceType=\"textureView\"` and `useExoShutter={false}` to avoid square rendering artifacts during expansion.
+
 ## Group-Profile Implementation Notes
 - `GroupProfileScreen` was decomposed into focused pieces under `mobile/src/components/group-profile/`.
 - Current major extracted parts:
@@ -50,5 +76,5 @@
 
 ## Validation Notes
 - `server` `npm run build` passes after the group-related backend changes.
-- `mobile` `npx tsc --noEmit` passes after the final `GroupProfileScreen` refactor.
+- `mobile` `node --max-old-space-size=8192 .\\node_modules\\typescript\\bin\\tsc --noEmit` passes after the latest group-chat / video-note UI work.
 - Local Prisma connectivity was revalidated against Docker Postgres after regenerating Prisma Client normally.

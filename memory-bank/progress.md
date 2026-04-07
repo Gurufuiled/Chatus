@@ -25,6 +25,17 @@
 - [x] Group profile sticky compact header on scroll
 - [x] Group profile screen decomposed into focused components
 - [x] Local SQLite repair path for drifted group-related columns
+- [x] Shared custom SVG profile action icons for peer + group profiles
+- [x] Group-chat sender identity in chat:
+  - colored sender names
+  - incoming avatar markers
+  - clearer multi-user presentation
+- [x] Video-note recording flow on mobile:
+  - mic/video mode toggle
+  - Telegram-like recording stage with blur backdrop
+  - compact send/cancel control bar
+- [x] Inline expandable video-note playback bubble in chat
+- [x] Video-note auto-collapse after playback ends
 - [x] Channel strategy updated to internal billing + `Loginus account type` gating
 
 ## In Progress / Partial
@@ -33,7 +44,8 @@
 - [ ] Remaining mojibake cleanup in older UI files
 - [ ] Final polish of group/profile copy and labels
 - [ ] Account-type capability implementation for channel/group/public creation rights
-- [ ] Circles / richer video-note polish from the new sprint
+- [ ] Viewport-aware video-note expansion so opened circles stay comfortably in-frame
+- [ ] Final Telegram-like motion polish for circles / richer video-note UX
 - [ ] Video-call flow
 
 ## Remaining
@@ -46,11 +58,13 @@
 1. Group profile `Media / Files / Voice` reflect the currently loaded local message history, not a full server-side media index.
 2. Group profile edit/tag features require the updated backend schema and migrations on the server.
 3. Group permissions are still simplified; owner/admin/member rights are not fully modeled yet.
-4. Some older Russian strings still need UTF-8 cleanup.
+4. Video-note recording requires native rebuild alignment because of the `expo-camera` plugin / permission setup in `app.json`.
+5. Inline expanded video notes currently reflow surrounding messages, but do not yet auto-scroll the viewport if the expanded circle lands too close to the screen edge.
+6. Some older Russian strings still need UTF-8 cleanup.
 
 ## Latest Validation
 - `server` build passes after the group-related backend changes.
-- `mobile` `npx tsc --noEmit` passes after the final `GroupProfileScreen` decomposition.
+- `mobile` `node --max-old-space-size=8192 .\\node_modules\\typescript\\bin\\tsc --noEmit` passes after the latest video-note + chat UI work.
 - Group-related Prisma migrations now present:
   - `20260405094340_add_group_description`
   - `20260405153000_add_chat_member_tag`

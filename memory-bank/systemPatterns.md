@@ -51,7 +51,18 @@ mobile/ (Expo React Native)      server/ (NestJS)
    - this matters for fields like:
      - chat `description`
      - member `tag_color`
-8. **Capability-based channel direction**
+8. **Group incoming messages should render sender identity as part of layout**
+   - group chats should not visually collapse into direct-chat presentation
+   - incoming group messages can include:
+     - sender name with stable color
+     - sender avatar badge
+   - this identity layer is derived from local member/chat data, not a separate author-rendering API
+9. **Video notes use a two-stage UI pattern**
+   - recording uses a dedicated stage driven from the input bar
+   - playback uses an inline circular bubble inside the message flow
+   - the playback bubble should expand in-place and reflow surrounding messages instead of opening as a generic modal
+   - auto-collapse after playback is part of the intended Telegram-like feel
+10. **Capability-based channel direction**
    - current channel planning is not payout-first
    - internal billing updates `Loginus account type`
    - app/backend should derive creation/access capabilities from that account type
@@ -85,8 +96,22 @@ mobile/ (Expo React Native)      server/ (NestJS)
 - files try to open directly, then fall back to `Show in chat`
 - voice can play inline or jump to the source message
 
+### Group Incoming Message Identity
+- source data is resolved from chat members already loaded into the mobile state
+- UI uses sender name + avatar to distinguish incoming messages in groups
+- colorized names help scanning where multiple people speak in sequence
+- when this data is incomplete locally, the UI should degrade gracefully instead of crashing
+
+### Video Notes
+- input-level mode switching lives near the mic button
+- the recording stage uses a blur-backed full-screen overlay with Telegram-like controls
+- playback bubble is circular and inline with the chat list
+- tapping should enlarge the circle while keeping it inside the list flow
+- end-of-playback should return the bubble to its original size/state
+
 ## Practical Notes
 - `GroupProfileScreen` is now a coordinator, not a monolith.
 - Group profile components now live under `mobile/src/components/group-profile/`.
 - Group-profile tabs are only as complete as the currently loaded local history.
+- `VideoNoteBubble` should stay layout-driven, not modal-driven, when the UX goal is Telegram-like in-chat expansion.
 - New memory-bank updates should continue to prefer clean UTF-8 text over preserving old mojibake-heavy wording.
