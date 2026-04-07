@@ -253,6 +253,7 @@ export function MainTabs() {
             const focusedRoute = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
             const shouldHideTabBar =
               focusedRoute === 'Chat' ||
+              focusedRoute === 'ChatProfile' ||
               focusedRoute === 'CreateGroupChat' ||
               focusedRoute === 'GroupProfile';
 
