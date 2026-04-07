@@ -1,5 +1,4 @@
 import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Animated as RNAnimated,
@@ -18,6 +17,7 @@ import Reanimated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
+import { ProfileActionIcon, type ProfileActionIconName } from './ProfileActionIcon';
 import { colors } from '../theme/colors';
 
 type ChatProfileHeroProps = {
@@ -42,7 +42,7 @@ type ChatProfileHeroProps = {
 };
 
 type QuickActionButtonProps = {
-  icon: React.ComponentProps<typeof Feather>['name'];
+  icon: ProfileActionIconName;
   label: string;
   active?: boolean;
   onPress: () => void;
@@ -120,14 +120,23 @@ const QuickActionButton = React.memo(function QuickActionButton({
     <Pressable
       ref={buttonRef}
       onPress={handlePress}
-      style={({ pressed }) => [styles.quickAction, pressed && styles.quickActionPressed]}
+      style={({ pressed }) => [
+        styles.quickAction,
+        active && styles.quickActionActive,
+        pressed && styles.quickActionPressed,
+      ]}
     >
-      <View style={[styles.quickActionIconWrap, active && styles.quickActionIconWrapActive]}>
-        {waveOnPress ? (
-          <RNAnimated.View pointerEvents="none" style={[styles.quickActionWave, waveStyle]} />
-        ) : null}
+      {waveOnPress ? (
+        <RNAnimated.View pointerEvents="none" style={[styles.quickActionWave, waveStyle]} />
+      ) : null}
+      <View style={styles.quickActionIconSlot}>
         <RNAnimated.View style={{ transform: [{ scale: iconScale }] }}>
-          <Feather name={icon} size={18} color={active ? '#FFFFFF' : colors.accent} />
+          <ProfileActionIcon
+            name={icon}
+            size={20.5}
+            color={active ? '#FFFFFF' : colors.accent}
+            active={active}
+          />
         </RNAnimated.View>
       </View>
       <Text style={[styles.quickActionLabel, active && styles.quickActionLabelActive]}>
@@ -248,21 +257,21 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
 
         <Reanimated.View style={[styles.quickActionsRow, actionsStyle]}>
           <QuickActionButton
-            icon="phone"
+            icon="call"
             label="Звонок"
             onPress={() => {
               void onStartCallPress();
             }}
           />
           <QuickActionButton
-            icon={isMuted ? 'bell-off' : 'bell'}
+            icon="sound"
             label="Звук"
             active={isMuted}
             onPress={onMutePress}
           />
           <QuickActionButton icon="search" label="Поиск" onPress={onSearchPress} />
           <QuickActionButton
-            icon="more-horizontal"
+            icon="more"
             label="Ещё"
             onPress={onMorePress}
             buttonRef={moreButtonRef}
@@ -351,21 +360,15 @@ const styles = StyleSheet.create({
     marginTop: 20,
     width: '100%',
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   quickAction: {
-    width: 64,
-    alignItems: 'center',
-  },
-  quickActionPressed: {
-    opacity: 0.76,
-  },
-  quickActionIconWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
+    flex: 1,
+    height: 74,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 20,
     overflow: 'hidden',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -376,26 +379,32 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
-  quickActionIconWrapActive: {
+  quickActionPressed: {
+    opacity: 0.86,
+  },
+  quickActionActive: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
+  quickActionIconSlot: {
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   quickActionLabel: {
-    marginTop: 8,
-    fontSize: 12,
+    marginTop: 7,
+    fontSize: 12.5,
     fontWeight: '600',
     color: colors.accent,
     textAlign: 'center',
   },
   quickActionLabelActive: {
-    color: colors.accent,
+    color: '#FFFFFF',
   },
   quickActionWave: {
-    position: 'absolute',
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor: 'rgba(77,141,255,0.82)',
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    backgroundColor: 'rgba(77,141,255,0.18)',
   },
   loaderRow: {
     marginTop: 16,

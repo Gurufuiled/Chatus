@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dimensions } from 'react-native';
+import { colors } from '../theme/colors';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { Message } from '../stores/types';
@@ -20,6 +21,7 @@ export const MENU_TO_MESSAGE_GAP = 6;
 export const OVERLAY_TOP_INSET = 86;
 export const OVERLAY_BOTTOM_INSET = 110;
 export const REPLIED_VOICE_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 290);
+const GROUP_AUTHOR_COLORS = ['#8B5CF6', '#EC4899', '#F97316', '#0EA5E9', '#10B981', '#EAB308'];
 
 export function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -43,15 +45,68 @@ function getPeerName(chatId: string, currentUserId: string | null): string | nul
   return null;
 }
 
-export function getMessageAuthorName(message: Message, chatId: string, currentUserId: string | null): string {
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function pickGroupAuthorColor(seed: string): string {
+  return GROUP_AUTHOR_COLORS[hashString(seed) % GROUP_AUTHOR_COLORS.length] ?? colors.accent;
+}
+
+function getInitial(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || '?';
+}
+
+export function getMessageAuthorPresentation(
+  message: Message,
+  chatId: string,
+  currentUserId: string | null
+): { name: string; avatarUrl: string | null; color: string; initial: string } {
   if (message.sender_id === currentUserId) {
     const me =
       authStore.getState().user?.display_name?.trim() ||
       authStore.getState().user?.username?.trim();
-    return me || 'You';
+    const name = me || 'You';
+    return {
+      name,
+      avatarUrl: authStore.getState().user?.avatar_url ?? null,
+      color: colors.accent,
+      initial: getInitial(name),
+    };
   }
 
-  return getPeerName(chatId, currentUserId) || 'Companion';
+  const chat = chatStore.getState().chats.find((item) => item.id === chatId);
+  if (chat?.chat_type === 'group') {
+    const member = chat.members?.find((item) => item.user_id === message.sender_id);
+    const name =
+      member?.user?.display_name?.trim() ||
+      member?.user?.username?.trim() ||
+      member?.user?.handle?.trim() ||
+      message.sender_id?.trim() ||
+      'Participant';
+    return {
+      name,
+      avatarUrl: member?.user?.avatar_url ?? null,
+      color: pickGroupAuthorColor(member?.user_id ?? message.sender_id),
+      initial: getInitial(name),
+    };
+  }
+
+  const name = getPeerName(chatId, currentUserId) || 'Companion';
+  return {
+    name,
+    avatarUrl: chat?.avatar_url ?? null,
+    color: colors.accent,
+    initial: getInitial(name),
+  };
+}
+
+export function getMessageAuthorName(message: Message, chatId: string, currentUserId: string | null): string {
+  return getMessageAuthorPresentation(message, chatId, currentUserId).name;
 }
 
 export function getDeletedPlaceholder(isMe: boolean): string {

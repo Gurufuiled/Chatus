@@ -4,6 +4,7 @@ import {
   Dimensions,
   FlatList,
   FlatListProps,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -33,6 +34,7 @@ import {
   getReplyPreviewThumbnailUri,
 } from './ReplyPreview';
 import { VoiceBubble } from './VoiceBubble';
+import { resolveAvatarUrl } from '../config';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
@@ -45,6 +47,7 @@ function clampReplySwipe(value: number) {
 
 type ChatMessageListProps = {
   chatId: string;
+  isGroupChat: boolean;
   currentUserId: string | null;
   messages: Message[];
   messageById: Map<string, Message>;
@@ -63,6 +66,11 @@ type ChatMessageListProps = {
   setContentRef: (messageId: string, node: View | null) => void;
   onScrollToIndexFailed?: FlatListProps<Message>['onScrollToIndexFailed'];
   formatTime: (timestamp: number) => string;
+  getMessageAuthorPresentation: (
+    message: Message,
+    chatId: string,
+    currentUserId: string | null
+  ) => { name: string; avatarUrl: string | null; color: string; initial: string };
   getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
@@ -157,6 +165,7 @@ const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({
 type MessageRowProps = {
   item: Message;
   chatId: string;
+  isGroupChat: boolean;
   currentUserId: string | null;
   repliedMessage: Message | null;
   selectionMode: boolean;
@@ -170,6 +179,11 @@ type MessageRowProps = {
   onReplyPreviewPress?: (messageId: string) => void;
   setContentRef: (messageId: string, node: View | null) => void;
   formatTime: (timestamp: number) => string;
+  getMessageAuthorPresentation: (
+    message: Message,
+    chatId: string,
+    currentUserId: string | null
+  ) => { name: string; avatarUrl: string | null; color: string; initial: string };
   getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
@@ -179,6 +193,7 @@ type MessageRowProps = {
 const MessageRow = React.memo(function MessageRow({
   item,
   chatId,
+  isGroupChat,
   currentUserId,
   repliedMessage,
   selectionMode,
@@ -192,12 +207,25 @@ const MessageRow = React.memo(function MessageRow({
   onReplyPreviewPress,
   setContentRef,
   formatTime,
+  getMessageAuthorPresentation,
   getMessageAuthorName,
   getDeletedPlaceholder,
   repliedVoiceBubbleWidth,
   chatTheme,
 }: MessageRowProps) {
   const isMe = item.sender_id === currentUserId;
+  const authorPresentation = React.useMemo(
+    () => getMessageAuthorPresentation(item, chatId, currentUserId),
+    [chatId, currentUserId, getMessageAuthorPresentation, item]
+  );
+  const authorName = authorPresentation.name;
+  const authorColor = authorPresentation.color;
+  const authorAvatarUri = React.useMemo(
+    () => resolveAvatarUrl(authorPresentation.avatarUrl ?? null),
+    [authorPresentation.avatarUrl]
+  );
+  const showAuthorName = isGroupChat && !isMe && item.is_deleted !== 1;
+  const showAuthorAvatar = isGroupChat && !isMe;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
 
   React.useEffect(() => {
@@ -257,12 +285,41 @@ const MessageRow = React.memo(function MessageRow({
     );
   };
 
+  const renderAuthorLabel = () => {
+    if (!showAuthorName) return null;
+
+    return (
+      <Text style={[styles.authorLabel, { color: authorColor }]} numberOfLines={1}>
+        {authorName}
+      </Text>
+    );
+  };
+
+  const renderIncomingHeader = (options?: { suppressForwardHeader?: boolean }) => {
+    if (isMe) {
+      return options?.suppressForwardHeader ? null : renderForwardHeader();
+    }
+
+    const authorLabel = renderAuthorLabel();
+    const forwardHeader = options?.suppressForwardHeader ? null : renderForwardHeader();
+
+    if (!authorLabel && !forwardHeader) return null;
+
+    return (
+      <>
+        {authorLabel}
+        {forwardHeader}
+      </>
+    );
+  };
+
   const renderBody = () => {
     if (item.is_deleted === 1) {
       return (
         <View
           style={[
             styles.deletedBubble,
+            showAuthorAvatar && styles.groupMessageSurface,
             isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
             isMe ? { backgroundColor: chatTheme.deletedBubbleMe } : null,
           ]}
@@ -296,11 +353,12 @@ const MessageRow = React.memo(function MessageRow({
         <View
           style={[
             styles.bubble,
+            showAuthorAvatar && styles.groupMessageSurface,
             isMe ? styles.bubbleMe : styles.bubbleOther,
             isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
           ]}
         >
-          {renderForwardHeader()}
+          {renderIncomingHeader()}
           {renderReplySnippet()}
           <View style={styles.bubbleContentRow}>
             <Text
@@ -327,7 +385,7 @@ const MessageRow = React.memo(function MessageRow({
 
     if (item.msg_type === 'voice' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
-      const forwardHeader = replySnippet ? null : renderForwardHeader();
+      const topHeader = replySnippet ? null : renderIncomingHeader();
       const voiceContent = (
         <VoiceBubble
           uri={item.media[0].remote_url ?? `file://${item.id}`}
@@ -337,7 +395,7 @@ const MessageRow = React.memo(function MessageRow({
           time={formatTime(item.created_at)}
           status={item.status}
           embedded={!!replySnippet}
-          header={forwardHeader}
+          header={topHeader}
           bubbleMeColor={chatTheme.bubbleMe}
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
@@ -350,12 +408,13 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
-              { width: repliedVoiceBubbleWidth, maxWidth: '82%' },
+              { width: repliedVoiceBubbleWidth, maxWidth: showAuthorAvatar ? '100%' : '82%' },
+              showAuthorAvatar && styles.groupMessageSurface,
               isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
               isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
             ]}
           >
-            {renderForwardHeader()}
+            {renderIncomingHeader()}
             {replySnippet}
             {voiceContent}
           </View>
@@ -363,7 +422,12 @@ const MessageRow = React.memo(function MessageRow({
       }
 
       return (
-        <View style={styles.mediaStack}>
+        <View
+          style={[
+            styles.mediaStack,
+            showAuthorAvatar && styles.groupMessageSurface,
+          ]}
+        >
           {voiceContent}
         </View>
       );
@@ -375,7 +439,7 @@ const MessageRow = React.memo(function MessageRow({
       if (!imageUri.trim()) return null;
 
       const replySnippet = renderReplySnippet();
-      const forwardHeader = replySnippet ? null : renderForwardHeader();
+      const topHeader = replySnippet ? null : renderIncomingHeader();
       const imageContent = (
         <ImageBubble
           uri={imageUri}
@@ -386,7 +450,7 @@ const MessageRow = React.memo(function MessageRow({
           time={formatTime(item.created_at)}
           status={item.status}
           embedded={!!replySnippet}
-          header={forwardHeader}
+          header={topHeader}
           bubbleMeColor={chatTheme.bubbleMe}
           outgoingTextColor={chatTheme.bubbleMeText}
         />
@@ -397,11 +461,13 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
+              showAuthorAvatar && styles.groupMessageSurface,
+              showAuthorAvatar && styles.groupRepliedMediaBubble,
               isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
               isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
             ]}
           >
-            {renderForwardHeader()}
+            {renderIncomingHeader()}
             {replySnippet}
             {imageContent}
           </View>
@@ -409,7 +475,12 @@ const MessageRow = React.memo(function MessageRow({
       }
 
       return (
-        <View style={styles.mediaStack}>
+        <View
+          style={[
+            styles.mediaStack,
+            showAuthorAvatar && styles.groupMessageSurface,
+          ]}
+        >
           {imageContent}
         </View>
       );
@@ -418,7 +489,12 @@ const MessageRow = React.memo(function MessageRow({
     if (item.msg_type === 'file' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
       return (
-        <View style={styles.fileStack}>
+        <View
+          style={[
+            styles.fileStack,
+            showAuthorAvatar && styles.groupFileStack,
+          ]}
+        >
           {replySnippet}
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
@@ -428,7 +504,7 @@ const MessageRow = React.memo(function MessageRow({
             caption={item.content ?? undefined}
             time={formatTime(item.created_at)}
             status={item.status}
-            header={renderForwardHeader()}
+            header={renderIncomingHeader()}
             bubbleMeColor={chatTheme.bubbleMe}
             outgoingTextColor={chatTheme.bubbleMeText}
             outgoingMetaColor={chatTheme.bubbleMeMeta}
@@ -474,16 +550,41 @@ const MessageRow = React.memo(function MessageRow({
               isMe ? styles.messageWrapMe : styles.messageWrapOther,
             ]}
           >
-            <View
-              ref={(node) => setContentRef(item.id, node)}
-              collapsable={false}
-              style={[
-                styles.messageContentMeasure,
-                isHighlighted && styles.messageContentHighlighted,
-              ]}
-            >
-              {renderBody()}
-            </View>
+            {showAuthorAvatar ? (
+              <View style={styles.groupIncomingRow}>
+                <View style={styles.groupAvatarSlot}>
+                  {authorAvatarUri ? (
+                    <Image source={{ uri: authorAvatarUri }} style={styles.groupAvatarImage} />
+                  ) : (
+                    <View style={[styles.groupAvatarFallback, { backgroundColor: authorColor }]}>
+                      <Text style={styles.groupAvatarInitial}>{authorPresentation.initial}</Text>
+                    </View>
+                  )}
+                </View>
+                <View
+                  ref={(node) => setContentRef(item.id, node)}
+                  collapsable={false}
+                  style={[
+                    styles.messageContentMeasure,
+                    styles.groupIncomingContent,
+                    isHighlighted && styles.messageContentHighlighted,
+                  ]}
+                >
+                  {renderBody()}
+                </View>
+              </View>
+            ) : (
+              <View
+                ref={(node) => setContentRef(item.id, node)}
+                collapsable={false}
+                style={[
+                  styles.messageContentMeasure,
+                  isHighlighted && styles.messageContentHighlighted,
+                ]}
+              >
+                {renderBody()}
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -503,6 +604,7 @@ const MessageRow = React.memo(function MessageRow({
   return (
     prev.item === next.item &&
     prev.repliedMessage === next.repliedMessage &&
+    prev.isGroupChat === next.isGroupChat &&
     prev.selectionMode === next.selectionMode &&
     prev.isSelected === next.isSelected &&
     prev.isHighlighted === next.isHighlighted &&
@@ -510,6 +612,7 @@ const MessageRow = React.memo(function MessageRow({
     prev.currentUserId === next.currentUserId &&
     prev.chatId === next.chatId &&
     prev.chatTheme === next.chatTheme &&
+    prev.getMessageAuthorPresentation === next.getMessageAuthorPresentation &&
     prev.onForwardHeaderPress === next.onForwardHeaderPress &&
     prev.onReplyPreviewPress === next.onReplyPreviewPress
   );
@@ -517,6 +620,7 @@ const MessageRow = React.memo(function MessageRow({
 
 export const ChatMessageList = React.memo(function ChatMessageList({
   chatId,
+  isGroupChat,
   currentUserId,
   messages,
   messageById,
@@ -535,6 +639,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   setContentRef,
   onScrollToIndexFailed,
   formatTime,
+  getMessageAuthorPresentation,
   getMessageAuthorName,
   getDeletedPlaceholder,
   repliedVoiceBubbleWidth,
@@ -544,6 +649,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     <MessageRow
       item={item}
       chatId={chatId}
+      isGroupChat={isGroupChat}
       currentUserId={currentUserId}
       repliedMessage={item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null}
       selectionMode={selectionMode}
@@ -557,6 +663,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       onReplyPreviewPress={onReplyPreviewPress}
       setContentRef={setContentRef}
       formatTime={formatTime}
+      getMessageAuthorPresentation={getMessageAuthorPresentation}
       getMessageAuthorName={getMessageAuthorName}
       getDeletedPlaceholder={getDeletedPlaceholder}
       repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
@@ -568,9 +675,11 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     chatTheme,
     currentUserId,
     formatTime,
+    getMessageAuthorPresentation,
     getDeletedPlaceholder,
     getMessageAuthorName,
     highlightedMessageId,
+    isGroupChat,
     messageById,
     onMessageLongPress,
     onForwardHeaderPress,
@@ -609,6 +718,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
 }, (prev, next) => {
   return (
     prev.chatId === next.chatId &&
+    prev.isGroupChat === next.isGroupChat &&
     prev.currentUserId === next.currentUserId &&
     prev.messages === next.messages &&
     prev.messageById === next.messageById &&
@@ -625,6 +735,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.setContentRef === next.setContentRef &&
     prev.onScrollToIndexFailed === next.onScrollToIndexFailed &&
     prev.formatTime === next.formatTime &&
+    prev.getMessageAuthorPresentation === next.getMessageAuthorPresentation &&
     prev.getMessageAuthorName === next.getMessageAuthorName &&
     prev.getDeletedPlaceholder === next.getDeletedPlaceholder &&
     prev.repliedVoiceBubbleWidth === next.repliedVoiceBubbleWidth &&
@@ -705,7 +816,42 @@ const styles = StyleSheet.create({
   messageWrapOther: {
     alignItems: 'flex-start',
   },
+  groupIncomingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    maxWidth: '100%',
+    minWidth: 0,
+  },
+  groupAvatarSlot: {
+    width: 34,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 2,
+    flexShrink: 0,
+  },
+  groupAvatarImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+  },
+  groupAvatarFallback: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupAvatarInitial: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
   messageContentMeasure: {
+    flexShrink: 1,
+  },
+  groupIncomingContent: {
+    minWidth: 0,
     flexShrink: 1,
   },
   messageContentHighlighted: {
@@ -716,11 +862,22 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 8,
   },
+  authorLabel: {
+    marginBottom: 4,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '700',
+    color: '#8B5CF6',
+  },
   bubble: {
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 16,
     maxWidth: '82%',
+  },
+  groupMessageSurface: {
+    maxWidth: '100%',
+    alignSelf: 'flex-start',
   },
   bubbleMe: {
     backgroundColor: '#007AFF',
@@ -745,9 +902,16 @@ const styles = StyleSheet.create({
   mediaStack: {
     maxWidth: '82%',
   },
+  groupRepliedMediaBubble: {
+    maxWidth: '100%',
+  },
   fileStack: {
     width: FILE_ROW_WIDTH,
     minWidth: 0,
+    maxWidth: '100%',
+  },
+  groupFileStack: {
+    maxWidth: '100%',
   },
   repliedMediaBubble: {
     maxWidth: '82%',

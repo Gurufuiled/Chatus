@@ -254,12 +254,15 @@ const styles = StyleSheet.create({
   infoColumn: {
     flex: 1,
     minWidth: 0,
+    maxWidth: '100%',
   },
   fileName: {
     fontSize: 15,
     lineHeight: 19,
     fontWeight: '600',
     flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '100%',
   },
   fileNameMe: {
     color: '#FFFFFF',
@@ -274,11 +277,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
     minWidth: 0,
+    width: '100%',
   },
   fileSize: {
     fontSize: typography.timeStatus,
     lineHeight: 15,
     flexShrink: 1,
+    minWidth: 0,
   },
   fileSizeMe: {
     color: colors.textSecondaryMuted,

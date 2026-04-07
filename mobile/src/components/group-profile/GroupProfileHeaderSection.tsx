@@ -1,5 +1,4 @@
 import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Animated as RNAnimated,
@@ -18,6 +17,7 @@ import Reanimated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
+import { ProfileActionIcon } from '../ProfileActionIcon';
 import { colors } from '../../theme/colors';
 
 type GroupProfileHeaderSectionProps = {
@@ -232,10 +232,11 @@ export function GroupProfileHeaderSection({
                     isMuted && styles.actionButtonActive,
                   ]}
                 >
-                  <Feather
-                    name={isMuted ? 'bell-off' : 'bell'}
+                  <ProfileActionIcon
+                    name="sound"
                     size={20}
                     color={isMuted ? '#FFFFFF' : colors.accent}
+                    active={isMuted}
                   />
                   <Text style={[styles.actionButtonLabel, isMuted && styles.actionButtonLabelActive]}>
                     Звук
@@ -246,7 +247,7 @@ export function GroupProfileHeaderSection({
                   onPress={onSearch}
                   style={({ pressed }) => [styles.actionButton, pressed && styles.cardPressed]}
                 >
-                  <Feather name="search" size={20} color={colors.accent} />
+                  <ProfileActionIcon name="search" size={20} color={colors.accent} />
                   <Text style={styles.actionButtonLabel}>Поиск</Text>
                 </Pressable>
 
@@ -261,7 +262,7 @@ export function GroupProfileHeaderSection({
                       style={[styles.actionButtonWave, moreWaveStyle]}
                     />
                     <RNAnimated.View style={{ transform: [{ scale: moreIconScale }] }}>
-                      <Feather name="more-horizontal" size={20} color={colors.accent} />
+                      <ProfileActionIcon name="more" size={20} color={colors.accent} />
                     </RNAnimated.View>
                   </View>
                   <Text style={styles.actionButtonLabel}>Ещё</Text>

@@ -41,7 +41,7 @@ import { getDisplayNameFromMember } from '../components/group-profile/groupProfi
 import { resolveAvatarUrl } from '../config';
 import type { ChatsStackParamList } from '../navigation/types';
 import { apiUpload } from '../services/apiClient';
-import type { ApiUser } from '../services/AuthService';
+import { apiUserToUserRow, type ApiUser } from '../services/AuthService';
 import {
   addGroupMembers,
   createOrFindChat,
@@ -53,7 +53,7 @@ import {
   updateGroupMemberTag,
 } from '../services/chatService';
 import { searchUsers } from '../services/profileService';
-import { ChatDao } from '../db';
+import { ChatDao, ChatMemberDao, MessageDao, UserDao } from '../db';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
@@ -134,13 +134,160 @@ function getFileExtension(fileName: string) {
   return ext.slice(0, 4).toUpperCase();
 }
 
+type PersistableUser = {
+  id: string;
+  username?: string | null;
+  handle?: string | null;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  phone?: string | null;
+  is_online?: boolean | number;
+  last_seen?: number | null;
+  created_at?: number;
+  updated_at?: number;
+};
 
+function buildFallbackUserRow(user: PersistableUser) {
+  const now = Date.now();
+  return {
+    id: user.id,
+    username: user.username ?? '',
+    handle: user.handle ?? null,
+    display_name: user.display_name ?? null,
+    avatar_url: user.avatar_url ?? null,
+    avatar_local_path: null,
+    phone: user.phone ?? null,
+    is_online: user.is_online ? 1 : 0,
+    last_seen: user.last_seen ?? null,
+    created_at: user.created_at ?? now,
+    updated_at: user.updated_at ?? now,
+  };
+}
 
+async function ensureUserStored(userDao: UserDao, user: PersistableUser | null | undefined) {
+  const userId = user?.id?.trim();
+  if (!userId) return;
+
+  const existing = await userDao.getById(userId);
+  if (!user) {
+    if (!existing) {
+      await userDao.insert(buildFallbackUserRow({ id: userId }));
+    }
+    return;
+  }
+
+  const nextRow =
+    user.created_at !== undefined && user.updated_at !== undefined
+      ? apiUserToUserRow({
+          id: user.id,
+          loginus_id: null,
+          username: user.username ?? null,
+          handle: user.handle ?? null,
+          display_name: user.display_name ?? null,
+          avatar_url: user.avatar_url ?? null,
+          phone: user.phone ?? null,
+          is_online: Boolean(user.is_online),
+          last_seen: user.last_seen ?? null,
+          created_at: user.created_at,
+          updated_at: user.updated_at,
+        })
+      : buildFallbackUserRow(user);
+
+  if (existing) {
+    await userDao.update({
+      id: userId,
+      username: user.username ?? existing.username,
+      handle: user.handle ?? existing.handle,
+      display_name: user.display_name ?? existing.display_name,
+      avatar_url: user.avatar_url ?? existing.avatar_url,
+      avatar_local_path: existing.avatar_local_path,
+      phone: user.phone ?? existing.phone,
+      is_online: user.is_online !== undefined ? (user.is_online ? 1 : 0) : existing.is_online,
+      last_seen: user.last_seen ?? existing.last_seen,
+      created_at: user.created_at ?? existing.created_at,
+      updated_at: user.updated_at ?? nextRow.updated_at,
+    });
+    return;
+  }
+
+  await userDao.insert(nextRow);
+}
+
+async function persistChatUsers(chat: Chat) {
+  const userDao = new UserDao();
+  const authUser = authStore.getState().user;
+
+  if (authUser) {
+    await ensureUserStored(userDao, authUser);
+  }
+
+  for (const member of chat.members ?? []) {
+    if (member.user) {
+      await ensureUserStored(userDao, {
+        id: member.user.id || member.user_id,
+        username: member.user.username ?? null,
+        handle: member.user.handle ?? null,
+        display_name: member.user.display_name ?? null,
+        avatar_url: member.user.avatar_url ?? null,
+        is_online: member.user.is_online,
+        last_seen: member.user.last_seen ?? null,
+      });
+    } else {
+      await ensureUserStored(userDao, { id: member.user_id });
+    }
+  }
+
+  if (chat.created_by) {
+    const creator =
+      chat.members?.find((member) => member.user_id === chat.created_by)?.user ??
+      (authUser?.id === chat.created_by ? authUser : null);
+
+    await ensureUserStored(
+      userDao,
+      creator
+        ? {
+            id: creator.id,
+            username: creator.username ?? null,
+            handle: creator.handle ?? null,
+            display_name: creator.display_name ?? null,
+            avatar_url: creator.avatar_url ?? null,
+            phone: 'phone' in creator ? creator.phone ?? null : null,
+            is_online: creator.is_online,
+            last_seen: creator.last_seen ?? null,
+            created_at: 'created_at' in creator ? creator.created_at : undefined,
+            updated_at: 'updated_at' in creator ? creator.updated_at : undefined,
+          }
+        : { id: chat.created_by }
+    );
+  }
+}
+
+async function persistChatMembers(chat: Chat) {
+  const memberDao = new ChatMemberDao();
+  await memberDao.deleteByChatId(chat.id);
+  for (const member of chat.members ?? []) {
+    await memberDao.insert({
+      chat_id: chat.id,
+      user_id: member.user_id,
+      role: member.role ?? 'member',
+      tag: member.tag ?? null,
+      tag_color: member.tag_color ?? null,
+      joined_at: member.joined_at ?? chat.updated_at ?? Date.now(),
+    });
+  }
+}
 
 async function persistChatLocally(chat: Chat) {
   chatStore.getState().addOrUpdateChat(chat);
   const dao = new ChatDao();
+  const messageDao = new MessageDao();
+
+  await persistChatUsers(chat);
+
   const existing = await dao.getById(chat.id);
+  const pinnedMessageId = chat.pinned_message_id
+    ? (await messageDao.getById(chat.pinned_message_id))?.id ?? null
+    : null;
   const payload = {
     id: chat.id,
     chat_type: chat.chat_type,
@@ -149,7 +296,7 @@ async function persistChatLocally(chat: Chat) {
     avatar_url: chat.avatar_url,
     created_by: chat.created_by,
     last_message_id: chat.last_message_id,
-    pinned_message_id: chat.pinned_message_id,
+    pinned_message_id: pinnedMessageId,
     last_message_at: chat.last_message_at,
     last_message_preview: chat.last_message_preview,
     unread_count: chat.unread_count,
@@ -166,6 +313,8 @@ async function persistChatLocally(chat: Chat) {
   } else {
     await dao.insert(payload);
   }
+
+  await persistChatMembers(chat);
 }
 
 export function GroupProfileScreen() {

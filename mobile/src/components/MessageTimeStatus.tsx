@@ -70,6 +70,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginTop: 4,
     gap: 4,
+    flexShrink: 0,
   },
   containerCompact: {
     marginTop: 0,

@@ -60,6 +60,7 @@ import {
   formatPlaybackRate,
   formatTime,
   getCopyableContent,
+  getMessageAuthorPresentation,
   getDeletedPlaceholder,
   getMessageAuthorName,
   MENU_EDGE_GAP,
@@ -1256,6 +1257,7 @@ export function ChatScreen() {
 
         <ChatMessageList
           chatId={chatId}
+          isGroupChat={currentChat?.chat_type === 'group'}
           currentUserId={currentUserId}
           messages={messages}
           messageById={messageById}
@@ -1274,6 +1276,7 @@ export function ChatScreen() {
           setContentRef={setMessageContentRef}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           formatTime={formatTime}
+          getMessageAuthorPresentation={getMessageAuthorPresentation}
           getMessageAuthorName={getMessageAuthorName}
           getDeletedPlaceholder={getDeletedPlaceholder}
           repliedVoiceBubbleWidth={REPLIED_VOICE_BUBBLE_WIDTH}
