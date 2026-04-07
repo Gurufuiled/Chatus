@@ -33,6 +33,7 @@ import {
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from './ReplyPreview';
+import { VideoNoteBubble } from './VideoNoteBubble';
 import { VoiceBubble } from './VoiceBubble';
 import { resolveAvatarUrl } from '../config';
 
@@ -429,6 +430,59 @@ const MessageRow = React.memo(function MessageRow({
           ]}
         >
           {voiceContent}
+        </View>
+      );
+    }
+
+    if (item.msg_type === 'video_note' && item.media?.[0]) {
+      const media = item.media[0];
+      const videoUri = media.remote_url?.trim() ?? '';
+      if (!videoUri) return null;
+
+      const replySnippet = renderReplySnippet();
+      const topHeader = replySnippet ? null : renderIncomingHeader();
+      const videoContent = (
+        <VideoNoteBubble
+          uri={videoUri}
+          thumbnailUri={media.thumbnail_url ?? undefined}
+          durationMs={media.duration_ms ?? 0}
+          isMe={isMe}
+          time={formatTime(item.created_at)}
+          status={item.status}
+          embedded={!!replySnippet}
+          header={topHeader}
+          bubbleMeColor={chatTheme.bubbleMe}
+          outgoingMetaColor={chatTheme.bubbleMeMeta}
+          outgoingAccentColor={chatTheme.bubbleMeAccent}
+        />
+      );
+
+      if (replySnippet) {
+        return (
+          <View
+            style={[
+              styles.repliedMediaBubble,
+              showAuthorAvatar && styles.groupMessageSurface,
+              showAuthorAvatar && styles.groupRepliedMediaBubble,
+              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+            ]}
+          >
+            {renderIncomingHeader()}
+            {replySnippet}
+            {videoContent}
+          </View>
+        );
+      }
+
+      return (
+        <View
+          style={[
+            styles.mediaStack,
+            showAuthorAvatar && styles.groupMessageSurface,
+          ]}
+        >
+          {videoContent}
         </View>
       );
     }

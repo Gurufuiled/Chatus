@@ -43,6 +43,7 @@ import {
   ImageBubble,
   MessageTimeStatus,
   ReplyPreview,
+  VideoNoteBubble,
   VoiceBubble,
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
@@ -584,6 +585,51 @@ export function ChatScreen() {
     [chatId, currentUserId, replyToMessageId]
   );
 
+  const handleSendVideoNote = useCallback(
+    async (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
+      if (!currentUserId) return;
+      const tempId = `temp-${Date.now()}`;
+      const activeReplyId = replyToMessageId;
+      const now = Date.now();
+      const msg: Message = {
+        id: tempId,
+        chat_id: chatId,
+        sender_id: currentUserId,
+        msg_type: 'video_note',
+        content: null,
+        reply_to_id: activeReplyId,
+        is_edited: 0,
+        is_deleted: 0,
+        status: 'sending',
+        transport: 'ws',
+        server_id: null,
+        created_at: now,
+        updated_at: now,
+        media: [
+          {
+            remote_url: result.uri,
+            duration_ms: result.durationMs,
+            thumbnail_url: result.thumbnailUri,
+            is_round: true,
+          },
+        ],
+      };
+      messageStore.getState().prependMessage(chatId, msg);
+      setReplyToMessageId(null);
+      await TransportService.sendVideoNoteMessage(
+        chatId,
+        {
+          uri: result.uri,
+          durationMs: result.durationMs,
+          thumbnailUri: result.thumbnailUri,
+        },
+        tempId,
+        activeReplyId
+      );
+    },
+    [chatId, currentUserId, replyToMessageId]
+  );
+
   const handleSendImage = useCallback(
     async (result: { uri: string; width?: number; height?: number; fileName?: string; mimeType?: string; caption?: string }) => {
       if (!currentUserId) return;
@@ -1116,6 +1162,49 @@ export function ChatScreen() {
       );
     }
 
+    if (item.msg_type === 'video_note' && item.media?.[0]) {
+      const media = item.media[0];
+      const videoUri = media.remote_url?.trim() ?? '';
+      if (!videoUri) return null;
+
+      const replySnippet = renderReplySnippet();
+      const forwardHeader = replySnippet ? null : renderForwardHeader();
+      const videoContent = (
+        <VideoNoteBubble
+          uri={videoUri}
+          thumbnailUri={media.thumbnail_url ?? undefined}
+          durationMs={media.duration_ms ?? 0}
+          isMe={isMe}
+          time={formatTime(item.created_at)}
+          status={item.status}
+          embedded={!!replySnippet}
+          header={forwardHeader}
+        />
+      );
+
+      if (replySnippet) {
+        return (
+          <View
+            style={[
+              styles.repliedMediaBubble,
+              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              fixedWidthStyle,
+            ]}
+          >
+            {renderForwardHeader()}
+            {replySnippet}
+            {videoContent}
+          </View>
+        );
+      }
+
+      return (
+        <View style={[styles.mediaStack, fixedWidthStyle]}>
+          {videoContent}
+        </View>
+      );
+    }
+
     if (item.msg_type === 'image') {
       const media = item.media?.[0];
       const imageUri = media?.remote_url ?? '';
@@ -1373,8 +1462,10 @@ export function ChatScreen() {
             animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle]}
             onSendText={handleSendText}
             onSendVoice={handleSendVoice}
+            onSendVideoNote={handleSendVideoNote}
             onSendImage={handleSendImage}
             onSendFile={handleSendFile}
+            blurTargetRef={blurTargetRef}
             replyToMessage={replyToMessage}
             replyAuthorName={replyAuthorName}
             onCancelReply={clearReplyState}

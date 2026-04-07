@@ -11,6 +11,14 @@
       ],
       "expo-secure-store",
       "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Разрешите доступ к камере для записи видеокружков.",
+          "microphonePermission": "Разрешите доступ к микрофону для записи видеокружков.",
+          "recordAudioAndroid": true
+        }
+      ],
       "expo-video",
       "expo-asset"
     ],

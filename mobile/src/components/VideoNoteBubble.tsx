@@ -1,31 +1,38 @@
-/**
- * VideoNoteBubble - Video note message bubble with circular mask.
- * Matches VoiceBubble styling patterns (bubbleMe, bubbleOther).
- */
-
-import { useEvent } from 'expo';
+import React from 'react';
+import { useEvent, useEventListener } from 'expo';
+import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useRef } from 'react';
-import {
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { colors, bubbleRadius } from '../theme/colors';
+import { Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import Reanimated, {
+  Easing,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { typography } from '../theme/colors';
+import { MessageTimeStatus } from './MessageTimeStatus';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const COLLAPSED_SIZE = Math.min(SCREEN_WIDTH * 0.58, 228);
+const EXPANDED_SIZE = Math.min(SCREEN_WIDTH * 0.82, 312);
+const ANIMATION_DURATION_MS = 320;
+const COLLAPSE_DELAY_MS = 180;
 
 export interface VideoNoteBubbleProps {
   uri: string;
   thumbnailUri?: string;
   durationMs: number;
   isMe: boolean;
-  isViewed?: boolean;
-  onViewed?: () => void;
+  time?: string;
+  status?: string;
+  embedded?: boolean;
+  header?: React.ReactNode;
+  bubbleMeColor?: string;
+  outgoingMetaColor?: string;
+  outgoingAccentColor?: string;
 }
-
-const SIZE = 240;
-const RADIUS = SIZE / 2;
 
 function formatDuration(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -34,160 +41,375 @@ function formatDuration(ms: number): string {
   return `${min}:${sec.toString().padStart(2, '0')}`;
 }
 
-export function VideoNoteBubble({
+function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
+  return (
+    prev.uri === next.uri &&
+    prev.thumbnailUri === next.thumbnailUri &&
+    prev.durationMs === next.durationMs &&
+    prev.isMe === next.isMe &&
+    prev.time === next.time &&
+    prev.status === next.status &&
+    prev.embedded === next.embedded &&
+    prev.header === next.header &&
+    prev.bubbleMeColor === next.bubbleMeColor &&
+    prev.outgoingMetaColor === next.outgoingMetaColor &&
+    prev.outgoingAccentColor === next.outgoingAccentColor
+  );
+}
+
+export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   uri,
   thumbnailUri,
   durationMs,
   isMe,
-  isViewed = false,
-  onViewed,
+  time,
+  status = 'sent',
+  embedded = false,
+  header,
 }: VideoNoteBubbleProps) {
-  const hasCalledViewed = useRef(false);
-  const player = useVideoPlayer(uri);
+  const normalizedUri = uri.trim();
+  const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const [isPlayerMounted, setIsPlayerMounted] = React.useState(false);
+  const [hasRenderedFrame, setHasRenderedFrame] = React.useState(false);
+  const progress = useSharedValue(0);
+  const badgeOpacity = useSharedValue(0);
+  const collapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = React.useRef(true);
+
+  const player = useVideoPlayer(normalizedUri, (instance) => {
+    instance.loop = false;
+    instance.timeUpdateEventInterval = 0.25;
+  });
   const { isPlaying } = useEvent(player, 'playingChange', {
     isPlaying: player.playing,
   });
 
-  const handlePress = () => {
-    if (isPlaying) {
-      player.pause();
-    } else {
-      if (!hasCalledViewed.current && !isViewed) {
-        hasCalledViewed.current = true;
-        onViewed?.();
-      }
-      try {
-        player.play();
-      } catch {
-        // Playback failed (invalid URI, network error) - no user feedback for now
-      }
+  const clearCollapseTimer = React.useCallback(() => {
+    if (collapseTimerRef.current) {
+      clearTimeout(collapseTimerRef.current);
+      collapseTimerRef.current = null;
     }
-  };
+  }, []);
+
+  const finishCollapse = React.useCallback(() => {
+    if (!isMountedRef.current) return;
+    setIsExpanded(false);
+    setIsPlayerMounted(false);
+    setHasRenderedFrame(false);
+  }, []);
+
+  const animateProgress = React.useCallback(
+    (target: number, onFinished?: () => void) => {
+      progress.value = withTiming(
+        target,
+        {
+          duration: ANIMATION_DURATION_MS,
+          easing: Easing.out(Easing.cubic),
+        },
+        (finished) => {
+          if (finished && onFinished) {
+            runOnJS(onFinished)();
+          }
+        }
+      );
+    },
+    [progress]
+  );
+
+  const collapseInline = React.useCallback(() => {
+    clearCollapseTimer();
+    try {
+      player.pause();
+      player.currentTime = 0;
+    } catch {
+      // Ignore player teardown race conditions during unmount.
+    }
+    animateProgress(0, finishCollapse);
+  }, [animateProgress, clearCollapseTimer, finishCollapse, player]);
+
+  const expandInline = React.useCallback(() => {
+    if (!normalizedUri) return;
+    clearCollapseTimer();
+    setHasRenderedFrame(false);
+    setIsPlayerMounted(true);
+    setIsExpanded(true);
+    animateProgress(1);
+
+    requestAnimationFrame(() => {
+      try {
+        player.replay();
+      } catch {
+        try {
+          player.play();
+        } catch {
+          // Ignore if the source is still preparing.
+        }
+      }
+    });
+  }, [animateProgress, clearCollapseTimer, normalizedUri, player]);
+
+  const handlePress = React.useCallback(() => {
+    if (!normalizedUri) return;
+
+    if (!isExpanded) {
+      expandInline();
+      return;
+    }
+
+    try {
+      if (isPlaying) {
+        player.pause();
+      } else {
+        player.play();
+      }
+    } catch {
+      // Best effort toggle only.
+    }
+  }, [expandInline, isExpanded, isPlaying, normalizedUri, player]);
+
+  useEventListener(player, 'playToEnd', () => {
+    clearCollapseTimer();
+    collapseTimerRef.current = setTimeout(() => {
+      collapseInline();
+      collapseTimerRef.current = null;
+    }, COLLAPSE_DELAY_MS);
+  });
+
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      clearCollapseTimer();
+      try {
+        player.pause();
+      } catch {
+        // Ignore.
+      }
+    };
+  }, [clearCollapseTimer, player]);
+
+  React.useEffect(() => {
+    clearCollapseTimer();
+    setIsExpanded(false);
+    setIsPlayerMounted(false);
+    setHasRenderedFrame(false);
+    progress.value = 0;
+    badgeOpacity.value = 0;
+  }, [clearCollapseTimer, normalizedThumbnailUri, normalizedUri, progress]);
+
+  React.useEffect(() => {
+    badgeOpacity.value = withTiming(isExpanded && !isPlaying ? 1 : 0, { duration: 160 });
+  }, [badgeOpacity, isExpanded, isPlaying]);
+
+  const slotStyle = useAnimatedStyle(() => {
+    const size = interpolate(progress.value, [0, 1], [COLLAPSED_SIZE, EXPANDED_SIZE]);
+    const marginVertical = interpolate(progress.value, [0, 1], [0, 12]);
+    return {
+      width: size,
+      height: size,
+      marginVertical,
+    };
+  });
+
+  const circleStyle = useAnimatedStyle(() => {
+    const size = interpolate(progress.value, [0, 1], [COLLAPSED_SIZE, EXPANDED_SIZE]);
+    const borderWidth = interpolate(progress.value, [0, 1], [2.25, 3]);
+    const shadowOpacity = interpolate(progress.value, [0, 1], [0.18, 0.28]);
+    const shadowRadius = interpolate(progress.value, [0, 1], [8, 18]);
+    return {
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      borderWidth,
+      shadowOpacity,
+      shadowRadius,
+      elevation: interpolate(progress.value, [0, 1], [4, 8]),
+    };
+  });
+
+  const overlayStyle = useAnimatedStyle(() => ({
+    paddingHorizontal: interpolate(progress.value, [0, 1], [8, 12]),
+    paddingBottom: interpolate(progress.value, [0, 1], [8, 12]),
+  }));
+
+  const centerBadgeStyle = useAnimatedStyle(() => ({
+    opacity: badgeOpacity.value,
+    transform: [
+      {
+        scale: interpolate(progress.value, [0, 1], [0.88, 1]),
+      },
+    ],
+  }));
+
+  const showPoster = normalizedThumbnailUri.length > 0 && (!isPlayerMounted || !hasRenderedFrame);
+  const durationLabel = formatDuration(durationMs);
 
   return (
-    <View style={[styles.container, isMe ? styles.bubbleMe : styles.bubbleOther]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={isPlaying ? 'Pause video note' : 'Play video note'}
-        accessibilityState={{ selected: isPlaying }}
-        style={styles.circleWrapper}
-        onPress={handlePress}
-        hitSlop={8}
+    <View style={[styles.container, embedded && styles.containerEmbedded]}>
+      {header}
+
+      <Reanimated.View
+        style={[
+          styles.slot,
+          slotStyle,
+          isMe ? styles.slotMe : styles.slotOther,
+        ]}
       >
-        <View style={styles.circle}>
-          <VideoView
-            style={StyleSheet.absoluteFill}
-            player={player}
-            contentFit="cover"
-            nativeControls={false}
-          />
-          {!isPlaying && (
-            thumbnailUri ? (
-              <Image
-                source={{ uri: thumbnailUri }}
-                style={styles.thumbnail}
-                resizeMode="cover"
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isExpanded ? 'Toggle video note playback' : 'Open video note'}
+          onPress={handlePress}
+          style={styles.pressable}
+        >
+          <Reanimated.View style={[styles.circle, circleStyle]}>
+            {showPoster ? (
+              <Image source={{ uri: normalizedThumbnailUri }} style={styles.poster} resizeMode="cover" />
+            ) : null}
+
+            {!normalizedThumbnailUri && !isPlayerMounted ? (
+              <View style={styles.posterFallback}>
+                <Feather name="video" size={28} color="#EAF1FF" />
+              </View>
+            ) : null}
+
+            {isPlayerMounted ? (
+              <VideoView
+                player={player}
+                style={styles.video}
+                nativeControls={false}
+                contentFit="cover"
+                surfaceType="textureView"
+                useExoShutter={false}
+                onFirstFrameRender={() => setHasRenderedFrame(true)}
               />
-            ) : (
-              <View style={styles.thumbnailPlaceholder} />
-            )
-          )}
-          {!isPlaying && (
-            <View
-              style={[
-                styles.playOverlay,
-                isMe ? styles.playOverlayMe : styles.playOverlayOther,
-              ]}
-            >
-              <Text style={[styles.playIcon, isMe && styles.playIconMe]}>▶</Text>
-            </View>
-          )}
-          <View
-            style={[
-              styles.durationBadge,
-              isMe ? styles.durationBadgeMe : styles.durationBadgeOther,
-            ]}
-          >
-            <Text style={[styles.durationText, isMe && styles.durationTextMe]}>
-              {formatDuration(durationMs)}
-            </Text>
-          </View>
-        </View>
-      </Pressable>
+            ) : null}
+
+            <Reanimated.View pointerEvents="none" style={[styles.centerBadge, centerBadgeStyle]}>
+              <View style={styles.centerBadgeInner}>
+                <Feather name={isPlaying ? 'pause' : 'play'} size={18} color="#0F172A" />
+              </View>
+            </Reanimated.View>
+
+            <Reanimated.View pointerEvents="none" style={[styles.overlay, overlayStyle]}>
+              <View style={styles.metaStrip}>
+                <View style={styles.durationPill}>
+                  <Text style={styles.durationText}>{durationLabel}</Text>
+                </View>
+
+                {time ? (
+                  <View style={styles.timePill}>
+                    <MessageTimeStatus
+                      time={time}
+                      status={status}
+                      isMe={isMe}
+                      compact
+                      timeColor="#FFFFFF"
+                      iconColor="#FFFFFF"
+                    />
+                  </View>
+                ) : null}
+              </View>
+            </Reanimated.View>
+          </Reanimated.View>
+        </Pressable>
+      </Reanimated.View>
     </View>
   );
-}
+}, arePropsEqual);
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    maxWidth: '80%',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    paddingVertical: 2,
+  },
+  containerEmbedded: {
+    paddingVertical: 0,
+  },
+  slot: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    maxWidth: '100%',
+  },
+  slotMe: {
+    alignSelf: 'flex-end',
+  },
+  slotOther: {
     alignSelf: 'flex-start',
   },
-  bubbleMe: {
-    backgroundColor: colors.bubbleMe,
-    ...bubbleRadius.mine,
-  },
-  bubbleOther: {
-    backgroundColor: colors.bubbleOther,
-    ...bubbleRadius.other,
-  },
-  circleWrapper: {
-    width: SIZE,
-    height: SIZE,
+  pressable: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   circle: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: RADIUS,
     overflow: 'hidden',
+    backgroundColor: '#0B1020',
+    borderColor: 'rgba(255,255,255,0.94)',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
   },
-  thumbnail: {
+  poster: {
+    ...StyleSheet.absoluteFillObject,
+    width: undefined,
+    height: undefined,
+  },
+  posterFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0B1020',
+  },
+  video: {
     ...StyleSheet.absoluteFillObject,
   },
-  thumbnailPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.placeholderBg,
-  },
-  playOverlay: {
+  centerBadge: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playOverlayMe: {
-    backgroundColor: 'rgba(0,0,0,0.2)',
+  centerBadgeInner: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  playOverlayOther: {
-    backgroundColor: 'rgba(0,0,0,0.15)',
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
   },
-  playIcon: {
-    fontSize: 48,
-    color: colors.textPrimary,
+  metaStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  playIconMe: {
-    color: '#fff',
+  durationPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.36)',
   },
-  durationBadge: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  durationBadgeMe: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  durationBadgeOther: {
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  timePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.36)',
   },
   durationText: {
-    fontSize: 11,
-    color: '#fff',
-  },
-  durationTextMe: {
-    color: 'rgba(255,255,255,0.95)',
+    fontSize: typography.timeStatus,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.1,
   },
 });

@@ -9,32 +9,39 @@ export type ReplyPreviewMode = 'composer' | 'bubble';
 function getMediaLabel(message: Message): string {
   switch (message.msg_type) {
     case 'image':
-      return message.content?.trim() ? `Photo: ${message.content.trim()}` : 'Photo';
+      return message.content?.trim() ? `Фото: ${message.content.trim()}` : 'Фото';
     case 'voice':
-      return 'Voice message';
+      return 'Голосовое сообщение';
     case 'video_note':
-      return 'Video note';
+      return 'Видеокружок';
     case 'file':
-      return message.media?.[0]?.file_name?.trim() || 'File';
+      return message.media?.[0]?.file_name?.trim() || 'Файл';
     default:
-      return 'Message';
+      return 'Сообщение';
   }
 }
 
 export function buildReplyPreviewText(message: Message | null | undefined): string {
   if (!message) return '';
-  if (message.is_deleted) return 'Deleted message';
+  if (message.is_deleted) return 'Сообщение удалено';
 
   if (message.msg_type === 'text') {
     const text = message.content?.trim();
-    return text?.length ? text : 'Empty message';
+    return text?.length ? text : 'Пустое сообщение';
   }
 
   return getMediaLabel(message);
 }
 
 export function getReplyPreviewThumbnailUri(message: Message | null | undefined): string | null {
-  if (!message || message.is_deleted || message.msg_type !== 'image') return null;
+  if (!message || message.is_deleted) return null;
+
+  if (message.msg_type === 'video_note') {
+    const videoThumbnail = message.media?.[0]?.thumbnail_url?.trim();
+    if (videoThumbnail) return videoThumbnail;
+  }
+
+  if (message.msg_type !== 'image') return null;
 
   const thumbnailUri = message.media?.[0]?.thumbnail_url?.trim();
   if (thumbnailUri) return thumbnailUri;

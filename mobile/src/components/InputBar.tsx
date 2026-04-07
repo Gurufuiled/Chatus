@@ -47,6 +47,7 @@ export interface InputBarProps {
   onSendVideoNote?: (result: VideoNoteRecordingResult) => void | Promise<void>;
   onSendImage?: (result: ImagePickResult) => void | Promise<void>;
   onSendFile?: (result: FilePickResult) => void | Promise<void>;
+  blurTargetRef?: React.RefObject<View | null>;
   placeholder?: string;
   onInputChange?: (text: string) => void;
   replyToMessage?: Message | null;
@@ -70,6 +71,7 @@ type GalleryItem = {
 };
 
 type VoiceRecordMode = 'idle' | 'holding' | 'locked';
+type RecordingEntryMode = 'voice' | 'video';
 
 const VOICE_LOCK_THRESHOLD = 88;
 const VOICE_CANCEL_THRESHOLD = 56;
@@ -77,6 +79,8 @@ const VOICE_CANCEL_TRIGGER_PROGRESS = 0.84;
 const VOICE_MAX_UP_DRAG = 108;
 const VOICE_MAX_LEFT_DRAG = 92;
 const VOICE_HOLD_TO_RECORD_MS = 170;
+const ENTRY_MODE_TAP_SLOP = 10;
+const VIDEO_NOTE_SWIPE_TRIGGER = 34;
 
 function PaperclipIcon() {
   return <Feather name="paperclip" size={20} color="#6B7280" />;
@@ -84,6 +88,10 @@ function PaperclipIcon() {
 
 function MicIcon() {
   return <Feather name="mic" size={19} color="#6B7280" />;
+}
+
+function VideoNoteIcon() {
+  return <Feather name="video" size={17} color="#6B7280" />;
 }
 
 function SendIcon() {
@@ -107,6 +115,7 @@ export function InputBar({
   onSendVideoNote,
   onSendImage,
   onSendFile,
+  blurTargetRef,
   placeholder = 'Сообщение',
   onInputChange,
   replyToMessage = null,
@@ -121,10 +130,13 @@ export function InputBar({
   const [galleryDenied, setGalleryDenied] = useState(false);
   const [pendingImage, setPendingImage] = useState<ImagePickResult | null>(null);
   const [voiceRecordModeState, setVoiceRecordModeState] = useState<VoiceRecordMode>('idle');
+  const [recordingEntryModeState, setRecordingEntryModeState] =
+    useState<RecordingEntryMode>('voice');
   const [voiceTouchTracking, setVoiceTouchTracking] = useState(false);
   const [voiceRecordingStartedAtMs, setVoiceRecordingStartedAtMs] = useState(0);
 
   const voiceRecordModeRef = useRef<VoiceRecordMode>('idle');
+  const recordingEntryModeRef = useRef<RecordingEntryMode>('voice');
   const voiceStartPendingRef = useRef(false);
   const voiceFinalizePendingRef = useRef(false);
   const voiceRecordingReadyRef = useRef(false);
@@ -132,24 +144,34 @@ export function InputBar({
   const voiceCancelProgressRef = useRef(0);
   const voiceLockedSnapshotRef = useRef(false);
   const voiceGestureActiveRef = useRef(false);
+  const entryModeTapEligibleRef = useRef(false);
+  const videoSwipeTriggeredRef = useRef(false);
   const voiceHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceHoldActivatedRef = useRef(false);
   const voiceDragXAnimated = useRef(new RNAnimated.Value(0)).current;
   const voiceDragYAnimated = useRef(new RNAnimated.Value(0)).current;
   const voiceCancelProgressAnimated = useRef(new RNAnimated.Value(0)).current;
   const voiceLockProgressAnimated = useRef(new RNAnimated.Value(0)).current;
+  const entryModeProgressAnimated = useRef(new RNAnimated.Value(0)).current;
 
   const hasText = inputText.trim().length > 0;
   const hasPendingImage = pendingImage != null;
   const canSend = hasText || hasPendingImage;
   const isVoiceRecording = voiceRecordModeState !== 'idle';
   const isVoiceLocked = voiceRecordModeState === 'locked';
+  const canUseVideoNotes = onSendVideoNote != null;
+  const isVideoEntryMode = canUseVideoNotes && recordingEntryModeState === 'video';
   const replyPreviewText = buildReplyPreviewText(replyToMessage);
   const replyPreviewThumbnailUri = getReplyPreviewThumbnailUri(replyToMessage);
 
   const setVoiceRecordMode = useCallback((mode: VoiceRecordMode) => {
     voiceRecordModeRef.current = mode;
     setVoiceRecordModeState(mode);
+  }, []);
+
+  const setRecordingEntryMode = useCallback((mode: RecordingEntryMode) => {
+    recordingEntryModeRef.current = mode;
+    setRecordingEntryModeState(mode);
   }, []);
 
   const updateVoiceGestureState = useCallback(
@@ -249,6 +271,10 @@ export function InputBar({
 
   const handleVideoNoteComplete = useCallback(
     async (result: VideoNoteRecordingResult) => {
+      videoSwipeTriggeredRef.current = false;
+      entryModeTapEligibleRef.current = false;
+      voiceGestureActiveRef.current = false;
+      setVoiceTouchTracking(false);
       setShowVideoNoteRecorder(false);
       await onSendVideoNote?.(result);
     },
@@ -256,8 +282,27 @@ export function InputBar({
   );
 
   const handleVideoNoteCancel = useCallback(() => {
+    videoSwipeTriggeredRef.current = false;
+    entryModeTapEligibleRef.current = false;
+    voiceGestureActiveRef.current = false;
+    setVoiceTouchTracking(false);
     setShowVideoNoteRecorder(false);
   }, []);
+
+  useEffect(() => {
+    if (!canUseVideoNotes && recordingEntryModeRef.current !== 'voice') {
+      setRecordingEntryMode('voice');
+    }
+  }, [canUseVideoNotes, setRecordingEntryMode]);
+
+  useEffect(() => {
+    RNAnimated.timing(entryModeProgressAnimated, {
+      toValue: isVideoEntryMode ? 1 : 0,
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [entryModeProgressAnimated, isVideoEntryMode]);
 
   useEffect(() => {
     return () => {
@@ -441,16 +486,17 @@ export function InputBar({
     if (onSendVideoNote) {
       actions.push({
         key: 'video-note',
-        title: 'Видео',
+        title: 'Видеокружок',
         tone: 'video',
         onPress: async () => {
+          setRecordingEntryMode('video');
           setShowVideoNoteRecorder(true);
         },
       });
     }
 
     return actions;
-  }, [onSendFile, onSendVideoNote]);
+  }, [onSendFile, onSendVideoNote, setRecordingEntryMode]);
 
   const loadGallery = useCallback(async () => {
     if (!onSendImage) return;
@@ -547,10 +593,32 @@ export function InputBar({
       voiceHoldTimerRef.current = null;
     }
 
+    if (recordingEntryModeRef.current === 'video' && voiceRecordModeRef.current === 'idle') {
+      const shouldToggleEntryMode =
+        entryModeTapEligibleRef.current && !videoSwipeTriggeredRef.current && canUseVideoNotes;
+
+      voiceGestureActiveRef.current = false;
+      setVoiceTouchTracking(false);
+      entryModeTapEligibleRef.current = false;
+      videoSwipeTriggeredRef.current = false;
+      resetVoiceGestureVisuals(false);
+
+      if (shouldToggleEntryMode) {
+        setRecordingEntryMode('voice');
+      }
+      return;
+    }
+
     if (!voiceHoldActivatedRef.current && voiceRecordModeRef.current === 'idle') {
       voiceGestureActiveRef.current = false;
       setVoiceTouchTracking(false);
+      const shouldToggleEntryMode = entryModeTapEligibleRef.current && canUseVideoNotes;
+      entryModeTapEligibleRef.current = false;
+      videoSwipeTriggeredRef.current = false;
       resetVoiceGestureVisuals(false);
+      if (shouldToggleEntryMode) {
+        setRecordingEntryMode(recordingEntryModeRef.current === 'voice' ? 'video' : 'voice');
+      }
       return;
     }
 
@@ -560,32 +628,49 @@ export function InputBar({
       voiceHoldActivatedRef.current = false;
       voiceGestureActiveRef.current = false;
       setVoiceTouchTracking(false);
+      entryModeTapEligibleRef.current = false;
+      videoSwipeTriggeredRef.current = false;
       return;
     }
 
     voiceHoldActivatedRef.current = false;
     voiceGestureActiveRef.current = false;
+    entryModeTapEligibleRef.current = false;
+    videoSwipeTriggeredRef.current = false;
     if (voiceCancelProgressRef.current >= VOICE_CANCEL_TRIGGER_PROGRESS) {
       void cancelVoiceRecording();
       return;
     }
 
     void finishVoiceRecording();
-  }, [cancelVoiceRecording, finishVoiceRecording, resetVoiceGestureVisuals]);
+  }, [
+    cancelVoiceRecording,
+    canUseVideoNotes,
+    finishVoiceRecording,
+    resetVoiceGestureVisuals,
+    setRecordingEntryMode,
+  ]);
 
   const voicePanResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => !canSend && voiceRecordModeRef.current === 'idle',
+        onStartShouldSetPanResponder: () =>
+          !canSend && !showVideoNoteRecorder && voiceRecordModeRef.current === 'idle',
         onMoveShouldSetPanResponder: () =>
           voiceTouchTracking && voiceRecordModeRef.current === 'holding',
         onPanResponderGrant: () => {
           voiceGestureActiveRef.current = true;
           setVoiceTouchTracking(true);
+          entryModeTapEligibleRef.current = true;
+          videoSwipeTriggeredRef.current = false;
           updateVoiceGestureState(0, 0, 0, 0);
           voiceHoldActivatedRef.current = false;
           if (voiceHoldTimerRef.current) {
             clearTimeout(voiceHoldTimerRef.current);
+          }
+          if (recordingEntryModeRef.current === 'video') {
+            voiceHoldTimerRef.current = null;
+            return;
           }
           voiceHoldTimerRef.current = setTimeout(() => {
             voiceHoldTimerRef.current = null;
@@ -594,7 +679,32 @@ export function InputBar({
           }, VOICE_HOLD_TO_RECORD_MS);
         },
         onPanResponderMove: (_event, gestureState) => {
-          if (!voiceGestureActiveRef.current || !voiceHoldActivatedRef.current) return;
+          if (!voiceGestureActiveRef.current) return;
+
+          if (
+            Math.abs(gestureState.dx) > ENTRY_MODE_TAP_SLOP ||
+            Math.abs(gestureState.dy) > ENTRY_MODE_TAP_SLOP
+          ) {
+            entryModeTapEligibleRef.current = false;
+          }
+
+          if (recordingEntryModeRef.current === 'video') {
+            if (
+              !videoSwipeTriggeredRef.current &&
+              gestureState.dy <= -VIDEO_NOTE_SWIPE_TRIGGER &&
+              onSendVideoNote != null
+            ) {
+              videoSwipeTriggeredRef.current = true;
+              voiceGestureActiveRef.current = false;
+              setVoiceTouchTracking(false);
+              Keyboard.dismiss();
+              resetVoiceGestureVisuals(false);
+              setShowVideoNoteRecorder(true);
+            }
+            return;
+          }
+
+          if (!voiceHoldActivatedRef.current) return;
           updateVoiceDrag(gestureState.dx, gestureState.dy);
         },
         onPanResponderRelease: () => {
@@ -609,6 +719,9 @@ export function InputBar({
       beginVoiceRecording,
       canSend,
       handleVoicePanRelease,
+      onSendVideoNote,
+      resetVoiceGestureVisuals,
+      showVideoNoteRecorder,
       updateVoiceDrag,
       updateVoiceGestureState,
       voiceTouchTracking,
@@ -747,6 +860,72 @@ export function InputBar({
     [voiceLockProgressAnimated]
   );
 
+  const trailingActionMicIconStyle = useMemo(
+    () => ({
+      opacity: entryModeProgressAnimated.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 0],
+      }),
+      transform: [
+        {
+          scale: entryModeProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [1, 0.86],
+          }),
+        },
+        {
+          translateY: entryModeProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 3],
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [entryModeProgressAnimated]
+  );
+
+  const trailingActionVideoIconStyle = useMemo(
+    () => ({
+      opacity: entryModeProgressAnimated.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+      }),
+      transform: [
+        {
+          scale: entryModeProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.84, 1],
+          }),
+        },
+        {
+          translateY: entryModeProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [3, 0],
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [entryModeProgressAnimated]
+  );
+
+  const trailingActionModeDotStyle = useMemo(
+    () => ({
+      opacity: entryModeProgressAnimated.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+      }),
+      transform: [
+        {
+          scale: entryModeProgressAnimated.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.6, 1],
+          }),
+        },
+      ] as ViewStyle['transform'],
+    }),
+    [entryModeProgressAnimated]
+  );
+
   return (
     <>
       <View style={styles.inputRow}>
@@ -841,11 +1020,24 @@ export function InputBar({
                   <SendIcon />
                 </Pressable>
               ) : (
-                <Pressable
-                  style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
+                <RNAnimated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.trailingAction,
+                  ]}
                 >
-                  <MicIcon />
-                </Pressable>
+                  <RNAnimated.View style={[styles.trailingActionIconLayer, trailingActionMicIconStyle]}>
+                    <MicIcon />
+                  </RNAnimated.View>
+                  <RNAnimated.View
+                    style={[styles.trailingActionIconLayer, trailingActionVideoIconStyle]}
+                  >
+                    <VideoNoteIcon />
+                  </RNAnimated.View>
+                  <RNAnimated.View
+                    style={[styles.trailingActionModeDot, trailingActionModeDotStyle]}
+                  />
+                </RNAnimated.View>
               )}
             </View>
           </View>
@@ -881,6 +1073,7 @@ export function InputBar({
           visible={showVideoNoteRecorder}
           onComplete={handleVideoNoteComplete}
           onCancel={handleVideoNoteCancel}
+          blurTargetRef={blurTargetRef}
         />
       )}
     </>
@@ -1042,6 +1235,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  trailingActionIconLayer: {
+    position: 'absolute',
+    width: MIN_TAP_TARGET,
+    height: MIN_TAP_TARGET,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trailingActionModeDot: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
   },
   trailingActionPressed: {
     opacity: 0.82,
