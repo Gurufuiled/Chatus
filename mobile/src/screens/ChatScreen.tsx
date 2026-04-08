@@ -31,6 +31,7 @@ import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import { canForwardMessage, TransportService } from '../services/TransportService';
 import { SyncService } from '../services/SyncService';
+import { WebSocketService } from '../services/WebSocketService';
 import { uiStore } from '../stores/uiStore';
 import {
   ChatContextMenuOverlay,
@@ -150,6 +151,7 @@ export function ChatScreen() {
   const menuAnim = useRef(new Animated.Value(0)).current;
   const messageContentRefs = useRef<Record<string, View | null>>({});
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sentReadReceiptIdsRef = useRef<Set<string>>(new Set());
 
   const messages = messageStore(
     useCallback(
@@ -279,6 +281,29 @@ export function ChatScreen() {
   );
 
   useEffect(() => {
+    if (!currentUserId) return;
+    if (currentChat?.chat_type !== 'private') return;
+    if (chatStore.getState().selectedChatId !== chatId) return;
+    if (!WebSocketService.isConnected()) return;
+
+    for (const message of messages) {
+      if (message.sender_id === currentUserId || message.is_deleted === 1) {
+        continue;
+      }
+      if (sentReadReceiptIdsRef.current.has(message.id)) {
+        continue;
+      }
+
+      WebSocketService.sendEvent('ack', {
+        chat_id: chatId,
+        message_id: message.id,
+        status: 'read',
+      });
+      sentReadReceiptIdsRef.current.add(message.id);
+    }
+  }, [chatId, currentChat?.chat_type, currentUserId, messages]);
+
+  useEffect(() => {
     if (replyToMessageId && !messageById.has(replyToMessageId)) {
       setReplyToMessageId(null);
     }
@@ -335,6 +360,10 @@ export function ChatScreen() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    sentReadReceiptIdsRef.current.clear();
+  }, [chatId]);
 
   const scrollToMessageId = useCallback((messageId: string, missingMessageTitle?: string) => {
     const targetIndex = messages.findIndex((message) => message.id === messageId);

@@ -352,13 +352,20 @@ export class WebsocketGateway
 
     const members = await this.getChatMemberIds(chatId);
     if (!members.includes(client.userId)) return;
+    const updatedMessage = await this.messagesService.updateMessageStatus(
+      chatId,
+      messageId,
+      client.userId,
+      status,
+    );
+    const effectiveStatus = updatedMessage?.status ?? status;
 
     const data = JSON.stringify({
       type: 'ack',
       chat_id: chatId,
       message_id: messageId,
       user_id: client.userId,
-      status,
+      status: effectiveStatus,
     });
     members.forEach((uid) => this.sendToUser(uid, data));
   }

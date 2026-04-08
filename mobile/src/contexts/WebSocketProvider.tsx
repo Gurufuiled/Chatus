@@ -120,6 +120,20 @@ function updateChatLastMessage(chatId: string, mapped: Message): void {
   });
 }
 
+function sendMessageAck(
+  chatId: string,
+  messageId: string,
+  status: 'delivered' | 'read',
+): void {
+  if (!WebSocketService.isConnected()) return;
+
+  WebSocketService.sendEvent('ack', {
+    chat_id: chatId,
+    message_id: messageId,
+    status,
+  });
+}
+
 type WebSocketProviderProps = {
   children: React.ReactNode;
 };
@@ -185,7 +199,6 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             ? existing.find(
                 (m) =>
                   m.id === clientTempId &&
-                  m.status === 'sending' &&
                   m.sender_id === currentUserId &&
                   msg.sender_id === currentUserId
               )
@@ -225,6 +238,15 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           }
           updateChatLastMessage(msg.chat_id, mapped);
           if (msg.sender_id !== currentUserId) {
+            const messageChat = chatStore
+              .getState()
+              .chats.find((item) => item.id === msg.chat_id);
+            const shouldSendReceipts = messageChat?.chat_type === 'private';
+
+            if (shouldSendReceipts) {
+              sendMessageAck(msg.chat_id, msg.id, 'delivered');
+            }
+
             if (selectedChatId === msg.chat_id) {
               chatStore.getState().clearUnread(msg.chat_id);
             } else {

@@ -11,11 +11,13 @@ export interface VideoNoteRecordingResult {
 
 /** Camera ref with recordAsync/stopRecording (expo-camera CameraView instance). */
 export interface VideoNoteCameraRef {
-  recordAsync(options?: { maxDuration?: number }): Promise<{ uri: string } | undefined>;
+  recordAsync(options?: { maxDuration?: number; maxFileSize?: number }): Promise<{ uri: string } | undefined>;
   stopRecording(): void;
 }
 
 export const MAX_DURATION_SECONDS = 60;
+export const MAX_VIDEO_NOTE_FILE_SIZE_BYTES = 8 * 1024 * 1024;
+const MAX_DURATION_MS = MAX_DURATION_SECONDS * 1000;
 
 class VideoNoteRecorderServiceClass {
   private cameraRef: VideoNoteCameraRef | null = null;
@@ -38,7 +40,10 @@ class VideoNoteRecorderServiceClass {
     }
 
     this.startTimeMs = Date.now();
-    this.recordPromise = ref.recordAsync({ maxDuration: MAX_DURATION_SECONDS });
+    this.recordPromise = ref.recordAsync({
+      maxDuration: MAX_DURATION_SECONDS,
+      maxFileSize: MAX_VIDEO_NOTE_FILE_SIZE_BYTES,
+    });
   }
 
   /** Stop recording and return { uri, durationMs, thumbnailUri }. */
@@ -49,11 +54,15 @@ class VideoNoteRecorderServiceClass {
       throw new Error('No active recording. Call startRecording() first.');
     }
 
+    const stopRequestedAtMs = Date.now();
     ref.stopRecording();
     this.recordPromise = null;
 
     const result = await promise;
-    const durationMs = Math.round(Date.now() - this.startTimeMs);
+    const durationMs = Math.min(
+      Math.max(Math.round(stopRequestedAtMs - this.startTimeMs), 0),
+      MAX_DURATION_MS
+    );
 
     if (!result?.uri) {
       throw new Error('Recording produced no file URI');

@@ -59,6 +59,7 @@ import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import type { Chat, Message } from '../stores/types';
 import { colors } from '../theme/colors';
+import { formatMediaDuration } from '../utils/mediaDuration';
 
 type GroupProfileRoute = RouteProp<ChatsStackParamList, 'GroupProfile'>;
 type GroupProfileNavigation = NativeStackNavigationProp<ChatsStackParamList, 'GroupProfile'>;
@@ -111,13 +112,6 @@ function formatMessageDate(timestamp: number) {
     day: 'numeric',
     month: 'short',
   });
-}
-
-function formatDuration(ms: number) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSec / 60);
-  const seconds = totalSec % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 function formatFileSize(bytes?: number) {
@@ -481,7 +475,7 @@ export function GroupProfileScreen() {
         .map((message) => ({
           id: message.id,
           uri: extractMediaUri(message),
-          duration: formatDuration(message.media?.[0]?.duration_ms ?? 0),
+          duration: formatMediaDuration(message.media?.[0]?.duration_ms ?? 0),
           date: formatMessageDate(message.created_at),
           durationMs: message.media?.[0]?.duration_ms ?? 0,
           waveform: message.media?.[0]?.waveform ?? [],

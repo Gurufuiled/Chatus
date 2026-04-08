@@ -7,6 +7,10 @@ import {
 } from '../../contexts/VoicePlayerContext';
 import { buildUiWaveform } from '../../services/waveformUtils';
 import { colors } from '../../theme/colors';
+import {
+  formatMediaDuration,
+  formatRemainingPlaybackDuration,
+} from '../../utils/mediaDuration';
 import type { GroupFileItem, GroupMediaItem, GroupVoiceItem } from './groupProfile.types';
 
 type GroupMediaTabKey = 'media' | 'files' | 'voice';
@@ -20,13 +24,6 @@ type GroupProfileMediaContentProps = {
   onOpenFile: (item: GroupFileItem) => void;
   onShowInChat: (messageId: string) => void;
 };
-
-function formatDuration(ms: number) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSec / 60);
-  const seconds = totalSec % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
 
 function buildVoicePreviewBars(waveform: number[]) {
   const base =
@@ -88,7 +85,13 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
   onShowInChat: (messageId: string) => void;
 }) {
   const { play, pause } = useVoicePlayerControls();
-  const { isPlaying, progress, remainingMs } = useVoicePlaybackForUri(item.uri, item.durationMs);
+  const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(
+    item.uri,
+    item.durationMs
+  );
+  const durationLabel = isCurrent && (isPlaying || progress > 0)
+    ? formatRemainingPlaybackDuration(remainingMs)
+    : formatMediaDuration(item.durationMs);
   const bars = useMemo(() => buildVoicePreviewBars(item.waveform), [item.waveform]);
 
   const handlePlayPress = async () => {
@@ -158,7 +161,7 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
           })}
         </View>
         <View style={styles.voiceMetaRow}>
-          <Text style={styles.voiceDuration}>{formatDuration(remainingMs)}</Text>
+          <Text style={styles.voiceDuration}>{durationLabel}</Text>
           <Text style={styles.voiceDate}>{item.dateLabel}</Text>
         </View>
       </Pressable>
@@ -209,7 +212,7 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
             <Image source={{ uri: item.uri }} style={styles.mediaImage} />
             {item.durationMs ? (
               <View style={styles.mediaBadge}>
-                <Text style={styles.mediaBadgeText}>{formatDuration(item.durationMs)}</Text>
+                <Text style={styles.mediaBadgeText}>{formatMediaDuration(item.durationMs)}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -436,4 +439,3 @@ const styles = StyleSheet.create({
     opacity: 0.86,
   },
 });
-

@@ -50,6 +50,21 @@ export interface CreateForwardMetadata {
 export class MessagesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private getStatusRank(status: MessageStatus): number {
+    switch (status) {
+      case MessageStatus.pending:
+        return 0;
+      case MessageStatus.sent:
+        return 1;
+      case MessageStatus.delivered:
+        return 2;
+      case MessageStatus.read:
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
   private serializeWaveform(waveform?: number[]): Uint8Array | null {
     if (!Array.isArray(waveform) || waveform.length === 0) {
       return null;
@@ -201,6 +216,38 @@ export class MessagesService {
       }
 
       return next;
+    });
+
+    return mapMessage(updated, { includeMedia: true });
+  }
+
+  async updateMessageStatus(
+    chatId: string,
+    messageId: string,
+    actorUserId: string,
+    status: 'delivered' | 'read',
+  ): Promise<MappedMessage | null> {
+    const existing = await this.prisma.message.findFirst({
+      where: { id: messageId, chatId },
+      include: { media: true },
+    });
+    if (!existing) {
+      return null;
+    }
+    if (existing.senderId === actorUserId) {
+      return mapMessage(existing, { includeMedia: true });
+    }
+
+    const nextStatus =
+      status === 'read' ? MessageStatus.read : MessageStatus.delivered;
+    if (this.getStatusRank(nextStatus) <= this.getStatusRank(existing.status)) {
+      return mapMessage(existing, { includeMedia: true });
+    }
+
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: nextStatus },
+      include: { media: true },
     });
 
     return mapMessage(updated, { includeMedia: true });

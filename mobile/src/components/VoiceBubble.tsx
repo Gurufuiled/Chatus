@@ -7,6 +7,10 @@ import {
 } from '../contexts/VoicePlayerContext';
 import { buildUiWaveform } from '../services/waveformUtils';
 import { bubbleRadius, colors, typography } from '../theme/colors';
+import {
+  formatMediaDuration,
+  formatRemainingPlaybackDuration,
+} from '../utils/mediaDuration';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 export interface VoiceBubbleProps {
@@ -25,13 +29,6 @@ export interface VoiceBubbleProps {
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
-
-function formatDuration(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return `${min}:${sec.toString().padStart(2, '0')}`;
-}
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -122,8 +119,10 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
   const [waveformWidth, setWaveformWidth] = useState(0);
-
-  const effectiveDurationMs = remainingMs;
+  const shouldShowRemainingDuration = isCurrent && (isPlaying || progress > 0);
+  const durationLabel = shouldShowRemainingDuration
+    ? formatRemainingPlaybackDuration(remainingMs)
+    : formatMediaDuration(durationMs);
 
   const bars = useMemo(
     () => buildTelegramLikeBars(uri, waveform, durationMs, 44),
@@ -257,7 +256,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
 
           <View style={styles.metaRow}>
             <Text style={[styles.duration, isMe && styles.durationMe]}>
-              {formatDuration(effectiveDurationMs)}
+              {durationLabel}
             </Text>
 
             {time ? (

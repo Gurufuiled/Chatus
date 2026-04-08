@@ -3,6 +3,8 @@ import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } 
 import { resolveAvatarUrl } from '../config';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
+import { colors } from '../theme/colors';
+import { MessageStatusIcon } from './MessageTimeStatus';
 
 const AVATAR_COLORS = [
   '#5B8DEF',
@@ -32,16 +34,8 @@ function formatChatTime(timestamp: number | null) {
   });
 }
 
-function getStatusIcon(status: string) {
-  switch (status) {
-    case 'read':
-      return '\u2713\u2713';
-    case 'delivered':
-    case 'sent':
-      return '\u2713';
-    default:
-      return '';
-  }
+function getStatusColor(status: string) {
+  return status === 'read' ? colors.accent : '#A0A7B4';
 }
 
 type ChatListRowProps = {
@@ -91,7 +85,7 @@ export const ChatListRow = React.memo(function ChatListRow({
   const initial = (title.trim()[0] || '?').toUpperCase();
   const avatarColor = getAvatarColor(title);
   const isLastMessageMine = lastMessageSenderId === currentUserId;
-  const statusIcon = isLastMessageMine ? getStatusIcon(lastMessageStatus) : '';
+  const statusIconColor = getStatusColor(lastMessageStatus);
   const timeLabel = formatChatTime(chat.last_message_at);
   const unreadCount = Math.max(0, chat.unread_count ?? 0);
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
@@ -120,7 +114,14 @@ export const ChatListRow = React.memo(function ChatListRow({
           {timeLabel || showUnreadBadge ? (
             <View style={styles.metaColumn}>
               <View style={styles.metaWrap}>
-              {statusIcon ? <Text style={styles.statusIcon}>{statusIcon}</Text> : null}
+                {isLastMessageMine ? (
+                  <MessageStatusIcon
+                    status={lastMessageStatus}
+                    isMe
+                    compact
+                    iconColor={statusIconColor}
+                  />
+                ) : null}
                 {timeLabel ? <Text style={styles.timeLabel}>{timeLabel}</Text> : null}
               </View>
               {showUnreadBadge ? (
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
   metaWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 2,
     justifyContent: 'flex-end',
   },
   metaColumn: {
@@ -209,11 +210,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
     minWidth: 42,
-  },
-  statusIcon: {
-    fontSize: 13,
-    color: '#34C759',
-    fontWeight: '700',
   },
   timeLabel: {
     fontSize: 14,

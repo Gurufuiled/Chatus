@@ -16,6 +16,10 @@ import {
 } from '../contexts/VoicePlayerContext';
 import { buildUiWaveform } from '../services/waveformUtils';
 import { colors } from '../theme/colors';
+import {
+  formatMediaDuration,
+  formatRemainingPlaybackDuration,
+} from '../utils/mediaDuration';
 
 export type ProfileTabKey = 'media' | 'files' | 'voice' | 'links';
 
@@ -65,13 +69,6 @@ const TAB_LABELS: Record<ProfileTabKey, string> = {
   voice: 'Голосовые',
   links: 'Ссылки',
 };
-
-function formatDuration(ms: number) {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSec / 60);
-  const seconds = totalSec % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
 
 function buildVoicePreviewBars(waveform: number[]) {
   const base =
@@ -159,7 +156,13 @@ const VoiceRow = React.memo(function VoiceRow({
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
   const { play, pause } = useVoicePlayerControls();
-  const { isPlaying, progress, remainingMs } = useVoicePlaybackForUri(item.uri, item.durationMs);
+  const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(
+    item.uri,
+    item.durationMs
+  );
+  const durationLabel = isCurrent && (isPlaying || progress > 0)
+    ? formatRemainingPlaybackDuration(remainingMs)
+    : formatMediaDuration(item.durationMs);
   const bars = useMemo(() => buildVoicePreviewBars(item.waveform), [item.waveform]);
 
   const handlePlayPress = async () => {
@@ -225,7 +228,7 @@ const VoiceRow = React.memo(function VoiceRow({
           })}
         </View>
         <View style={styles.voiceMetaRow}>
-          <Text style={styles.voiceDuration}>{formatDuration(remainingMs)}</Text>
+          <Text style={styles.voiceDuration}>{durationLabel}</Text>
           <Text style={styles.voiceDate}>{item.dateLabel}</Text>
         </View>
       </View>
@@ -307,7 +310,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
               <Image source={{ uri: item.uri }} style={styles.mediaImage} />
               {item.durationMs ? (
                 <View style={styles.mediaBadge}>
-                  <Text style={styles.mediaBadgeText}>{formatDuration(item.durationMs)}</Text>
+                  <Text style={styles.mediaBadgeText}>{formatMediaDuration(item.durationMs)}</Text>
                 </View>
               ) : null}
             </Pressable>

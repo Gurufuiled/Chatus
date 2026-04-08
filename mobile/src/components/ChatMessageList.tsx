@@ -454,6 +454,8 @@ const MessageRow = React.memo(function MessageRow({
           bubbleMeColor={chatTheme.bubbleMe}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
+          enableReplySwipe={canSwipe}
+          onReplySwipe={onReply}
         />
       );
 
@@ -645,7 +647,7 @@ const MessageRow = React.memo(function MessageRow({
     </Pressable>
   );
 
-  if (!canSwipe) {
+  if (!canSwipe || item.msg_type === 'video_note') {
     return card;
   }
 

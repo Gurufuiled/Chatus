@@ -24,6 +24,7 @@ export { dbToNormalized } from './waveformUtils';
 class VoiceRecorderServiceClass {
   private recording: InstanceType<typeof Audio.Recording> | null = null;
   private waveformSamples: number[] = [];
+  private startTimeMs: number = 0;
 
   /** Request RECORD_AUDIO (Android) / microphone (iOS) permission. Returns true if granted. */
   async requestPermissions(): Promise<boolean> {
@@ -71,6 +72,7 @@ class VoiceRecorderServiceClass {
     await VoicePlayerService.stop().catch(() => {});
     await this.ensureAudioMode();
     this.waveformSamples = [];
+    this.startTimeMs = Date.now();
 
     const options = {
       ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
@@ -92,6 +94,7 @@ class VoiceRecorderServiceClass {
 
       this.recording = recording;
     } catch (err) {
+      this.startTimeMs = 0;
       await this.restorePlaybackAudioMode().catch(() => {});
       throw err;
     }
@@ -105,9 +108,12 @@ class VoiceRecorderServiceClass {
     }
 
     this.recording = null;
+    const stopRequestedAtMs = Date.now();
     try {
       const status = await rec.stopAndUnloadAsync();
       const uri = rec.getURI();
+      const measuredDurationMs = Math.max(stopRequestedAtMs - this.startTimeMs, 0);
+      const resolvedDurationMs = Math.max(status.durationMillis ?? 0, measuredDurationMs);
 
       if (!uri) {
         throw new Error('Recording produced no file URI');
@@ -115,10 +121,11 @@ class VoiceRecorderServiceClass {
 
       return {
         uri,
-        durationMs: status.durationMillis ?? 0,
+        durationMs: resolvedDurationMs,
         waveform: buildUiWaveform(this.waveformSamples, UI_WAVEFORM_SAMPLE_COUNT),
       };
     } finally {
+      this.startTimeMs = 0;
       await this.restorePlaybackAudioMode().catch(() => {});
     }
   }

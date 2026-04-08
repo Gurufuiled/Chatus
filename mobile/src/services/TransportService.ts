@@ -66,6 +66,11 @@ function getSafeFileContent(content: string | null | undefined, fileName?: strin
   return normalizedContent;
 }
 
+function isUploadTooLargeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /payload too large|file too large|statusCode\":413|upload failed: 413/i.test(message);
+}
+
 type ForwardMetadata = {
   messageId?: string | null;
   name?: string | null;
@@ -186,6 +191,62 @@ class TransportServiceClass {
   private p2pHandlersSet = false;
   private p2pManager: P2PManagerRef | null = null;
 
+  private ensureWebSocketConnectedForDispatch(context: string): void {
+    if (!WebSocketService.isConnected()) {
+      throw new Error(`[TransportService] WebSocket disconnected before ${context}`);
+    }
+  }
+
+  private markOptimisticVideoNoteDispatched(
+    chatId: string,
+    tempId: string,
+    payload: {
+      remoteUrl: string;
+      durationMs?: number;
+      thumbnailUrl?: string;
+      width?: number;
+      height?: number;
+      fileName?: string;
+      fileSize?: number;
+    },
+  ): void {
+    const existingMessages = messageStore.getState().messagesByChatId[chatId] ?? [];
+    const optimistic = existingMessages.find((message) => message.id === tempId);
+    if (!optimistic) return;
+
+    const nextMedia = optimistic.media?.map((item, index) =>
+      index === 0
+        ? {
+            ...item,
+            remote_url: payload.remoteUrl,
+            duration_ms: payload.durationMs ?? item.duration_ms,
+            thumbnail_url: payload.thumbnailUrl ?? item.thumbnail_url,
+            width: payload.width ?? item.width,
+            height: payload.height ?? item.height,
+            file_name: payload.fileName ?? item.file_name,
+            file_size: payload.fileSize ?? item.file_size,
+            is_round: true,
+          }
+        : item
+    );
+
+    messageStore.getState().updateMessage(chatId, tempId, {
+      status: 'sent',
+      content: payload.remoteUrl,
+      ...(nextMedia ? { media: nextMedia } : {}),
+    });
+  }
+
+  private markOptimisticMessageFailed(chatId: string, tempId: string): void {
+    const existingMessages = messageStore.getState().messagesByChatId[chatId] ?? [];
+    const optimistic = existingMessages.find((message) => message.id === tempId);
+    if (!optimistic) return;
+
+    messageStore.getState().updateMessage(chatId, tempId, {
+      status: 'failed',
+    });
+  }
+
   /** Get peer user id for a private chat (the other member). Returns null for group or if unknown. */
   getPeerUserIdForChat(chatId: string): string | null {
     const chats = chatStore.getState().chats;
@@ -286,6 +347,8 @@ class TransportServiceClass {
           name: 'voice.m4a',
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
+        const resolvedDurationMs = result.duration_ms ?? payload.durationMs;
+        this.ensureWebSocketConnectedForDispatch('voice message dispatch');
         WebSocketService.sendEvent('send_message', {
           chat_id: chatId,
           content: fullUrl,
@@ -294,7 +357,7 @@ class TransportServiceClass {
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
-            duration_ms: payload.durationMs || result.duration_ms || undefined,
+            duration_ms: resolvedDurationMs || undefined,
             waveform:
               payload.waveform && payload.waveform.length > 0
                 ? payload.waveform
@@ -348,7 +411,7 @@ class TransportServiceClass {
   }
 
   /**
-   * Send video note: upload video (and thumbnail if provided), then WebSocket send_message with media.
+   * Send video note: upload video, then WebSocket send_message with media.
    * If offline or upload fails, persist to SyncQueueDao.
    */
   async sendVideoNoteMessage(
@@ -365,17 +428,12 @@ class TransportServiceClass {
           type: 'video/mp4',
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
+        const resolvedDurationMs = result.duration_ms ?? payload.durationMs;
+        const thumbnailUrl = result.thumbnail_path
+          ? `${getUploadBaseUrl()}${result.thumbnail_path.startsWith('/') ? '' : '/'}${result.thumbnail_path}`
+          : undefined;
 
-        let thumbnailUrl: string | undefined;
-        if (payload.thumbnailUri) {
-          const thumbResult = await apiUpload({
-            uri: payload.thumbnailUri,
-            name: 'thumb.jpg',
-            type: 'image/jpeg',
-          });
-          thumbnailUrl = `${getUploadBaseUrl()}${thumbResult.url.startsWith('/') ? '' : '/'}${thumbResult.url}`;
-        }
-
+        this.ensureWebSocketConnectedForDispatch('video note dispatch');
         WebSocketService.sendEvent('send_message', {
           chat_id: chatId,
           content: fullUrl,
@@ -384,7 +442,7 @@ class TransportServiceClass {
           reply_to_id: replyToId,
           media: {
             url: fullUrl,
-            duration_ms: payload.durationMs || result.duration_ms || undefined,
+            duration_ms: resolvedDurationMs || undefined,
             thumbnail_url: thumbnailUrl,
             is_round: true,
             mime_type: result.mime_type,
@@ -394,7 +452,36 @@ class TransportServiceClass {
             height: result.height ?? undefined,
           },
         });
-      } catch {
+        this.markOptimisticVideoNoteDispatched(chatId, tempId, {
+          remoteUrl: fullUrl,
+          durationMs: resolvedDurationMs || undefined,
+          thumbnailUrl: thumbnailUrl ?? payload.thumbnailUri,
+          width: result.width ?? undefined,
+          height: result.height ?? undefined,
+          fileName: result.file_name,
+          fileSize: result.file_size,
+        });
+      } catch (err) {
+        if (isUploadTooLargeError(err)) {
+          this.markOptimisticMessageFailed(chatId, tempId);
+          if (__DEV__) {
+            console.warn('[TransportService] video note rejected by upload size limit:', {
+              chatId,
+              tempId,
+              uri: payload.uri,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+          return;
+        }
+        if (__DEV__) {
+          console.warn('[TransportService] video note upload/send failed, queueing for retry:', {
+            chatId,
+            tempId,
+            uri: payload.uri,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
         queueToSyncQueue(
           this.syncQueueDao,
           'send_message_video_note',
@@ -447,6 +534,7 @@ class TransportServiceClass {
           type: imageMime,
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
+        this.ensureWebSocketConnectedForDispatch('image message dispatch');
         WebSocketService.sendEvent('send_message', {
           chat_id: chatId,
           content: payload.caption ?? null,
@@ -531,6 +619,7 @@ class TransportServiceClass {
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
         const fileName = result.file_name || payload.name;
+        this.ensureWebSocketConnectedForDispatch('file message dispatch');
         WebSocketService.sendEvent('send_message', {
           chat_id: chatId,
           content: fileName,

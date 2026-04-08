@@ -38,6 +38,29 @@ function getSafeFileContent(content: string | null | undefined, fileName?: strin
   return normalizedContent;
 }
 
+function isUploadTooLargeError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /payload too large|file too large|statusCode\":413|upload failed: 413/i.test(message);
+}
+
+function markQueuedMessageFailed(
+  payload: unknown,
+  entityId: string | null | undefined,
+): void {
+  const maybePayload = payload as { chatId?: string; tempId?: string } | null;
+  const chatId = maybePayload?.chatId;
+  const tempId = maybePayload?.tempId ?? entityId ?? null;
+  if (!chatId || !tempId) return;
+
+  const messages = messageStore.getState().messagesByChatId[chatId] ?? [];
+  const optimistic = messages.find((message) => message.id === tempId);
+  if (!optimistic) return;
+
+  messageStore.getState().updateMessage(chatId, tempId, {
+    status: 'failed',
+  });
+}
+
 /** API chat response (snake_case from server). */
 interface ApiChat {
   id: string;
@@ -204,6 +227,50 @@ type PayloadForward = {
 
 async function executeAction(action: string, payload: unknown): Promise<void> {
   const baseUrl = getUploadBaseUrl();
+  const ensureWebSocketConnectedForDispatch = (context: string): void => {
+    if (!WebSocketService.isConnected()) {
+      throw new Error(`[SyncService] WebSocket disconnected before ${context}`);
+    }
+  };
+  const markOptimisticVideoNoteDispatched = (
+    chatId: string,
+    tempId: string,
+    next: {
+      remoteUrl: string;
+      durationMs?: number;
+      thumbnailUrl?: string;
+      width?: number;
+      height?: number;
+      fileName?: string;
+      fileSize?: number;
+    },
+  ): void => {
+    const existingMessages = messageStore.getState().messagesByChatId[chatId] ?? [];
+    const optimistic = existingMessages.find((message) => message.id === tempId);
+    if (!optimistic) return;
+
+    const nextMedia = optimistic.media?.map((item, index) =>
+      index === 0
+        ? {
+            ...item,
+            remote_url: next.remoteUrl,
+            duration_ms: next.durationMs ?? item.duration_ms,
+            thumbnail_url: next.thumbnailUrl ?? item.thumbnail_url,
+            width: next.width ?? item.width,
+            height: next.height ?? item.height,
+            file_name: next.fileName ?? item.file_name,
+            file_size: next.fileSize ?? item.file_size,
+            is_round: true,
+          }
+        : item
+    );
+
+    messageStore.getState().updateMessage(chatId, tempId, {
+      status: 'sent',
+      content: next.remoteUrl,
+      ...(nextMedia ? { media: nextMedia } : {}),
+    });
+  };
 
   switch (action) {
     case 'send_message_text': {
@@ -225,6 +292,8 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         name: 'voice.m4a',
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
+      const resolvedDurationMs = result.duration_ms ?? p.durationMs;
+      ensureWebSocketConnectedForDispatch('voice message dispatch');
       WebSocketService.sendEvent('send_message', {
         chat_id: p.chatId,
         content: fullUrl,
@@ -233,7 +302,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
-          duration_ms: p.durationMs || result.duration_ms || undefined,
+          duration_ms: resolvedDurationMs || undefined,
           waveform:
             p.waveform && p.waveform.length > 0
               ? p.waveform
@@ -256,17 +325,12 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         type: 'video/mp4',
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
+      const resolvedDurationMs = result.duration_ms ?? p.durationMs;
+      const thumbnailUrl = result.thumbnail_path
+        ? toFullUrl(baseUrl, result.thumbnail_path)
+        : undefined;
 
-      let thumbnailUrl: string | undefined;
-      if (p.thumbnailUri) {
-        const thumbResult = await apiUpload({
-          uri: p.thumbnailUri,
-          name: 'thumb.jpg',
-          type: 'image/jpeg',
-        });
-        thumbnailUrl = toFullUrl(baseUrl, thumbResult.url);
-      }
-
+      ensureWebSocketConnectedForDispatch('video note dispatch');
       WebSocketService.sendEvent('send_message', {
         chat_id: p.chatId,
         content: fullUrl,
@@ -275,7 +339,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         reply_to_id: p.replyToId ?? null,
         media: {
           url: fullUrl,
-          duration_ms: p.durationMs || result.duration_ms || undefined,
+          duration_ms: resolvedDurationMs || undefined,
           thumbnail_url: thumbnailUrl,
           is_round: true,
           mime_type: result.mime_type,
@@ -284,6 +348,15 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           width: result.width ?? undefined,
           height: result.height ?? undefined,
         },
+      });
+      markOptimisticVideoNoteDispatched(p.chatId, p.tempId, {
+        remoteUrl: fullUrl,
+        durationMs: resolvedDurationMs || undefined,
+        thumbnailUrl: thumbnailUrl ?? p.thumbnailUri,
+        width: result.width ?? undefined,
+        height: result.height ?? undefined,
+        fileName: result.file_name,
+        fileSize: result.file_size,
       });
       return;
     }
@@ -298,6 +371,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         type: imageMime,
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
+      ensureWebSocketConnectedForDispatch('image message dispatch');
       WebSocketService.sendEvent('send_message', {
         chat_id: p.chatId,
         content: p.caption ?? null,
@@ -328,6 +402,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
       const fileName = result.file_name || p.name;
+      ensureWebSocketConnectedForDispatch('file message dispatch');
       WebSocketService.sendEvent('send_message', {
         chat_id: p.chatId,
         content: fileName,
@@ -540,10 +615,16 @@ class SyncServiceClass {
           await this.dao.delete(item.id);
         } catch (e) {
           console.warn('[SyncService] Action failed', item.action, item.id, e);
+          if (isUploadTooLargeError(e)) {
+            await this.dao.markFailed(item.id);
+            markQueuedMessageFailed(payload, item.entity_id);
+            continue;
+          }
           const retryCount = item.retry_count + 1;
           const maxRetries = item.max_retries ?? MAX_RETRIES;
           if (retryCount >= maxRetries) {
             await this.dao.markFailed(item.id);
+            markQueuedMessageFailed(payload, item.entity_id);
           } else {
             await this.dao.scheduleRetry(item.id, retryCount);
           }

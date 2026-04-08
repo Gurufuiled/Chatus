@@ -11,10 +11,13 @@ import { authService } from './AuthService';
 import { mockApiGet, mockApiPost, mockApiPatch } from './apiMocks';
 
 const FETCH_TIMEOUT_MS = 15000;
+const UPLOAD_FETCH_TIMEOUT_MS = 60000;
 
 export interface ApiFetchOptions extends RequestInit {
   /** If true, skip adding Authorization header (for public endpoints). */
   skipAuth?: boolean;
+  /** Optional request timeout override. */
+  timeoutMs?: number;
 }
 
 /**
@@ -25,7 +28,7 @@ export async function apiFetch(
   path: string,
   init?: ApiFetchOptions
 ): Promise<Response> {
-  const { skipAuth, ...rest } = init ?? {};
+  const { skipAuth, timeoutMs, ...rest } = init ?? {};
   const url = path.startsWith('http') ? path : `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
 
   const getHeaders = (): HeadersInit => {
@@ -41,7 +44,7 @@ export async function apiFetch(
 
   async function doFetch(): Promise<Response> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? FETCH_TIMEOUT_MS);
     try {
       return await fetch(url, {
         ...rest,
@@ -194,6 +197,7 @@ export async function apiUpload(file: {
     method: 'POST',
     headers: {},
     body: formData,
+    timeoutMs: UPLOAD_FETCH_TIMEOUT_MS,
   });
 
   if (!res.ok) {

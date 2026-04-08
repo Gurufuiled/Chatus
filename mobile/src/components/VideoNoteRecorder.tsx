@@ -7,6 +7,7 @@ import {
   Alert,
   Dimensions,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -25,14 +26,15 @@ import {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CIRCLE_SIZE = Math.min(SCREEN_WIDTH - 44, 320);
 const CIRCLE_RADIUS = CIRCLE_SIZE / 2;
+const MAX_DURATION_MS = MAX_DURATION_SECONDS * 1000;
+const VIDEO_NOTE_BITRATE = 850_000;
 
 function formatTimer(ms: number): string {
   const safeMs = Math.max(0, ms);
   const totalSec = Math.floor(safeMs / 1000);
   const min = Math.floor(totalSec / 60);
   const sec = totalSec % 60;
-  const centis = Math.floor((safeMs % 1000) / 10);
-  return `${min}:${sec.toString().padStart(2, '0')},${centis.toString().padStart(2, '0')}`;
+  return `${min}:${sec.toString().padStart(2, '0')}`;
 }
 
 export interface VideoNoteRecorderProps {
@@ -56,6 +58,7 @@ export function VideoNoteRecorder({
   const [elapsedMs, setElapsedMs] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const [facing, setFacing] = useState<'front' | 'back'>('front');
+  const [cameraSessionKey, setCameraSessionKey] = useState(0);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimestampRef = useRef(0);
@@ -66,6 +69,7 @@ export function VideoNoteRecorder({
   const hasCameraPermission = cameraPermission?.granted === true;
   const hasMicrophonePermission = microphonePermission?.granted === true;
   const hasAllPermissions = hasCameraPermission && hasMicrophonePermission;
+  const canFlipCamera = !isPreparing && !isRecording;
 
   const setCameraNodeRef = useCallback((instance: VideoNoteCameraRef | null) => {
     VideoNoteRecorderService.setCameraRef(instance);
@@ -85,9 +89,9 @@ export function VideoNoteRecorder({
     startTimestampRef.current = Date.now();
     setElapsedMs(0);
     timerRef.current = setInterval(() => {
-      const nextElapsed = Date.now() - startTimestampRef.current;
+      const nextElapsed = Math.min(Date.now() - startTimestampRef.current, MAX_DURATION_MS);
       setElapsedMs(nextElapsed);
-      if (nextElapsed >= MAX_DURATION_SECONDS * 1000 && timerRef.current) {
+      if (nextElapsed >= MAX_DURATION_MS && timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
@@ -209,8 +213,11 @@ export function VideoNoteRecorder({
   }, [finalizeRecording]);
 
   const handleFlipCamera = useCallback(() => {
+    // expo-camera stops the current recording when facing changes.
+    // Block camera flips while the note is recording/preparing to avoid truncated output.
+    if (!canFlipCamera) return;
     setFacing((current) => (current === 'front' ? 'back' : 'front'));
-  }, []);
+  }, [canFlipCamera]);
 
   useEffect(() => {
     if (!visible) {
@@ -226,6 +233,7 @@ export function VideoNoteRecorder({
 
     cancelledRef.current = false;
     startAttemptedRef.current = false;
+    setCameraSessionKey((current) => current + 1);
     setFacing('front');
     setCameraReady(false);
     setIsPreparing(true);
@@ -248,7 +256,7 @@ export function VideoNoteRecorder({
   }, [cameraReady, hasAllPermissions, isRecording, startRecording, visible]);
 
   useEffect(() => {
-    if (!visible || !isRecording || elapsedMs < MAX_DURATION_SECONDS * 1000) {
+    if (!visible || !isRecording || elapsedMs < MAX_DURATION_MS) {
       return;
     }
 
@@ -290,11 +298,16 @@ export function VideoNoteRecorder({
 
     return (
       <CameraView
+        key={`video-note-camera-${cameraSessionKey}-${facing}`}
         ref={setCameraNodeRef}
         style={styles.camera}
         facing={facing}
         mode="video"
         mirror={facing === 'front'}
+        zoom={0}
+        ratio={Platform.OS === 'android' ? '1:1' : undefined}
+        videoQuality="480p"
+        videoBitrate={VIDEO_NOTE_BITRATE}
         onCameraReady={() => {
           setCameraReady(true);
         }}
@@ -346,13 +359,19 @@ export function VideoNoteRecorder({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Переключить камеру"
+                disabled={!canFlipCamera}
                 onPress={handleFlipCamera}
                 style={({ pressed }) => [
                   styles.railButton,
-                  pressed && styles.railButtonPressed,
+                  !canFlipCamera && styles.railButtonDisabled,
+                  pressed && canFlipCamera && styles.railButtonPressed,
                 ]}
               >
-                <Feather name="refresh-cw" size={18} color="#17577C" />
+                <Feather
+                  name="refresh-cw"
+                  size={18}
+                  color={canFlipCamera ? '#17577C' : 'rgba(23,87,124,0.42)'}
+                />
               </Pressable>
               <View style={styles.railBadge}>
                 <Text style={styles.railBadgeLabel}>VIDEO</Text>
@@ -483,6 +502,9 @@ const styles = StyleSheet.create({
   },
   railButtonPressed: {
     opacity: 0.82,
+  },
+  railButtonDisabled: {
+    opacity: 0.52,
   },
   railBadge: {
     paddingHorizontal: 11,
