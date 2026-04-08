@@ -10,12 +10,11 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import { VoiceRecorderService } from '../services/VoiceRecorderService';
 import { colors } from '../theme/colors';
 
-const RECORDING_WAVEFORM_BARS = [
-  12, 8, 14, 10, 18, 13, 9, 16, 12, 7, 15, 11, 17, 13, 9, 16, 12, 8, 15, 11,
-  14, 10, 18, 13,
-];
+const LIVE_WAVEFORM_BAR_COUNT = 28;
+const LIVE_WAVEFORM_FALLBACK = Array(LIVE_WAVEFORM_BAR_COUNT).fill(0.08);
 
 type AnimatedStyle = React.ComponentProps<typeof RNAnimated.View>['style'];
 type PanHandlers = ReturnType<typeof PanResponder.create>['panHandlers'];
@@ -56,6 +55,7 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
   onSend,
 }: InputVoiceRecordingStageProps) {
   const [elapsedMs, setElapsedMs] = React.useState(0);
+  const [liveWaveform, setLiveWaveform] = React.useState<number[]>(LIVE_WAVEFORM_FALLBACK);
   const recordingPulse = React.useRef(new RNAnimated.Value(1)).current;
 
   React.useEffect(() => {
@@ -76,6 +76,14 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
 
     return () => clearInterval(timer);
   }, [recordingStartedAtMs]);
+
+  React.useEffect(() => {
+    const unsubscribe = VoiceRecorderService.subscribeToLiveWaveform((nextWaveform) => {
+      setLiveWaveform(nextWaveform.length > 0 ? nextWaveform : LIVE_WAVEFORM_FALLBACK);
+    });
+
+    return unsubscribe;
+  }, []);
 
   React.useEffect(() => {
     const loop = RNAnimated.loop(
@@ -112,9 +120,13 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
     return `${minutes}:${seconds}`;
   }, [elapsedMs]);
 
-  const recordingWaveIndex = React.useMemo(
-    () => Math.floor(elapsedMs / 160) % RECORDING_WAVEFORM_BARS.length,
-    [elapsedMs]
+  const liveBarHeights = React.useMemo(
+    () =>
+      liveWaveform.map((value) => {
+        const normalized = Math.max(0, Math.min(1, value ?? 0.08));
+        return 4 + Math.pow(normalized, 0.82) * 18;
+      }),
+    [liveWaveform]
   );
 
   return (
@@ -160,14 +172,15 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
               </View>
 
               <View style={styles.recordingWaveRow}>
-                {RECORDING_WAVEFORM_BARS.map((height, index) => (
+                {liveBarHeights.map((height, index) => (
                   <View
                     key={`recording-bar-${index}`}
                     style={[
                       styles.recordingWaveBar,
                       {
                         height,
-                        backgroundColor: index <= recordingWaveIndex ? '#6FAFFF' : '#CFE1FF',
+                        opacity: 0.48 + (index / Math.max(liveBarHeights.length - 1, 1)) * 0.52,
+                        backgroundColor: height >= 14 ? '#5FA6FF' : '#BFD9FF',
                       },
                     ]}
                   />

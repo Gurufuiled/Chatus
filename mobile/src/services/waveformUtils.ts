@@ -2,10 +2,14 @@
  * Pure waveform utilities. No RN/expo deps - safe for unit tests in Node.
  */
 
-const METERING_MIN_DB = -160;
+const METERING_MIN_DB = -55;
 const METERING_MAX_DB = 0;
 
-/** Maps dB metering (-160..0) to 0..1. 0 at -160dB (silence), 1 at 0dB (max). */
+/**
+ * Maps dB metering to 0..1. Anything below -55 dB is silence (0),
+ * 0 dB is max (1). The -55..0 range covers actual speech dynamics,
+ * giving much wider spread than the full -160..0 range.
+ */
 export function dbToNormalized(metering: number | undefined): number {
   if (metering == null || !Number.isFinite(metering)) return 0;
   const clamped = Math.max(METERING_MIN_DB, Math.min(METERING_MAX_DB, metering));
@@ -49,8 +53,7 @@ export function resampleWaveform(samples: number[], targetCount: number): number
     let count = 0;
 
     for (let j = startIndex; j < endIndex; j++) {
-      const boosted = Math.pow(normalized[j], 0.75);
-      sum += boosted;
+      sum += normalized[j];
       count += 1;
     }
 
@@ -94,4 +97,23 @@ export function buildUiWaveform(samples: number[], targetCount: number): number[
   const resampled = resampleWaveform(samples, targetCount);
   const smoothed = smoothWaveform(resampled, 1);
   return smoothed.map((sample) => Math.max(0.04, clamp01(sample)));
+}
+
+/**
+ * Live recording waveform:
+ * keeps only the freshest window of samples and boosts speech dynamics
+ * so the recording stage visibly reacts to the current loudness.
+ */
+export function buildLiveWaveform(samples: number[], targetCount: number): number[] {
+  if (targetCount <= 0) return [];
+
+  const liveWindow = samples.slice(-Math.max(targetCount * 4, targetCount));
+  const resampled = resampleWaveform(liveWindow, targetCount);
+  const smoothed = smoothWaveform(resampled, 1);
+
+  return smoothed.map((sample, index) => {
+    const freshness = targetCount <= 1 ? 1 : 0.92 + (index / (targetCount - 1)) * 0.16;
+    const energized = Math.pow(clamp01(sample), 0.68) * freshness;
+    return Math.max(0.08, clamp01(energized));
+  });
 }

@@ -7,11 +7,14 @@ import { Audio } from 'expo-av';
 import { Platform } from 'react-native';
 
 import { VoicePlayerService } from './VoicePlayerService';
-import { buildUiWaveform, dbToNormalized } from './waveformUtils';
+import { buildLiveWaveform, buildUiWaveform, dbToNormalized } from './waveformUtils';
 
 const RAW_WAVEFORM_LIMIT = 600;
 const UI_WAVEFORM_SAMPLE_COUNT = 72;
+const LIVE_WAVEFORM_SAMPLE_COUNT = 28;
 const PROGRESS_INTERVAL_MS = 60;
+
+type LiveWaveformListener = (waveform: number[]) => void;
 
 export interface VoiceRecordingResult {
   uri: string;
@@ -24,7 +27,28 @@ export { dbToNormalized } from './waveformUtils';
 class VoiceRecorderServiceClass {
   private recording: InstanceType<typeof Audio.Recording> | null = null;
   private waveformSamples: number[] = [];
+  private liveWaveform: number[] = [];
   private startTimeMs: number = 0;
+  private liveWaveformListeners = new Set<LiveWaveformListener>();
+
+  private emitLiveWaveform(nextWaveform: number[]): void {
+    this.liveWaveform = nextWaveform;
+    this.liveWaveformListeners.forEach((listener) => {
+      try {
+        listener(nextWaveform);
+      } catch {
+        // Ignore listener failures to keep recording stable.
+      }
+    });
+  }
+
+  subscribeToLiveWaveform(listener: LiveWaveformListener): () => void {
+    this.liveWaveformListeners.add(listener);
+    listener(this.liveWaveform);
+    return () => {
+      this.liveWaveformListeners.delete(listener);
+    };
+  }
 
   /** Request RECORD_AUDIO (Android) / microphone (iOS) permission. Returns true if granted. */
   async requestPermissions(): Promise<boolean> {
@@ -72,6 +96,7 @@ class VoiceRecorderServiceClass {
     await VoicePlayerService.stop().catch(() => {});
     await this.ensureAudioMode();
     this.waveformSamples = [];
+    this.emitLiveWaveform(Array(LIVE_WAVEFORM_SAMPLE_COUNT).fill(0.08));
     this.startTimeMs = Date.now();
 
     const options = {
@@ -82,6 +107,9 @@ class VoiceRecorderServiceClass {
     const onStatusUpdate = (status: { metering?: number }): void => {
       if (status.metering != null && this.waveformSamples.length < RAW_WAVEFORM_LIMIT) {
         this.waveformSamples.push(dbToNormalized(status.metering));
+        this.emitLiveWaveform(
+          buildLiveWaveform(this.waveformSamples, LIVE_WAVEFORM_SAMPLE_COUNT)
+        );
       }
     };
 
@@ -94,6 +122,7 @@ class VoiceRecorderServiceClass {
 
       this.recording = recording;
     } catch (err) {
+      this.emitLiveWaveform([]);
       this.startTimeMs = 0;
       await this.restorePlaybackAudioMode().catch(() => {});
       throw err;
@@ -125,6 +154,8 @@ class VoiceRecorderServiceClass {
         waveform: buildUiWaveform(this.waveformSamples, UI_WAVEFORM_SAMPLE_COUNT),
       };
     } finally {
+      this.waveformSamples = [];
+      this.emitLiveWaveform([]);
       this.startTimeMs = 0;
       await this.restorePlaybackAudioMode().catch(() => {});
     }

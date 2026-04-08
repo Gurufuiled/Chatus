@@ -5,7 +5,6 @@ import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
 } from '../contexts/VoicePlayerContext';
-import { buildUiWaveform } from '../services/waveformUtils';
 import { bubbleRadius, colors, typography } from '../theme/colors';
 import {
   formatMediaDuration,
@@ -29,6 +28,7 @@ export interface VoiceBubbleProps {
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
+const VOICE_BAR_COUNT = 34;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -47,41 +47,59 @@ function seededUnitNoise(seed: number, index: number): number {
   return x - Math.floor(x);
 }
 
+function buildDecorativeFallback(
+  uri: string,
+  durationMs: number,
+  targetCount: number,
+): number[] {
+  const seed = createDeterministicSeed(uri, durationMs);
+  return Array.from({ length: targetCount }, (_, index) => {
+    const t = targetCount <= 1 ? 0 : index / (targetCount - 1);
+    const phraseEnvelope = 0.28 + Math.sin(t * Math.PI) * 0.34;
+    const phrasePulse =
+      Math.sin(t * Math.PI * 4.1 + seededUnitNoise(seed, index) * 1.2) * 0.18;
+    const localNoise = (seededUnitNoise(seed, index + 17) - 0.5) * 0.2;
+    const gapDip = index % 6 === 0 ? -0.2 : index % 4 === 0 ? -0.08 : 0;
+    return clamp01(phraseEnvelope + phrasePulse + localNoise + gapDip);
+  });
+}
+
 function buildTelegramLikeBars(
   uri: string,
   waveform: number[],
   durationMs: number,
-  targetCount: number
+  targetCount: number,
 ): number[] {
-  const seed = createDeterministicSeed(uri, durationMs);
-  const fallback = Array.from({ length: targetCount }, (_, index) => {
-    const t = targetCount <= 1 ? 0 : index / (targetCount - 1);
-    const speechEnvelope = 0.34 + Math.sin(t * Math.PI) * 0.18;
-    const phrasePulse =
-      Math.sin(t * Math.PI * 3.2 + seededUnitNoise(seed, index) * 0.9) * 0.11;
-    const localNoise = (seededUnitNoise(seed, index + 17) - 0.5) * 0.16;
-    return clamp01(speechEnvelope + phrasePulse + localNoise);
+  if (waveform.length === 0) {
+    return buildDecorativeFallback(uri, durationMs, targetCount);
+  }
+
+  const clamped = waveform.map(clamp01);
+
+  const bucketSize = clamped.length / targetCount;
+  const bars = Array.from({ length: targetCount }, (_, i) => {
+    const start = Math.floor(i * bucketSize);
+    const end = Math.min(clamped.length, Math.ceil((i + 1) * bucketSize));
+    const bucket = clamped.slice(start, Math.max(end, start + 1));
+    if (bucket.length === 0) return 0;
+    const peak = Math.max(...bucket);
+    const avg = bucket.reduce((s, v) => s + v, 0) / bucket.length;
+    return peak * 0.6 + avg * 0.4;
   });
 
-  const base = buildUiWaveform(waveform.length > 0 ? waveform : fallback, targetCount);
-  const min = Math.min(...base);
-  const max = Math.max(...base);
+  const min = Math.min(...bars);
+  const max = Math.max(...bars);
   const spread = max - min;
-  const average = base.reduce((sum, value) => sum + value, 0) / base.length;
-  const useFallbackShape = spread < 0.085;
 
-  return base.map((value, index) => {
-    const t = targetCount <= 1 ? 0 : index / (targetCount - 1);
-    const edgeSoftener = 0.9 + Math.sin(t * Math.PI) * 0.1;
-    const normalized = useFallbackShape
-      ? fallback[index]
-      : clamp01((value - min) / Math.max(spread, 0.001));
-    const centeredBoost = useFallbackShape
-      ? normalized
-      : clamp01(0.12 + normalized * 0.88 + (value - average) * 0.28);
-    const microVariance = (seededUnitNoise(seed, index + 101) - 0.5) * 0.12;
-    const rhythmicDip = index % 5 === 0 ? -0.08 : index % 3 === 0 ? 0.03 : 0;
-    return clamp01(0.06 + centeredBoost * edgeSoftener + microVariance + rhythmicDip);
+  if (spread < 0.005) {
+    return buildDecorativeFallback(uri, durationMs, targetCount);
+  }
+
+  return bars.map((value, index) => {
+    const normalized = (value - min) / spread;
+    const t = targetCount <= 1 ? 0.5 : index / (targetCount - 1);
+    const edgeTaper = 0.88 + Math.sin(t * Math.PI) * 0.12;
+    return clamp01(normalized * edgeTaper);
   });
 }
 
@@ -125,14 +143,14 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     : formatMediaDuration(durationMs);
 
   const bars = useMemo(
-    () => buildTelegramLikeBars(uri, waveform, durationMs, 44),
+    () => buildTelegramLikeBars(uri, waveform, durationMs, VOICE_BAR_COUNT),
     [durationMs, uri, waveform]
   );
   const barHeights = useMemo(
     () =>
       bars.map((value) => {
-        const normalized = Math.max(0, Math.min(1, value ?? 0.5));
-        return 3 + Math.pow(normalized, 1.35) * 13;
+        const v = Math.max(0, Math.min(1, value ?? 0));
+        return 2 + Math.pow(v, 1.4) * 22;
       }),
     [bars]
   );
@@ -342,8 +360,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    paddingTop: 3,
-    height: 20,
+    height: 28,
     position: 'relative',
   },
   waveformPressed: {
@@ -354,7 +371,7 @@ const styles = StyleSheet.create({
     left: 0,
     height: 2,
     borderRadius: 999,
-    top: 10,
+    top: 13,
   },
   waveformTrackFilled: {
     right: 'auto',
@@ -366,9 +383,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(184, 184, 190, 0.16)',
   },
   bar: {
-    width: 1.5,
+    width: 2,
     borderRadius: 999,
-    minHeight: 3,
+    minHeight: 2,
   },
   metaRow: {
     marginTop: 4,
