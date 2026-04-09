@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { colors, bubbleRadius, typography } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MessageTimeStatus } from './MessageTimeStatus';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -21,14 +22,6 @@ const DEFAULT_PLACEHOLDER_SIZE = {
   height: Math.min(MAX_BUBBLE_HEIGHT, 192),
 };
 const loadedImageUris = new Set<string>();
-
-const STATUS_ICONS: Record<string, string> = {
-  sending: '\u23F1',
-  sent: '\u2713',
-  delivered: '\u2713\u2713',
-  read: '\u2713\u2713',
-  failed: '\u26A0',
-};
 
 export interface ImageBubbleProps {
   uri: string;
@@ -143,7 +136,6 @@ export function ImageBubble({
   const w = displaySize?.width ?? DEFAULT_PLACEHOLDER_SIZE.width;
   const h = displaySize?.height ?? DEFAULT_PLACEHOLDER_SIZE.height;
   const hasCaption = (caption ?? '').trim().length > 0;
-  const statusIcon = isMe ? STATUS_ICONS[status ?? ''] ?? STATUS_ICONS.sending : null;
 
   return (
     <>
@@ -193,10 +185,16 @@ export function ImageBubble({
             resizeMode="cover"
           />
 
-          {(time || statusIcon) ? (
+          {time ? (
             <View style={styles.overlayMeta}>
-              {time ? <Text style={styles.overlayTime}>{time}</Text> : null}
-              {statusIcon ? <Text style={styles.overlayStatus}>{statusIcon}</Text> : null}
+              <MessageTimeStatus
+                time={time}
+                status={status ?? 'sent'}
+                isMe={isMe}
+                compact
+                timeColor="#FFFFFF"
+                iconColor="#FFFFFF"
+              />
             </View>
           ) : null}
         </Pressable>
@@ -291,23 +289,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 8,
     bottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
-  },
-  overlayTime: {
-    fontSize: typography.timeStatus,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  overlayStatus: {
-    fontSize: typography.timeStatus,
-    color: '#FFFFFF',
-    fontWeight: '700',
   },
   caption: {
     marginTop: 6,

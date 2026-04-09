@@ -10,6 +10,7 @@ import { API_BASE_URL } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import { authStore } from '../stores/authStore';
+import { uiStore } from '../stores/uiStore';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
 
@@ -663,6 +664,15 @@ class SyncServiceClass {
       if (!res.ok) return;
       const data = (await res.json()) as ApiChat[];
       const mapped: Chat[] = data.map(mapApiChatToChat);
+      mapped.forEach((chat) => {
+        chat.members?.forEach((member) => {
+          if (!member.user?.id) return;
+          uiStore.getState().setPresence(member.user.id, {
+            is_online: member.user.is_online,
+            last_seen: member.user.last_seen ?? undefined,
+          });
+        });
+      });
       mapped.sort((a, b) => {
         if (a.is_pinned !== b.is_pinned) return b.is_pinned - a.is_pinned;
         const atA = a.last_message_at ?? 0;

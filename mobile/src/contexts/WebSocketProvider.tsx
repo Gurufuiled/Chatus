@@ -134,6 +134,23 @@ function sendMessageAck(
   });
 }
 
+function getMessageStatusRank(status: string): number {
+  switch (status) {
+    case 'failed':
+      return -1;
+    case 'sending':
+      return 0;
+    case 'sent':
+      return 1;
+    case 'delivered':
+      return 2;
+    case 'read':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
 type WebSocketProviderProps = {
   children: React.ReactNode;
 };
@@ -271,6 +288,10 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           const msg = messages.find((m) => m.id === message_id);
           if (!msg || msg.sender_id !== currentUserId) return;
 
+          if (getMessageStatusRank(status) < getMessageStatusRank(msg.status)) {
+            return;
+          }
+
           messageStore.getState().updateMessage(chat_id, message_id, {
             status: status ?? 'sent',
           });
@@ -325,9 +346,10 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             last_seen?: number;
           };
           if (!user_id) return;
+          const previousPresence = uiStore.getState().presenceByUserId[user_id];
           uiStore.getState().setPresence(user_id, {
             is_online: is_online ?? false,
-            last_seen,
+            last_seen: last_seen ?? previousPresence?.last_seen,
           });
         },
 

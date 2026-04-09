@@ -67,12 +67,13 @@ export class WebsocketGateway
       }
       set.add(client);
 
+      const now = new Date();
       await this.prisma.user.update({
         where: { id: payload.sub },
-        data: { isOnline: true, lastSeen: new Date() },
+        data: { isOnline: true, lastSeen: now },
       });
 
-      this.broadcastPresence(payload.sub, true);
+      this.broadcastPresence(payload.sub, true, now);
       this.logger.log(`User ${payload.sub} connected (WS)`);
     } catch {
       this.logger.warn('WS connection rejected: invalid token');
@@ -89,10 +90,11 @@ export class WebsocketGateway
       set.delete(client);
       if (set.size === 0) {
         this.userSockets.delete(userId);
+        const lastSeen = new Date();
         this.prisma.user
           .update({
             where: { id: userId },
-            data: { isOnline: false, lastSeen: new Date() },
+            data: { isOnline: false, lastSeen },
           })
           .catch((err) =>
             this.logger.error(
@@ -100,17 +102,24 @@ export class WebsocketGateway
               err,
             ),
           );
-        this.broadcastPresence(userId, false);
+        this.broadcastPresence(userId, false, lastSeen);
       }
     }
     this.logger.log(`User ${userId} disconnected (WS)`);
   }
 
-  private broadcastPresence(userId: string, isOnline: boolean) {
+  private broadcastPresence(userId: string, isOnline: boolean, lastSeen?: Date | number | null) {
+    const normalizedLastSeen =
+      lastSeen instanceof Date
+        ? lastSeen.getTime()
+        : typeof lastSeen === 'number'
+          ? lastSeen
+          : null;
     const msg = JSON.stringify({
       type: 'presence',
       user_id: userId,
       is_online: isOnline,
+      last_seen: normalizedLastSeen,
     });
     this.server.clients.forEach((c) => {
       if ((c as unknown as AuthenticatedSocket).userId) {

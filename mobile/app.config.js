@@ -31,7 +31,14 @@ function loadDotEnv(filePath) {
 
 /** @type {{ expo: Record<string, unknown> }} */
 const appJson = require('./app.json');
-const envFile = loadDotEnv(path.join(__dirname, '.env'));
+
+const envPath = path.join(__dirname, '.env');
+const envProductionPath = path.join(__dirname, '.env.production');
+
+let envFile = loadDotEnv(envPath);
+if (process.env.MOBILE_ENV === 'production' && fs.existsSync(envProductionPath)) {
+  envFile = { ...envFile, ...loadDotEnv(envProductionPath) };
+}
 
 function env(key) {
   return envFile[key] || process.env[key];

@@ -9,6 +9,8 @@
     "test:voice-gesture": "npx tsc --noEmit",
     "start": "expo start",
     "android": "expo run:android",
+    "android:release": "expo run:android --variant release",
+    "android:release:prod": "cross-env MOBILE_ENV=production expo run:android --variant release",
     "android:emulator": "expo run:android -d Pixel_4_API_36 --no-bundler",
     "android:device": "expo run:android -d eq4xhqrs6d5dbeeu",
     "adb:reverse": "adb reverse tcp:8081 tcp:8081 && adb reverse tcp:4000 tcp:4000 && adb reverse tcp:4001 tcp:4001 && adb reverse tcp:4002 tcp:4002",
@@ -55,6 +57,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "cross-env": "^7.0.3",
     "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },

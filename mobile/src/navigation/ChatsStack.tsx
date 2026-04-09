@@ -17,7 +17,7 @@ import { colors } from '../theme/colors';
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
 
-function formatPresence(isOnline?: boolean, lastSeen?: number) {
+function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
   if (isOnline) return 'в сети';
   if (!lastSeen) return 'был(а) недавно';
   return 'был(а) недавно';
@@ -40,9 +40,10 @@ function formatGroupSubtitle(memberCount?: number) {
   return 'Групповой чат';
 }
 
-function getChatPeerId(chatId: string): string | null {
-  const currentUserId = authStore.getState().user?.id;
-  const chat = chatStore.getState().chats.find((item) => item.id === chatId);
+function getChatPeerId(
+  chat: ReturnType<typeof chatStore.getState>['chats'][number] | null,
+  currentUserId: string | null,
+): string | null {
   if (!chat || !currentUserId || chat.chat_type !== 'private') return null;
   return chat.members?.find((member) => member.user_id !== currentUserId)?.user_id ?? null;
 }
@@ -97,6 +98,10 @@ function ChatHeaderActions({
 }
 
 export function ChatsStack() {
+  const chats = chatStore((state) => state.chats);
+  const presenceByUserId = uiStore((state) => state.presenceByUserId);
+  const currentUserId = authStore((state) => state.user?.id ?? null);
+
   return (
     <Stack.Navigator
       id={undefined as never}
@@ -119,10 +124,16 @@ export function ChatsStack() {
         component={ChatScreen}
         options={({ route, navigation }) => {
           const title = route.params.chatTitle ?? 'Чат';
-          const chat = chatStore.getState().chats.find((item) => item.id === route.params.chatId);
+          const chat = chats.find((item) => item.id === route.params.chatId) ?? null;
           const isGroupChat = chat?.chat_type === 'group';
-          const peerId = getChatPeerId(route.params.chatId);
-          const presence = peerId ? uiStore.getState().presenceByUserId[peerId] : undefined;
+          const peerId = getChatPeerId(chat, currentUserId);
+          const peerMember = chat?.members?.find((member) => member.user_id === peerId);
+          const presence = peerId
+            ? presenceByUserId[peerId] ?? {
+                is_online: peerMember?.user?.is_online ?? false,
+                last_seen: peerMember?.user?.last_seen ?? undefined,
+              }
+            : undefined;
           const avatarUrl = resolveAvatarUrl(chat?.avatar_url);
           const subtitle = isGroupChat
             ? formatGroupSubtitle(chat?.members?.length)

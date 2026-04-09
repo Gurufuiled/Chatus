@@ -220,7 +220,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     }
 
     try {
-      if (isPlaying) {
+      if (!showPausedPlayOverlay) {
         setShowPausedPlayOverlay(true);
         player.pause();
       } else {
@@ -231,7 +231,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     } catch {
       // Best effort toggle only.
     }
-  }, [badgeOpacity, expandInline, isExpanded, isPlaying, normalizedUri, player]);
+  }, [badgeOpacity, expandInline, isExpanded, normalizedUri, player, showPausedPlayOverlay]);
 
   useEventListener(player, 'playToEnd', () => {
     clearCollapseTimer();
