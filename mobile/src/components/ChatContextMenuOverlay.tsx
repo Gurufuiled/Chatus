@@ -13,7 +13,7 @@ import type { Message } from '../stores/types';
 const MENU_WIDTH = 202;
 const MENU_EDGE_GAP = 12;
 const REACTION_BAR_HEIGHT = 42;
-const REACTION_BAR_MIN_WIDTH = 214;
+const REACTION_BAR_MIN_WIDTH = 238;
 const REACTION_BAR_MAX_WIDTH = 248;
 const MENU_REACTIONS = [
   '\u2764\uFE0F',
@@ -78,7 +78,7 @@ export function ChatContextMenuOverlay({
   }
 
   const reactionBarWidth = clamp(
-    menuState.previewWidth + 38,
+    menuState.previewWidth + 54,
     REACTION_BAR_MIN_WIDTH,
     Math.min(screenWidth - MENU_EDGE_GAP * 2, REACTION_BAR_MAX_WIDTH)
   );
@@ -255,12 +255,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: REACTION_BAR_HEIGHT,
     borderRadius: 999,
+    overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.96)',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 12,
+    paddingLeft: 10,
     paddingRight: 6,
-    gap: 8,
     shadowColor: '#0F172A',
     shadowOpacity: 0.16,
     shadowRadius: 18,
@@ -271,6 +271,8 @@ const styles = StyleSheet.create({
   reactionEmoji: {
     fontSize: 24,
     lineHeight: 28,
+    textAlign: 'center',
+    width: 28,
   },
   reactionCheck: {
     marginLeft: 'auto',

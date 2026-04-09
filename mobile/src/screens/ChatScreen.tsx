@@ -68,7 +68,6 @@ import {
   getMessageAuthorName,
   MENU_EDGE_GAP,
   MENU_HEIGHT,
-  MENU_TO_MESSAGE_GAP,
   MENU_WIDTH,
   OVERLAY_BOTTOM_INSET,
   REPLIED_VOICE_BUBBLE_WIDTH,
@@ -488,7 +487,8 @@ export function ChatScreen() {
 
     target.measureInWindow((pageX, pageY, width, height) => {
       const reactionBarHeight = 42;
-      const reactionGap = 6;
+      const reactionGap = 4;
+      const menuGap = 4;
       const bottomReserved = Math.max(
         OVERLAY_BOTTOM_INSET,
         inputBarHeight + insets.bottom + 22
@@ -502,7 +502,7 @@ export function ChatScreen() {
         insets.top + 12,
         MENU_EDGE_GAP + reactionBarHeight + reactionGap
       );
-      const maxPreviewTop = bottomLimit - MENU_HEIGHT - MENU_TO_MESSAGE_GAP - height;
+      const maxPreviewTop = bottomLimit - MENU_HEIGHT - menuGap - height;
       const anchoredTop = Math.max(
         minPreviewTop,
         Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop))
@@ -518,9 +518,9 @@ export function ChatScreen() {
       let previewTop = anchoredTop;
       previewTop = Math.max(
         minPreviewTop,
-        Math.min(previewTop, bottomLimit - MENU_HEIGHT - MENU_TO_MESSAGE_GAP - height)
+        Math.min(previewTop, bottomLimit - MENU_HEIGHT - menuGap - height)
       );
-      const menuTop = previewTop + height + MENU_TO_MESSAGE_GAP;
+      const menuTop = previewTop + height + menuGap;
       const placement: 'above' | 'below' = 'below';
 
       setMenuState({
