@@ -5,6 +5,7 @@ import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
   Alert,
   Animated,
+  AppState,
   FlatList,
   InteractionManager,
   Keyboard,
@@ -15,7 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, {
@@ -128,6 +129,7 @@ function cloneForwardMedia(message: Message): Message['media'] | undefined {
 export function ChatScreen() {
   const navigation = useNavigation<ChatNavigation>();
   const route = useRoute<ChatRoute>();
+  const isFocused = useIsFocused();
   const { chatId, focusMessageId, startSearch } = route.params;
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const { play, pause, stop, setPlaybackRate } = useVoicePlayerControls();
@@ -148,6 +150,7 @@ export function ChatScreen() {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
   const menuAnim = useRef(new Animated.Value(0)).current;
   const messageContentRefs = useRef<Record<string, View | null>>({});
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -281,13 +284,28 @@ export function ChatScreen() {
   );
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      setIsAppActive(nextState === 'active');
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!currentUserId) return;
-    if (currentChat?.chat_type !== 'private') return;
+    if (currentChat?.chat_type !== 'private' && currentChat?.chat_type !== 'group') return;
+    if (!isFocused || !isAppActive) return;
     if (chatStore.getState().selectedChatId !== chatId) return;
     if (!WebSocketService.isConnected()) return;
 
     for (const message of messages) {
       if (message.sender_id === currentUserId || message.is_deleted === 1) {
+        continue;
+      }
+      if (message.status === 'read') {
+        sentReadReceiptIdsRef.current.add(message.id);
         continue;
       }
       if (sentReadReceiptIdsRef.current.has(message.id)) {
@@ -301,7 +319,7 @@ export function ChatScreen() {
       });
       sentReadReceiptIdsRef.current.add(message.id);
     }
-  }, [chatId, currentChat?.chat_type, currentUserId, messages]);
+  }, [chatId, currentChat?.chat_type, currentUserId, isAppActive, isFocused, messages]);
 
   useEffect(() => {
     if (replyToMessageId && !messageById.has(replyToMessageId)) {
@@ -475,7 +493,10 @@ export function ChatScreen() {
         inputBarHeight + insets.bottom + 22
       );
       const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
-      const previewLeft = Math.max(MENU_EDGE_GAP, Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP));
+      const previewLeft = Math.max(
+        MENU_EDGE_GAP,
+        Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP)
+      );
       const minPreviewTop = OVERLAY_TOP_INSET;
       const maxPreviewTop = SCREEN_HEIGHT - bottomReserved - height;
       const anchoredTop = Math.max(minPreviewTop, Math.min(pageY, maxPreviewTop));
@@ -487,22 +508,46 @@ export function ChatScreen() {
         Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP)
       );
 
+      const belowTop = anchoredTop + height + MENU_TO_MESSAGE_GAP;
+      const aboveTop = anchoredTop - MENU_TO_MESSAGE_GAP - MENU_HEIGHT;
+      const canPlaceBelow = belowTop + MENU_HEIGHT <= bottomLimit;
+      const canPlaceAbove = aboveTop >= MENU_EDGE_GAP;
+
       let previewTop = anchoredTop;
-      let menuTop = previewTop + height + MENU_TO_MESSAGE_GAP;
+      let menuTop = belowTop;
       let placement: 'above' | 'below' = 'below';
 
-      const overflowBottom = menuTop + MENU_HEIGHT - bottomLimit;
+      if (canPlaceBelow) {
+        placement = 'below';
+        menuTop = belowTop;
+      } else if (canPlaceAbove) {
+        placement = 'above';
+        menuTop = aboveTop;
+      } else {
+        const requiredPreviewTopForBelow =
+          bottomLimit - MENU_HEIGHT - MENU_TO_MESSAGE_GAP - height;
+        const requiredPreviewTopForAbove =
+          MENU_EDGE_GAP + MENU_HEIGHT + MENU_TO_MESSAGE_GAP;
+        const belowShift = Math.abs(requiredPreviewTopForBelow - anchoredTop);
+        const aboveShift = Math.abs(requiredPreviewTopForAbove - anchoredTop);
 
-      if (overflowBottom > 0) {
-        const liftedPreviewTop = Math.max(minPreviewTop, previewTop - overflowBottom);
-        const liftedMenuTop = liftedPreviewTop + height + MENU_TO_MESSAGE_GAP;
-
-        if (liftedMenuTop + MENU_HEIGHT <= bottomLimit) {
-          previewTop = liftedPreviewTop;
-          menuTop = liftedMenuTop;
+        if (belowShift <= aboveShift) {
+          placement = 'below';
+          previewTop = Math.max(
+            minPreviewTop,
+            Math.min(requiredPreviewTopForBelow, maxPreviewTop)
+          );
+          menuTop = previewTop + height + MENU_TO_MESSAGE_GAP;
         } else {
           placement = 'above';
-          menuTop = Math.max(MENU_EDGE_GAP, previewTop - MENU_TO_MESSAGE_GAP - MENU_HEIGHT);
+          previewTop = Math.max(
+            minPreviewTop,
+            Math.min(requiredPreviewTopForAbove, maxPreviewTop)
+          );
+          menuTop = Math.max(
+            MENU_EDGE_GAP,
+            previewTop - MENU_TO_MESSAGE_GAP - MENU_HEIGHT
+          );
         }
       }
 

@@ -258,7 +258,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             const messageChat = chatStore
               .getState()
               .chats.find((item) => item.id === msg.chat_id);
-            const shouldSendReceipts = messageChat?.chat_type === 'private';
+            const shouldSendReceipts =
+              messageChat?.chat_type === 'private' || messageChat?.chat_type === 'group';
 
             if (shouldSendReceipts) {
               sendMessageAck(msg.chat_id, msg.id, 'delivered');
