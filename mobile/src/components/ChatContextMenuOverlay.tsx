@@ -10,10 +10,11 @@ import {
 } from 'react-native';
 import type { Message } from '../stores/types';
 
-const MENU_WIDTH = 232;
+const MENU_WIDTH = 202;
 const MENU_EDGE_GAP = 12;
-const REACTION_BAR_HEIGHT = 50;
-const REACTION_BAR_WIDTH = 306;
+const REACTION_BAR_HEIGHT = 42;
+const REACTION_BAR_MIN_WIDTH = 214;
+const REACTION_BAR_MAX_WIDTH = 248;
 const MENU_REACTIONS = [
   '\u2764\uFE0F',
   '\u{1F44F}',
@@ -76,21 +77,18 @@ export function ChatContextMenuOverlay({
     return null;
   }
 
-  const reactionBarWidth = Math.min(
-    screenWidth - MENU_EDGE_GAP * 2,
-    REACTION_BAR_WIDTH
+  const reactionBarWidth = clamp(
+    menuState.previewWidth + 38,
+    REACTION_BAR_MIN_WIDTH,
+    Math.min(screenWidth - MENU_EDGE_GAP * 2, REACTION_BAR_MAX_WIDTH)
   );
   const reactionLeftBase = menuState.isMe
-    ? menuState.previewLeft + menuState.previewWidth - reactionBarWidth + 8
-    : menuState.previewLeft - 4;
+    ? menuState.previewLeft + menuState.previewWidth - reactionBarWidth
+    : menuState.previewLeft;
   const reactionLeft = clamp(
     reactionLeftBase,
     MENU_EDGE_GAP,
     screenWidth - reactionBarWidth - MENU_EDGE_GAP
-  );
-  const reactionTop = Math.max(
-    MENU_EDGE_GAP,
-    menuState.previewTop - REACTION_BAR_HEIGHT - 10
   );
   const menuLeft = clamp(
     menuState.menuLeft ?? MENU_EDGE_GAP,
@@ -104,19 +102,19 @@ export function ChatContextMenuOverlay({
   });
   const menuTranslateY = menuAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [menuState.placement === 'above' ? -14 : 16, 0],
+    outputRange: [14, 0],
   });
   const menuScale = menuAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.965, 1],
+    outputRange: [0.985, 1],
   });
   const previewTranslateY = menuAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [menuState.placement === 'above' ? -6 : 10, 0],
+    outputRange: [6, 0],
   });
   const reactionTranslateY = menuAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [8, 0],
+    outputRange: [6, 0],
   });
 
   return (
@@ -133,6 +131,30 @@ export function ChatContextMenuOverlay({
           />
         </Animated.View>
       </Pressable>
+
+      {showReactions ? (
+        <Animated.View
+          style={[
+            styles.reactionBar,
+            {
+              width: reactionBarWidth,
+              top: Math.max(MENU_EDGE_GAP, menuState.previewTop - REACTION_BAR_HEIGHT - 6),
+              left: reactionLeft,
+              opacity: menuAnim,
+              transform: [{ translateY: reactionTranslateY }, { scale: menuScale }],
+            },
+          ]}
+        >
+          {MENU_REACTIONS.map((reaction) => (
+            <Text key={reaction} style={styles.reactionEmoji}>
+              {reaction}
+            </Text>
+          ))}
+          <View style={styles.reactionCheck}>
+            <Feather name="check" size={18} color="#FFFFFF" />
+          </View>
+        </Animated.View>
+      ) : null}
 
       {activeMenuMessage ? (
         <Animated.View
@@ -160,31 +182,6 @@ export function ChatContextMenuOverlay({
         </Animated.View>
       ) : null}
 
-      {showReactions ? (
-        <Animated.View
-          style={[
-            styles.reactionBar,
-            {
-              width: reactionBarWidth,
-              top: reactionTop,
-              left: reactionLeft,
-              opacity: menuAnim,
-              transform: [{ translateY: reactionTranslateY }, { scale: menuScale }],
-            },
-          ]}
-        >
-          <View pointerEvents="none" style={styles.reactionBarTint} />
-          {MENU_REACTIONS.map((reaction) => (
-            <View key={reaction} style={styles.reactionEmojiSlot}>
-              <Text style={styles.reactionEmoji}>{reaction}</Text>
-            </View>
-          ))}
-          <View style={styles.reactionCheck}>
-            <Feather name="check" size={18} color="#FFFFFF" />
-          </View>
-        </Animated.View>
-      ) : null}
-
       <Animated.View
         style={[
           styles.menuCard,
@@ -197,8 +194,7 @@ export function ChatContextMenuOverlay({
           },
         ]}
       >
-        <View pointerEvents="none" style={styles.menuCardBaseTint} />
-        <View pointerEvents="none" style={styles.menuCardAccentTint} />
+        <View pointerEvents="none" style={styles.menuCardTint} />
         {menuActions.map((action, index) => (
           <Pressable
             key={action.key}
@@ -259,94 +255,73 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: REACTION_BAR_HEIGHT,
     borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.74)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 14,
-    paddingRight: 8,
-    gap: 6,
+    paddingLeft: 12,
+    paddingRight: 6,
+    gap: 8,
     shadowColor: '#0F172A',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 10,
     zIndex: 4,
   },
-  reactionBarTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(247,250,255,0.34)',
-  },
-  reactionEmojiSlot: {
-    width: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   reactionEmoji: {
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 24,
+    lineHeight: 28,
   },
   reactionCheck: {
     marginLeft: 'auto',
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#B7D796',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.84)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#CDE0C0',
     alignItems: 'center',
     justifyContent: 'center',
   },
   menuCard: {
     position: 'absolute',
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.84)',
-    borderRadius: 24,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
+    borderColor: 'rgba(255,255,255,0.84)',
     shadowColor: '#0F172A',
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 12,
     zIndex: 3,
   },
-  menuCardBaseTint: {
+  menuCardTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(252,253,255,0.36)',
-  },
-  menuCardAccentTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(133,221,235,0.08)',
+    backgroundColor: 'rgba(250,252,255,0.22)',
   },
   menuAction: {
-    minHeight: 50,
+    minHeight: 39,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 17,
-    gap: 12,
+    paddingHorizontal: 12,
   },
   menuActionTextOnly: {
-    minHeight: 54,
+    minHeight: 50,
     justifyContent: 'center',
   },
   menuActionBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(226,232,240,0.86)',
+    borderBottomColor: '#ECEEF2',
   },
   menuActionDisabled: {
     opacity: 0.55,
   },
   menuActionPressed: {
-    backgroundColor: 'rgba(77,141,255,0.08)',
+    backgroundColor: 'rgba(77,141,255,0.07)',
   },
   menuActionLabel: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 14,
     fontWeight: '500',
   },
 });

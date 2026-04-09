@@ -71,7 +71,6 @@ import {
   MENU_TO_MESSAGE_GAP,
   MENU_WIDTH,
   OVERLAY_BOTTOM_INSET,
-  OVERLAY_TOP_INSET,
   REPLIED_VOICE_BUBBLE_WIDTH,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
@@ -488,6 +487,8 @@ export function ChatScreen() {
     setMenuMode('actions');
 
     target.measureInWindow((pageX, pageY, width, height) => {
+      const reactionBarHeight = 42;
+      const reactionGap = 6;
       const bottomReserved = Math.max(
         OVERLAY_BOTTOM_INSET,
         inputBarHeight + insets.bottom + 22
@@ -497,9 +498,15 @@ export function ChatScreen() {
         MENU_EDGE_GAP,
         Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP)
       );
-      const minPreviewTop = OVERLAY_TOP_INSET;
-      const maxPreviewTop = SCREEN_HEIGHT - bottomReserved - height;
-      const anchoredTop = Math.max(minPreviewTop, Math.min(pageY, maxPreviewTop));
+      const minPreviewTop = Math.max(
+        insets.top + 12,
+        MENU_EDGE_GAP + reactionBarHeight + reactionGap
+      );
+      const maxPreviewTop = bottomLimit - MENU_HEIGHT - MENU_TO_MESSAGE_GAP - height;
+      const anchoredTop = Math.max(
+        minPreviewTop,
+        Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop))
+      );
       const menuLeftBase = message.sender_id === currentUserId
         ? previewLeft + width - MENU_WIDTH
         : previewLeft;
@@ -508,48 +515,13 @@ export function ChatScreen() {
         Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP)
       );
 
-      const belowTop = anchoredTop + height + MENU_TO_MESSAGE_GAP;
-      const aboveTop = anchoredTop - MENU_TO_MESSAGE_GAP - MENU_HEIGHT;
-      const canPlaceBelow = belowTop + MENU_HEIGHT <= bottomLimit;
-      const canPlaceAbove = aboveTop >= MENU_EDGE_GAP;
-
       let previewTop = anchoredTop;
-      let menuTop = belowTop;
-      let placement: 'above' | 'below' = 'below';
-
-      if (canPlaceBelow) {
-        placement = 'below';
-        menuTop = belowTop;
-      } else if (canPlaceAbove) {
-        placement = 'above';
-        menuTop = aboveTop;
-      } else {
-        const requiredPreviewTopForBelow =
-          bottomLimit - MENU_HEIGHT - MENU_TO_MESSAGE_GAP - height;
-        const requiredPreviewTopForAbove =
-          MENU_EDGE_GAP + MENU_HEIGHT + MENU_TO_MESSAGE_GAP;
-        const belowShift = Math.abs(requiredPreviewTopForBelow - anchoredTop);
-        const aboveShift = Math.abs(requiredPreviewTopForAbove - anchoredTop);
-
-        if (belowShift <= aboveShift) {
-          placement = 'below';
-          previewTop = Math.max(
-            minPreviewTop,
-            Math.min(requiredPreviewTopForBelow, maxPreviewTop)
-          );
-          menuTop = previewTop + height + MENU_TO_MESSAGE_GAP;
-        } else {
-          placement = 'above';
-          previewTop = Math.max(
-            minPreviewTop,
-            Math.min(requiredPreviewTopForAbove, maxPreviewTop)
-          );
-          menuTop = Math.max(
-            MENU_EDGE_GAP,
-            previewTop - MENU_TO_MESSAGE_GAP - MENU_HEIGHT
-          );
-        }
-      }
+      previewTop = Math.max(
+        minPreviewTop,
+        Math.min(previewTop, bottomLimit - MENU_HEIGHT - MENU_TO_MESSAGE_GAP - height)
+      );
+      const menuTop = previewTop + height + MENU_TO_MESSAGE_GAP;
+      const placement: 'above' | 'below' = 'below';
 
       setMenuState({
         messageId: message.id,
@@ -563,7 +535,7 @@ export function ChatScreen() {
         placement,
       });
     });
-  }, [currentUserId, insets.bottom, inputBarHeight]);
+  }, [currentUserId, insets.bottom, insets.top, inputBarHeight]);
 
   const closeMenu = useCallback(() => {
     Animated.timing(menuAnim, {
