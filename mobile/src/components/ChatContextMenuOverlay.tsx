@@ -165,6 +165,7 @@ export function ChatContextMenuOverlay({
               top: menuState.previewTop,
               left: menuState.previewLeft,
               width: menuState.previewWidth,
+              height: menuState.previewHeight,
               opacity: menuAnim,
               transform: [{ translateY: previewTranslateY }, { scale: menuScale }],
             },
@@ -173,7 +174,10 @@ export function ChatContextMenuOverlay({
           <View
             style={[
               styles.menuPreviewWrap,
-              { width: menuState.previewWidth },
+              {
+                width: menuState.previewWidth,
+                height: menuState.previewHeight,
+              },
               menuState.isMe ? styles.menuPreviewWrapMe : styles.menuPreviewWrapOther,
             ]}
           >
@@ -239,11 +243,13 @@ const styles = StyleSheet.create({
   },
   menuPreviewOverlay: {
     position: 'absolute',
-    zIndex: 2,
+    zIndex: 5,
   },
   menuPreviewWrap: {
     flexShrink: 1,
     minWidth: 0,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
   menuPreviewWrapMe: {
     alignItems: 'flex-end',
@@ -266,7 +272,7 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 10,
-    zIndex: 4,
+    zIndex: 6,
   },
   reactionEmoji: {
     fontSize: 24,
@@ -295,7 +301,7 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     elevation: 12,
-    zIndex: 3,
+    zIndex: 4,
   },
   menuCardTint: {
     ...StyleSheet.absoluteFillObject,
