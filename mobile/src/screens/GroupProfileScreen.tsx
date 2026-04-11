@@ -60,6 +60,11 @@ import { messageStore } from '../stores/messageStore';
 import type { Chat, Message } from '../stores/types';
 import { colors } from '../theme/colors';
 import { formatMediaDuration } from '../utils/mediaDuration';
+import {
+  filterGroupMemberPickerUsers,
+  getGroupMemberPickerContacts,
+  mergeGroupMemberPickerUsers,
+} from '../utils/groupMemberPicker';
 
 type GroupProfileRoute = RouteProp<ChatsStackParamList, 'GroupProfile'>;
 type GroupProfileNavigation = NativeStackNavigationProp<ChatsStackParamList, 'GroupProfile'>;
@@ -317,6 +322,7 @@ export function GroupProfileScreen() {
   const insets = useSafeAreaInsets();
   const { chatId, chatTitle } = route.params;
   const currentUserId = authStore((state) => state.user?.id ?? null);
+  const allChats = chatStore((state) => state.chats);
 
   const chat = chatStore(
     useCallback(
@@ -491,6 +497,23 @@ export function GroupProfileScreen() {
       (user) => user.id !== currentUserId && !existingIds.has(user.id)
     );
   }, [currentUserId, memberSearchResults, members]);
+  const groupMemberContacts = useMemo(
+    () =>
+      getGroupMemberPickerContacts({
+        chats: allChats,
+        currentUserId,
+        excludedUserIds: members.map((member) => member.user_id),
+      }),
+    [allChats, currentUserId, members]
+  );
+  const visibleAddMemberResults = useMemo(() => {
+    const localMatches = filterGroupMemberPickerUsers(groupMemberContacts, addMemberQuery);
+    if (!addMemberQuery.trim()) {
+      return localMatches;
+    }
+
+    return mergeGroupMemberPickerUsers(localMatches, filteredSearchResults);
+  }, [addMemberQuery, filteredSearchResults, groupMemberContacts]);
 
   const hydrateDraftsFromChat = useCallback((nextChat: Chat | null) => {
     setNameDraft(nextChat?.name ?? '');
@@ -839,8 +862,10 @@ export function GroupProfileScreen() {
   }, []);
 
   const closeAddMembers = useCallback(() => {
+    memberSearchIdRef.current += 1;
     setIsAddMembersVisible(false);
     setAddMemberQuery('');
+    setMemberSearchLoading(false);
     setMemberSearchResults([]);
     setSelectedUsers([]);
   }, []);
@@ -1290,7 +1315,7 @@ export function GroupProfileScreen() {
         bottomInset={insets.bottom}
         query={addMemberQuery}
         selectedUsers={selectedUsers}
-        filteredSearchResults={filteredSearchResults}
+        visibleUsers={visibleAddMemberResults}
         selectedUserIds={selectedUserIds}
         memberSearchLoading={memberSearchLoading}
         addingMembers={addingMembers}

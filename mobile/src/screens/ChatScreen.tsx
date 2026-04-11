@@ -45,6 +45,7 @@ import {
   ImageBubble,
   MessageTimeStatus,
   ReplyPreview,
+  VideoBubble,
   VideoNoteBubble,
   VoiceBubble,
   buildReplyPreviewText,
@@ -108,6 +109,8 @@ function buildForwardPreview(message: Message): string {
       return message.content?.trim() || 'Сообщение';
     case 'image':
       return message.content?.trim() || 'Фото';
+    case 'video':
+      return message.content?.trim() || 'Видео';
     case 'voice':
       return 'Голосовое сообщение';
     case 'video_note':
@@ -676,8 +679,18 @@ export function ChatScreen() {
     [chatId, currentUserId, replyToMessageId]
   );
 
-  const handleSendImage = useCallback(
-    async (result: { uri: string; width?: number; height?: number; fileName?: string; mimeType?: string; caption?: string }) => {
+  const handleSendMedia = useCallback(
+    async (result: {
+      kind: 'image' | 'video';
+      uri: string;
+      previewUri?: string;
+      width?: number;
+      height?: number;
+      durationMs?: number;
+      fileName?: string;
+      mimeType?: string;
+      caption?: string;
+    }) => {
       if (!currentUserId) return;
       const tempId = `temp-${Date.now()}`;
       const activeReplyId = replyToMessageId;
@@ -686,7 +699,7 @@ export function ChatScreen() {
         id: tempId,
         chat_id: chatId,
         sender_id: currentUserId,
-        msg_type: 'image',
+        msg_type: result.kind === 'video' ? 'video' : 'image',
         content: result.caption ?? null,
         reply_to_id: activeReplyId,
         is_edited: 0,
@@ -699,27 +712,47 @@ export function ChatScreen() {
         media: [
           {
             remote_url: result.uri,
+            thumbnail_url: result.previewUri,
             width: result.width,
             height: result.height,
+            duration_ms: result.durationMs,
             file_name: result.fileName,
           },
         ],
       };
       messageStore.getState().prependMessage(chatId, msg);
       setReplyToMessageId(null);
-      await TransportService.sendImageMessage(
-        chatId,
-        {
-          uri: result.uri,
-          width: result.width,
-          height: result.height,
-          fileName: result.fileName,
-          mimeType: result.mimeType,
-          caption: result.caption,
-        },
-        tempId,
-        activeReplyId
-      );
+      if (result.kind === 'video') {
+        await TransportService.sendVideoMessage(
+          chatId,
+          {
+            uri: result.uri,
+            width: result.width,
+            height: result.height,
+            durationMs: result.durationMs,
+            thumbnailUri: result.previewUri,
+            fileName: result.fileName,
+            mimeType: result.mimeType,
+            caption: result.caption,
+          },
+          tempId,
+          activeReplyId
+        );
+      } else {
+        await TransportService.sendImageMessage(
+          chatId,
+          {
+            uri: result.uri,
+            width: result.width,
+            height: result.height,
+            fileName: result.fileName,
+            mimeType: result.mimeType,
+            caption: result.caption,
+          },
+          tempId,
+          activeReplyId
+        );
+      }
     },
     [chatId, currentUserId, replyToMessageId]
   );
@@ -1075,7 +1108,12 @@ export function ChatScreen() {
   const canSwipeReply = useCallback((message: Message) => {
     if (selectionMode) return false;
     if (message.is_deleted === 1) return false;
-    return message.msg_type === 'text' || message.msg_type === 'voice' || message.msg_type === 'image';
+    return (
+      message.msg_type === 'text' ||
+      message.msg_type === 'voice' ||
+      message.msg_type === 'image' ||
+      message.msg_type === 'video'
+    );
   }, [selectionMode]);
 
   const handleSwipeReply = useCallback((message: Message) => {
@@ -1295,6 +1333,52 @@ export function ChatScreen() {
       );
     }
 
+    if (item.msg_type === 'video') {
+      const media = item.media?.[0];
+      const videoUri = media?.remote_url ?? '';
+      if (!videoUri.trim()) return null;
+
+      const replySnippet = renderReplySnippet();
+      const forwardHeader = replySnippet ? null : renderForwardHeader();
+      const videoContent = (
+        <VideoBubble
+          uri={videoUri}
+          thumbnailUri={media?.thumbnail_url ?? undefined}
+          isMe={isMe}
+          width={media?.width}
+          height={media?.height}
+          durationMs={media?.duration_ms ?? 0}
+          caption={item.content ?? undefined}
+          time={formatTime(item.created_at)}
+          status={item.status}
+          embedded={!!replySnippet}
+          header={forwardHeader}
+        />
+      );
+
+      if (replySnippet) {
+        return (
+          <View
+            style={[
+              styles.repliedMediaBubble,
+              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              fixedWidthStyle,
+            ]}
+          >
+            {renderForwardHeader()}
+            {replySnippet}
+            {videoContent}
+          </View>
+        );
+      }
+
+      return (
+        <View style={[styles.mediaStack, fixedWidthStyle]}>
+          {videoContent}
+        </View>
+      );
+    }
+
     if (item.msg_type === 'file' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
       return (
@@ -1509,7 +1593,7 @@ export function ChatScreen() {
             onSendText={handleSendText}
             onSendVoice={handleSendVoice}
             onSendVideoNote={handleSendVideoNote}
-            onSendImage={handleSendImage}
+            onSendMedia={handleSendMedia}
             onSendFile={handleSendFile}
             blurTargetRef={blurTargetRef}
             replyToMessage={replyToMessage}

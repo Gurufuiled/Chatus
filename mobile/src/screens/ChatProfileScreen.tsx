@@ -36,6 +36,7 @@ import type { ChatsStackParamList } from '../navigation/types';
 import type { ApiUser } from '../services/AuthService';
 import { getUserProfile } from '../services/profileService';
 import { chatStore } from '../stores/chatStore';
+import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
 import type { Message } from '../stores/types';
 import { uiStore } from '../stores/uiStore';
@@ -112,6 +113,30 @@ function formatFileSize(bytes?: number) {
 }
 
 function extractMediaUri(message: Message): string | null {
+  const media = message.media?.[0];
+  const candidates = [media?.thumbnail_url, media?.remote_url, message.content];
+
+  for (const candidate of candidates) {
+    const resolved = resolveAvatarUrl(candidate ?? null);
+    if (resolved) return resolved;
+  }
+
+  return null;
+}
+
+function extractRemoteMediaUri(message: Message): string | null {
+  const media = message.media?.[0];
+  const candidates = [media?.remote_url, message.content];
+
+  for (const candidate of candidates) {
+    const resolved = resolveAvatarUrl(candidate ?? null);
+    if (resolved) return resolved;
+  }
+
+  return null;
+}
+
+function extractPreviewMediaUri(message: Message): string | null {
   const media = message.media?.[0];
   const candidates = [media?.thumbnail_url, media?.remote_url, message.content];
 
@@ -260,7 +285,8 @@ export function ChatProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTabKey>('media');
-  const [selectedMediaUri, setSelectedMediaUri] = useState<string | null>(null);
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(null);
+  const [floatingVideoNote, setFloatingVideoNote] = useState<VoiceItem | null>(null);
   const [actionMenu, setActionMenu] = useState<ProfileActionMenuState>(null);
   const [isHeroExpanded, setIsHeroExpanded] = useState(false);
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
@@ -283,6 +309,7 @@ export function ChatProfileScreen() {
       [chatId]
     )
   );
+  const currentUserId = authStore((s) => s.user?.id ?? null);
   const livePresence = uiStore((s) => s.presenceByUserId[userId]);
   const isBlocked = uiStore((s) => Boolean(s.blockedUserIds[userId]));
   const currentThemeId = uiStore(
@@ -357,16 +384,25 @@ export function ChatProfileScreen() {
         .filter(
           (message) =>
             !message.is_deleted &&
-            (message.msg_type === 'image' || message.msg_type === 'video_note')
+            (message.msg_type === 'image' || message.msg_type === 'video')
         )
-        .map((message) => ({
-          id: message.id,
-          uri: extractMediaUri(message) ?? '',
-          durationMs:
-            message.msg_type === 'video_note'
-              ? message.media?.[0]?.duration_ms ?? 0
-              : undefined,
-        }))
+        .map((message) => {
+          const uri = extractRemoteMediaUri(message) ?? '';
+          const thumbnailUri = resolveAvatarUrl(message.media?.[0]?.thumbnail_url ?? null);
+          return {
+            id: message.id,
+            kind: message.msg_type === 'video' ? 'video' : 'image',
+            uri,
+            previewUri:
+              message.msg_type === 'video'
+                ? thumbnailUri ?? undefined
+                : extractPreviewMediaUri(message) ?? uri,
+            durationMs:
+              message.msg_type === 'video'
+                ? message.media?.[0]?.duration_ms ?? 0
+                : undefined,
+          } satisfies MediaTile;
+        })
         .filter((item) => item.uri.length > 0),
     [chatMessages]
   );
@@ -388,15 +424,25 @@ export function ChatProfileScreen() {
   const voiceItems = useMemo<VoiceItem[]>(
     () =>
       chatMessages
-        .filter((message) => !message.is_deleted && message.msg_type === 'voice')
+        .filter(
+          (message) =>
+            !message.is_deleted &&
+            (message.msg_type === 'voice' || message.msg_type === 'video_note')
+        )
         .map((message) => ({
           id: message.id,
-          uri: extractMediaUri(message),
+          kind: message.msg_type === 'video_note' ? 'video_note' : 'voice',
+          uri: extractRemoteMediaUri(message),
+          thumbnailUri:
+            message.msg_type === 'video_note'
+              ? resolveAvatarUrl(message.media?.[0]?.thumbnail_url ?? null) ?? undefined
+              : undefined,
+          title: message.sender_id === currentUserId ? 'Вы' : displayName,
           durationMs: message.media?.[0]?.duration_ms ?? 0,
-          waveform: message.media?.[0]?.waveform ?? [],
+          waveform: message.msg_type === 'voice' ? message.media?.[0]?.waveform ?? [] : [],
           dateLabel: formatMessageDate(message.created_at),
         })),
-    [chatMessages]
+    [chatMessages, currentUserId, displayName]
   );
 
   const linkItems = useMemo<LinkItem[]>(
@@ -628,6 +674,12 @@ export function ChatProfileScreen() {
     }).start();
   }, [moreMenu, moreMenuAnimation]);
 
+  useEffect(() => {
+    if (selectedMediaIndex != null && selectedMediaIndex >= mediaItems.length) {
+      setSelectedMediaIndex(null);
+    }
+  }, [mediaItems.length, selectedMediaIndex]);
+
   const moreMenuItems = useMemo<AnchoredPopoverMenuItem[]>(
     () => [
       {
@@ -713,7 +765,8 @@ export function ChatProfileScreen() {
           voiceItems={voiceItems}
           linkItems={linkItems}
           onChangeTab={setActiveTab}
-          onOpenMedia={setSelectedMediaUri}
+          onOpenMedia={setSelectedMediaIndex}
+          onOpenVideoNote={setFloatingVideoNote}
           onOpenActionMenu={openActionMenu}
         />
       </Animated.ScrollView>
@@ -723,8 +776,12 @@ export function ChatProfileScreen() {
         moreMenuItems={moreMenuItems}
         onCloseMoreMenu={closeMoreMenu}
         onMoreMenuAction={handleMoreMenuAction}
-        selectedMediaUri={selectedMediaUri}
-        onCloseMedia={() => setSelectedMediaUri(null)}
+        mediaItems={mediaItems}
+        selectedMediaIndex={selectedMediaIndex}
+        onChangeMediaIndex={setSelectedMediaIndex}
+        onCloseMedia={() => setSelectedMediaIndex(null)}
+        floatingVideoNote={floatingVideoNote}
+        onCloseFloatingVideoNote={() => setFloatingVideoNote(null)}
         actionMenu={actionMenu}
         actionMenuAnimation={actionMenuAnimation}
         onCloseActionMenu={() => closeActionMenu()}

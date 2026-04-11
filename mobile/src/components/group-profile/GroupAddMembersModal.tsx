@@ -3,7 +3,9 @@ import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,7 +23,7 @@ type GroupAddMembersModalProps = {
   bottomInset: number;
   query: string;
   selectedUsers: ApiUser[];
-  filteredSearchResults: ApiUser[];
+  visibleUsers: ApiUser[];
   selectedUserIds: Set<string>;
   memberSearchLoading: boolean;
   addingMembers: boolean;
@@ -36,7 +38,7 @@ export function GroupAddMembersModal({
   bottomInset,
   query,
   selectedUsers,
-  filteredSearchResults,
+  visibleUsers,
   selectedUserIds,
   memberSearchLoading,
   addingMembers,
@@ -45,11 +47,44 @@ export function GroupAddMembersModal({
   onClose,
   onSubmit,
 }: GroupAddMembersModalProps) {
+  const [keyboardInset, setKeyboardInset] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!visible) {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const handleShow = (event: { endCoordinates?: { height?: number } }) => {
+      const keyboardHeight = event.endCoordinates?.height ?? 0;
+      setKeyboardInset(Math.max(keyboardHeight - bottomInset, 0));
+    };
+    const handleHide = () => setKeyboardInset(0);
+
+    const showSubscription = Keyboard.addListener(showEvent, handleShow);
+    const hideSubscription = Keyboard.addListener(hideEvent, handleHide);
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [bottomInset, visible]);
+
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalRoot}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={[styles.sheetCard, { paddingBottom: Math.max(bottomInset, 18) }]}>
+        <View
+          style={[
+            styles.sheetCard,
+            {
+              paddingBottom: Math.max(bottomInset, 18),
+              marginBottom: keyboardInset,
+            },
+          ]}
+        >
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Добавить участников</Text>
             <Pressable onPress={onClose} style={styles.sheetCloseButton}>
@@ -89,12 +124,16 @@ export function GroupAddMembersModal({
             </ScrollView>
           ) : null}
 
-          <ScrollView style={styles.sheetResults}>
+          <ScrollView
+            style={styles.sheetResults}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {memberSearchLoading ? (
               <View style={styles.centerState}>
                 <ActivityIndicator color={colors.accent} />
               </View>
-            ) : filteredSearchResults.length === 0 ? (
+            ) : visibleUsers.length === 0 ? (
               <View style={styles.centerState}>
                 <Text style={styles.emptySubtitle}>
                   {query.trim()
@@ -103,7 +142,7 @@ export function GroupAddMembersModal({
                 </Text>
               </View>
             ) : (
-              filteredSearchResults.map((user) => {
+              visibleUsers.map((user) => {
                 const isSelected = selectedUserIds.has(user.id);
                 const avatar = resolveAvatarUrl(user.avatar_url);
                 const display = getDisplayName(user);
@@ -174,7 +213,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(12, 18, 28, 0.34)',
+    backgroundColor: 'transparent',
   },
   sheetCard: {
     borderTopLeftRadius: 28,

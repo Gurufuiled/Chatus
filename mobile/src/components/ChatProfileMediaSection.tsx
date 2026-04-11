@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import {
   Alert,
@@ -20,12 +20,18 @@ import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
 } from '../utils/mediaDuration';
+import {
+  ensureVideoThumbnailUri,
+  getCachedVideoThumbnailUri,
+} from '../utils/videoThumbnail';
 
 export type ProfileTabKey = 'media' | 'files' | 'voice' | 'links';
 
 export type MediaTile = {
   id: string;
+  kind: 'image' | 'video';
   uri: string;
+  previewUri?: string;
   durationMs?: number;
 };
 
@@ -39,7 +45,10 @@ export type FileItem = {
 
 export type VoiceItem = {
   id: string;
+  kind: 'voice' | 'video_note';
   uri: string | null;
+  thumbnailUri?: string;
+  title?: string;
   durationMs: number;
   waveform: number[];
   dateLabel: string;
@@ -59,7 +68,8 @@ type ChatProfileMediaSectionProps = {
   voiceItems: VoiceItem[];
   linkItems: LinkItem[];
   onChangeTab: (tab: ProfileTabKey) => void;
-  onOpenMedia: (uri: string) => void;
+  onOpenMedia: (index: number) => void;
+  onOpenVideoNote: (item: VoiceItem) => void;
   onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 };
 
@@ -76,6 +86,47 @@ function buildVoicePreviewBars(waveform: number[]) {
       ? buildUiWaveform(waveform, 28)
       : buildUiWaveform([0.22, 0.34, 0.58, 0.41, 0.27, 0.49, 0.31], 28);
   return base.map((value) => 4 + Math.pow(value, 1.15) * 16);
+}
+
+function useVideoPreviewUri(videoUri: string | null | undefined, preferredUri?: string | null) {
+  const normalizedVideoUri = videoUri?.trim() ?? '';
+  const normalizedPreferredUri = preferredUri?.trim() ?? '';
+  const [generatedUri, setGeneratedUri] = useState(() =>
+    normalizedPreferredUri ? '' : getCachedVideoThumbnailUri(normalizedVideoUri) ?? ''
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (normalizedPreferredUri || !normalizedVideoUri) {
+      setGeneratedUri('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const cached = getCachedVideoThumbnailUri(normalizedVideoUri);
+    if (cached) {
+      setGeneratedUri(cached);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void ensureVideoThumbnailUri(normalizedVideoUri)
+      .then((nextUri) => {
+        if (isMounted) setGeneratedUri(nextUri);
+      })
+      .catch(() => {
+        if (isMounted) setGeneratedUri('');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [normalizedPreferredUri, normalizedVideoUri]);
+
+  return normalizedPreferredUri || generatedUri;
 }
 
 type ProfileTabsBarProps = {
@@ -146,6 +197,24 @@ const FileRow = React.memo(function FileRow({
       </View>
     </Pressable>
   );
+});
+
+const MediaTilePreview = React.memo(function MediaTilePreview({ item }: { item: MediaTile }) {
+  const generatedPreviewUri = useVideoPreviewUri(
+    item.kind === 'video' ? item.uri : null,
+    item.previewUri
+  );
+  const previewUri = item.kind === 'video' ? generatedPreviewUri : item.previewUri ?? item.uri;
+
+  if (!previewUri) {
+    return (
+      <View style={[styles.mediaImage, styles.mediaVideoFallback]}>
+        <Feather name="video" size={24} color="#FFFFFF" />
+      </View>
+    );
+  }
+
+  return <Image source={{ uri: previewUri }} style={styles.mediaImage} />;
 });
 
 const VoiceRow = React.memo(function VoiceRow({
@@ -236,6 +305,52 @@ const VoiceRow = React.memo(function VoiceRow({
   );
 });
 
+const VideoNoteVoiceRow = React.memo(function VideoNoteVoiceRow({
+  item,
+  onOpen,
+  onOpenMenu,
+}: {
+  item: VoiceItem;
+  onOpen: (item: VoiceItem) => void;
+  onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
+}) {
+  const previewUri = useVideoPreviewUri(item.uri, item.thumbnailUri);
+
+  return (
+    <Pressable
+      onPress={() => onOpen(item)}
+      onLongPress={(event) => onOpenMenu(item.id, event)}
+      delayLongPress={220}
+      style={({ pressed }) => [styles.voiceRow, pressed && styles.videoNoteRowPressed]}
+    >
+      <View style={styles.videoNoteThumbWrap}>
+        {previewUri ? (
+          <Image source={{ uri: previewUri }} style={styles.videoNoteThumb} />
+        ) : (
+          <View style={styles.videoNoteThumbFallback}>
+            <Feather name="video" size={18} color="#FFFFFF" />
+          </View>
+        )}
+        <View style={styles.videoNoteThumbOverlay}>
+          <Feather name="play" size={14} color="#FFFFFF" style={styles.voicePlayIcon} />
+        </View>
+      </View>
+
+      <View style={styles.videoNoteTextWrap}>
+        {item.title ? (
+          <Text style={styles.videoNoteTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
+        ) : null}
+        <View style={styles.voiceMetaRow}>
+          <Text style={styles.voiceDuration}>{formatMediaDuration(item.durationMs)}</Text>
+          <Text style={styles.voiceDate}>{item.dateLabel}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+});
+
 const LinkRow = React.memo(function LinkRow({
   item,
   onOpenMenu,
@@ -272,7 +387,8 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
   voiceItems,
   linkItems,
   onChangeTab,
-  onOpenMedia: _onOpenMedia,
+  onOpenMedia,
+  onOpenVideoNote,
   onOpenActionMenu,
 }: ChatProfileMediaSectionProps) {
   const tabCounts = useMemo<Record<ProfileTabKey, number>>(
@@ -300,14 +416,20 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
 
       return (
         <View style={styles.mediaGrid}>
-          {mediaItems.map((item) => (
+          {mediaItems.map((item, index) => (
             <Pressable
               key={item.id}
+              onPress={() => onOpenMedia(index)}
               onLongPress={(event) => onOpenActionMenu(item.id, event)}
               delayLongPress={220}
               style={({ pressed }) => [styles.mediaTile, pressed && styles.mediaTilePressed]}
             >
-              <Image source={{ uri: item.uri }} style={styles.mediaImage} />
+              <MediaTilePreview item={item} />
+              {item.kind === 'video' ? (
+                <View style={styles.mediaPlayBadge}>
+                  <Feather name="play" size={15} color="#FFFFFF" style={styles.voicePlayIcon} />
+                </View>
+              ) : null}
               {item.durationMs ? (
                 <View style={styles.mediaBadge}>
                   <Text style={styles.mediaBadgeText}>{formatMediaDuration(item.durationMs)}</Text>
@@ -354,9 +476,18 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
 
       return (
         <View style={styles.stackSection}>
-          {voiceItems.map((item) => (
-            <VoiceRow key={item.id} item={item} onOpenMenu={onOpenActionMenu} />
-          ))}
+          {voiceItems.map((item) =>
+            item.kind === 'video_note' ? (
+              <VideoNoteVoiceRow
+                key={item.id}
+                item={item}
+                onOpen={onOpenVideoNote}
+                onOpenMenu={onOpenActionMenu}
+              />
+            ) : (
+              <VoiceRow key={item.id} item={item} onOpenMenu={onOpenActionMenu} />
+            )
+          )}
         </View>
       );
     }
@@ -379,7 +510,16 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
         ))}
       </View>
     );
-  }, [activeTab, fileItems, linkItems, mediaItems, onOpenActionMenu, voiceItems]);
+  }, [
+    activeTab,
+    fileItems,
+    linkItems,
+    mediaItems,
+    onOpenActionMenu,
+    onOpenMedia,
+    onOpenVideoNote,
+    voiceItems,
+  ]);
 
   return (
     <View style={styles.mediaSectionCard}>
@@ -456,6 +596,22 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 4,
     backgroundColor: '#E6ECF5',
+  },
+  mediaVideoFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111827',
+  },
+  mediaPlayBadge: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.62)',
   },
   mediaBadge: {
     position: 'absolute',
@@ -570,6 +726,43 @@ const styles = StyleSheet.create({
   voiceDate: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  videoNoteRowPressed: {
+    opacity: 0.86,
+  },
+  videoNoteThumbWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginRight: 12,
+    backgroundColor: '#DDE6F4',
+  },
+  videoNoteThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  videoNoteThumbFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#7D8795',
+  },
+  videoNoteThumbOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.24)',
+  },
+  videoNoteTextWrap: {
+    flex: 1,
+  },
+  videoNoteTitle: {
+    marginBottom: 5,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
   },
   linkRow: {
     minHeight: 72,

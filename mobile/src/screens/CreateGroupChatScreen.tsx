@@ -22,6 +22,11 @@ import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { ApiUser } from '../services/AuthService';
 import { colors } from '../theme/colors';
+import {
+  filterGroupMemberPickerUsers,
+  getGroupMemberPickerContacts,
+  mergeGroupMemberPickerUsers,
+} from '../utils/groupMemberPicker';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -34,6 +39,7 @@ function getDisplayName(user: ApiUser) {
 export function CreateGroupChatScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const chats = chatStore((state) => state.chats);
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const [groupName, setGroupName] = useState('');
   const [query, setQuery] = useState('');
@@ -52,6 +58,18 @@ export function CreateGroupChatScreen() {
     () => (currentUserId ? results.filter((user) => user.id !== currentUserId) : results),
     [results, currentUserId]
   );
+  const chatContacts = useMemo(
+    () => getGroupMemberPickerContacts({ chats, currentUserId }),
+    [chats, currentUserId]
+  );
+  const visibleResults = useMemo(() => {
+    const localMatches = filterGroupMemberPickerUsers(chatContacts, query);
+    if (!query.trim()) {
+      return localMatches;
+    }
+
+    return mergeGroupMemberPickerUsers(localMatches, filteredResults);
+  }, [chatContacts, filteredResults, query]);
 
   const performSearch = useCallback(async (nextQuery: string) => {
     const normalized = nextQuery.trim().replace(/^@+/, '');
@@ -237,12 +255,12 @@ export function CreateGroupChatScreen() {
           </View>
         ) : (
           <FlatList
-            data={filteredResults}
+            data={visibleResults}
             keyExtractor={(item) => item.id}
             renderItem={renderResult}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={
-              filteredResults.length === 0 ? styles.resultsEmptyContent : undefined
+              visibleResults.length === 0 ? styles.resultsEmptyContent : undefined
             }
             ListEmptyComponent={
               <View style={styles.emptyState}>

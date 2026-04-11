@@ -10,12 +10,19 @@ import {
 } from 'react-native';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
 import MaterialCommunityIcons from 'expo/node_modules/@expo/vector-icons/MaterialCommunityIcons';
+import { formatMediaDuration } from '../utils/mediaDuration';
+import {
+  ensureVideoThumbnailUri,
+  getCachedVideoThumbnailUri,
+} from '../utils/videoThumbnail';
 
 type GalleryItem = {
   id: string;
+  kind: 'image' | 'video';
   uri: string;
   width?: number;
   height?: number;
+  durationMs?: number;
 };
 
 type AttachmentAction = {
@@ -52,10 +59,64 @@ const GalleryCell = React.memo(function GalleryCell({
   item: GalleryItem;
   onPick: (item: GalleryItem) => void;
 }) {
+  const [thumbnailUri, setThumbnailUri] = React.useState(() =>
+    item.kind === 'video' ? getCachedVideoThumbnailUri(item.uri) ?? '' : ''
+  );
+
+  React.useEffect(() => {
+    if (item.kind !== 'video') {
+      setThumbnailUri('');
+      return;
+    }
+
+    const cached = getCachedVideoThumbnailUri(item.uri);
+    if (cached) {
+      setThumbnailUri(cached);
+      return;
+    }
+
+    let cancelled = false;
+    void ensureVideoThumbnailUri(item.uri)
+      .then((nextUri) => {
+        if (!cancelled) {
+          setThumbnailUri(nextUri);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setThumbnailUri('');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item.kind, item.uri]);
+
+  const previewUri = item.kind === 'video' ? thumbnailUri : item.uri;
+
   return (
     <View style={styles.galleryCellOuter}>
       <Pressable style={styles.galleryCell} onPress={() => onPick(item)}>
-        <Image source={{ uri: item.uri }} style={styles.galleryImage} />
+        {previewUri ? (
+          <Image source={{ uri: previewUri }} style={styles.galleryImage} />
+        ) : (
+          <View style={styles.galleryVideoFallback}>
+            <MaterialCommunityIcons name="movie-open-play-outline" size={26} color="#FFFFFF" />
+          </View>
+        )}
+
+        {item.kind === 'video' ? (
+          <>
+            <View style={styles.galleryVideoOverlay} />
+            <View style={styles.galleryVideoBadge}>
+              <Feather name="play" size={11} color="#FFFFFF" style={styles.galleryVideoPlayIcon} />
+              <Text style={styles.galleryVideoBadgeText}>
+                {formatMediaDuration(item.durationMs ?? 0)}
+              </Text>
+            </View>
+          </>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -89,19 +150,21 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Недавние</Text>
             {galleryItems.length > 0 ? (
-              <Text style={styles.sheetSubtitle}>Нажми на фото, чтобы добавить в сообщение</Text>
+              <Text style={styles.sheetSubtitle}>
+                Нажми на фото или видео, чтобы добавить в сообщение
+              </Text>
             ) : null}
           </View>
 
           {galleryEnabled ? (
             galleryLoading ? (
               <View style={styles.galleryPlaceholder}>
-                <Text style={styles.galleryHint}>Загружаем фото...</Text>
+                <Text style={styles.galleryHint}>Загружаем медиа...</Text>
               </View>
             ) : galleryDenied ? (
               <View style={styles.galleryPlaceholder}>
                 <Text style={styles.galleryHint}>
-                  Нужен доступ к фото, чтобы показать галерею.
+                  Нужен доступ к фото и видео, чтобы показать галерею.
                 </Text>
               </View>
             ) : galleryItems.length > 0 ? (
@@ -125,14 +188,14 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
               </View>
             ) : (
               <View style={styles.galleryPlaceholder}>
-                <Text style={styles.galleryHint}>Фото не найдены.</Text>
+                <Text style={styles.galleryHint}>Медиа не найдены.</Text>
               </View>
             )
           ) : null}
 
           {attachmentActions.length > 0 ? (
             <>
-              <Text style={styles.sheetSectionTitle}>Ещё</Text>
+              <Text style={styles.sheetSectionTitle}>Еще</Text>
               <View style={styles.sheetActionsRow}>
                 {attachmentActions.map((action) => (
                   <Pressable
@@ -162,7 +225,7 @@ const styles = StyleSheet.create({
   },
   sheetBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(17, 24, 39, 0.18)',
+    backgroundColor: 'transparent',
   },
   sheetCard: {
     backgroundColor: '#FFFFFF',
@@ -229,6 +292,36 @@ const styles = StyleSheet.create({
   galleryImage: {
     width: '100%',
     height: '100%',
+  },
+  galleryVideoFallback: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryVideoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.16)',
+  },
+  galleryVideoBadge: {
+    position: 'absolute',
+    right: 7,
+    bottom: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+  },
+  galleryVideoPlayIcon: {
+    marginLeft: 1,
+  },
+  galleryVideoBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   galleryPlaceholder: {
     minHeight: 132,

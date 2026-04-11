@@ -117,6 +117,7 @@ export function getCopyableContent(message: Message): string {
   if (message.is_deleted) return '';
   if (message.msg_type === 'text') return message.content?.trim() ?? '';
   if (message.msg_type === 'image') return message.content?.trim() || message.media?.[0]?.remote_url || '';
+  if (message.msg_type === 'video') return message.content?.trim() || 'Video';
   if (message.msg_type === 'file') {
     return message.media?.[0]?.file_name?.trim() || message.media?.[0]?.remote_url || '';
   }

@@ -10,6 +10,8 @@ function getMediaLabel(message: Message): string {
   switch (message.msg_type) {
     case 'image':
       return message.content?.trim() ? `Фото: ${message.content.trim()}` : 'Фото';
+    case 'video':
+      return message.content?.trim() ? `Видео: ${message.content.trim()}` : 'Видео';
     case 'voice':
       return 'Голосовое сообщение';
     case 'video_note':
@@ -36,7 +38,7 @@ export function buildReplyPreviewText(message: Message | null | undefined): stri
 export function getReplyPreviewThumbnailUri(message: Message | null | undefined): string | null {
   if (!message || message.is_deleted) return null;
 
-  if (message.msg_type === 'video_note') {
+  if (message.msg_type === 'video_note' || message.msg_type === 'video') {
     const videoThumbnail = message.media?.[0]?.thumbnail_url?.trim();
     if (videoThumbnail) return videoThumbnail;
   }

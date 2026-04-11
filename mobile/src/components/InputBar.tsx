@@ -20,15 +20,19 @@ import { DocumentPickerService } from '../services/DocumentPickerService';
 import { VoiceRecorderService, type VoiceRecordingResult } from '../services/VoiceRecorderService';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
 import type { Message } from '../stores/types';
+import { ensureVideoThumbnailUri } from '../utils/videoThumbnail';
 import { InputAttachmentSheet } from './InputAttachmentSheet';
 import { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 import { buildReplyPreviewText, getReplyPreviewThumbnailUri } from './ReplyPreview';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
 
-export interface ImagePickResult {
+export interface MediaPickResult {
+  kind: 'image' | 'video';
   uri: string;
+  previewUri?: string;
   width?: number;
   height?: number;
+  durationMs?: number;
   fileName?: string;
   mimeType?: string;
   caption?: string;
@@ -45,7 +49,7 @@ export interface InputBarProps {
   onSendText: (text: string) => void;
   onSendVoice: (result: VoiceRecordingResult) => void | Promise<void>;
   onSendVideoNote?: (result: VideoNoteRecordingResult) => void | Promise<void>;
-  onSendImage?: (result: ImagePickResult) => void | Promise<void>;
+  onSendMedia?: (result: MediaPickResult) => void | Promise<void>;
   onSendFile?: (result: FilePickResult) => void | Promise<void>;
   blurTargetRef?: React.RefObject<View | null>;
   placeholder?: string;
@@ -64,9 +68,11 @@ type AttachmentAction = {
 
 type GalleryItem = {
   id: string;
+  kind: 'image' | 'video';
   uri: string;
   width?: number;
   height?: number;
+  durationMs?: number;
   fileName?: string;
 };
 
@@ -98,9 +104,19 @@ function SendIcon() {
   return <Feather name="send" size={18} color={colors.accent} />;
 }
 
-function inferMimeTypeFromFileName(fileName?: string): string | undefined {
+function inferMimeTypeFromFileName(
+  fileName: string | undefined,
+  kind: MediaPickResult['kind']
+): string | undefined {
   const normalized = fileName?.trim().toLowerCase();
   if (!normalized) return undefined;
+  if (kind === 'video') {
+    if (normalized.endsWith('.mov')) return 'video/quicktime';
+    if (normalized.endsWith('.webm')) return 'video/webm';
+    if (normalized.endsWith('.mkv')) return 'video/x-matroska';
+    if (normalized.endsWith('.avi')) return 'video/x-msvideo';
+    return 'video/mp4';
+  }
   if (normalized.endsWith('.png')) return 'image/png';
   if (normalized.endsWith('.webp')) return 'image/webp';
   if (normalized.endsWith('.heic')) return 'image/heic';
@@ -109,11 +125,20 @@ function inferMimeTypeFromFileName(fileName?: string): string | undefined {
   return 'image/jpeg';
 }
 
+function resolveGalleryItemKind(
+  mediaType: MediaLibrary.MediaTypeValue | undefined
+): GalleryItem['kind'] {
+  if (mediaType === MediaLibrary.MediaType.video) {
+    return 'video';
+  }
+  return 'image';
+}
+
 export function InputBar({
   onSendText,
   onSendVoice,
   onSendVideoNote,
-  onSendImage,
+  onSendMedia,
   onSendFile,
   blurTargetRef,
   placeholder = 'Сообщение',
@@ -128,7 +153,7 @@ export function InputBar({
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryDenied, setGalleryDenied] = useState(false);
-  const [pendingImage, setPendingImage] = useState<ImagePickResult | null>(null);
+  const [pendingMedia, setPendingMedia] = useState<MediaPickResult | null>(null);
   const [voiceRecordModeState, setVoiceRecordModeState] = useState<VoiceRecordMode>('idle');
   const [recordingEntryModeState, setRecordingEntryModeState] =
     useState<RecordingEntryMode>('voice');
@@ -155,8 +180,8 @@ export function InputBar({
   const entryModeProgressAnimated = useRef(new RNAnimated.Value(0)).current;
 
   const hasText = inputText.trim().length > 0;
-  const hasPendingImage = pendingImage != null;
-  const canSend = hasText || hasPendingImage;
+  const hasPendingMedia = pendingMedia != null;
+  const canSend = hasText || hasPendingMedia;
   const isVoiceRecording = voiceRecordModeState !== 'idle';
   const isVoiceLocked = voiceRecordModeState === 'locked';
   const canUseVideoNotes = onSendVideoNote != null;
@@ -242,24 +267,24 @@ export function InputBar({
 
   const handleSend = useCallback(() => {
     const content = inputText.trim();
-    const selectedImage = pendingImage;
+    const selectedMedia = pendingMedia;
 
-    if (!content && !selectedImage) return;
+    if (!content && !selectedMedia) return;
 
     setInputText('');
-    setPendingImage(null);
+    setPendingMedia(null);
     onCancelReply?.();
 
-    if (selectedImage) {
-      void onSendImage?.({
-        ...selectedImage,
+    if (selectedMedia) {
+      void onSendMedia?.({
+        ...selectedMedia,
         caption: content || undefined,
       });
       return;
     }
 
     onSendText(content);
-  }, [inputText, onCancelReply, onSendImage, onSendText, pendingImage]);
+  }, [inputText, onCancelReply, onSendMedia, onSendText, pendingMedia]);
 
   const handleInputChange = useCallback(
     (text: string) => {
@@ -483,23 +508,11 @@ export function InputBar({
       });
     }
 
-    if (onSendVideoNote) {
-      actions.push({
-        key: 'video-note',
-        title: 'Видеокружок',
-        tone: 'video',
-        onPress: async () => {
-          setRecordingEntryMode('video');
-          setShowVideoNoteRecorder(true);
-        },
-      });
-    }
-
     return actions;
-  }, [onSendFile, onSendVideoNote, setRecordingEntryMode]);
+  }, [onSendFile]);
 
   const loadGallery = useCallback(async () => {
-    if (!onSendImage) return;
+    if (!onSendMedia) return;
 
     setGalleryLoading(true);
     try {
@@ -514,7 +527,7 @@ export function InputBar({
 
       setGalleryDenied(false);
       const result = await MediaLibrary.getAssetsAsync({
-        mediaType: 'photo',
+        mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
         first: 48,
         sortBy: [[MediaLibrary.SortBy.creationTime, false]],
       });
@@ -522,9 +535,14 @@ export function InputBar({
       setGalleryItems(
         result.assets.map((asset) => ({
           id: asset.id,
+          kind: resolveGalleryItemKind(asset.mediaType),
           uri: asset.uri,
           width: asset.width,
           height: asset.height,
+          durationMs:
+            asset.mediaType === MediaLibrary.MediaType.video
+              ? Math.max(0, Math.round((asset.duration ?? 0) * 1000))
+              : undefined,
           fileName: asset.filename,
         }))
       );
@@ -534,35 +552,50 @@ export function InputBar({
     } finally {
       setGalleryLoading(false);
     }
-  }, [onSendImage]);
+  }, [onSendMedia]);
 
   useEffect(() => {
-    if (showAttachmentSheet && onSendImage) {
+    if (showAttachmentSheet && onSendMedia) {
       loadGallery();
     }
-  }, [showAttachmentSheet, onSendImage, loadGallery]);
+  }, [showAttachmentSheet, onSendMedia, loadGallery]);
 
   const handlePickGalleryItem = useCallback(
     async (item: GalleryItem) => {
-      if (!onSendImage) return;
+      if (!onSendMedia) return;
 
       const assetInfo = await MediaLibrary.getAssetInfoAsync(item.id).catch(() => null);
+      const kind =
+        assetInfo?.mediaType != null ? resolveGalleryItemKind(assetInfo.mediaType) : item.kind;
       const resolvedFileName = assetInfo?.filename ?? item.fileName;
       const resolvedUri = assetInfo?.localUri?.trim() || assetInfo?.uri?.trim() || item.uri;
+      const assetDuration =
+        typeof assetInfo?.duration === 'number' ? assetInfo.duration * 1000 : undefined;
+      const durationMs =
+        kind === 'video'
+          ? Math.max(0, Math.round(assetDuration ?? item.durationMs ?? 0))
+          : undefined;
+      const previewUri =
+        kind === 'video'
+          ? (await ensureVideoThumbnailUri(resolvedUri).catch(() => '')) || undefined
+          : undefined;
 
-      setPendingImage({
+      setPendingMedia({
+        kind,
         uri: resolvedUri,
+        previewUri,
         width: assetInfo?.width ?? item.width,
         height: assetInfo?.height ?? item.height,
+        durationMs,
         fileName: resolvedFileName,
-        mimeType: inferMimeTypeFromFileName(resolvedFileName),
+        mimeType: inferMimeTypeFromFileName(resolvedFileName, kind),
       });
       setShowAttachmentSheet(false);
     },
-    [onSendImage]
+    [onSendMedia]
   );
 
-  const showAttachmentButton = onSendImage != null || attachmentActions.length > 0;
+  const showAttachmentButton = onSendMedia != null || attachmentActions.length > 0;
 
   const openAttachmentSheet = useCallback(() => {
     if (!showAttachmentButton) return;
@@ -929,16 +962,28 @@ export function InputBar({
   return (
     <>
       <View style={styles.inputRow}>
-        {pendingImage ? (
+        {pendingMedia ? (
           <View style={styles.previewCard}>
-            <Image source={{ uri: pendingImage.uri }} style={styles.previewImage} />
+            <View style={styles.previewMediaWrap}>
+              <Image
+                source={{ uri: pendingMedia.previewUri ?? pendingMedia.uri }}
+                style={styles.previewImage}
+              />
+              {pendingMedia.kind === 'video' ? (
+                <View style={styles.previewPlayBadge}>
+                  <Feather name="play" size={14} color="#FFFFFF" style={styles.previewPlayIcon} />
+                </View>
+              ) : null}
+            </View>
             <View style={styles.previewTextWrap}>
-              <Text style={styles.previewTitle}>Фото готово к отправке</Text>
+              <Text style={styles.previewTitle}>
+                {pendingMedia.kind === 'video' ? 'Видео готово к отправке' : 'Фото готово к отправке'}
+              </Text>
               <Text style={styles.previewSubtitle}>
                 Можно добавить подпись и отправить одним сообщением
               </Text>
             </View>
-            <Pressable style={styles.previewRemoveButton} onPress={() => setPendingImage(null)}>
+            <Pressable style={styles.previewRemoveButton} onPress={() => setPendingMedia(null)}>
               <Feather name="x" size={16} color="#6B7280" />
             </Pressable>
           </View>
@@ -1058,7 +1103,7 @@ export function InputBar({
 
       <InputAttachmentSheet
         visible={showAttachmentSheet}
-        galleryEnabled={onSendImage != null}
+        galleryEnabled={onSendMedia != null}
         galleryItems={galleryItems}
         galleryLoading={galleryLoading}
         galleryDenied={galleryDenied}
@@ -1103,11 +1148,32 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
-  previewImage: {
+  previewMediaWrap: {
     width: 56,
     height: 56,
     borderRadius: 14,
+    overflow: 'hidden',
     backgroundColor: '#EEF2F7',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewPlayBadge: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginLeft: -14,
+    marginTop: -14,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewPlayIcon: {
+    marginLeft: 2,
   },
   previewTextWrap: {
     flex: 1,

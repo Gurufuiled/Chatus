@@ -1,11 +1,14 @@
 import React, { useMemo } from 'react';
 import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
-import { Animated, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   AnchoredPopoverMenu,
   type AnchoredMenuState,
   type AnchoredPopoverMenuItem,
 } from './AnchoredPopoverMenu';
+import { ChatProfileMediaViewerModal } from './ChatProfileMediaViewerModal';
+import { FloatingVideoNoteOverlay } from './FloatingVideoNoteOverlay';
+import type { MediaTile, VoiceItem } from './ChatProfileMediaSection';
 
 type ProfileActionMenuState = {
   messageId: string;
@@ -19,8 +22,12 @@ type ChatProfileOverlayLayerProps = {
   moreMenuItems: AnchoredPopoverMenuItem[];
   onCloseMoreMenu: () => void;
   onMoreMenuAction: (key: string) => void;
-  selectedMediaUri: string | null;
+  mediaItems: MediaTile[];
+  selectedMediaIndex: number | null;
+  onChangeMediaIndex: (index: number) => void;
   onCloseMedia: () => void;
+  floatingVideoNote: VoiceItem | null;
+  onCloseFloatingVideoNote: () => void;
   actionMenu: ProfileActionMenuState;
   actionMenuAnimation: Animated.Value;
   onCloseActionMenu: () => void;
@@ -33,8 +40,12 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
   moreMenuItems,
   onCloseMoreMenu,
   onMoreMenuAction,
-  selectedMediaUri,
+  mediaItems,
+  selectedMediaIndex,
+  onChangeMediaIndex,
   onCloseMedia,
+  floatingVideoNote,
+  onCloseFloatingVideoNote,
   actionMenu,
   actionMenuAnimation,
   onCloseActionMenu,
@@ -82,23 +93,15 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
         offsetY={8}
       />
 
-      <Modal
-        visible={selectedMediaUri != null}
-        transparent
-        animationType="fade"
-        onRequestClose={onCloseMedia}
-      >
-        <Pressable style={styles.viewerBackdrop} onPress={onCloseMedia}>
-          <View style={styles.viewerContent}>
-            {selectedMediaUri ? (
-              <Image source={{ uri: selectedMediaUri }} style={styles.viewerImage} resizeMode="contain" />
-            ) : null}
-            <Pressable onPress={onCloseMedia} style={styles.viewerClose} hitSlop={10}>
-              <Feather name="x" size={22} color="#FFFFFF" />
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+      <ChatProfileMediaViewerModal
+        visible={selectedMediaIndex != null}
+        items={mediaItems}
+        selectedIndex={selectedMediaIndex ?? 0}
+        onChangeIndex={onChangeMediaIndex}
+        onClose={onCloseMedia}
+      />
+
+      <FloatingVideoNoteOverlay item={floatingVideoNote} onClose={onCloseFloatingVideoNote} />
 
       {actionMenu ? (
         <View style={styles.actionMenuRoot} pointerEvents="box-none">
@@ -137,33 +140,6 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
 });
 
 const styles = StyleSheet.create({
-  viewerBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  viewerContent: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  viewerImage: {
-    width: '100%',
-    height: '100%',
-  },
-  viewerClose: {
-    position: 'absolute',
-    top: 54,
-    right: 22,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
   actionMenuRoot: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 20,

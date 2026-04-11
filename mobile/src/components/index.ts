@@ -23,5 +23,6 @@ export {
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from './ReplyPreview';
+export { VideoBubble } from './VideoBubble';
 export { VideoNoteBubble } from './VideoNoteBubble';
 export { VoiceBubble } from './VoiceBubble';

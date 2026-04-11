@@ -22,6 +22,7 @@ const VALID_MSG_TYPES: MessageType[] = [
   MessageType.image,
   MessageType.voice,
   MessageType.video_note,
+  MessageType.video,
   MessageType.file,
 ];
 

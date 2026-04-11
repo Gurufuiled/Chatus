@@ -211,6 +211,7 @@ type PayloadText = { chatId: string; content: string; msgType: string; tempId: s
 type PayloadVoice = { chatId: string; uri: string; durationMs: number; waveform?: number[]; tempId: string; replyToId?: string | null };
 type PayloadVideoNote = { chatId: string; uri: string; durationMs: number; thumbnailUri?: string; tempId: string; replyToId?: string | null };
 type PayloadImage = { chatId: string; uri: string; width?: number; height?: number; fileName?: string; mimeType?: string; caption?: string; tempId: string; replyToId?: string | null };
+type PayloadVideo = { chatId: string; uri: string; width?: number; height?: number; durationMs?: number; thumbnailUri?: string; fileName?: string; mimeType?: string; caption?: string; tempId: string; replyToId?: string | null };
 type PayloadFile = { chatId: string; uri: string; name: string; size: number; mimeType?: string; tempId: string; replyToId?: string | null };
 type PayloadDelete = { chatId: string; messageId: string };
 type PayloadPin = { chatId: string; messageId: string | null };
@@ -394,6 +395,46 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
       return;
     }
 
+    case 'send_message_video': {
+      const p = payload as PayloadVideo;
+      const videoMime = p.mimeType ?? 'video/mp4';
+      const videoName =
+        p.fileName ??
+        (videoMime === 'video/quicktime'
+          ? 'video.mov'
+          : videoMime === 'video/webm'
+            ? 'video.webm'
+            : 'video.mp4');
+      const result = await apiUpload({
+        uri: p.uri,
+        name: videoName,
+        type: videoMime,
+      });
+      const fullUrl = toFullUrl(baseUrl, result.url);
+      const resolvedDurationMs = result.duration_ms ?? p.durationMs;
+      ensureWebSocketConnectedForDispatch('video message dispatch');
+      WebSocketService.sendEvent('send_message', {
+        chat_id: p.chatId,
+        content: p.caption ?? null,
+        msg_type: 'video',
+        client_temp_id: p.tempId,
+        reply_to_id: p.replyToId ?? null,
+        media: {
+          url: fullUrl,
+          thumbnail_url: result.thumbnail_path
+            ? toFullUrl(baseUrl, result.thumbnail_path)
+            : undefined,
+          width: p.width ?? result.width ?? undefined,
+          height: p.height ?? result.height ?? undefined,
+          duration_ms: resolvedDurationMs || undefined,
+          mime_type: result.mime_type,
+          file_name: result.file_name,
+          file_size: result.file_size,
+        },
+      });
+      return;
+    }
+
     case 'send_message_file': {
       const p = payload as PayloadFile;
       const result = await apiUpload({
@@ -481,6 +522,28 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
               url: remoteUrl,
               width: media?.width,
               height: media?.height,
+            },
+          });
+          return;
+        case 'video':
+          if (!remoteUrl) throw new Error('Forward video missing remote_url');
+          WebSocketService.sendEvent('send_message', {
+            chat_id: p.chatId,
+            content: message.content ?? null,
+            msg_type: 'video',
+            client_temp_id: clientTempId,
+            forwarded_from_message_id: forwardedFromMessageId,
+            forwarded_from_name: forwardedFromName,
+            forwarded_from_chat_id: forwardedFromChatId,
+            forwarded_from_sender_id: forwardedFromSenderId,
+            media: {
+              url: remoteUrl,
+              width: media?.width,
+              height: media?.height,
+              duration_ms: media?.duration_ms,
+              thumbnail_url: media?.thumbnail_url,
+              file_name: media?.file_name,
+              file_size: media?.file_size,
             },
           });
           return;

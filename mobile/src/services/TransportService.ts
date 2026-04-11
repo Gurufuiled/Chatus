@@ -125,6 +125,25 @@ function buildForwardPayload(message: Message, forwardedFrom?: ForwardMetadata):
           height: media?.height,
         },
       };
+    case 'video':
+      if (!remoteUrl) return null;
+      return {
+        content: message.content ?? null,
+        msg_type: 'video',
+        forwarded_from_message_id: forwardedFromMessageId,
+        forwarded_from_name: forwardedFromName,
+        forwarded_from_chat_id: forwardedFromChatId,
+        forwarded_from_sender_id: forwardedFromSenderId,
+        media: {
+          url: remoteUrl,
+          width: media?.width,
+          height: media?.height,
+          duration_ms: media?.duration_ms,
+          thumbnail_url: media?.thumbnail_url,
+          file_name: media?.file_name,
+          file_size: media?.file_size,
+        },
+      };
     case 'voice':
       if (!remoteUrl) return null;
       return {
@@ -590,6 +609,128 @@ class TransportServiceClass {
         uri: payload.uri,
         width: payload.width,
         height: payload.height,
+        fileName: payload.fileName,
+        mimeType: payload.mimeType,
+        caption: payload.caption,
+        tempId,
+        replyToId,
+      },
+      tempId
+    );
+  }
+
+  /**
+   * Send video message: upload video via apiUpload, then WebSocket send_message with media.
+   * If offline or upload fails, persist to SyncQueueDao.
+   */
+  async sendVideoMessage(
+    chatId: string,
+    payload: {
+      uri: string;
+      width?: number;
+      height?: number;
+      durationMs?: number;
+      thumbnailUri?: string;
+      fileName?: string;
+      mimeType?: string;
+      caption?: string;
+    },
+    tempId: string,
+    replyToId: string | null = null
+  ): Promise<void> {
+    const videoMime = payload.mimeType ?? 'video/mp4';
+    const videoName =
+      payload.fileName ??
+      (videoMime === 'video/quicktime'
+        ? 'video.mov'
+        : videoMime === 'video/webm'
+          ? 'video.webm'
+          : 'video.mp4');
+
+    if (WebSocketService.isConnected()) {
+      try {
+        const result = await apiUpload({
+          uri: payload.uri,
+          name: videoName,
+          type: videoMime,
+        });
+        const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
+        const thumbnailUrl = result.thumbnail_path
+          ? `${getUploadBaseUrl()}${result.thumbnail_path.startsWith('/') ? '' : '/'}${result.thumbnail_path}`
+          : undefined;
+        const resolvedDurationMs = result.duration_ms ?? payload.durationMs;
+
+        this.ensureWebSocketConnectedForDispatch('video message dispatch');
+        WebSocketService.sendEvent('send_message', {
+          chat_id: chatId,
+          content: payload.caption ?? null,
+          msg_type: 'video',
+          client_temp_id: tempId,
+          reply_to_id: replyToId,
+          media: {
+            url: fullUrl,
+            thumbnail_url: thumbnailUrl,
+            width: payload.width ?? result.width ?? undefined,
+            height: payload.height ?? result.height ?? undefined,
+            duration_ms: resolvedDurationMs || undefined,
+            mime_type: result.mime_type,
+            file_name: result.file_name,
+            file_size: result.file_size,
+          },
+        });
+      } catch (err) {
+        if (isUploadTooLargeError(err)) {
+          this.markOptimisticMessageFailed(chatId, tempId);
+          if (__DEV__) {
+            console.warn('[TransportService] video rejected by upload size limit:', {
+              chatId,
+              tempId,
+              uri: payload.uri,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+          return;
+        }
+        if (__DEV__) {
+          console.warn('[TransportService] video upload/send failed, queueing for retry:', {
+            chatId,
+            tempId,
+            uri: payload.uri,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        queueToSyncQueue(
+          this.syncQueueDao,
+          'send_message_video',
+          {
+            chatId,
+            uri: payload.uri,
+            width: payload.width,
+            height: payload.height,
+            durationMs: payload.durationMs,
+            thumbnailUri: payload.thumbnailUri,
+            fileName: payload.fileName,
+            mimeType: payload.mimeType,
+            caption: payload.caption,
+            tempId,
+            replyToId,
+          },
+          tempId
+        );
+      }
+      return;
+    }
+
+    queueToSyncQueue(
+      this.syncQueueDao,
+      'send_message_video',
+      {
+        chatId,
+        uri: payload.uri,
+        width: payload.width,
+        height: payload.height,
+        durationMs: payload.durationMs,
+        thumbnailUri: payload.thumbnailUri,
         fileName: payload.fileName,
         mimeType: payload.mimeType,
         caption: payload.caption,

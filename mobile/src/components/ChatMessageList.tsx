@@ -33,6 +33,7 @@ import {
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from './ReplyPreview';
+import { VideoBubble } from './VideoBubble';
 import { VideoNoteBubble } from './VideoNoteBubble';
 import { VoiceBubble } from './VoiceBubble';
 import { resolveAvatarUrl } from '../config';
@@ -538,6 +539,61 @@ const MessageRow = React.memo(function MessageRow({
           ]}
         >
           {imageContent}
+        </View>
+      );
+    }
+
+    if (item.msg_type === 'video') {
+      const media = item.media?.[0];
+      const videoUri = media?.remote_url ?? '';
+      if (!videoUri.trim()) return null;
+
+      const replySnippet = renderReplySnippet();
+      const topHeader = replySnippet ? null : renderIncomingHeader();
+      const videoContent = (
+        <VideoBubble
+          uri={videoUri}
+          thumbnailUri={media?.thumbnail_url ?? undefined}
+          isMe={isMe}
+          width={media?.width}
+          height={media?.height}
+          durationMs={media?.duration_ms ?? 0}
+          caption={item.content ?? undefined}
+          time={formatTime(item.created_at)}
+          status={item.status}
+          embedded={!!replySnippet}
+          header={topHeader}
+          bubbleMeColor={chatTheme.bubbleMe}
+          outgoingTextColor={chatTheme.bubbleMeText}
+        />
+      );
+
+      if (replySnippet) {
+        return (
+          <View
+            style={[
+              styles.repliedMediaBubble,
+              showAuthorAvatar && styles.groupMessageSurface,
+              showAuthorAvatar && styles.groupRepliedMediaBubble,
+              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+            ]}
+          >
+            {renderIncomingHeader()}
+            {replySnippet}
+            {videoContent}
+          </View>
+        );
+      }
+
+      return (
+        <View
+          style={[
+            styles.mediaStack,
+            showAuthorAvatar && styles.groupMessageSurface,
+          ]}
+        >
+          {videoContent}
         </View>
       );
     }
