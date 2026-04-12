@@ -22,6 +22,9 @@ import { createOrFindChat } from '../services/chatService';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { ApiUser } from '../services/AuthService';
+import { TelegramGlyph } from '../icons/telegram';
+import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
+import { colors } from '../theme/colors';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -142,26 +145,38 @@ export function ContactsScreen() {
           ) : null}
         </View>
         {isCreating && (
-          <ActivityIndicator size="small" color="#007AFF" style={styles.rowLoader} />
+          <ActivityIndicator size="small" color={colors.accent} style={styles.rowLoader} />
         )}
       </Pressable>
     );
   };
 
+  const searchG = TELEGRAM_PROFILE_GLYPHS.search;
+
   return (
     <View style={styles.container}>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search by name or @handle"
-        placeholderTextColor="#999"
-        value={query}
-        onChangeText={setQuery}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
+      <View style={styles.searchRow}>
+        <View style={styles.searchIconSlot} accessibilityLabel="Search">
+          <TelegramGlyph
+            d={searchG.d}
+            fillRule={searchG.fillRule}
+            color={colors.textSecondary}
+            size={22}
+          />
+        </View>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by name or @handle"
+          placeholderTextColor={colors.placeholder}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </View>
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       ) : (
         <FlatList
@@ -186,15 +201,28 @@ export function ContactsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: colors.inputBackgroundSolid },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginTop: 12,
+    marginBottom: 4,
+    paddingHorizontal: 12,
+    backgroundColor: colors.inputBackground,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+  },
+  searchIconSlot: {
+    marginRight: 4,
+    paddingVertical: 10,
+  },
   searchInput: {
-    margin: 12,
-    paddingHorizontal: 16,
+    flex: 1,
     paddingVertical: 12,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 10,
     fontSize: 16,
-    color: '#333',
+    color: colors.textPrimary,
   },
   center: {
     flex: 1,
@@ -235,11 +263,11 @@ const styles = StyleSheet.create({
   displayName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
   },
   handle: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 2,
   },
   empty: {
@@ -248,6 +276,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999',
+    color: colors.placeholder,
   },
 });

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated as RNAnimated,
@@ -14,7 +14,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
+import { composerPresentation } from '../presentation';
 import { colors, typography, MIN_TAP_TARGET } from '../theme/colors';
 import { DocumentPickerService } from '../services/DocumentPickerService';
 import { VoiceRecorderService, type VoiceRecordingResult } from '../services/VoiceRecorderService';
@@ -89,15 +90,15 @@ const ENTRY_MODE_TAP_SLOP = 10;
 const VIDEO_NOTE_SWIPE_TRIGGER = 34;
 
 function PaperclipIcon() {
-  return <Feather name="paperclip" size={20} color="#6B7280" />;
+  return <Feather name="paperclip" size={20} color={colors.iconMuted} />;
 }
 
 function MicIcon() {
-  return <Feather name="mic" size={19} color="#6B7280" />;
+  return <Feather name="mic" size={19} color={colors.iconMuted} />;
 }
 
 function VideoNoteIcon() {
-  return <Feather name="video" size={17} color="#6B7280" />;
+  return <Feather name="video" size={17} color={colors.iconMuted} />;
 }
 
 function SendIcon() {
@@ -1253,20 +1254,20 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   composerDockReply: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E3E8EF',
+    backgroundColor: colors.composerSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.composerBorder,
     borderRadius: 24,
     overflow: 'hidden',
   },
   composerShell: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E3E8EF',
+    minHeight: composerPresentation.shellMinHeight,
+    borderRadius: composerPresentation.shellBorderRadius,
+    backgroundColor: colors.composerSurface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.composerBorder,
     paddingLeft: 4,
     paddingRight: 6,
     paddingVertical: 4,

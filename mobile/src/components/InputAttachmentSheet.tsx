@@ -8,8 +8,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
-import MaterialCommunityIcons from 'expo/node_modules/@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import {
   ensureVideoThumbnailUri,

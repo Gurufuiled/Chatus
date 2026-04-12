@@ -18,7 +18,7 @@ import Reanimated, {
   withSpring,
 } from 'react-native-reanimated';
 import { ProfileActionIcon, type ProfileActionIconName } from './ProfileActionIcon';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 
 type ChatProfileHeroProps = {
   avatarUrl: string | null;
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 24,
     paddingBottom: 18,
-    backgroundColor: '#F7F9FD',
+    backgroundColor: colors.chatBackground,
     overflow: 'hidden',
   },
   avatarPressable: {
@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
     borderRadius: 54,
     marginBottom: 14,
     overflow: 'hidden',
-    backgroundColor: '#DCE7F8',
+    backgroundColor: withAlpha(colors.accent, 0.12),
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.95)',
   },
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 28,
     fontWeight: '700',
-    color: '#1F2937',
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   status: {
@@ -370,9 +370,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(216,224,234,0.8)',
+    backgroundColor: colors.inputBackgroundSolid,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
     shadowColor: '#89A8D8',
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   quickActionWave: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 20,
-    backgroundColor: 'rgba(77,141,255,0.18)',
+    backgroundColor: withAlpha(colors.accent, 0.18),
   },
   loaderRow: {
     marginTop: 16,

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Alert,
   Animated,
   Dimensions,
   Easing,
+  GestureResponderEvent,
   Linking,
   StatusBar,
   StyleSheet,
@@ -25,6 +26,7 @@ import {
   DEFAULT_MEMBER_TAG_COLOR,
   isGroupMemberTagColor,
 } from '../components/group-profile/groupProfile.constants';
+import { FloatingVideoNoteOverlay } from '../components/FloatingVideoNoteOverlay';
 import { GroupProfileHeaderSection } from '../components/group-profile/GroupProfileHeaderSection';
 import { GroupProfileMediaContent } from '../components/group-profile/GroupProfileMediaContent';
 import { GroupProfileMediaViewerModal } from '../components/group-profile/GroupProfileMediaViewerModal';
@@ -77,10 +79,15 @@ type MemberContextMenuState = {
   width: number;
   height: number;
 } | null;
+type ProfileActionMenuState = {
+  messageId: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} | null;
 
 const SEARCH_DEBOUNCE_MS = 280;
-const COMPACT_HEADER_SCROLL_START = 112;
-const COMPACT_HEADER_SCROLL_END = 196;
 const GROUP_PROFILE_SCREEN_WIDTH = Dimensions.get('window').width;
 const GROUP_TAB_ITEMS: [GroupTabKey, string][] = [
   ['participants', 'Участники'],
@@ -101,6 +108,30 @@ function formatMemberCount(count: number) {
 
 
 function extractMediaUri(message: Message): string | null {
+  const media = message.media?.[0];
+  const candidates = [media?.thumbnail_url, media?.remote_url, message.content];
+
+  for (const candidate of candidates) {
+    const resolved = resolveAvatarUrl(candidate ?? null);
+    if (resolved) return resolved;
+  }
+
+  return null;
+}
+
+function extractRemoteMediaUri(message: Message): string | null {
+  const media = message.media?.[0];
+  const candidates = [media?.remote_url, message.content];
+
+  for (const candidate of candidates) {
+    const resolved = resolveAvatarUrl(candidate ?? null);
+    if (resolved) return resolved;
+  }
+
+  return null;
+}
+
+function extractPreviewMediaUri(message: Message): string | null {
   const media = message.media?.[0];
   const candidates = [media?.thumbnail_url, media?.remote_url, message.content];
 
@@ -343,10 +374,12 @@ export function GroupProfileScreen() {
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [avatarDraftUrl, setAvatarDraftUrl] = useState<string | null>(null);
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(null);
+  const [floatingVideoNote, setFloatingVideoNote] = useState<GroupVoiceItem | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
   const [memberMenu, setMemberMenu] = useState<MemberContextMenuState>(null);
+  const [actionMenu, setActionMenu] = useState<ProfileActionMenuState>(null);
   const [tagEditorMember, setTagEditorMember] = useState<GroupMember | null>(null);
   const [tagDraft, setTagDraft] = useState('');
   const [tagColorDraft, setTagColorDraft] =
@@ -364,9 +397,18 @@ export function GroupProfileScreen() {
   const moreWaveAnimation = useRef(new Animated.Value(0)).current;
   const moreIconScale = useRef(new Animated.Value(1)).current;
   const memberMenuAnimation = useRef(new Animated.Value(0)).current;
+  const actionMenuAnimation = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
 
   const members = useMemo(() => chat?.members ?? [], [chat]);
+  const memberNameById = useMemo(
+    () =>
+      members.reduce<Record<string, string>>((acc, member) => {
+        acc[member.user_id] = getDisplayNameFromMember(member);
+        return acc;
+      }, {}),
+    [members]
+  );
   const currentMembership = useMemo(
     () => members.find((member) => member.user_id === currentUserId) ?? null,
     [currentUserId, members]
@@ -403,37 +445,6 @@ export function GroupProfileScreen() {
     }),
     [moreWaveAnimation]
   ) as any;
-  const compactHeaderProgress = useMemo(
-    () =>
-      scrollY.interpolate({
-        inputRange: [COMPACT_HEADER_SCROLL_START, COMPACT_HEADER_SCROLL_END],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-    [scrollY]
-  );
-  const compactHeaderStyle = useMemo(
-    () => ({
-      height: compactHeaderProgress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, 74],
-      }),
-      opacity: compactHeaderProgress,
-      marginBottom: compactHeaderProgress.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, 8],
-      }),
-      transform: [
-        {
-          translateY: compactHeaderProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [-10, 0],
-          }),
-        },
-      ],
-    }),
-    [compactHeaderProgress]
-  ) as any;
 
   const mediaItems = useMemo<GroupMediaItem[]>(
     () =>
@@ -441,16 +452,21 @@ export function GroupProfileScreen() {
         .filter(
           (message) =>
             !message.is_deleted &&
-            (message.msg_type === 'image' || message.msg_type === 'video_note')
+            (message.msg_type === 'image' || message.msg_type === 'video')
         )
         .map((message): GroupMediaItem | null => {
-          const uri = extractMediaUri(message);
+          const uri = extractRemoteMediaUri(message);
           if (!uri) return null;
           return {
             id: message.id,
+            kind: message.msg_type === 'video' ? 'video' : 'image',
             uri,
+            previewUri:
+              message.msg_type === 'video'
+                ? extractPreviewMediaUri(message) ?? undefined
+                : extractPreviewMediaUri(message) ?? uri,
             durationMs:
-              message.msg_type === 'video_note'
+              message.msg_type === 'video'
                 ? message.media?.[0]?.duration_ms ?? 0
                 : undefined,
           };
@@ -477,17 +493,30 @@ export function GroupProfileScreen() {
   const voiceItems = useMemo<GroupVoiceItem[]>(
     () =>
       chatMessages
-        .filter((message) => !message.is_deleted && message.msg_type === 'voice')
+        .filter(
+          (message) =>
+            !message.is_deleted &&
+            (message.msg_type === 'voice' || message.msg_type === 'video_note')
+        )
         .map((message) => ({
           id: message.id,
-          uri: extractMediaUri(message),
-          duration: formatMediaDuration(message.media?.[0]?.duration_ms ?? 0),
-          date: formatMessageDate(message.created_at),
+          kind: message.msg_type === 'video_note' ? 'video_note' : 'voice',
+          uri: extractRemoteMediaUri(message),
+          thumbnailUri:
+            message.msg_type === 'video_note'
+              ? extractPreviewMediaUri(message) ?? undefined
+              : undefined,
+          title:
+            message.msg_type === 'video_note'
+              ? message.sender_id === currentUserId
+                ? 'Вы'
+                : memberNameById[message.sender_id] ?? 'Участник'
+              : undefined,
           durationMs: message.media?.[0]?.duration_ms ?? 0,
-          waveform: message.media?.[0]?.waveform ?? [],
+          waveform: message.msg_type === 'voice' ? message.media?.[0]?.waveform ?? [] : [],
           dateLabel: formatMessageDate(message.created_at),
         })),
-    [chatMessages]
+    [chatMessages, currentUserId, memberNameById]
   );
 
 
@@ -625,6 +654,24 @@ export function GroupProfileScreen() {
     }).start();
   }, [memberMenu, memberMenuAnimation]);
 
+  useEffect(() => {
+    if (!actionMenu) return;
+
+    Animated.spring(actionMenuAnimation, {
+      toValue: 1,
+      damping: 18,
+      mass: 0.8,
+      stiffness: 240,
+      useNativeDriver: true,
+    }).start();
+  }, [actionMenu, actionMenuAnimation]);
+
+  useEffect(() => {
+    if (selectedMediaIndex != null && selectedMediaIndex >= mediaItems.length) {
+      setSelectedMediaIndex(null);
+    }
+  }, [mediaItems.length, selectedMediaIndex]);
+
   const closeMoreMenu = useCallback(
     (onClosed?: unknown) => {
       const callback = typeof onClosed === 'function' ? onClosed : undefined;
@@ -720,6 +767,40 @@ export function GroupProfileScreen() {
     [memberMenuAnimation]
   );
 
+  const closeActionMenu = useCallback(
+    (onClosed?: unknown) => {
+      const callback = typeof onClosed === 'function' ? onClosed : undefined;
+      if (!actionMenu) {
+        callback?.();
+        return;
+      }
+
+      Animated.timing(actionMenuAnimation, {
+        toValue: 0,
+        duration: 120,
+        useNativeDriver: true,
+      }).start(() => {
+        setActionMenu(null);
+        callback?.();
+      });
+    },
+    [actionMenu, actionMenuAnimation]
+  );
+
+  const openActionMenu = useCallback((messageId: string, event: GestureResponderEvent) => {
+    const anchorSize = 28;
+    const anchorLeft = Math.max(event.nativeEvent.pageX - anchorSize / 2, 12);
+    const anchorTop = Math.max(event.nativeEvent.pageY - anchorSize / 2, 92);
+    actionMenuAnimation.setValue(0);
+    setActionMenu({
+      messageId,
+      left: anchorLeft,
+      top: anchorTop,
+      width: anchorSize,
+      height: anchorSize,
+    });
+  }, [actionMenuAnimation]);
+
   const handleToggleMute = useCallback(() => {
     if (!chat) return;
     const nextChat: Chat = {
@@ -745,15 +826,22 @@ export function GroupProfileScreen() {
 
   const handleShowMessageInChat = useCallback(
     (messageId: string) => {
-      setSelectedMediaIndex(null);
-      navigation.navigate('Chat', {
-        chatId,
-        chatTitle: chat?.name ?? chatTitle,
-        focusMessageId: messageId,
+      closeActionMenu(() => {
+        setSelectedMediaIndex(null);
+        setFloatingVideoNote(null);
+        navigation.navigate('Chat', {
+          chatId,
+          chatTitle: chat?.name ?? chatTitle,
+          focusMessageId: messageId,
+        });
       });
     },
-    [chat?.name, chatId, chatTitle, navigation]
+    [chat?.name, chatId, chatTitle, closeActionMenu, navigation]
   );
+
+  const handleOpenVideoNote = useCallback((item: GroupVoiceItem) => {
+    setFloatingVideoNote(item);
+  }, []);
 
   const handleOpenFile = useCallback(
     async (item: GroupFileItem) => {
@@ -986,6 +1074,27 @@ export function GroupProfileScreen() {
     [handleDeleteGroup, handleLeaveGroup]
   );
 
+  const actionMenuItems = useMemo<AnchoredPopoverMenuItem[]>(
+    () => [
+      {
+        key: 'show-in-chat',
+        label: 'Показать в чате',
+        icon: 'message-circle',
+        color: colors.textPrimary,
+      },
+    ],
+    []
+  );
+
+  const handleActionMenuAction = useCallback(
+    (key: string) => {
+      if (key === 'show-in-chat' && actionMenu) {
+        handleShowMessageInChat(actionMenu.messageId);
+      }
+    },
+    [actionMenu, handleShowMessageInChat]
+  );
+
   const selectedMemberForMenu = memberMenu?.member ?? null;
 
   const memberMenuItems = useMemo<AnchoredPopoverMenuItem[]>(() => {
@@ -998,7 +1107,7 @@ export function GroupProfileScreen() {
         key: 'write',
         label: 'Написать',
         icon: 'message-circle',
-        color: '#111827',
+        color: colors.textPrimary,
       },
     ];
 
@@ -1007,7 +1116,7 @@ export function GroupProfileScreen() {
         key: 'tag',
         label: 'Добавить тег участника',
         icon: 'tag',
-        color: '#111827',
+        color: colors.textPrimary,
       });
 
       if (selectedMemberForMenu.role !== 'owner') {
@@ -1165,7 +1274,8 @@ export function GroupProfileScreen() {
             voiceItems={voiceItems}
             onOpenMedia={setSelectedMediaIndex}
             onOpenFile={handleOpenFile}
-            onShowInChat={handleShowMessageInChat}
+            onOpenVideoNote={handleOpenVideoNote}
+            onOpenActionMenu={openActionMenu}
           />
         );
       default:
@@ -1237,13 +1347,8 @@ export function GroupProfileScreen() {
 
         {!isEditMode ? (
           <GroupProfileStickyTabs
-            displayName={displayName}
-            memberCountLabel={formatMemberCount(members.length)}
             activeTab={activeTab}
             tabs={GROUP_TAB_ITEMS}
-            compactHeaderStyle={compactHeaderStyle}
-            onBack={() => navigation.goBack()}
-            onSearch={handleSearchPress}
             onSelectTab={(tab) => setActiveTab(tab as GroupTabKey)}
           />
         ) : null}
@@ -1282,15 +1387,40 @@ export function GroupProfileScreen() {
         verticalAlign="auto"
       />
 
+      <AnchoredPopoverMenu
+        menu={
+          actionMenu
+            ? {
+                left: actionMenu.left,
+                top: actionMenu.top,
+                width: actionMenu.width,
+                height: actionMenu.height,
+              }
+            : null
+        }
+        animation={actionMenuAnimation}
+        items={actionMenuItems}
+        onClose={() => closeActionMenu()}
+        onSelect={handleActionMenuAction}
+        width={184}
+        horizontalAlign="center"
+        offsetY={10}
+        verticalAlign="auto"
+      />
+
       <GroupProfileMediaViewerModal
         visible={selectedMediaIndex != null}
         mediaItems={mediaItems}
         selectedIndex={selectedMediaIndex}
         topInset={insets.top}
-        bottomInset={insets.bottom}
         onClose={() => setSelectedMediaIndex(null)}
         onChangeIndex={setSelectedMediaIndex}
-        onShowInChat={handleShowMessageInChat}
+        onOpenActionMenu={openActionMenu}
+      />
+
+      <FloatingVideoNoteOverlay
+        item={floatingVideoNote}
+        onClose={() => setFloatingVideoNote(null)}
       />
 
 
@@ -1331,7 +1461,7 @@ export function GroupProfileScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#EEF1F7',
+    backgroundColor: colors.chatBackground,
   },
   scrollContent: {
     paddingHorizontal: 14,

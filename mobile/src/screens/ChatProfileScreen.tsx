@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import {
   Alert,
   Animated,
@@ -40,7 +40,7 @@ import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
 import type { Message } from '../stores/types';
 import { uiStore } from '../stores/uiStore';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
 
 type ChatProfileRoute = RouteProp<ChatsStackParamList, 'ChatProfile'>;
@@ -801,7 +801,7 @@ export function ChatProfileScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F3F7FC',
+    backgroundColor: colors.chatBackground,
   },
   scrollContent: {
     paddingBottom: 28,
@@ -812,7 +812,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 24,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.inputBackgroundSolid,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
   },
   infoRow: {
     minHeight: 70,
@@ -841,10 +843,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(77,141,255,0.1)',
+    backgroundColor: withAlpha(colors.accent, 0.1),
   },
   infoDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E1E6EF',
+    backgroundColor: colors.separator,
   },
 });

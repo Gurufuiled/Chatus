@@ -1,10 +1,18 @@
 import React from 'react';
 import { useEvent, useEventListener } from 'expo';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { getThumbnailAsync } from 'expo-video-thumbnails';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Dimensions, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Dimensions,
+  Image,
+  type ImageStyle,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Reanimated, {
   Easing,
   interpolate,
@@ -14,7 +22,9 @@ import Reanimated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { typography } from '../theme/colors';
+import Svg, { Circle } from 'react-native-svg';
+import { VoicePlayerService } from '../services/VoicePlayerService';
+import { colors, typography } from '../theme/colors';
 import {
   formatMediaDuration,
   formatPlaybackElapsedDuration,
@@ -28,20 +38,87 @@ const META_ROW_HEIGHT = 26;
 const META_ROW_GAP = 6;
 const ANIMATION_DURATION_MS = 320;
 const COLLAPSE_DELAY_MS = 180;
+const ACTIVE_NOTE_RELEASE_DELAY_MS = 220;
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
 const GENERATED_THUMBNAIL_TIME_MS = 0;
+const SCRUB_RING_TRACK_STROKE_WIDTH = 2.5;
+const SCRUB_RING_PROGRESS_STROKE_WIDTH = 5;
+const SCRUB_RING_PROGRESS_SHADOW_WIDTH = 7;
+const SCRUB_RING_INSET = 8;
+const SCRUB_THUMB_SIZE = 18;
+const SCRUB_THUMB_CAPTURE_PADDING = 10;
 const generatedThumbnailCache = new Map<string, string>();
+const posterImageStyle: ImageStyle = {
+  ...StyleSheet.absoluteFillObject,
+  width: undefined,
+  height: undefined,
+};
 
 function clampReplySwipe(value: number) {
   'worklet';
   return Math.max(-REPLY_SWIPE_MAX, Math.min(0, value));
 }
 
+function clampUnit(value: number) {
+  'worklet';
+  return Math.max(0, Math.min(1, value));
+}
+
+function progressForScrubPoint(locationX: number, locationY: number, ringCenter: number) {
+  'worklet';
+  const dx = locationX - ringCenter;
+  const dy = locationY - ringCenter;
+  const angle = Math.atan2(dy, dx);
+  const normalizedAngle = (angle + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2);
+  return clampUnit(normalizedAngle / (Math.PI * 2));
+}
+
+function isScrubThumbTouchTarget(
+  locationX: number,
+  locationY: number,
+  thumbCenterX: number,
+  thumbCenterY: number,
+  captureRadius: number
+) {
+  'worklet';
+  const dx = locationX - thumbCenterX;
+  const dy = locationY - thumbCenterY;
+  return dx * dx + dy * dy <= captureRadius * captureRadius;
+}
+
 type ActiveVideoNoteListener = (activeId: string | null) => void;
+type VideoNotePlaybackListener = () => void;
+
+export type VideoNotePlaybackSnapshot = {
+  messageId: string | null;
+  uri: string | null;
+  isPlaying: boolean;
+  positionMs: number;
+  durationMs: number;
+  progress: number;
+};
+
+type ActiveVideoNoteController = {
+  togglePlayback: () => void;
+  stopPlayback: () => void;
+} | null;
 
 let activeVideoNoteId: string | null = null;
 const activeVideoNoteListeners = new Set<ActiveVideoNoteListener>();
+const videoNotePlaybackListeners = new Set<VideoNotePlaybackListener>();
+let activeVideoNoteController: ActiveVideoNoteController = null;
+let pendingVideoNoteOwnershipRelease: ReturnType<typeof setTimeout> | null = null;
+let pendingVideoNoteOwnershipReleaseId: string | null = null;
+let pendingVideoNoteOwnershipReleaseUri: string | null = null;
+let videoNotePlaybackSnapshot: VideoNotePlaybackSnapshot = {
+  messageId: null,
+  uri: null,
+  isPlaying: false,
+  positionMs: 0,
+  durationMs: 0,
+  progress: 0,
+};
 
 function getActiveVideoNoteId() {
   return activeVideoNoteId;
@@ -60,7 +137,117 @@ function subscribeToActiveVideoNote(listener: ActiveVideoNoteListener) {
   };
 }
 
+function setActiveVideoNoteController(nextController: ActiveVideoNoteController) {
+  activeVideoNoteController = nextController;
+}
+
+function cancelPendingVideoNoteOwnershipRelease(noteId?: string | null, uri?: string | null) {
+  if (!pendingVideoNoteOwnershipRelease) {
+    return;
+  }
+
+  if (
+    noteId != null &&
+    uri != null &&
+    pendingVideoNoteOwnershipReleaseId !== noteId &&
+    pendingVideoNoteOwnershipReleaseUri !== uri
+  ) {
+    return;
+  }
+
+  clearTimeout(pendingVideoNoteOwnershipRelease);
+  pendingVideoNoteOwnershipRelease = null;
+  pendingVideoNoteOwnershipReleaseId = null;
+  pendingVideoNoteOwnershipReleaseUri = null;
+}
+
+function schedulePendingVideoNoteOwnershipRelease(
+  noteId: string,
+  uri: string,
+  onRelease: () => void
+) {
+  cancelPendingVideoNoteOwnershipRelease();
+  pendingVideoNoteOwnershipReleaseId = noteId;
+  pendingVideoNoteOwnershipReleaseUri = uri;
+  pendingVideoNoteOwnershipRelease = setTimeout(() => {
+    pendingVideoNoteOwnershipRelease = null;
+    pendingVideoNoteOwnershipReleaseId = null;
+    pendingVideoNoteOwnershipReleaseUri = null;
+    onRelease();
+  }, ACTIVE_NOTE_RELEASE_DELAY_MS);
+}
+
+function emitVideoNotePlaybackSnapshot() {
+  videoNotePlaybackListeners.forEach((listener) => listener());
+}
+
+function setVideoNotePlaybackSnapshot(nextSnapshot: VideoNotePlaybackSnapshot) {
+  const prevSnapshot = videoNotePlaybackSnapshot;
+  if (
+    prevSnapshot.messageId === nextSnapshot.messageId &&
+    prevSnapshot.uri === nextSnapshot.uri &&
+    prevSnapshot.isPlaying === nextSnapshot.isPlaying &&
+    prevSnapshot.positionMs === nextSnapshot.positionMs &&
+    prevSnapshot.durationMs === nextSnapshot.durationMs &&
+    prevSnapshot.progress === nextSnapshot.progress
+  ) {
+    return;
+  }
+
+  videoNotePlaybackSnapshot = nextSnapshot;
+  emitVideoNotePlaybackSnapshot();
+}
+
+function clearVideoNotePlaybackSnapshot(messageId: string) {
+  if (videoNotePlaybackSnapshot.messageId !== messageId) {
+    return;
+  }
+
+  setVideoNotePlaybackSnapshot({
+    messageId: null,
+    uri: null,
+    isPlaying: false,
+    positionMs: 0,
+    durationMs: 0,
+    progress: 0,
+  });
+}
+
+function subscribeToVideoNotePlayback(listener: VideoNotePlaybackListener) {
+  videoNotePlaybackListeners.add(listener);
+  return () => {
+    videoNotePlaybackListeners.delete(listener);
+  };
+}
+
+function getVideoNotePlaybackSnapshot() {
+  return videoNotePlaybackSnapshot;
+}
+
+export function stopActiveVideoNotePlayback() {
+  activeVideoNoteController?.stopPlayback();
+}
+
+export function toggleActiveVideoNotePlayback() {
+  activeVideoNoteController?.togglePlayback();
+}
+
+export function useVideoNotePlayer() {
+  const snapshot = React.useSyncExternalStore(
+    subscribeToVideoNotePlayback,
+    getVideoNotePlaybackSnapshot,
+    getVideoNotePlaybackSnapshot
+  );
+
+  return {
+    ...snapshot,
+    togglePlayback: toggleActiveVideoNotePlayback,
+    stopPlayback: stopActiveVideoNotePlayback,
+  };
+}
+
 export interface VideoNoteBubbleProps {
+  messageId?: string;
   uri: string;
   thumbnailUri?: string;
   durationMs: number;
@@ -74,10 +261,12 @@ export interface VideoNoteBubbleProps {
   outgoingAccentColor?: string;
   enableReplySwipe?: boolean;
   onReplySwipe?: () => void;
+  registerPlaybackState?: boolean;
 }
 
 function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
   return (
+    prev.messageId === next.messageId &&
     prev.uri === next.uri &&
     prev.thumbnailUri === next.thumbnailUri &&
     prev.durationMs === next.durationMs &&
@@ -90,11 +279,13 @@ function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
     prev.outgoingMetaColor === next.outgoingMetaColor &&
     prev.outgoingAccentColor === next.outgoingAccentColor &&
     prev.enableReplySwipe === next.enableReplySwipe &&
-    prev.onReplySwipe === next.onReplySwipe
+    prev.onReplySwipe === next.onReplySwipe &&
+    prev.registerPlaybackState === next.registerPlaybackState
   );
 }
 
 export const VideoNoteBubble = React.memo(function VideoNoteBubble({
+  messageId,
   uri,
   thumbnailUri,
   durationMs,
@@ -105,8 +296,10 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   header,
   enableReplySwipe = false,
   onReplySwipe,
+  registerPlaybackState = true,
 }: VideoNoteBubbleProps) {
-  const noteId = React.useId();
+  const generatedNoteId = React.useId();
+  const noteId = messageId ?? generatedNoteId;
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
   const [generatedThumbnailUri, setGeneratedThumbnailUri] = React.useState(() => {
@@ -117,6 +310,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const [isPlayerMounted, setIsPlayerMounted] = React.useState(false);
   const [hasRenderedFrame, setHasRenderedFrame] = React.useState(false);
   const [showPausedPlayOverlay, setShowPausedPlayOverlay] = React.useState(false);
+  const [scrubProgress, setScrubProgress] = React.useState<number | null>(null);
+  const [isThumbScrubbing, setIsThumbScrubbing] = React.useState(false);
   const progress = useSharedValue(0);
   const badgeOpacity = useSharedValue(0);
   const replyTranslateX = useSharedValue(0);
@@ -124,6 +319,9 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const replyTriggerPop = useSharedValue(0);
   const collapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = React.useRef(true);
+  const suppressPressUntilRef = React.useRef(0);
+  const scrubProgressRef = React.useRef<number | null>(null);
+  const didActivateThumbScrub = useSharedValue(false);
 
   const player = useVideoPlayer(normalizedUri, (instance) => {
     instance.loop = false;
@@ -139,6 +337,11 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     bufferedPosition: 0,
   });
 
+  const setScrubProgressValue = React.useCallback((nextProgress: number | null) => {
+    scrubProgressRef.current = nextProgress;
+    setScrubProgress(nextProgress);
+  }, []);
+
   const clearCollapseTimer = React.useCallback(() => {
     if (collapseTimerRef.current) {
       clearTimeout(collapseTimerRef.current);
@@ -146,13 +349,45 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     }
   }, []);
 
+  const stopVoicePlayback = React.useCallback(() => {
+    void VoicePlayerService.stop().catch(() => {});
+  }, []);
+
+  const releasePlaybackOwnership = React.useCallback((pausePlayer: boolean) => {
+    const release = () => {
+      if (getActiveVideoNoteId() === noteId) {
+        setActiveVideoNoteId(null);
+      }
+      if (getVideoNotePlaybackSnapshot().messageId === noteId) {
+        clearVideoNotePlaybackSnapshot(noteId);
+        setActiveVideoNoteController(null);
+      }
+      if (pausePlayer) {
+        try {
+          player.pause();
+        } catch {
+          // Ignore.
+        }
+      }
+    };
+
+    if (registerPlaybackState && getVideoNotePlaybackSnapshot().messageId === noteId) {
+      schedulePendingVideoNoteOwnershipRelease(noteId, normalizedUri, release);
+      return;
+    }
+
+    release();
+  }, [normalizedUri, noteId, player, registerPlaybackState]);
+
   const finishCollapse = React.useCallback(() => {
     if (!isMountedRef.current) return;
     setIsExpanded(false);
     setIsPlayerMounted(false);
     setHasRenderedFrame(false);
     setShowPausedPlayOverlay(false);
-  }, []);
+    setIsThumbScrubbing(false);
+    setScrubProgressValue(null);
+  }, [setScrubProgressValue]);
 
   const animateProgress = React.useCallback(
     (target: number, onFinished?: () => void) => {
@@ -189,6 +424,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const expandInline = React.useCallback(() => {
     if (!normalizedUri) return;
     clearCollapseTimer();
+    stopVoicePlayback();
     if (getActiveVideoNoteId() !== noteId) {
       setActiveVideoNoteId(noteId);
     }
@@ -209,10 +445,11 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         }
       }
     });
-  }, [animateProgress, clearCollapseTimer, normalizedUri, noteId, player]);
+  }, [animateProgress, clearCollapseTimer, normalizedUri, noteId, player, stopVoicePlayback]);
 
   const handlePress = React.useCallback(() => {
     if (!normalizedUri) return;
+    if (Date.now() < suppressPressUntilRef.current) return;
 
     if (!isExpanded) {
       expandInline();
@@ -221,17 +458,28 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
     try {
       if (!showPausedPlayOverlay) {
+        setScrubProgressValue(null);
         setShowPausedPlayOverlay(true);
         player.pause();
       } else {
+        setIsThumbScrubbing(false);
         setShowPausedPlayOverlay(false);
+        setScrubProgressValue(null);
         badgeOpacity.value = 0;
         player.play();
       }
     } catch {
       // Best effort toggle only.
     }
-  }, [badgeOpacity, expandInline, isExpanded, normalizedUri, player, showPausedPlayOverlay]);
+  }, [
+    badgeOpacity,
+    expandInline,
+    isExpanded,
+    normalizedUri,
+    player,
+    setScrubProgressValue,
+    showPausedPlayOverlay,
+  ]);
 
   useEventListener(player, 'playToEnd', () => {
     clearCollapseTimer();
@@ -243,19 +491,13 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
   React.useEffect(() => {
     isMountedRef.current = true;
+    cancelPendingVideoNoteOwnershipRelease(noteId, normalizedUri);
     return () => {
       isMountedRef.current = false;
       clearCollapseTimer();
-      if (getActiveVideoNoteId() === noteId) {
-        setActiveVideoNoteId(null);
-      }
-      try {
-        player.pause();
-      } catch {
-        // Ignore.
-      }
+      releasePlaybackOwnership(true);
     };
-  }, [clearCollapseTimer, noteId, player]);
+  }, [clearCollapseTimer, normalizedUri, noteId, releasePlaybackOwnership]);
 
   React.useEffect(() => {
     return subscribeToActiveVideoNote((activeId) => {
@@ -266,17 +508,30 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   }, [collapseInline, isExpanded, isPlayerMounted, noteId]);
 
   React.useEffect(() => {
+    if (normalizedUri) {
+      return;
+    }
+
     clearCollapseTimer();
     setIsExpanded(false);
     setIsPlayerMounted(false);
     setHasRenderedFrame(false);
     setShowPausedPlayOverlay(false);
+    setIsThumbScrubbing(false);
+    setScrubProgressValue(null);
     progress.value = 0;
     badgeOpacity.value = 0;
     if (getActiveVideoNoteId() === noteId) {
       setActiveVideoNoteId(null);
     }
-  }, [badgeOpacity, clearCollapseTimer, noteId, normalizedThumbnailUri, normalizedUri, progress]);
+  }, [
+    badgeOpacity,
+    clearCollapseTimer,
+    noteId,
+    normalizedUri,
+    progress,
+    setScrubProgressValue,
+  ]);
 
   React.useEffect(() => {
     if (!normalizedUri) {
@@ -319,6 +574,122 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       duration: showPausedPlayOverlay ? 140 : 80,
     });
   }, [badgeOpacity, isExpanded, showPausedPlayOverlay]);
+
+  React.useEffect(() => {
+    if (!registerPlaybackState || !normalizedUri) {
+      return;
+    }
+
+    cancelPendingVideoNoteOwnershipRelease(noteId, normalizedUri);
+    const snapshot = getVideoNotePlaybackSnapshot();
+    const shouldRestoreActivePlayback =
+      snapshot.messageId != null &&
+      (snapshot.messageId === noteId ||
+        (snapshot.uri === normalizedUri && getActiveVideoNoteId() === snapshot.messageId));
+
+    if (!shouldRestoreActivePlayback) {
+      return;
+    }
+
+    if (getActiveVideoNoteId() !== noteId) {
+      setActiveVideoNoteId(noteId);
+    }
+
+    if (snapshot.messageId !== noteId || snapshot.uri !== normalizedUri) {
+      setVideoNotePlaybackSnapshot({
+        ...snapshot,
+        messageId: noteId,
+        uri: normalizedUri,
+      });
+    }
+
+    setIsExpanded(true);
+    setIsPlayerMounted(true);
+    setHasRenderedFrame(false);
+    setShowPausedPlayOverlay(!snapshot.isPlaying);
+    progress.value = 1;
+    setScrubProgressValue(
+      snapshot.durationMs > 0
+        ? clampUnit(snapshot.positionMs / snapshot.durationMs)
+        : snapshot.progress
+    );
+
+    requestAnimationFrame(() => {
+      try {
+        player.currentTime = Math.max(snapshot.positionMs, 0) / 1000;
+      } catch {
+        // Ignore player seek races during restore.
+      }
+
+      try {
+        if (snapshot.isPlaying) {
+          player.play();
+        } else {
+          player.pause();
+        }
+      } catch {
+        // Ignore restore races while the player source is preparing.
+      }
+    });
+  }, [noteId, normalizedUri, player, progress, registerPlaybackState, setScrubProgressValue]);
+
+  React.useEffect(() => {
+    if (!registerPlaybackState) {
+      return;
+    }
+
+    if (!isExpanded || !normalizedUri) {
+      clearVideoNotePlaybackSnapshot(noteId);
+      if (activeVideoNoteController && videoNotePlaybackSnapshot.messageId === noteId) {
+        setActiveVideoNoteController(null);
+      }
+      return;
+    }
+
+    const durationForState = Math.max(durationMs, Math.round((player.duration || 0) * 1000));
+    const rawPositionMs =
+      scrubProgress != null
+        ? Math.round(clampUnit(scrubProgress) * durationForState)
+        : Math.round((timeUpdate.currentTime ?? 0) * 1000);
+    const positionMs = Math.min(Math.max(rawPositionMs, 0), durationForState);
+    const progressValue =
+      durationForState > 0 ? clampUnit(positionMs / durationForState) : 0;
+
+    setVideoNotePlaybackSnapshot({
+      messageId: noteId,
+      uri: normalizedUri,
+      isPlaying: isPlaying && !showPausedPlayOverlay,
+      positionMs,
+      durationMs: durationForState,
+      progress: progressValue,
+    });
+    setActiveVideoNoteController({
+      togglePlayback: handlePress,
+      stopPlayback: collapseInline,
+    });
+
+    return () => {
+      if (videoNotePlaybackSnapshot.messageId === noteId) {
+        clearVideoNotePlaybackSnapshot(noteId);
+      }
+      if (activeVideoNoteController && videoNotePlaybackSnapshot.messageId === noteId) {
+        setActiveVideoNoteController(null);
+      }
+    };
+  }, [
+    collapseInline,
+    durationMs,
+    handlePress,
+    isExpanded,
+    isPlaying,
+    normalizedUri,
+    noteId,
+    player.duration,
+    registerPlaybackState,
+    scrubProgress,
+    showPausedPlayOverlay,
+    timeUpdate.currentTime,
+  ]);
 
   const slotStyle = useAnimatedStyle(() => {
     const size = interpolate(progress.value, [0, 1], [COLLAPSED_SIZE, EXPANDED_SIZE]);
@@ -366,8 +737,11 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     };
   });
 
+  const replySwipeEnabled =
+    enableReplySwipe && typeof onReplySwipe === 'function' && !isThumbScrubbing;
+
   const replyGesture = React.useMemo(() => Gesture.Pan()
-    .enabled(enableReplySwipe && typeof onReplySwipe === 'function')
+    .enabled(replySwipeEnabled)
     .activeOffsetX([-10, 10])
     .failOffsetY([-10, 10])
     .onBegin(() => {
@@ -394,7 +768,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     .onFinalize(() => {
       replyTranslateX.value = withTiming(0, { duration: 140 });
       replyHasTriggered.value = false;
-    }), [enableReplySwipe, onReplySwipe, replyHasTriggered, replyTranslateX, replyTriggerPop]);
+    }), [onReplySwipe, replyHasTriggered, replySwipeEnabled, replyTranslateX, replyTriggerPop]);
 
   const replyContentStyle = useAnimatedStyle(() => {
     const scale = interpolate(replyTriggerPop.value, [0, 1], [1, 0.985]);
@@ -415,15 +789,126 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     };
   });
 
+  const effectiveDurationMs = Math.max(durationMs, Math.round((player.duration || 0) * 1000));
+  const liveElapsedMs = Math.min(
+    Math.max(Math.round((timeUpdate.currentTime ?? 0) * 1000), 0),
+    effectiveDurationMs
+  );
+  const effectiveProgress = clampUnit(
+    scrubProgress != null
+      ? scrubProgress
+      : effectiveDurationMs > 0
+        ? liveElapsedMs / effectiveDurationMs
+        : 0
+  );
+  const elapsedMs = Math.round(effectiveProgress * effectiveDurationMs);
+  const durationLabel = isExpanded
+    ? formatPlaybackElapsedDuration(elapsedMs, effectiveDurationMs)
+    : formatMediaDuration(durationMs);
+  const scrubRingSize = isExpanded ? EXPANDED_SIZE : COLLAPSED_SIZE;
+  const scrubRingPadding = SCRUB_RING_INSET + SCRUB_RING_PROGRESS_SHADOW_WIDTH / 2;
+  const scrubRingRadius = scrubRingSize / 2 - scrubRingPadding;
+  const scrubRingCircumference = 2 * Math.PI * scrubRingRadius;
+  const scrubRingOffset = scrubRingCircumference * (1 - effectiveProgress);
+  const scrubRingCenter = scrubRingSize / 2;
+  const scrubAngleRadians = effectiveProgress * Math.PI * 2 - Math.PI / 2;
+  const scrubThumbOffset = SCRUB_THUMB_SIZE / 2;
+  const scrubThumbCenterX = scrubRingCenter + Math.cos(scrubAngleRadians) * scrubRingRadius;
+  const scrubThumbCenterY = scrubRingCenter + Math.sin(scrubAngleRadians) * scrubRingRadius;
+  const scrubThumbCaptureRadius = scrubThumbOffset + SCRUB_THUMB_CAPTURE_PADDING;
+
+  const commitScrubProgress = React.useCallback(async () => {
+    if (scrubProgressRef.current == null || effectiveDurationMs <= 0) {
+      return;
+    }
+
+    const nextPositionMs = Math.round(clampUnit(scrubProgressRef.current) * effectiveDurationMs);
+    try {
+      player.currentTime = nextPositionMs / 1000;
+    } catch {
+      // Ignore player seek races.
+    }
+  }, [effectiveDurationMs, player]);
+
+  const updateScrubProgress = React.useCallback((nextProgress: number) => {
+    suppressPressUntilRef.current = Date.now() + 220;
+    setScrubProgressValue(nextProgress);
+  }, [setScrubProgressValue]);
+
+  const finalizeThumbScrub = React.useCallback((didActivate: boolean) => {
+    setIsThumbScrubbing(false);
+    if (!didActivate) {
+      return;
+    }
+    void commitScrubProgress();
+    suppressPressUntilRef.current = Date.now() + 220;
+  }, [commitScrubProgress]);
+
+  const scrubGesture = React.useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(showPausedPlayOverlay)
+        .manualActivation(true)
+        .onTouchesDown((event, stateManager) => {
+          const touch = event.allTouches[0];
+          if (!touch || !showPausedPlayOverlay) {
+            didActivateThumbScrub.value = false;
+            stateManager.fail();
+            return;
+          }
+
+          if (
+            isScrubThumbTouchTarget(
+              touch.x,
+              touch.y,
+              scrubThumbCenterX,
+              scrubThumbCenterY,
+              scrubThumbCaptureRadius
+            )
+          ) {
+            didActivateThumbScrub.value = true;
+            runOnJS(setIsThumbScrubbing)(true);
+            stateManager.activate();
+            return;
+          }
+
+          didActivateThumbScrub.value = false;
+          stateManager.fail();
+        })
+        .onBegin((event) => {
+          runOnJS(updateScrubProgress)(
+            progressForScrubPoint(event.x, event.y, scrubRingCenter)
+          );
+        })
+        .onUpdate((event) => {
+          runOnJS(updateScrubProgress)(
+            progressForScrubPoint(event.x, event.y, scrubRingCenter)
+          );
+        })
+        .onFinalize(() => {
+          const didActivate = didActivateThumbScrub.value;
+          didActivateThumbScrub.value = false;
+          runOnJS(finalizeThumbScrub)(didActivate);
+        }),
+    [
+      didActivateThumbScrub,
+      finalizeThumbScrub,
+      scrubRingCenter,
+      scrubThumbCaptureRadius,
+      scrubThumbCenterX,
+      scrubThumbCenterY,
+      showPausedPlayOverlay,
+      updateScrubProgress,
+    ]
+  );
+
+  const composedGesture = React.useMemo(
+    () => Gesture.Exclusive(scrubGesture, replyGesture),
+    [replyGesture, scrubGesture]
+  );
+
   const posterUri = normalizedThumbnailUri || generatedThumbnailUri;
   const showPoster = posterUri.length > 0 && (!isPlayerMounted || !hasRenderedFrame);
-  const elapsedMs = Math.min(
-    Math.max(Math.round((timeUpdate.currentTime ?? 0) * 1000), 0),
-    durationMs
-  );
-  const durationLabel = isExpanded
-    ? formatPlaybackElapsedDuration(elapsedMs, durationMs)
-    : formatMediaDuration(durationMs);
 
   const pressableContent = (
     <Pressable
@@ -432,9 +917,11 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       onPress={handlePress}
       style={styles.pressable}
     >
-      <Reanimated.View style={[styles.circle, circleStyle]}>
+      <Reanimated.View
+        style={[styles.circle, circleStyle]}
+      >
         {showPoster ? (
-          <Image source={{ uri: posterUri }} style={styles.poster} resizeMode="cover" />
+          <Image source={{ uri: posterUri }} style={posterImageStyle} resizeMode="cover" />
         ) : null}
 
         {isPlayerMounted ? (
@@ -452,6 +939,62 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         <Reanimated.View pointerEvents="none" style={[styles.centerBadge, centerBadgeStyle]}>
           <View style={styles.centerPlayGlyph} />
         </Reanimated.View>
+
+        {isExpanded ? (
+          <View pointerEvents="none" style={styles.scrubRingWrap}>
+            <Svg width={scrubRingSize} height={scrubRingSize}>
+              <Circle
+                cx={scrubRingSize / 2}
+                cy={scrubRingSize / 2}
+                r={scrubRingRadius}
+                stroke="rgba(255,255,255,0.34)"
+                strokeWidth={SCRUB_RING_TRACK_STROKE_WIDTH}
+                fill="none"
+              />
+              <Circle
+                cx={scrubRingSize / 2}
+                cy={scrubRingSize / 2}
+                r={scrubRingRadius}
+                stroke="rgba(0,0,0,0.34)"
+                strokeWidth={SCRUB_RING_PROGRESS_SHADOW_WIDTH}
+                strokeLinecap="round"
+                strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
+                strokeDashoffset={scrubRingOffset}
+                fill="none"
+                rotation={-90}
+                originX={scrubRingSize / 2}
+                originY={scrubRingSize / 2}
+              />
+              <Circle
+                cx={scrubRingSize / 2}
+                cy={scrubRingSize / 2}
+                r={scrubRingRadius}
+                stroke="#FFFFFF"
+                strokeWidth={SCRUB_RING_PROGRESS_STROKE_WIDTH}
+                strokeLinecap="round"
+                strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
+                strokeDashoffset={scrubRingOffset}
+                fill="none"
+                rotation={-90}
+                originX={scrubRingSize / 2}
+                originY={scrubRingSize / 2}
+              />
+            </Svg>
+            {showPausedPlayOverlay ? (
+              <View
+                style={[
+                  styles.scrubThumb,
+                  {
+                    left: scrubThumbCenterX,
+                    top: scrubThumbCenterY,
+                  },
+                ]}
+              >
+                <View style={styles.scrubThumbDot} />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </Reanimated.View>
 
       <Reanimated.View pointerEvents="none" style={[styles.footerMeta, footerMetaStyle]}>
@@ -489,11 +1032,11 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         ]}
       >
         {enableReplySwipe && onReplySwipe ? (
-          <GestureDetector gesture={replyGesture}>
+          <GestureDetector gesture={composedGesture}>
             <View style={styles.replyGestureContainer}>
               <Reanimated.View style={[styles.replySwipeAction, replyIconStyle]}>
                 <View style={styles.replySwipeIconWrap}>
-                  <Feather name="corner-left-up" size={18} color="#4D8DFF" />
+                  <Feather name="corner-left-up" size={18} color={colors.accent} />
                 </View>
               </Reanimated.View>
               <Reanimated.View style={[styles.replyGestureContent, replyContentStyle]}>
@@ -501,6 +1044,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
               </Reanimated.View>
             </View>
           </GestureDetector>
+        ) : showPausedPlayOverlay ? (
+          <GestureDetector gesture={composedGesture}>{pressableContent}</GestureDetector>
         ) : (
           pressableContent
         )}
@@ -570,11 +1115,6 @@ const styles = StyleSheet.create({
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 8 },
   },
-  poster: {
-    ...StyleSheet.absoluteFillObject,
-    width: undefined,
-    height: undefined,
-  },
   posterFallback: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#0B1020',
@@ -586,6 +1126,37 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  scrubRingWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrubThumb: {
+    position: 'absolute',
+    width: SCRUB_THUMB_SIZE,
+    height: SCRUB_THUMB_SIZE,
+    borderRadius: SCRUB_THUMB_SIZE / 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [
+      { translateX: -SCRUB_THUMB_SIZE / 2 },
+      { translateY: -SCRUB_THUMB_SIZE / 2 },
+    ],
+  },
+  scrubThumbDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.14)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.34,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
   },
   centerPlayGlyph: {
     width: 0,

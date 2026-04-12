@@ -1,6 +1,14 @@
-import React, { useMemo } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import Feather from '@expo/vector-icons/Feather';
+import {
+  Alert,
+  GestureResponderEvent,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
@@ -11,6 +19,10 @@ import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
 } from '../../utils/mediaDuration';
+import {
+  ensureVideoThumbnailUri,
+  getCachedVideoThumbnailUri,
+} from '../../utils/videoThumbnail';
 import type { GroupFileItem, GroupMediaItem, GroupVoiceItem } from './groupProfile.types';
 
 type GroupMediaTabKey = 'media' | 'files' | 'voice';
@@ -22,7 +34,8 @@ type GroupProfileMediaContentProps = {
   voiceItems: GroupVoiceItem[];
   onOpenMedia: (index: number) => void;
   onOpenFile: (item: GroupFileItem) => void;
-  onShowInChat: (messageId: string) => void;
+  onOpenVideoNote: (item: GroupVoiceItem) => void;
+  onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 };
 
 function buildVoicePreviewBars(waveform: number[]) {
@@ -33,56 +46,102 @@ function buildVoicePreviewBars(waveform: number[]) {
   return base.map((value) => 4 + Math.pow(value, 1.15) * 16);
 }
 
+function useVideoPreviewUri(videoUri: string | null | undefined, preferredUri?: string | null) {
+  const normalizedVideoUri = videoUri?.trim() ?? '';
+  const normalizedPreferredUri = preferredUri?.trim() ?? '';
+  const [generatedUri, setGeneratedUri] = useState(() =>
+    normalizedPreferredUri ? '' : getCachedVideoThumbnailUri(normalizedVideoUri) ?? ''
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (normalizedPreferredUri || !normalizedVideoUri) {
+      setGeneratedUri('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const cached = getCachedVideoThumbnailUri(normalizedVideoUri);
+    if (cached) {
+      setGeneratedUri(cached);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void ensureVideoThumbnailUri(normalizedVideoUri)
+      .then((nextUri) => {
+        if (isMounted) setGeneratedUri(nextUri);
+      })
+      .catch(() => {
+        if (isMounted) setGeneratedUri('');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [normalizedPreferredUri, normalizedVideoUri]);
+
+  return normalizedPreferredUri || generatedUri;
+}
+
 const GroupFileRow = React.memo(function GroupFileRow({
   item,
   onOpenFile,
-  onShowInChat,
+  onOpenMenu,
 }: {
   item: GroupFileItem;
   onOpenFile: (item: GroupFileItem) => void;
-  onShowInChat: (messageId: string) => void;
+  onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
   return (
-    <View style={styles.fileRow}>
-      <Pressable
-        onPress={() => onOpenFile(item)}
-        style={({ pressed }) => [styles.fileMainAction, pressed && styles.rowPressed]}
-      >
-        <View style={styles.fileBadge}>
-          <Text style={styles.fileBadgeText}>{item.extension}</Text>
-        </View>
-        <View style={styles.fileTextWrap}>
-          <Text style={styles.fileTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={styles.fileSubtitle} numberOfLines={1}>
-            {[item.size, item.date].filter(Boolean).join(' • ')}
-          </Text>
-        </View>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Показать файл в чате"
-        hitSlop={8}
-        onPress={() => onShowInChat(item.id)}
-        style={({ pressed }) => [
-          styles.rowActionButton,
-          pressed && styles.rowActionButtonPressed,
-        ]}
-      >
-        <Feather name="message-circle" size={16} color={colors.accent} />
-      </Pressable>
-    </View>
+    <Pressable
+      onPress={() => onOpenFile(item)}
+      onLongPress={(event) => onOpenMenu(item.id, event)}
+      delayLongPress={220}
+      style={({ pressed }) => [styles.fileRow, pressed && styles.rowPressed]}
+    >
+      <View style={styles.fileBadge}>
+        <Text style={styles.fileBadgeText}>{item.extension}</Text>
+      </View>
+      <View style={styles.fileTextWrap}>
+        <Text style={styles.fileTitle} numberOfLines={1}>
+          {item.title}
+        </Text>
+        <Text style={styles.fileSubtitle} numberOfLines={1}>
+          {[item.size, item.date].filter(Boolean).join(' • ')}
+        </Text>
+      </View>
+    </Pressable>
   );
+});
+
+const MediaTilePreview = React.memo(function MediaTilePreview({ item }: { item: GroupMediaItem }) {
+  const generatedPreviewUri = useVideoPreviewUri(
+    item.kind === 'video' ? item.uri : null,
+    item.previewUri
+  );
+  const previewUri = item.kind === 'video' ? generatedPreviewUri : item.previewUri ?? item.uri;
+
+  if (!previewUri) {
+    return (
+      <View style={[styles.mediaImage, styles.mediaVideoFallback]}>
+        <Feather name="video" size={22} color="#FFFFFF" />
+      </View>
+    );
+  }
+
+  return <Image source={{ uri: previewUri }} style={styles.mediaImage} />;
 });
 
 const GroupVoiceRow = React.memo(function GroupVoiceRow({
   item,
-  onShowInChat,
+  onOpenMenu,
 }: {
   item: GroupVoiceItem;
-  onShowInChat: (messageId: string) => void;
+  onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
   const { play, pause } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(
@@ -93,6 +152,7 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
     ? formatRemainingPlaybackDuration(remainingMs)
     : formatMediaDuration(item.durationMs);
   const bars = useMemo(() => buildVoicePreviewBars(item.waveform), [item.waveform]);
+  const suppressNextPressRef = useRef(false);
 
   const handlePlayPress = async () => {
     if (!item.uri) {
@@ -115,70 +175,110 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
   };
 
   return (
-    <View style={styles.voiceRow}>
-      <Pressable
-        onPress={() => {
-          void handlePlayPress();
-        }}
-        style={({ pressed }) => [
+    <Pressable
+      onPress={() => {
+        if (suppressNextPressRef.current) {
+          suppressNextPressRef.current = false;
+          return;
+        }
+        void handlePlayPress();
+      }}
+      onLongPress={(event) => {
+        suppressNextPressRef.current = true;
+        onOpenMenu(item.id, event);
+      }}
+      delayLongPress={220}
+      style={({ pressed }) => [styles.voiceRow, pressed && styles.rowPressed]}
+    >
+      {({ pressed }) => (
+        <>
+          <View
+            style={[
           styles.voicePlayButton,
           isPlaying && styles.voicePlayButtonActive,
           pressed && styles.voicePlayButtonPressed,
-        ]}
-      >
-        <Feather
-          name={isPlaying ? 'pause' : 'play'}
-          size={16}
-          color="#FFFFFF"
-          style={!isPlaying ? styles.voicePlayIcon : undefined}
-        />
-      </Pressable>
+            ]}
+          >
+            <Feather
+              name={isPlaying ? 'pause' : 'play'}
+              size={16}
+              color="#FFFFFF"
+              style={!isPlaying ? styles.voicePlayIcon : undefined}
+            />
+          </View>
 
-      <Pressable
-        onPress={() => {
-          void handlePlayPress();
-        }}
-        style={({ pressed }) => [
-          styles.voiceWaveWrap,
-          pressed && styles.rowPressed,
-        ]}
-      >
-        <View style={styles.voiceWaveTrack}>
-          {bars.map((height, index) => {
-            const isFilled = progress > 0 && index / bars.length <= progress;
-            return (
-              <View
-                key={`${item.id}-${index}`}
-                style={[
-                  styles.voiceBar,
-                  {
-                    height,
-                    backgroundColor: isFilled ? colors.accent : 'rgba(77,141,255,0.24)',
-                  },
-                ]}
-              />
-            );
-          })}
+          <View style={styles.voiceWaveWrap}>
+            <View style={styles.voiceWaveTrack}>
+              {bars.map((height, index) => {
+                const isFilled = progress > 0 && index / bars.length <= progress;
+                return (
+                  <View
+                    key={`${item.id}-${index}`}
+                    style={[
+                      styles.voiceBar,
+                      {
+                        height,
+                        backgroundColor: isFilled ? colors.accent : 'rgba(77,141,255,0.24)',
+                      },
+                    ]}
+                  />
+                );
+              })}
+            </View>
+            <View style={styles.voiceMetaRow}>
+              <Text style={styles.voiceDuration}>{durationLabel}</Text>
+              <Text style={styles.voiceDate}>{item.dateLabel}</Text>
+            </View>
+          </View>
+        </>
+      )}
+    </Pressable>
+  );
+});
+
+const GroupVideoNoteRow = React.memo(function GroupVideoNoteRow({
+  item,
+  onOpen,
+  onOpenMenu,
+}: {
+  item: GroupVoiceItem;
+  onOpen: (item: GroupVoiceItem) => void;
+  onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
+}) {
+  const previewUri = useVideoPreviewUri(item.uri, item.thumbnailUri);
+
+  return (
+    <Pressable
+      onPress={() => onOpen(item)}
+      onLongPress={(event) => onOpenMenu(item.id, event)}
+      delayLongPress={220}
+      style={({ pressed }) => [styles.voiceRow, pressed && styles.videoNoteRowPressed]}
+    >
+      <View style={styles.videoNoteThumbWrap}>
+        {previewUri ? (
+          <Image source={{ uri: previewUri }} style={styles.videoNoteThumb} />
+        ) : (
+          <View style={styles.videoNoteThumbFallback}>
+            <Feather name="video" size={18} color="#FFFFFF" />
+          </View>
+        )}
+        <View style={styles.videoNoteThumbOverlay}>
+          <Feather name="play" size={14} color="#FFFFFF" style={styles.voicePlayIcon} />
         </View>
+      </View>
+
+      <View style={styles.videoNoteTextWrap}>
+        {item.title ? (
+          <Text style={styles.videoNoteTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
+        ) : null}
         <View style={styles.voiceMetaRow}>
-          <Text style={styles.voiceDuration}>{durationLabel}</Text>
+          <Text style={styles.voiceDuration}>{formatMediaDuration(item.durationMs)}</Text>
           <Text style={styles.voiceDate}>{item.dateLabel}</Text>
         </View>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Показать голосовое в чате"
-        hitSlop={8}
-        onPress={() => onShowInChat(item.id)}
-        style={({ pressed }) => [
-          styles.rowActionButton,
-          pressed && styles.rowActionButtonPressed,
-        ]}
-      >
-        <Feather name="message-circle" size={16} color={colors.accent} />
-      </Pressable>
-    </View>
+      </View>
+    </Pressable>
   );
 });
 
@@ -189,14 +289,15 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
   voiceItems,
   onOpenMedia,
   onOpenFile,
-  onShowInChat,
+  onOpenVideoNote,
+  onOpenActionMenu,
 }: GroupProfileMediaContentProps) {
   if (activeTab === 'media') {
     if (mediaItems.length === 0) {
       return (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>Пока нет медиа</Text>
-          <Text style={styles.emptySubtitle}>Фото и кружочки из группы появятся здесь.</Text>
+          <Text style={styles.emptySubtitle}>Фото и видео из группы появятся здесь.</Text>
         </View>
       );
     }
@@ -207,9 +308,16 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
           <Pressable
             key={item.id}
             onPress={() => onOpenMedia(index)}
+            onLongPress={(event) => onOpenActionMenu(item.id, event)}
+            delayLongPress={220}
             style={({ pressed }) => [styles.mediaTile, pressed && styles.rowPressed]}
           >
-            <Image source={{ uri: item.uri }} style={styles.mediaImage} />
+            <MediaTilePreview item={item} />
+            {item.kind === 'video' ? (
+              <View style={styles.mediaPlayBadge}>
+                <Feather name="play" size={14} color="#FFFFFF" style={styles.voicePlayIcon} />
+              </View>
+            ) : null}
             {item.durationMs ? (
               <View style={styles.mediaBadge}>
                 <Text style={styles.mediaBadgeText}>{formatMediaDuration(item.durationMs)}</Text>
@@ -238,7 +346,7 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
             key={item.id}
             item={item}
             onOpenFile={onOpenFile}
-            onShowInChat={onShowInChat}
+            onOpenMenu={onOpenActionMenu}
           />
         ))}
       </View>
@@ -249,16 +357,25 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
     return (
       <View style={styles.emptyCard}>
         <Text style={styles.emptyTitle}>Пока нет голосовых</Text>
-        <Text style={styles.emptySubtitle}>Голосовые сообщения группы будут здесь.</Text>
+        <Text style={styles.emptySubtitle}>Голосовые сообщения и видеосообщения группы будут здесь.</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.stackSection}>
-      {voiceItems.map((item) => (
-        <GroupVoiceRow key={item.id} item={item} onShowInChat={onShowInChat} />
-      ))}
+      {voiceItems.map((item) =>
+        item.kind === 'video_note' ? (
+          <GroupVideoNoteRow
+            key={item.id}
+            item={item}
+            onOpen={onOpenVideoNote}
+            onOpenMenu={onOpenActionMenu}
+          />
+        ) : (
+          <GroupVoiceRow key={item.id} item={item} onOpenMenu={onOpenActionMenu} />
+        )
+      )}
     </View>
   );
 });
@@ -280,6 +397,22 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 12,
     backgroundColor: '#DDE7F7',
+  },
+  mediaVideoFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0F172A',
+  },
+  mediaPlayBadge: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.62)',
   },
   mediaBadge: {
     position: 'absolute',
@@ -307,13 +440,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 22,
     backgroundColor: '#FFFFFF',
-  },
-  fileMainAction: {
-    flex: 1,
-    minHeight: 50,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minWidth: 0,
   },
   fileBadge: {
     width: 48,
@@ -402,6 +528,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8A93A3',
   },
+  videoNoteRowPressed: {
+    opacity: 0.86,
+  },
+  videoNoteThumbWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginRight: 12,
+    backgroundColor: colors.buttonBackground,
+  },
+  videoNoteThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  videoNoteThumbFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.textSecondary,
+  },
+  videoNoteThumbOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.24)',
+  },
+  videoNoteTextWrap: {
+    flex: 1,
+  },
+  videoNoteTitle: {
+    marginBottom: 5,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
   emptyCard: {
     marginTop: 14,
     borderRadius: 24,
@@ -422,18 +585,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: '#8A93A3',
     textAlign: 'center',
-  },
-  rowActionButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-    backgroundColor: 'rgba(77,141,255,0.12)',
-  },
-  rowActionButtonPressed: {
-    opacity: 0.82,
   },
   rowPressed: {
     opacity: 0.86,

@@ -15,6 +15,9 @@ node_modules/
 dist/
 web-build/
 *.tsbuildinfo
+mobile/metro-*.bundle.js
+mobile/metro-*.hbc
+mobile/dist-*/
 
 # IDE / OS
 .DS_Store
@@ -32,7 +35,9 @@ target/
 *.mobileprovision
 
 # Local notes / milestones (keep on disk, not in repo)
-/docs/
+/docs/*
+!/docs/telegram-ui-branch-validation.md
+!/docs/telegram-icon-source-map.md
+!/docs/telegram-icon-divergences.md
 /steps/
 /Improvements/
-/memory-bank/

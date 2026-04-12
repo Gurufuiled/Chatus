@@ -3,7 +3,12 @@ import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } 
 import { resolveAvatarUrl } from '../config';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
-import { colors } from '../theme/colors';
+import {
+  CHAT_LIST_AVATAR_GAP,
+  CHAT_LIST_AVATAR_SIZE,
+  CHAT_LIST_HORIZONTAL_PADDING,
+} from '../presentation';
+import { colors, typography } from '../theme/colors';
 import { MessageStatusIcon } from './MessageTimeStatus';
 
 const AVATAR_COLORS = [
@@ -35,7 +40,7 @@ function formatChatTime(timestamp: number | null) {
 }
 
 function getStatusColor(status: string) {
-  return status === 'read' ? colors.accent : '#A0A7B4';
+  return status === 'read' ? colors.accent : colors.iconMuted;
 }
 
 type ChatListRowProps = {
@@ -159,21 +164,21 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 72,
-    paddingHorizontal: 16,
+    minHeight: 76,
+    paddingHorizontal: CHAT_LIST_HORIZONTAL_PADDING,
     paddingVertical: 10,
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBackgroundSolid,
   },
-  rowPressed: { backgroundColor: '#F7F8FA' },
+  rowPressed: { backgroundColor: colors.rowPressed },
   avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: CHAT_LIST_AVATAR_SIZE,
+    height: CHAT_LIST_AVATAR_SIZE,
+    borderRadius: CHAT_LIST_AVATAR_SIZE / 2,
   },
   avatarPlaceholder: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: CHAT_LIST_AVATAR_SIZE,
+    height: CHAT_LIST_AVATAR_SIZE,
+    borderRadius: CHAT_LIST_AVATAR_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -184,7 +189,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: CHAT_LIST_AVATAR_GAP,
     justifyContent: 'center',
   },
   topRow: {
@@ -194,9 +199,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: 17,
+    fontSize: typography.dialogTitle,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.textPrimary,
     flex: 1,
   },
   metaWrap: {
@@ -212,13 +217,13 @@ const styles = StyleSheet.create({
     minWidth: 42,
   },
   timeLabel: {
-    fontSize: 14,
-    color: '#8A9099',
+    fontSize: typography.dialogTime,
+    color: colors.textSecondary,
   },
   preview: {
     marginTop: 3,
-    fontSize: 16,
-    color: '#8A9099',
+    fontSize: typography.dialogPreview,
+    color: colors.textSecondary,
   },
   unreadBadge: {
     minWidth: 20,
@@ -228,10 +233,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4D8DFF',
+    backgroundColor: colors.accent,
   },
   unreadBadgeMuted: {
-    backgroundColor: '#AEB7C5',
+    backgroundColor: '#A8B0BC',
   },
   unreadBadgeWide: {
     minWidth: 28,

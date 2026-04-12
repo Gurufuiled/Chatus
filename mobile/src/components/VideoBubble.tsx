@@ -12,7 +12,7 @@ import {
   type PressableStateCallbackType,
 } from 'react-native';
 import { useEvent } from 'expo';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, bubbleRadius, typography } from '../theme/colors';
@@ -583,6 +583,8 @@ const styles = StyleSheet.create({
   },
   bubbleOther: {
     backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
     ...bubbleRadius.other,
   },
   videoWrapper: {

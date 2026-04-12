@@ -11,7 +11,9 @@ export type GroupMemberTagOption = {
 
 export type GroupMediaItem = {
   id: string;
+  kind: 'image' | 'video';
   uri: string;
+  previewUri?: string;
   durationMs?: number;
 };
 
@@ -26,9 +28,10 @@ export type GroupFileItem = {
 
 export type GroupVoiceItem = {
   id: string;
+  kind: 'voice' | 'video_note';
   uri: string | null;
-  duration: string;
-  date: string;
+  thumbnailUri?: string;
+  title?: string;
   durationMs: number;
   waveform: number[];
   dateLabel: string;

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEvent } from 'expo';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   Animated,
@@ -24,7 +24,7 @@ import {
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const CLOSE_SWIPE_DISTANCE = 96;
+const CLOSE_SWIPE_DISTANCE = 84;
 
 function useViewerVideoPreviewUri(videoUri: string, preferredUri?: string) {
   const normalizedVideoUri = videoUri.trim();
@@ -67,9 +67,15 @@ function useViewerVideoPreviewUri(videoUri: string, preferredUri?: string) {
   return normalizedPreferredUri || generatedUri;
 }
 
-const ImageViewerSlide = React.memo(function ImageViewerSlide({ item }: { item: MediaTile }) {
+const ImageViewerSlide = React.memo(function ImageViewerSlide({
+  item,
+  panHandlers,
+}: {
+  item: MediaTile;
+  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
+}) {
   return (
-    <View style={styles.slide}>
+    <View style={styles.slide} {...panHandlers}>
       <Image source={{ uri: item.uri }} style={styles.media} resizeMode="contain" />
     </View>
   );
@@ -78,9 +84,11 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({ item }: { item: 
 const VideoViewerSlide = React.memo(function VideoViewerSlide({
   item,
   isActive,
+  panHandlers,
 }: {
   item: MediaTile;
   isActive: boolean;
+  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
 }) {
   const [isPlayerMounted, setIsPlayerMounted] = useState(false);
   const [hasRenderedFrame, setHasRenderedFrame] = useState(false);
@@ -135,7 +143,7 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
   }, [isPlayerMounted, isPlaying, player]);
 
   return (
-    <Pressable onPress={handlePress} style={styles.slide}>
+    <Pressable onPress={handlePress} style={styles.slide} {...panHandlers}>
       {previewUri && (!isPlayerMounted || !hasRenderedFrame) ? (
         <Image source={{ uri: previewUri }} style={styles.media} resizeMode="contain" />
       ) : null}
@@ -210,14 +218,14 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.12,
+          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.12,
+          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
         onPanResponderMove: (_, gesture) => {
           translateY.setValue(gesture.dy);
         },
         onPanResponderRelease: (_, gesture) => {
-          if (Math.abs(gesture.dy) > CLOSE_SWIPE_DISTANCE || Math.abs(gesture.vy) > 1.1) {
+          if (Math.abs(gesture.dy) > CLOSE_SWIPE_DISTANCE || Math.abs(gesture.vy) > 0.92) {
             closeFromSwipe(gesture.dy || gesture.vy);
             return;
           }
@@ -251,11 +259,15 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
   const renderItem = useCallback(
     ({ item, index }: { item: MediaTile; index: number }) =>
       item.kind === 'video' ? (
-        <VideoViewerSlide item={item} isActive={index === safeIndex} />
+        <VideoViewerSlide
+          item={item}
+          isActive={index === safeIndex}
+          panHandlers={panResponder.panHandlers}
+        />
       ) : (
-        <ImageViewerSlide item={item} />
+        <ImageViewerSlide item={item} panHandlers={panResponder.panHandlers} />
       ),
-    [safeIndex]
+    [panResponder.panHandlers, safeIndex]
   );
 
   if (items.length === 0) return null;

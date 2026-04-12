@@ -1,5 +1,5 @@
 import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { resolveAvatarUrl } from '../../config';
 import { colors } from '../../theme/colors';

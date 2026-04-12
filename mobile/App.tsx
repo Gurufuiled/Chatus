@@ -10,6 +10,7 @@ import { VoicePlayerProvider } from './src/contexts/VoicePlayerContext';
 import { WebSocketProvider } from './src/contexts/WebSocketProvider';
 import { BootstrapErrorBoundary } from './src/components/BootstrapErrorBoundary';
 import { RootNavigator } from './src/navigation';
+import { colors } from './src/theme/colors';
 import { initDatabase } from './src/services/DatabaseService';
 import { authService, type AuthSession } from './src/services/AuthService';
 
@@ -36,7 +37,7 @@ export default function App() {
   if (!isReady) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.accent} />
         <StatusBar style="auto" />
       </View>
     );
@@ -84,15 +85,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBackgroundSolid,
   },
   errorWrap: {
     flex: 1,
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBackgroundSolid,
   },
   errorTitle: { fontSize: 18, fontWeight: '700', color: '#c00', marginBottom: 12 },
-  errorText: { fontSize: 15, color: '#111', marginBottom: 16 },
-  errorHint: { fontSize: 13, color: '#666' },
+  errorText: { fontSize: 15, color: colors.textPrimary, marginBottom: 16 },
+  errorHint: { fontSize: 13, color: colors.textSecondary },
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import {
   Alert,
   GestureResponderEvent,
@@ -15,7 +15,7 @@ import {
   useVoicePlayerControls,
 } from '../contexts/VoicePlayerContext';
 import { buildUiWaveform } from '../services/waveformUtils';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
@@ -532,7 +532,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
 const styles = StyleSheet.create({
   mediaSectionCard: {
     marginTop: 10,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.inputBackgroundSolid,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: 12,
@@ -552,10 +552,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 38,
     borderRadius: 999,
-    backgroundColor: '#F2F5FA',
+    backgroundColor: colors.inputBackground,
   },
   tabButtonActive: {
-    backgroundColor: 'rgba(77,141,255,0.12)',
+    backgroundColor: withAlpha(colors.accent, 0.12),
   },
   tabButtonPressed: {
     opacity: 0.8,
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     fontWeight: '600',
-    color: '#7D8795',
+    color: colors.textSecondary,
   },
   tabButtonTextActive: {
     color: colors.accent,
@@ -595,12 +595,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 4,
-    backgroundColor: '#E6ECF5',
+    backgroundColor: colors.buttonBackground,
   },
   mediaVideoFallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: colors.textPrimary,
   },
   mediaPlayBadge: {
     position: 'absolute',
@@ -639,7 +639,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F7F9FD',
+    backgroundColor: colors.inputBackground,
   },
   fileRowPressed: {
     opacity: 0.82,
@@ -650,7 +650,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(77,141,255,0.14)',
+    backgroundColor: withAlpha(colors.accent, 0.14),
     marginRight: 12,
   },
   fileBadgeText: {
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F7F9FD',
+    backgroundColor: colors.inputBackground,
   },
   voicePlayButton: {
     width: 42,
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   voicePlayButtonActive: {
-    backgroundColor: '#4C84E8',
+    backgroundColor: colors.link,
   },
   voicePlayButtonPressed: {
     opacity: 0.84,
@@ -736,7 +736,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     marginRight: 12,
-    backgroundColor: '#DDE6F4',
+    backgroundColor: colors.buttonBackground,
   },
   videoNoteThumb: {
     width: '100%',
@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#7D8795',
+    backgroundColor: colors.textSecondary,
   },
   videoNoteThumbOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -771,7 +771,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F7F9FD',
+    backgroundColor: colors.inputBackground,
   },
   linkRowPressed: {
     opacity: 0.82,
@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(77,141,255,0.12)',
+    backgroundColor: withAlpha(colors.accent, 0.12),
     marginRight: 12,
   },
   linkTextWrap: {

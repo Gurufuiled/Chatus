@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { Dimensions, type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   useVoicePlaybackForUri,
@@ -10,6 +10,7 @@ import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
 } from '../utils/mediaDuration';
+import { stopActiveVideoNotePlayback } from './VideoNoteBubble';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 export interface VoiceBubbleProps {
@@ -167,6 +168,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     }
 
     try {
+      stopActiveVideoNotePlayback();
       await play(uri);
     } catch (err) {
       if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
@@ -187,6 +189,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
 
     try {
       if (!isCurrent) {
+        stopActiveVideoNotePlayback();
         await play(uri, targetPositionMs);
       } else {
         await seekTo(targetPositionMs);
@@ -222,7 +225,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           <Feather
             name={isPlaying ? 'pause' : 'play'}
             size={14}
-            color={isMe ? outgoingAccentColor ?? '#4D8DFF' : '#605719'}
+            color={isMe ? outgoingAccentColor ?? colors.accent : '#605719'}
             style={isPlaying ? undefined : styles.playIconPlay}
           />
         </Pressable>
@@ -316,7 +319,9 @@ const styles = StyleSheet.create({
     ...bubbleRadius.mine,
   },
   bubbleOther: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
     ...bubbleRadius.other,
   },
   mainRow: {

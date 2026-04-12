@@ -189,6 +189,8 @@ const styles = StyleSheet.create({
   },
   bubbleOther: {
     backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
     ...bubbleRadius.other,
   },
   card: {
@@ -237,10 +239,10 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
   },
   documentFoldMe: {
-    borderBottomColor: '#2E73F3',
+    borderBottomColor: colors.link,
   },
   documentFoldOther: {
-    borderBottomColor: '#4D8DFF',
+    borderBottomColor: colors.accent,
   },
   documentLine: {
     height: 2,

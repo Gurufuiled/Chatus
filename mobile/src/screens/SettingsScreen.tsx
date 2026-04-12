@@ -20,6 +20,9 @@ import { authService, apiUserToUserRow } from '../services/AuthService';
 import { getProfile, updateProfile } from '../services/profileService';
 import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
+import { SettingsIconRow } from '../components/settings/SettingsIconRow';
+import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
+import { colors } from '../theme/colors';
 
 const HANDLE_REGEX = /^[a-zA-Z0-9_]{5,32}$/;
 
@@ -160,6 +163,14 @@ export function SettingsScreen() {
   }, [handleValue]);
 
   const avatarUrl = resolveAvatarUrl(profile?.avatar_url ?? user?.avatar_url);
+  const profileTitle = profile?.display_name?.trim() || user?.display_name?.trim() || 'Ваш профиль';
+  const profileHandleLabel = handleValue ? `@${handleValue}` : 'Нажмите на фото, чтобы изменить аватар';
+
+  const showComingSoon = useCallback((title: string) => {
+    Alert.alert('Скоро', `${title}: раздел будет подключен позже.`);
+  }, []);
+
+  const sg = TELEGRAM_SETTINGS_ROW_GLYPHS;
 
   if (loading) {
     return (
@@ -181,103 +192,234 @@ export function SettingsScreen() {
           </View>
         )}
 
-        <Pressable
-          style={styles.avatarWrap}
-          onPress={uploadingAvatar ? undefined : handleAvatarTap}
-          disabled={uploadingAvatar}
-        >
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarPlaceholderText}>
-                {(profile?.display_name ?? user?.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
-              </Text>
-            </View>
-          )}
-          {uploadingAvatar && (
-            <View style={styles.avatarOverlay}>
-              <ActivityIndicator color="#fff" />
-            </View>
-          )}
-        </Pressable>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Display name</Text>
-          <View style={styles.row}>
-            <TextInput
-              style={styles.input}
-              value={displayName}
-              onChangeText={setDisplayName}
-              placeholder="Your name"
-              placeholderTextColor="#999"
-              autoCapitalize="words"
-            />
-            <Pressable
-              style={[styles.saveBtn, savingDisplayName && styles.saveBtnDisabled]}
-              onPress={handleSaveDisplayName}
-              disabled={savingDisplayName}
-            >
-              {savingDisplayName ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.saveBtnText}>Save</Text>
-              )}
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Handle</Text>
-          <View style={styles.row}>
-            <Text style={styles.handlePrefix}>@</Text>
-            <TextInput
-              style={[styles.input, styles.handleInput]}
-              value={handle.replace(/^@/, '')}
-              onChangeText={(t) => setHandle(t.replace(/^@/, ''))}
-              placeholder="handle"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Pressable
-              style={[styles.saveBtn, savingHandle && styles.saveBtnDisabled]}
-              onPress={handleSaveHandle}
-              disabled={savingHandle}
-            >
-              {savingHandle ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.saveBtnText}>Save</Text>
-              )}
-            </Pressable>
-          </View>
+        <Text style={styles.sectionTitle}>Аккаунт</Text>
+        <View style={styles.profileCard}>
           <Pressable
-            style={[styles.copyBtn, !handleValue && styles.copyBtnDisabled]}
-            onPress={handleCopyHandle}
-            disabled={!handleValue}
+            style={styles.profileHeader}
+            onPress={uploadingAvatar ? undefined : handleAvatarTap}
+            disabled={uploadingAvatar}
           >
-            <Text style={[styles.copyBtnText, !handleValue && styles.copyBtnTextDisabled]}>
-              Copy handle
-            </Text>
+            <View style={styles.avatarWrap}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarPlaceholderText}>
+                    {(profile?.display_name ?? user?.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
+                  </Text>
+                </View>
+              )}
+              {uploadingAvatar && (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color="#fff" />
+                </View>
+              )}
+            </View>
+            <View style={styles.profileSummary}>
+              <Text style={styles.profileTitle}>{profileTitle}</Text>
+              <Text style={styles.profileSubtitle}>{profileHandleLabel}</Text>
+              <Text style={styles.profileHint}>Нажмите, чтобы изменить фото профиля</Text>
+            </View>
           </Pressable>
+
+          <View style={styles.formCard}>
+            <View style={styles.field}>
+              <Text style={styles.label}>Display name</Text>
+              <View style={styles.row}>
+                <TextInput
+                  style={styles.input}
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  placeholder="Your name"
+                  placeholderTextColor={colors.placeholder}
+                  autoCapitalize="words"
+                />
+                <Pressable
+                  style={[styles.saveBtn, savingDisplayName && styles.saveBtnDisabled]}
+                  onPress={handleSaveDisplayName}
+                  disabled={savingDisplayName}
+                >
+                  {savingDisplayName ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.fieldLast}>
+              <Text style={styles.label}>Handle</Text>
+              <View style={styles.row}>
+                <Text style={styles.handlePrefix}>@</Text>
+                <TextInput
+                  style={[styles.input, styles.handleInput]}
+                  value={handle.replace(/^@/, '')}
+                  onChangeText={(t) => setHandle(t.replace(/^@/, ''))}
+                  placeholder="handle"
+                  placeholderTextColor={colors.placeholder}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Pressable
+                  style={[styles.saveBtn, savingHandle && styles.saveBtnDisabled]}
+                  onPress={handleSaveHandle}
+                  disabled={savingHandle}
+                >
+                  {savingHandle ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
+              <Pressable
+                style={[styles.copyBtn, !handleValue && styles.copyBtnDisabled]}
+                onPress={handleCopyHandle}
+                disabled={!handleValue}
+              >
+                <Text style={[styles.copyBtnText, !handleValue && styles.copyBtnTextDisabled]}>
+                  Copy handle
+                </Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.logoutBtn, pressed && styles.buttonPressed]}
-          onPress={logout}
-        >
-          <Text style={styles.logoutBtnText}>Logout</Text>
-        </Pressable>
+        <Text style={styles.sectionTitle}>Настройки</Text>
+        <View style={styles.settingsCard}>
+          <SettingsIconRow
+            title="Уведомления и звуки"
+            iconD={sg.sounds.d}
+            iconFillRule={sg.sounds.fillRule}
+            placeholder
+            onPress={() => showComingSoon('Уведомления и звуки')}
+          />
+          <SettingsIconRow
+            title="Конфиденциальность"
+            iconD={sg.privacy.d}
+            iconFillRule={sg.privacy.fillRule}
+            placeholder
+            onPress={() => showComingSoon('Конфиденциальность')}
+          />
+          <SettingsIconRow
+            title="Данные и память"
+            iconD={sg.data.d}
+            iconFillRule={sg.data.fillRule}
+            placeholder
+            onPress={() => showComingSoon('Данные и память')}
+          />
+          <SettingsIconRow
+            title="Настройки чатов"
+            iconD={sg.chat.d}
+            iconFillRule={sg.chat.fillRule}
+            placeholder
+            onPress={() => showComingSoon('Настройки чатов')}
+          />
+          <SettingsIconRow
+            title="Язык"
+            iconD={sg.language.d}
+            iconFillRule={sg.language.fillRule}
+            placeholder
+            onPress={() => showComingSoon('Язык')}
+          />
+          <SettingsIconRow
+            title="Устройства"
+            iconD={sg.devices.d}
+            iconFillRule={sg.devices.fillRule}
+            placeholder
+            onPress={() => showComingSoon('Устройства')}
+          />
+          <SettingsIconRow
+            title="Пароль и безопасность"
+            iconD={sg.security.d}
+            iconFillRule={sg.security.fillRule}
+            placeholder
+            onPress={() => showComingSoon('Пароль и безопасность')}
+          />
+        </View>
+
+        <View style={[styles.settingsCard, styles.logoutCard]}>
+          <SettingsIconRow
+            title="Выйти из аккаунта"
+            iconD={sg.power.d}
+            iconFillRule={sg.power.fillRule}
+            iconColor="#E53935"
+            destructive
+            placeholder={false}
+            showChevron={false}
+            onPress={logout}
+          />
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll: { padding: 24, paddingBottom: 48 },
+  container: { flex: 1, backgroundColor: colors.chatBackground },
+  scroll: { padding: 16, paddingBottom: 48 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+    marginTop: 8,
+    marginLeft: 4,
+  },
+  settingsCard: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+  },
+  profileCard: {
+    marginBottom: 8,
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: colors.inputBackgroundSolid,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+    marginBottom: 12,
+  },
+  profileSummary: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 16,
+  },
+  profileTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  profileSubtitle: {
+    marginTop: 4,
+    fontSize: 15,
+    color: colors.accent,
+  },
+  profileHint: {
+    marginTop: 6,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  formCard: {
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: colors.inputBackgroundSolid,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
+  },
+  logoutCard: {
+    marginTop: 16,
+  },
   errorBox: {
     backgroundColor: '#ffebee',
     padding: 12,
@@ -286,19 +428,17 @@ const styles = StyleSheet.create({
   },
   errorText: { color: '#c62828', fontSize: 14 },
   avatarWrap: {
-    alignSelf: 'center',
-    marginBottom: 24,
     position: 'relative',
   },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
   },
   avatarPlaceholder: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: '#9e9e9e',
     justifyContent: 'center',
     alignItems: 'center',
@@ -310,32 +450,35 @@ const styles = StyleSheet.create({
   },
   avatarOverlay: {
     ...StyleSheet.absoluteFillObject,
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   field: { marginBottom: 20 },
-  label: { fontSize: 12, color: '#666', marginBottom: 6 },
+  fieldLast: { marginBottom: 0 },
+  label: { fontSize: 12, color: colors.textSecondary, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: colors.separator,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
+    color: colors.textPrimary,
+    backgroundColor: colors.inputBackgroundSolid,
   },
   handleInput: { flex: 1 },
-  handlePrefix: { fontSize: 16, color: '#333' },
+  handlePrefix: { fontSize: 16, color: colors.textPrimary },
   saveBtn: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.accent,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 12,
     minWidth: 60,
     alignItems: 'center',
   },
@@ -346,14 +489,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   copyBtnDisabled: { opacity: 0.5 },
-  copyBtnText: { color: '#007AFF', fontSize: 14 },
-  copyBtnTextDisabled: { color: '#999' },
-  logoutBtn: {
-    backgroundColor: '#ff3b30',
-    padding: 16,
-    borderRadius: 8,
-    marginTop: 24,
-  },
+  copyBtnText: { color: colors.accent, fontSize: 14 },
+  copyBtnTextDisabled: { color: colors.placeholder },
   buttonPressed: { opacity: 0.8 },
-  logoutBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

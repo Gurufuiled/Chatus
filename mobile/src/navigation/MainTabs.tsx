@@ -12,6 +12,10 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChatsStack } from './ChatsStack';
 import { ContactsScreen, SettingsScreen } from '../screens';
 import type { MainTabParamList } from './types';
+import { colors, withAlpha } from '../theme/colors';
+import { TelegramGlyph } from '../icons/telegram';
+import { TELEGRAM_TAB_GLYPHS } from '../icons/telegram/tabPaths';
+import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -20,41 +24,21 @@ type IconProps = {
   focused: boolean;
 };
 
-function ContactsIcon({ color, focused }: IconProps) {
+function TabTelegramIcon({
+  tab,
+  color,
+  focused,
+}: IconProps & { tab: 'contacts' | 'chats' | 'settings' }) {
+  const g = TELEGRAM_TAB_GLYPHS[tab];
+  const glyph = focused ? g.active : g.inactive;
   return (
     <View style={[styles.iconFrame, focused && styles.iconFocused]}>
-      <View style={[styles.contactHead, { borderColor: color }]} />
-      <View style={[styles.contactBody, { borderColor: color }]} />
-    </View>
-  );
-}
-
-function ChatsIcon({ color, focused }: IconProps) {
-  return (
-    <View style={[styles.iconFrame, focused && styles.iconFocused]}>
-      <View style={[styles.chatBubbleRear, { borderColor: color }]} />
-      <View style={[styles.chatBubbleMain, { borderColor: color }]} />
-      <View style={styles.chatDotsRow}>
-        <View style={[styles.chatDot, { backgroundColor: color }]} />
-        <View style={[styles.chatDot, { backgroundColor: color }]} />
-        <View style={[styles.chatDot, { backgroundColor: color }]} />
-      </View>
-    </View>
-  );
-}
-
-function SettingsIcon({ color, focused }: IconProps) {
-  return (
-    <View style={[styles.iconFrame, focused && styles.iconFocused]}>
-      <View style={[styles.settingsRing, { borderColor: color }]} />
-      <View style={[styles.settingsCenter, { backgroundColor: color }]} />
-      <View style={[styles.settingsBarVertical, { backgroundColor: color }]} />
-      <View style={[styles.settingsBarHorizontal, { backgroundColor: color }]} />
-      <View style={[styles.settingsBarDiagLeft, { backgroundColor: color }]} />
-      <View style={[styles.settingsBarDiagRight, { backgroundColor: color }]} />
-      <View style={styles.settingsCutout}>
-        <View style={[styles.settingsCutoutInner, { borderColor: color }]} />
-      </View>
+      <TelegramGlyph
+        d={glyph.d}
+        fillRule={glyph.fillRule}
+        color={color}
+        size={24}
+      />
     </View>
   );
 }
@@ -62,12 +46,12 @@ function SettingsIcon({ color, focused }: IconProps) {
 function getTabIcon(routeName: keyof MainTabParamList, color: string, focused: boolean) {
   switch (routeName) {
     case 'Contacts':
-      return <ContactsIcon color={color} focused={focused} />;
+      return <TabTelegramIcon tab="contacts" color={color} focused={focused} />;
     case 'Settings':
-      return <SettingsIcon color={color} focused={focused} />;
+      return <TabTelegramIcon tab="settings" color={color} focused={focused} />;
     case 'Chats':
     default:
-      return <ChatsIcon color={color} focused={focused} />;
+      return <TabTelegramIcon tab="chats" color={color} focused={focused} />;
   }
 }
 
@@ -106,12 +90,10 @@ function TabBarItem({
 }
 
 function GroupChatIcon() {
+  const g = TELEGRAM_PROFILE_GLYPHS.groupAddMember;
   return (
     <View style={styles.quickActionIcon}>
-      <View style={styles.groupBackHead} />
-      <View style={styles.groupBackBody} />
-      <View style={styles.groupFrontHead} />
-      <View style={styles.groupFrontBody} />
+      <TelegramGlyph d={g.d} fillRule={g.fillRule} color={colors.accent} size={26} />
     </View>
   );
 }
@@ -223,16 +205,16 @@ export function MainTabs() {
         screenOptions={({ route }) => ({
           headerShown: true,
           headerStyle: {
-            backgroundColor: '#EAF3FF',
+            backgroundColor: colors.toolbar,
           },
           headerShadowVisible: false,
-          headerTintColor: '#111827',
+          headerTintColor: colors.textPrimary,
           headerTitleStyle: {
-            color: '#111827',
+            color: colors.textPrimary,
             fontWeight: '700',
           },
           tabBarShowLabel: false,
-          tabBarActiveTintColor: '#4D8DFF',
+          tabBarActiveTintColor: colors.accent,
           tabBarInactiveTintColor: '#273142',
           tabBarItemStyle: styles.nativeTabItem,
           tabBarStyle: styles.tabBar,
@@ -290,23 +272,15 @@ export function MainTabs() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: 'absolute',
-    left: 34,
-    right: 34,
-    bottom: 10,
-    height: 54,
+    height: 58,
     paddingTop: 5,
-    paddingBottom: 5,
-    paddingHorizontal: 4,
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E3E8EF',
-    borderRadius: 27,
-    elevation: 8,
-    shadowColor: '#AEB8C5',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    paddingBottom: 6,
+    paddingHorizontal: 10,
+    backgroundColor: colors.inputBackgroundSolid,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   hiddenTabBar: {
     display: 'none',
@@ -315,17 +289,17 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   tabButton: {
-    height: 40,
-    minWidth: 88,
-    paddingHorizontal: 8,
-    borderRadius: 20,
+    height: 42,
+    minWidth: 0,
+    paddingHorizontal: 10,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   tabButtonActive: {
-    backgroundColor: '#EAF3FF',
-    shadowColor: '#4D8DFF',
+    backgroundColor: colors.inputBackground,
+    shadowColor: colors.accent,
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
@@ -336,7 +310,7 @@ const styles = StyleSheet.create({
     width: 54,
     height: 20,
     borderRadius: 10,
-    backgroundColor: 'rgba(77, 141, 255, 0.08)',
+    backgroundColor: withAlpha(colors.accent, 0.1),
   },
   tabButtonContent: {
     alignItems: 'center',
@@ -348,123 +322,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.1,
     textAlign: 'center',
-    width: 70,
+    minWidth: 56,
   },
   iconFrame: {
     width: 24,
-    height: 18,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconFocused: {
     transform: [{ scale: 1.03 }],
-  },
-  contactHead: {
-    position: 'absolute',
-    top: 1,
-    width: 8,
-    height: 8,
-    borderWidth: 1.9,
-    borderRadius: 999,
-  },
-  contactBody: {
-    position: 'absolute',
-    top: 8,
-    width: 14,
-    height: 8,
-    borderWidth: 1.9,
-    borderTopLeftRadius: 7,
-    borderTopRightRadius: 7,
-    borderBottomLeftRadius: 6,
-    borderBottomRightRadius: 6,
-  },
-  chatBubbleRear: {
-    position: 'absolute',
-    right: 1,
-    top: 5,
-    width: 9,
-    height: 7,
-    borderRadius: 4.5,
-    borderWidth: 1.6,
-    backgroundColor: 'transparent',
-    opacity: 0.85,
-  },
-  chatBubbleMain: {
-    position: 'absolute',
-    left: 0,
-    top: 2,
-    width: 13,
-    height: 10,
-    borderRadius: 5.5,
-    borderWidth: 1.7,
-    backgroundColor: 'transparent',
-  },
-  chatDotsRow: {
-    position: 'absolute',
-    top: 6,
-    left: 3,
-    width: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  chatDot: {
-    width: 2.5,
-    height: 2.5,
-    borderRadius: 999,
-  },
-  settingsRing: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderWidth: 1.8,
-    borderRadius: 999,
-  },
-  settingsCenter: {
-    position: 'absolute',
-    width: 3,
-    height: 3,
-    borderRadius: 999,
-  },
-  settingsBarVertical: {
-    position: 'absolute',
-    width: 2,
-    height: 16,
-    borderRadius: 2,
-  },
-  settingsBarHorizontal: {
-    position: 'absolute',
-    width: 16,
-    height: 2,
-    borderRadius: 2,
-  },
-  settingsBarDiagLeft: {
-    position: 'absolute',
-    width: 15,
-    height: 2,
-    borderRadius: 2,
-    transform: [{ rotate: '-45deg' }],
-  },
-  settingsBarDiagRight: {
-    position: 'absolute',
-    width: 15,
-    height: 2,
-    borderRadius: 2,
-    transform: [{ rotate: '45deg' }],
-  },
-  settingsCutout: {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingsCutoutInner: {
-    width: 6,
-    height: 6,
-    borderWidth: 1.4,
-    borderRadius: 999,
   },
   menuRoot: {
     flex: 1,
@@ -478,8 +345,8 @@ const styles = StyleSheet.create({
   quickMenuCard: {
     width: 228,
     marginBottom: 86,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    backgroundColor: colors.inputBackgroundSolid,
     shadowColor: '#1F2937',
     shadowOpacity: 0.16,
     shadowRadius: 20,
@@ -502,57 +369,13 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EAF3FF',
+    backgroundColor: colors.inputBackground,
   },
   quickActionIcon: {
-    width: 22,
-    height: 18,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  groupBackHead: {
-    position: 'absolute',
-    left: 2,
-    top: 1,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    borderWidth: 1.6,
-    borderColor: '#7AA9FF',
-    backgroundColor: 'transparent',
-  },
-  groupBackBody: {
-    position: 'absolute',
-    left: 0,
-    top: 8,
-    width: 11,
-    height: 7,
-    borderRadius: 4,
-    borderWidth: 1.6,
-    borderColor: '#7AA9FF',
-    backgroundColor: 'transparent',
-  },
-  groupFrontHead: {
-    position: 'absolute',
-    right: 3,
-    top: 0,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1.8,
-    borderColor: '#4D8DFF',
-    backgroundColor: 'transparent',
-  },
-  groupFrontBody: {
-    position: 'absolute',
-    right: 1,
-    top: 8,
-    width: 12,
-    height: 8,
-    borderRadius: 4.5,
-    borderWidth: 1.8,
-    borderColor: '#4D8DFF',
-    backgroundColor: 'transparent',
   },
   quickMenuTextWrap: {
     flex: 1,
@@ -560,7 +383,7 @@ const styles = StyleSheet.create({
   quickMenuTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.textPrimary,
     lineHeight: 20,
   },
 });

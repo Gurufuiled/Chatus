@@ -1,7 +1,7 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { BlurTargetView } from 'expo-blur';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import {
   Alert,
   Animated,
@@ -52,11 +52,15 @@ import {
   getReplyPreviewThumbnailUri,
 } from '../components';
 import {
+  stopActiveVideoNotePlayback,
+  useVideoNotePlayer,
+} from '../components/VideoNoteBubble';
+import {
   useVoicePlayerControls,
   useVoicePlayerState,
 } from '../contexts/VoicePlayerContext';
 import type { Message } from '../stores/types';
-import { bubbleRadius, colors } from '../theme/colors';
+import { bubbleRadius, colors, withAlpha } from '../theme/colors';
 import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
 import {
   ChatBackgroundPattern,
@@ -75,6 +79,7 @@ import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
 } from './chatScreen.shared';
+import { formatPlaybackElapsedDuration } from '../utils/mediaDuration';
 
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
 type ChatNavigation = NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
@@ -135,6 +140,7 @@ export function ChatScreen() {
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const { play, pause, stop, setPlaybackRate } = useVoicePlayerControls();
   const { currentVoiceUri, status: voiceStatus } = useVoicePlayerState();
+  const activeVideoNote = useVideoNotePlayer();
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<Message> | null>(null);
   const blurTargetRef = useRef<View | null>(null);
@@ -226,6 +232,33 @@ export function ChatScreen() {
     : null;
   const activeVoiceProgress =
     voiceStatus.durationMs > 0 ? Math.min(voiceStatus.positionMs / voiceStatus.durationMs, 1) : 0;
+  const activeVideoNoteMessage = useMemo(() => {
+    if (activeVideoNote.messageId) {
+      const directMatch = messageById.get(activeVideoNote.messageId);
+      if (directMatch) {
+        return directMatch;
+      }
+    }
+
+    const activeVideoNoteUri = activeVideoNote.uri?.trim() ?? '';
+    if (!activeVideoNoteUri) return null;
+
+    return (
+      messages.find((message) => {
+        if (message.msg_type !== 'video_note') return false;
+        const messageUri = message.media?.[0]?.remote_url?.trim() ?? '';
+        return messageUri === activeVideoNoteUri;
+      }) ?? null
+    );
+  }, [activeVideoNote.messageId, activeVideoNote.uri, messageById, messages]);
+  const activeVideoNoteAuthor = activeVideoNoteMessage
+    ? getMessageAuthorName(activeVideoNoteMessage, chatId, currentUserId)
+    : null;
+  const activeVideoNoteVisible = !!(activeVideoNote.messageId && activeVideoNote.uri);
+  const activeVideoNoteDurationLabel = formatPlaybackElapsedDuration(
+    activeVideoNote.positionMs,
+    activeVideoNote.durationMs
+  );
   const canDeleteSelectedMessages =
     selectedMessages.length > 0 &&
     selectedMessages.every((message) => message.sender_id === currentUserId && message.is_deleted !== 1);
@@ -362,6 +395,7 @@ export function ChatScreen() {
       void pause();
       return;
     }
+    stopActiveVideoNotePlayback();
     void play(currentVoiceUri);
   }, [currentVoiceUri, pause, play, voiceStatus.isPlaying]);
 
@@ -1111,6 +1145,7 @@ export function ChatScreen() {
     return (
       message.msg_type === 'text' ||
       message.msg_type === 'voice' ||
+      message.msg_type === 'video_note' ||
       message.msg_type === 'image' ||
       message.msg_type === 'video'
     );
@@ -1255,6 +1290,7 @@ export function ChatScreen() {
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const videoContent = (
         <VideoNoteBubble
+          messageId={item.id}
           uri={videoUri}
           thumbnailUri={media.thumbnail_url ?? undefined}
           durationMs={media.duration_ms ?? 0}
@@ -1263,6 +1299,7 @@ export function ChatScreen() {
           status={item.status}
           embedded={!!replySnippet}
           header={forwardHeader}
+          registerPlaybackState={false}
         />
       );
 
@@ -1456,6 +1493,13 @@ export function ChatScreen() {
           onStopVoice={() => {
             void stop();
           }}
+          activeVideoNoteVisible={activeVideoNoteVisible}
+          activeVideoNoteAuthor={activeVideoNoteAuthor}
+          activeVideoNoteIsPlaying={activeVideoNote.isPlaying}
+          activeVideoNoteProgress={activeVideoNote.progress}
+          activeVideoNoteDurationLabel={activeVideoNoteDurationLabel}
+          onToggleVideoNotePlayback={activeVideoNote.togglePlayback}
+          onStopVideoNote={activeVideoNote.stopPlayback}
           pinnedMessageText={pinnedMessage ? buildReplyPreviewText(pinnedMessage) : null}
           onPinnedPress={handlePinnedBannerPress}
           onPinnedClose={() => {
@@ -1500,6 +1544,7 @@ export function ChatScreen() {
           getDeletedPlaceholder={getDeletedPlaceholder}
           repliedVoiceBubbleWidth={REPLIED_VOICE_BUBBLE_WIDTH}
           chatTheme={chatTheme}
+          activeVideoNoteVisible={activeVideoNoteVisible}
         />
 
         {selectionMode ? (
@@ -1572,7 +1617,7 @@ export function ChatScreen() {
                   <Feather
                     name="corner-up-right"
                     size={20}
-                    color={canForwardSelectedMessages ? '#4D8DFF' : '#A0A9B8'}
+                    color={canForwardSelectedMessages ? colors.accent : '#A0A9B8'}
                   />
                 </View>
                 <Text
@@ -1752,8 +1797,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     maxWidth: '82%',
   },
-  bubbleMe: { backgroundColor: '#007AFF' },
-  bubbleOther: { backgroundColor: '#E5E5EA' },
+  bubbleMe: { backgroundColor: colors.bubbleMe },
+  bubbleOther: {
+    backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
+  },
   bubbleContentRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -1830,7 +1879,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(77, 141, 255, 0.14)',
+    backgroundColor: withAlpha(colors.accent, 0.14),
     alignItems: 'center',
     justifyContent: 'center',
   },

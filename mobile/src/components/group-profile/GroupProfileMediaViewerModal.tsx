@@ -1,26 +1,202 @@
-import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEvent } from 'expo';
+import Feather from '@expo/vector-icons/Feather';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import {
+  Animated,
   FlatList,
   Image,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
+import {
+  ensureVideoThumbnailUri,
+  getCachedVideoThumbnailUri,
+} from '../../utils/videoThumbnail';
 import type { GroupMediaItem } from './groupProfile.types';
+
+const CLOSE_SWIPE_DISTANCE = 84;
+
+function useViewerVideoPreviewUri(videoUri: string, preferredUri?: string) {
+  const normalizedVideoUri = videoUri.trim();
+  const normalizedPreferredUri = preferredUri?.trim() ?? '';
+  const [generatedUri, setGeneratedUri] = useState(() =>
+    normalizedPreferredUri ? '' : getCachedVideoThumbnailUri(normalizedVideoUri) ?? ''
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (normalizedPreferredUri || !normalizedVideoUri) {
+      setGeneratedUri('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const cached = getCachedVideoThumbnailUri(normalizedVideoUri);
+    if (cached) {
+      setGeneratedUri(cached);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void ensureVideoThumbnailUri(normalizedVideoUri)
+      .then((nextUri) => {
+        if (isMounted) setGeneratedUri(nextUri);
+      })
+      .catch(() => {
+        if (isMounted) setGeneratedUri('');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [normalizedPreferredUri, normalizedVideoUri]);
+
+  return normalizedPreferredUri || generatedUri;
+}
+
+const ImageViewerSlide = React.memo(function ImageViewerSlide({
+  item,
+  viewportWidth,
+  viewportHeight,
+  panHandlers,
+  onOpenActionMenu,
+}: {
+  item: GroupMediaItem;
+  viewportWidth: number;
+  viewportHeight: number;
+  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
+  onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
+}) {
+  return (
+    <Pressable
+      onLongPress={(event) => onOpenActionMenu(item.id, event)}
+      delayLongPress={220}
+      style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}
+      {...panHandlers}
+    >
+      <Image source={{ uri: item.uri }} style={styles.media} resizeMode="contain" />
+    </Pressable>
+  );
+});
+
+const VideoViewerSlide = React.memo(function VideoViewerSlide({
+  item,
+  isActive,
+  viewportWidth,
+  viewportHeight,
+  panHandlers,
+  onOpenActionMenu,
+}: {
+  item: GroupMediaItem;
+  isActive: boolean;
+  viewportWidth: number;
+  viewportHeight: number;
+  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
+  onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
+}) {
+  const [isPlayerMounted, setIsPlayerMounted] = useState(false);
+  const [hasRenderedFrame, setHasRenderedFrame] = useState(false);
+  const previewUri = useViewerVideoPreviewUri(item.uri, item.previewUri);
+  const player = useVideoPlayer(item.uri, (instance) => {
+    instance.loop = false;
+    instance.timeUpdateEventInterval = 0.25;
+  });
+  const { isPlaying } = useEvent(player, 'playingChange', {
+    isPlaying: player.playing,
+  });
+
+  useEffect(() => {
+    if (isActive) return;
+
+    try {
+      player.pause();
+    } catch {
+      // Ignore if player is tearing down.
+    }
+    setIsPlayerMounted(false);
+    setHasRenderedFrame(false);
+  }, [isActive, player]);
+
+  useEffect(() => {
+    setIsPlayerMounted(false);
+    setHasRenderedFrame(false);
+  }, [item.uri]);
+
+  const handlePress = useCallback(() => {
+    try {
+      if (!isPlayerMounted) {
+        setIsPlayerMounted(true);
+        requestAnimationFrame(() => {
+          try {
+            player.play();
+          } catch {
+            // Ignore if the player is still preparing.
+          }
+        });
+        return;
+      }
+
+      if (isPlaying) {
+        player.pause();
+      } else {
+        player.play();
+      }
+    } catch {
+      // Best effort only.
+    }
+  }, [isPlayerMounted, isPlaying, player]);
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      onLongPress={(event) => onOpenActionMenu(item.id, event)}
+      delayLongPress={220}
+      style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}
+      {...panHandlers}
+    >
+      {previewUri && (!isPlayerMounted || !hasRenderedFrame) ? (
+        <Image source={{ uri: previewUri }} style={styles.media} resizeMode="contain" />
+      ) : null}
+      {isPlayerMounted ? (
+        <VideoView
+          player={player}
+          style={styles.media}
+          nativeControls={false}
+          contentFit="contain"
+          surfaceType="textureView"
+          useExoShutter={false}
+          onFirstFrameRender={() => setHasRenderedFrame(true)}
+        />
+      ) : null}
+      {!isPlaying ? (
+        <View style={styles.videoBadge}>
+          <Feather name="play" size={20} color="#FFFFFF" style={styles.playIcon} />
+        </View>
+      ) : null}
+    </Pressable>
+  );
+});
 
 type GroupProfileMediaViewerModalProps = {
   visible: boolean;
   mediaItems: GroupMediaItem[];
   selectedIndex: number | null;
   topInset: number;
-  bottomInset: number;
   onClose: () => void;
   onChangeIndex: (index: number) => void;
-  onShowInChat: (messageId: string) => void;
+  onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 };
 
 export function GroupProfileMediaViewerModal({
@@ -28,166 +204,209 @@ export function GroupProfileMediaViewerModal({
   mediaItems,
   selectedIndex,
   topInset,
-  bottomInset,
   onClose,
   onChangeIndex,
-  onShowInChat,
+  onOpenActionMenu,
 }: GroupProfileMediaViewerModalProps) {
-  const { width: viewportWidth } = useWindowDimensions();
-  const selectedMediaItem =
-    selectedIndex != null ? mediaItems[selectedIndex] ?? null : null;
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const listRef = useRef<FlatList<GroupMediaItem> | null>(null);
+  const translateY = useRef(new Animated.Value(0)).current;
+  const backdropOpacity = useMemo(
+    () =>
+      translateY.interpolate({
+        inputRange: [-180, 0, 180],
+        outputRange: [0.36, 1, 0.36],
+        extrapolate: 'clamp',
+      }),
+    [translateY]
+  );
+
+  const safeIndex = Math.max(0, Math.min(selectedIndex ?? 0, Math.max(mediaItems.length - 1, 0)));
+
+  const resetPosition = useCallback(() => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      damping: 18,
+      stiffness: 220,
+      mass: 0.8,
+      useNativeDriver: true,
+    }).start();
+  }, [translateY]);
+
+  const closeFromSwipe = useCallback((direction: number) => {
+    Animated.timing(translateY, {
+      toValue: direction >= 0 ? viewportHeight : -viewportHeight,
+      duration: 140,
+      useNativeDriver: true,
+    }).start(onClose);
+  }, [onClose, translateY, viewportHeight]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
+        onPanResponderMove: (_, gesture) => {
+          translateY.setValue(gesture.dy);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (Math.abs(gesture.dy) > CLOSE_SWIPE_DISTANCE || Math.abs(gesture.vy) > 0.92) {
+            closeFromSwipe(gesture.dy || gesture.vy);
+            return;
+          }
+
+          resetPosition();
+        },
+        onPanResponderTerminate: resetPosition,
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [closeFromSwipe, resetPosition, translateY]
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+    translateY.setValue(0);
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({ index: safeIndex, animated: false });
+    });
+  }, [safeIndex, translateY, visible]);
+
+  const handleMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / Math.max(viewportWidth, 1));
+      if (nextIndex !== selectedIndex && nextIndex >= 0 && nextIndex < mediaItems.length) {
+        onChangeIndex(nextIndex);
+      }
+    },
+    [mediaItems.length, onChangeIndex, selectedIndex, viewportWidth]
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: GroupMediaItem; index: number }) =>
+      item.kind === 'video' ? (
+        <VideoViewerSlide
+          item={item}
+          isActive={index === safeIndex}
+          viewportWidth={viewportWidth}
+          viewportHeight={viewportHeight}
+          panHandlers={panResponder.panHandlers}
+          onOpenActionMenu={onOpenActionMenu}
+        />
+      ) : (
+        <ImageViewerSlide
+          item={item}
+          viewportWidth={viewportWidth}
+          viewportHeight={viewportHeight}
+          panHandlers={panResponder.panHandlers}
+          onOpenActionMenu={onOpenActionMenu}
+        />
+      ),
+    [onOpenActionMenu, panResponder.panHandlers, safeIndex, viewportHeight, viewportWidth]
+  );
+
+  if (mediaItems.length === 0) return null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.content}>
-          <View style={[styles.topBar, { paddingTop: topInset + 10 }]}>
-            <Pressable onPress={onClose} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-              <Feather name="x" size={22} color="#FFFFFF" />
-            </Pressable>
+      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+        <Animated.View style={[styles.viewerRoot, { transform: [{ translateY }] }]}>
+          <FlatList
+            ref={listRef}
+            data={mediaItems}
+            keyExtractor={(item) => item.id}
+            horizontal
+            pagingEnabled
+            bounces={false}
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={safeIndex}
+            getItemLayout={(_, index) => ({
+              length: viewportWidth,
+              offset: viewportWidth * index,
+              index,
+            })}
+            onScrollToIndexFailed={({ index }) => {
+              requestAnimationFrame(() => {
+                listRef.current?.scrollToOffset({
+                  offset: viewportWidth * index,
+                  animated: false,
+                });
+              });
+            }}
+            onMomentumScrollEnd={handleMomentumScrollEnd}
+            renderItem={renderItem}
+          />
+        </Animated.View>
 
-            {selectedMediaItem ? (
-              <View style={styles.counter}>
-                <Text style={styles.counterText}>
-                  {selectedIndex! + 1} / {mediaItems.length}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.counterSpacer} />
-            )}
-          </View>
-
-          {selectedMediaItem ? (
-            <FlatList
-              key={`media-viewer-${selectedIndex}`}
-              data={mediaItems}
-              horizontal
-              pagingEnabled
-              initialScrollIndex={selectedIndex ?? 0}
-              getItemLayout={(_, index) => ({
-                length: viewportWidth,
-                offset: viewportWidth * index,
-                index,
-              })}
-              onMomentumScrollEnd={(event) => {
-                const nextIndex = Math.round(
-                  event.nativeEvent.contentOffset.x / Math.max(viewportWidth, 1)
-                );
-                if (nextIndex >= 0 && nextIndex < mediaItems.length) {
-                  onChangeIndex(nextIndex);
-                }
-              }}
-              renderItem={({ item }) => (
-                <View style={[styles.slide, { width: viewportWidth }]}>
-                  <Image source={{ uri: item.uri }} style={styles.image} resizeMode="contain" />
-                </View>
-              )}
-              showsHorizontalScrollIndicator={false}
-            />
-          ) : null}
-
-          {selectedMediaItem ? (
-            <View style={[styles.bottomBar, { paddingBottom: Math.max(bottomInset, 16) }]}>
-              <Pressable
-                onPress={() => onShowInChat(selectedMediaItem.id)}
-                style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-              >
-                <Feather name="message-circle" size={18} color="#FFFFFF" />
-                <Text style={styles.actionText}>Показать в чате</Text>
-              </Pressable>
-            </View>
-          ) : null}
+        <View style={[styles.topBar, { top: topInset + 10 }]} pointerEvents="box-none">
+          <Text style={styles.counter}>{safeIndex + 1} / {mediaItems.length}</Text>
+          <Pressable onPress={onClose} style={styles.closeButton} hitSlop={12}>
+            <Feather name="x" size={22} color="#FFFFFF" />
+          </Pressable>
         </View>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: 'rgba(8, 12, 20, 0.96)',
-  },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  content: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: '#000000',
+  },
+  viewerRoot: {
+    flex: 1,
   },
   topBar: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
-    zIndex: 2,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   counter: {
-    minWidth: 68,
-    height: 34,
     paddingHorizontal: 12,
-    borderRadius: 17,
+    paddingVertical: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 18,
+    top: -6,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  counterText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  counterSpacer: {
-    width: 44,
-    height: 44,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   slide: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  image: {
+  media: {
     width: '100%',
     height: '100%',
   },
-  bottomBar: {
+  videoBadge: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 18,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.32)',
   },
-  actionButton: {
-    minHeight: 50,
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-  actionText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  pressed: {
-    opacity: 0.84,
+  playIcon: {
+    marginLeft: 3,
   },
 });
 

@@ -13,6 +13,7 @@ import { resolveAvatarUrl } from '../config';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
+import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
 import { colors } from '../theme/colors';
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
@@ -107,10 +108,13 @@ export function ChatsStack() {
       id={undefined as never}
       screenOptions={{
         headerShown: true,
-        headerStyle: { backgroundColor: colors.header },
+        headerStyle: { backgroundColor: colors.toolbar },
         headerShadowVisible: false,
         headerTintColor: colors.textPrimary,
-        headerTitleStyle: { color: colors.textPrimary, fontWeight: '700' },
+        headerTitleStyle: {
+          color: colors.textPrimary,
+          fontWeight: chatHeaderPresentation.titleFontWeight,
+        },
         headerTitleAlign: 'center',
       }}
     >
@@ -217,21 +221,21 @@ const styles = StyleSheet.create({
   headerTitleWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    maxWidth: 180,
+    maxWidth: chatHeaderPresentation.titleMaxWidth,
   },
   headerTitlePressable: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: chatHeaderPresentation.titleFontSize,
+    fontWeight: chatHeaderPresentation.titleFontWeight,
     color: colors.textPrimary,
   },
   headerSubtitle: {
     marginTop: 1,
-    fontSize: 12,
-    color: colors.textSecondary,
+    fontSize: chatHeaderPresentation.subtitleFontSize,
+    color: colors[chatHeaderPresentation.subtitleColorKey],
   },
   headerActions: {
     alignItems: 'center',
@@ -243,15 +247,15 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   headerAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: CHAT_HEADER_AVATAR_SIZE,
+    height: CHAT_HEADER_AVATAR_SIZE,
+    borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
   },
   headerAvatarPlaceholder: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#5B8DEF',
+    width: CHAT_HEADER_AVATAR_SIZE,
+    height: CHAT_HEADER_AVATAR_SIZE,
+    borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },

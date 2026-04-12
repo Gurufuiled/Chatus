@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BlurView } from 'expo-blur';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Alert,

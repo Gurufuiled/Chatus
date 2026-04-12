@@ -1,5 +1,5 @@
 import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import {
   Dimensions,
   FlatList,
@@ -77,6 +77,7 @@ type ChatMessageListProps = {
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
   chatTheme: ChatTheme;
+  activeVideoNoteVisible: boolean;
 };
 
 type ReplySwipeWrapperProps = {
@@ -153,7 +154,7 @@ const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({
       <View style={styles.replyGestureContainer}>
         <Reanimated.View style={[styles.replySwipeAction, iconStyle]}>
           <View style={styles.replySwipeIconWrap}>
-            <Feather name="corner-left-up" size={18} color="#4D8DFF" />
+            <Feather name="corner-left-up" size={18} color={colors.accent} />
           </View>
         </Reanimated.View>
         <Reanimated.View style={[styles.replyGestureContent, contentStyle]}>
@@ -216,6 +217,8 @@ const MessageRow = React.memo(function MessageRow({
   chatTheme,
 }: MessageRowProps) {
   const isMe = item.sender_id === currentUserId;
+  const ownsInlineReplySwipe = item.msg_type === 'video_note';
+  const shouldUseOuterReplySwipe = canSwipe && !ownsInlineReplySwipe;
   const authorPresentation = React.useMemo(
     () => getMessageAuthorPresentation(item, chatId, currentUserId),
     [chatId, currentUserId, getMessageAuthorPresentation, item]
@@ -444,6 +447,7 @@ const MessageRow = React.memo(function MessageRow({
       const topHeader = replySnippet ? null : renderIncomingHeader();
       const videoContent = (
         <VideoNoteBubble
+          messageId={item.id}
           uri={videoUri}
           thumbnailUri={media.thumbnail_url ?? undefined}
           durationMs={media.duration_ms ?? 0}
@@ -703,7 +707,7 @@ const MessageRow = React.memo(function MessageRow({
     </Pressable>
   );
 
-  if (!canSwipe || item.msg_type === 'video_note') {
+  if (!shouldUseOuterReplySwipe) {
     return card;
   }
 
@@ -756,6 +760,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   getDeletedPlaceholder,
   repliedVoiceBubbleWidth,
   chatTheme,
+  activeVideoNoteVisible,
 }: ChatMessageListProps) {
   const renderMessageRow = React.useCallback(({ item }: { item: Message }) => (
     <MessageRow
@@ -814,11 +819,11 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         inverted
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews
-        initialNumToRender={10}
-        maxToRenderPerBatch={6}
-        updateCellsBatchingPeriod={55}
-        windowSize={7}
+        removeClippedSubviews={!activeVideoNoteVisible}
+        initialNumToRender={activeVideoNoteVisible ? 16 : 10}
+        maxToRenderPerBatch={activeVideoNoteVisible ? 14 : 6}
+        updateCellsBatchingPeriod={activeVideoNoteVisible ? 24 : 55}
+        windowSize={activeVideoNoteVisible ? 21 : 7}
         contentContainerStyle={[
           styles.listContent,
           { paddingTop: contentPaddingTop },
@@ -851,7 +856,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.getMessageAuthorName === next.getMessageAuthorName &&
     prev.getDeletedPlaceholder === next.getDeletedPlaceholder &&
     prev.repliedVoiceBubbleWidth === next.repliedVoiceBubbleWidth &&
-    prev.chatTheme === next.chatTheme
+    prev.chatTheme === next.chatTheme &&
+    prev.activeVideoNoteVisible === next.activeVideoNoteVisible
   );
 });
 
@@ -884,10 +890,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   selectionIndicatorActive: {
-    backgroundColor: '#4D8DFF',
+    backgroundColor: colors.accent,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.96)',
-    shadowColor: '#4D8DFF',
+    shadowColor: colors.accent,
     shadowOpacity: 0.2,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -992,10 +998,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   bubbleMe: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.bubbleMe,
   },
   bubbleOther: {
-    backgroundColor: '#E5E5EA',
+    backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
   },
   bubbleContentRow: {
     flexDirection: 'row',
@@ -1038,6 +1046,8 @@ const styles = StyleSheet.create({
   },
   repliedMediaBubbleOther: {
     backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
     ...bubbleRadius.other,
   },
   deletedBubble: {

@@ -1,7 +1,7 @@
 import React from 'react';
 import type { GestureResponderEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import type { Message } from '../stores/types';
 
 export type ReplyPreviewMode = 'composer' | 'bubble';
@@ -15,7 +15,7 @@ function getMediaLabel(message: Message): string {
     case 'voice':
       return 'Голосовое сообщение';
     case 'video_note':
-      return 'Видеокружок';
+      return 'Видеосообщение';
     case 'file':
       return message.media?.[0]?.file_name?.trim() || 'Файл';
     default:

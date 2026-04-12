@@ -18,7 +18,7 @@ import Reanimated, {
   withSpring,
 } from 'react-native-reanimated';
 import { ProfileActionIcon } from '../ProfileActionIcon';
-import { colors } from '../../theme/colors';
+import { colors, withAlpha } from '../../theme/colors';
 
 type GroupProfileHeaderSectionProps = {
   isOwner: boolean;
@@ -174,7 +174,7 @@ export function GroupProfileHeaderSection({
               )}
               {avatarUploading ? (
                 <View style={styles.avatarOverlay}>
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={colors.inputBackgroundSolid} />
                 </View>
               ) : null}
             </Reanimated.View>
@@ -235,7 +235,7 @@ export function GroupProfileHeaderSection({
                   <ProfileActionIcon
                     name="sound"
                     size={20}
-                    color={isMuted ? '#FFFFFF' : colors.accent}
+                    color={isMuted ? colors.inputBackgroundSolid : colors.accent}
                     active={isMuted}
                   />
                   <Text style={[styles.actionButtonLabel, isMuted && styles.actionButtonLabelActive]}>
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.inputBackgroundSolid,
     shadowColor: '#9EAAC0',
     shadowOpacity: 0.12,
     shadowRadius: 14,
@@ -310,12 +310,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   primaryPillButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.inputBackgroundSolid,
   },
   pillButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.textPrimary,
   },
   primaryPillButtonText: {
     fontWeight: '700',
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     height: HERO_COLLAPSED_SIZE,
     borderRadius: 58,
     overflow: 'hidden',
-    backgroundColor: '#DCE7F8',
+    backgroundColor: withAlpha(colors.accent, 0.12),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.95)',
   },
@@ -349,12 +349,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#5B8DEF',
+    backgroundColor: colors.accent,
   },
   avatarFallbackText: {
     fontSize: 40,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.inputBackgroundSolid,
   },
   avatarOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -383,13 +383,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 28,
     fontWeight: '700',
-    color: '#1F2937',
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   groupSubtitle: {
     marginTop: 4,
     fontSize: 16,
-    color: '#7B8594',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   actionsSlot: {
@@ -408,9 +408,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 72,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(216,224,234,0.8)',
+    backgroundColor: colors.inputBackgroundSolid,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.separator,
     shadowColor: '#A3AEC2',
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: 'rgba(77,141,255,0.82)',
+    backgroundColor: withAlpha(colors.accent, 0.82),
   },
   actionButtonActive: {
     backgroundColor: colors.accent,
@@ -443,12 +443,12 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
   actionButtonLabelActive: {
-    color: '#FFFFFF',
+    color: colors.inputBackgroundSolid,
   },
   descriptionCard: {
     marginTop: 16,
     borderRadius: 24,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.inputBackgroundSolid,
     paddingHorizontal: 16,
     paddingVertical: 14,
     shadowColor: '#A3AEC2',
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
   descriptionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#6F7A8C',
+    color: colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
@@ -468,25 +468,25 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 16,
     lineHeight: 22,
-    color: '#1F2937',
+    color: colors.textPrimary,
   },
   editCard: {
     width: '100%',
     marginTop: 18,
     borderRadius: 24,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.inputBackgroundSolid,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   nameInput: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1F2937',
+    color: colors.textPrimary,
     paddingVertical: 8,
   },
   inputDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: '#DFE5EF',
+    backgroundColor: colors.separator,
   },
   descriptionInput: {
     minHeight: 72,
@@ -494,7 +494,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     fontSize: 16,
     lineHeight: 22,
-    color: '#1F2937',
+    color: colors.textPrimary,
     textAlignVertical: 'top',
   },
   cardPressed: {

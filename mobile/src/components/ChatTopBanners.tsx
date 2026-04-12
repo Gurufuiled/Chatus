@@ -1,8 +1,8 @@
 import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Reanimated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 
 type ChatTopBannersProps = {
   selectionMode: boolean;
@@ -16,6 +16,13 @@ type ChatTopBannersProps = {
   onToggleVoicePlayback: () => void;
   onCycleVoiceRate: () => void;
   onStopVoice: () => void;
+  activeVideoNoteVisible: boolean;
+  activeVideoNoteAuthor: string | null;
+  activeVideoNoteIsPlaying: boolean;
+  activeVideoNoteProgress: number;
+  activeVideoNoteDurationLabel: string;
+  onToggleVideoNotePlayback: () => void;
+  onStopVideoNote: () => void;
   pinnedMessageText: string | null;
   onPinnedPress: () => void;
   onPinnedClose: () => void;
@@ -39,6 +46,15 @@ type VoiceBannerProps = {
   onToggleVoicePlayback: () => void;
   onCycleVoiceRate: () => void;
   onStopVoice: () => void;
+};
+
+type VideoNoteBannerProps = {
+  activeVideoNoteAuthor: string | null;
+  activeVideoNoteIsPlaying: boolean;
+  activeVideoNoteProgress: number;
+  activeVideoNoteDurationLabel: string;
+  onToggleVideoNotePlayback: () => void;
+  onStopVideoNote: () => void;
 };
 
 type PinnedBannerProps = {
@@ -159,6 +175,70 @@ const VoiceBanner = React.memo(function VoiceBanner({
   );
 });
 
+const VideoNoteBanner = React.memo(function VideoNoteBanner({
+  activeVideoNoteAuthor,
+  activeVideoNoteIsPlaying,
+  activeVideoNoteProgress,
+  activeVideoNoteDurationLabel,
+  onToggleVideoNotePlayback,
+  onStopVideoNote,
+}: VideoNoteBannerProps) {
+  return (
+    <View style={styles.voiceBannerWrap}>
+      <View style={[styles.voiceBanner, styles.videoNoteBanner]}>
+        <Pressable
+          onPress={onToggleVideoNotePlayback}
+          style={({ pressed }) => [
+            styles.voiceBannerPlayButton,
+            styles.videoNotePlayButton,
+            pressed && styles.voiceBannerButtonPressed,
+          ]}
+        >
+          <Feather
+            name={activeVideoNoteIsPlaying ? 'pause' : 'play'}
+            size={18}
+            color="#FFFFFF"
+            style={!activeVideoNoteIsPlaying ? styles.voiceBannerPlayIcon : undefined}
+          />
+        </Pressable>
+
+        <View style={styles.voiceBannerTextWrap}>
+          <Text numberOfLines={1} style={styles.voiceBannerAuthor}>
+            {activeVideoNoteAuthor ?? 'Видеосообщение'}
+          </Text>
+          <Text numberOfLines={1} style={styles.voiceBannerSubtitle}>
+            Видеосообщение
+          </Text>
+        </View>
+
+        <View style={styles.videoNoteMetaBadge}>
+          <Text style={styles.videoNoteMetaBadgeText}>{activeVideoNoteDurationLabel}</Text>
+        </View>
+
+        <Pressable
+          onPress={onStopVideoNote}
+          style={({ pressed }) => [
+            styles.voiceBannerCloseButton,
+            pressed && styles.voiceBannerButtonPressed,
+          ]}
+        >
+          <Feather name="x" size={18} color="#8A94A6" />
+        </Pressable>
+
+        <View style={styles.voiceBannerProgressTrack}>
+          <View
+            style={[
+              styles.voiceBannerProgressFill,
+              styles.videoNoteProgressFill,
+              { width: `${Math.max(activeVideoNoteProgress * 100, 0)}%` },
+            ]}
+          />
+        </View>
+      </View>
+    </View>
+  );
+});
+
 const PinnedBanner = React.memo(function PinnedBanner({
   pinnedMessageText,
   onPinnedPress,
@@ -227,6 +307,13 @@ export const ChatTopBanners = React.memo(
     onToggleVoicePlayback,
     onCycleVoiceRate,
     onStopVoice,
+    activeVideoNoteVisible,
+    activeVideoNoteAuthor,
+    activeVideoNoteIsPlaying,
+    activeVideoNoteProgress,
+    activeVideoNoteDurationLabel,
+    onToggleVideoNotePlayback,
+    onStopVideoNote,
     pinnedMessageText,
     onPinnedPress,
     onPinnedClose,
@@ -251,6 +338,17 @@ export const ChatTopBanners = React.memo(
             onToggleVoicePlayback={onToggleVoicePlayback}
             onCycleVoiceRate={onCycleVoiceRate}
             onStopVoice={onStopVoice}
+          />
+        ) : null}
+
+        {activeVideoNoteVisible ? (
+          <VideoNoteBanner
+            activeVideoNoteAuthor={activeVideoNoteAuthor}
+            activeVideoNoteIsPlaying={activeVideoNoteIsPlaying}
+            activeVideoNoteProgress={activeVideoNoteProgress}
+            activeVideoNoteDurationLabel={activeVideoNoteDurationLabel}
+            onToggleVideoNotePlayback={onToggleVideoNotePlayback}
+            onStopVideoNote={onStopVideoNote}
           />
         ) : null}
 
@@ -285,6 +383,13 @@ export const ChatTopBanners = React.memo(
     prev.onToggleVoicePlayback === next.onToggleVoicePlayback &&
     prev.onCycleVoiceRate === next.onCycleVoiceRate &&
     prev.onStopVoice === next.onStopVoice &&
+    prev.activeVideoNoteVisible === next.activeVideoNoteVisible &&
+    prev.activeVideoNoteAuthor === next.activeVideoNoteAuthor &&
+    prev.activeVideoNoteIsPlaying === next.activeVideoNoteIsPlaying &&
+    prev.activeVideoNoteProgress === next.activeVideoNoteProgress &&
+    prev.activeVideoNoteDurationLabel === next.activeVideoNoteDurationLabel &&
+    prev.onToggleVideoNotePlayback === next.onToggleVideoNotePlayback &&
+    prev.onStopVideoNote === next.onStopVideoNote &&
     prev.pinnedMessageText === next.pinnedMessageText &&
     prev.onPinnedPress === next.onPinnedPress &&
     prev.onPinnedClose === next.onPinnedClose &&
@@ -338,8 +443,8 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4D8DFF',
-    shadowColor: '#4D8DFF',
+    backgroundColor: colors.accent,
+    shadowColor: colors.accent,
     shadowOpacity: 0.22,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
@@ -371,12 +476,23 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(148,163,184,0.32)',
     overflow: 'hidden',
   },
+  videoNoteBanner: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+  },
   voiceBannerPlayButton: {
     width: 30,
     height: 30,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  videoNotePlayButton: {
+    backgroundColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   voiceBannerPlayIcon: {
     marginLeft: 2,
@@ -408,6 +524,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#7A8699',
   },
+  videoNoteMetaBadge: {
+    minWidth: 54,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha(colors.accent, 0.1),
+  },
+  videoNoteMetaBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.accent,
+  },
   voiceBannerCloseButton: {
     width: 28,
     height: 28,
@@ -424,11 +554,14 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 2,
-    backgroundColor: 'rgba(77,141,255,0.12)',
+    backgroundColor: withAlpha(colors.accent, 0.12),
   },
   voiceBannerProgressFill: {
     height: '100%',
     backgroundColor: colors.accent,
+  },
+  videoNoteProgressFill: {
+    backgroundColor: '#7C5CFF',
   },
   pinnedBannerWrap: {
     paddingHorizontal: 12,
@@ -448,7 +581,7 @@ const styles = StyleSheet.create({
     width: 3,
     alignSelf: 'stretch',
     borderRadius: 999,
-    backgroundColor: '#4D8DFF',
+    backgroundColor: colors.accent,
     marginRight: 10,
   },
   pinnedContent: {
@@ -463,7 +596,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 15,
     fontWeight: '700',
-    color: '#4D8DFF',
+    color: colors.accent,
   },
   pinnedText: {
     marginTop: 2,

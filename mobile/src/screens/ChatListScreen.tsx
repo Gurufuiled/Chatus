@@ -1,18 +1,18 @@
 import React from 'react';
-import { Alert, Dimensions, FlatList, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { Alert, FlatList, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatListActionsMenu, ChatListRow, type ChatListMenuState } from '../components';
 import { ChatDao } from '../db/dao/ChatDao';
 import type { ChatsStackParamList } from '../navigation/types';
+import { computeChatListMenuPosition, CHAT_LIST_SEPARATOR_INSET } from '../presentation';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
+import { colors } from '../theme/colors';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChatList'>;
-const CHAT_LIST_MENU_WIDTH = 236;
-const CHAT_LIST_SCREEN_WIDTH = Dimensions.get('window').width;
 
 function ChatSeparator() {
   return <View style={styles.separator} />;
@@ -66,15 +66,10 @@ export function ChatListScreen() {
   }, []);
 
   const handleOpenMenu = React.useCallback((chat: Chat, event: GestureResponderEvent) => {
-    const sideGap = 12;
-    const topGap = 84;
-    const pageX = event.nativeEvent.pageX;
-    const pageY = event.nativeEvent.pageY;
-    const left = Math.max(
-      sideGap,
-      Math.min(pageX - CHAT_LIST_MENU_WIDTH / 2, CHAT_LIST_SCREEN_WIDTH - CHAT_LIST_MENU_WIDTH - sideGap)
+    const { left, top } = computeChatListMenuPosition(
+      event.nativeEvent.pageX,
+      event.nativeEvent.pageY,
     );
-    const top = Math.max(topGap, pageY - 20);
     setMenuState({
       chatId: chat.id,
       top,
@@ -157,7 +152,7 @@ export function ChatListScreen() {
         windowSize={8}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No chats yet</Text>
+            <Text style={styles.emptyText}>Нет чатов</Text>
           </View>
         }
       />
@@ -179,12 +174,12 @@ export function ChatListScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: colors.inputBackgroundSolid },
   separator: {
-    height: 1,
-    marginLeft: 74,
-    backgroundColor: '#DADFE7',
+    height: StyleSheet.hairlineWidth,
+    marginLeft: CHAT_LIST_SEPARATOR_INSET,
+    backgroundColor: colors.separator,
   },
   empty: { padding: 24, alignItems: 'center' },
-  emptyText: { fontSize: 16, color: '#999' },
+  emptyText: { fontSize: 16, color: colors.textSecondary },
 });

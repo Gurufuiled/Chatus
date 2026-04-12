@@ -48,10 +48,10 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
   default: {
     id: 'default',
     name: 'Без темы',
-    bubbleMe: '#4D8DFF',
+    bubbleMe: '#3390EC',
     bubbleMeText: '#FFFFFF',
     bubbleMeMeta: 'rgba(255,255,255,0.8)',
-    bubbleMeAccent: '#2E73F3',
+    bubbleMeAccent: '#2B7DD1',
     replyBubbleMe: '#6A9EFF',
     replyAccentMe: '#DFF2A8',
     replyTextMe: 'rgba(255,255,255,0.88)',

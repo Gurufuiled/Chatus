@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   AnchoredPopoverMenu,
@@ -9,6 +9,7 @@ import {
 import { ChatProfileMediaViewerModal } from './ChatProfileMediaViewerModal';
 import { FloatingVideoNoteOverlay } from './FloatingVideoNoteOverlay';
 import type { MediaTile, VoiceItem } from './ChatProfileMediaSection';
+import { colors, withAlpha } from '../theme/colors';
 
 type ProfileActionMenuState = {
   messageId: string;
@@ -129,7 +130,7 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
               onPress={() => onShowInChat(actionMenu.messageId)}
               style={({ pressed }) => [styles.actionMenuItem, pressed && styles.actionMenuItemPressed]}
             >
-              <Feather name="message-circle" size={16} color="#111827" />
+              <Feather name="message-circle" size={16} color={colors.textPrimary} />
               <Text style={styles.actionMenuLabel}>Показать в чате</Text>
             </Pressable>
           </Animated.View>
@@ -147,7 +148,7 @@ const styles = StyleSheet.create({
   },
   actionMenuBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.04)',
+    backgroundColor: 'rgba(0, 0, 0, 0.06)',
   },
   actionMenuBackdropPressable: {
     ...StyleSheet.absoluteFillObject,
@@ -155,8 +156,8 @@ const styles = StyleSheet.create({
   actionMenuCard: {
     position: 'absolute',
     minWidth: 164,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 12,
+    backgroundColor: colors.inputBackgroundSolid,
     shadowColor: '#0F172A',
     shadowOpacity: 0.14,
     shadowRadius: 16,
@@ -172,11 +173,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   actionMenuItemPressed: {
-    backgroundColor: 'rgba(77,141,255,0.08)',
+    backgroundColor: withAlpha(colors.accent, 0.08),
   },
   actionMenuLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.textPrimary,
   },
 });

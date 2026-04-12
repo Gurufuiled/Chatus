@@ -9,7 +9,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { VoiceRecorderService } from '../services/VoiceRecorderService';
 import { colors } from '../theme/colors';
 

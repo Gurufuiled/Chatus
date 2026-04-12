@@ -1,6 +1,7 @@
 import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, withAlpha } from '../theme/colors';
 
 type ForwardHeaderProps = {
   isMe: boolean;
@@ -25,7 +26,7 @@ export const ForwardHeader = React.memo(function ForwardHeader({
       <Feather
         name="corner-up-right"
         size={12}
-        color={isMe ? resolvedMeColor : '#4D8DFF'}
+        color={isMe ? resolvedMeColor : colors.accent}
         style={styles.icon}
       />
       <Text
@@ -42,7 +43,7 @@ export const ForwardHeader = React.memo(function ForwardHeader({
         <Feather
           name="chevron-right"
           size={12}
-          color={isMe ? resolvedMeColor : 'rgba(77,141,255,0.92)'}
+          color={isMe ? resolvedMeColor : withAlpha(colors.accent, 0.92)}
         />
       ) : null}
     </>
@@ -92,6 +93,6 @@ const styles = StyleSheet.create({
     color: '#DFF2A8',
   },
   textOther: {
-    color: '#4D8DFF',
+    color: colors.accent,
   },
 });

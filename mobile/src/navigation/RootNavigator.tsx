@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { uiStore } from '../stores/uiStore';
 import { AuthStack } from './AuthStack';
 import { MainTabs } from './MainTabs';
+import { colors } from '../theme/colors';
 
 export function RootNavigator() {
   const { isLoading, isAuthenticated, login } = useAuth();
@@ -16,7 +17,7 @@ export function RootNavigator() {
   if (isLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -38,6 +39,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBackgroundSolid,
   },
 });

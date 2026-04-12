@@ -261,6 +261,8 @@ const styles = StyleSheet.create({
   },
   bubbleOther: {
     backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
     ...bubbleRadius.other,
   },
   imageWrapper: {

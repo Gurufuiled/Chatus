@@ -1,4 +1,4 @@
-﻿import React, {
+import React, {
   createContext,
   useCallback,
   useContext,
@@ -7,7 +7,7 @@
   useRef,
   useState,
 } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { Audio } from 'expo-av';
 import {
   RTCIceCandidate,

@@ -1,5 +1,5 @@
 import React from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import {
   Modal,
   Pressable,
@@ -8,6 +8,8 @@ import {
   View,
 } from 'react-native';
 import type { Chat } from '../stores/types';
+import { CHAT_LIST_MENU_WIDTH } from '../presentation';
+import { colors } from '../theme/colors';
 
 export type ChatListMenuState = {
   chatId: string;
@@ -48,7 +50,7 @@ function MenuAction({
         <Feather
           name={icon}
           size={17}
-          color={danger ? '#E53935' : '#111827'}
+          color={danger ? '#E53935' : colors.textPrimary}
         />
       </View>
       <Text style={[styles.actionLabel, danger && styles.actionLabelDanger]}>
@@ -109,13 +111,13 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+    backgroundColor: 'rgba(0, 0, 0, 0.12)',
   },
   menuCard: {
     position: 'absolute',
-    width: 236,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    width: CHAT_LIST_MENU_WIDTH,
+    borderRadius: 12,
+    backgroundColor: colors.inputBackgroundSolid,
     paddingVertical: 8,
     shadowColor: '#0F172A',
     shadowOpacity: 0.14,
@@ -130,7 +132,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionRowPressed: {
-    backgroundColor: '#F5F7FB',
+    backgroundColor: colors.rowPressed,
   },
   iconWrap: {
     width: 30,
@@ -138,7 +140,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F2F5FA',
+    backgroundColor: colors.inputBackground,
     marginRight: 12,
   },
   iconWrapDanger: {
@@ -148,7 +150,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: colors.textPrimary,
   },
   actionLabelDanger: {
     color: '#E53935',

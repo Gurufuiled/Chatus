@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import Feather from 'expo/node_modules/@expo/vector-icons/Feather';
+import Feather from '@expo/vector-icons/Feather';
 import { Animated, Dimensions, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 export type AnchoredMenuState = {

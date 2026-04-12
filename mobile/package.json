@@ -20,6 +20,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-community/netinfo": "11.5.2",
     "@react-navigation/bottom-tabs": "^7.15.5",
     "@react-navigation/core": "7.16.1",
