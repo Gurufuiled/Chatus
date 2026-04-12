@@ -49,6 +49,7 @@ const SCRUB_RING_INSET = 8;
 const SCRUB_THUMB_SIZE = 18;
 const SCRUB_THUMB_CAPTURE_PADDING = 10;
 const CENTER_PLAY_TAP_EXCLUSION_RADIUS = 44;
+const SCRUB_THUMB_HOLD_DURATION_MS = 180;
 const generatedThumbnailCache = new Map<string, string>();
 const posterImageStyle: ImageStyle = {
   ...StyleSheet.absoluteFillObject,
@@ -326,6 +327,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const [showPausedPlayOverlay, setShowPausedPlayOverlay] = React.useState(false);
   const [scrubProgress, setScrubProgress] = React.useState<number | null>(null);
   const [isThumbScrubbing, setIsThumbScrubbing] = React.useState(false);
+  const [isThumbScrubPending, setIsThumbScrubPending] = React.useState(false);
   const progress = useSharedValue(0);
   const badgeOpacity = useSharedValue(0);
   const replyTranslateX = useSharedValue(0);
@@ -400,6 +402,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     setHasRenderedFrame(false);
     setShowPausedPlayOverlay(false);
     setIsThumbScrubbing(false);
+    setIsThumbScrubPending(false);
     setScrubProgressValue(null);
   }, [setScrubProgressValue]);
 
@@ -477,6 +480,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         player.pause();
       } else {
         setIsThumbScrubbing(false);
+        setIsThumbScrubPending(false);
         setShowPausedPlayOverlay(false);
         setScrubProgressValue(null);
         badgeOpacity.value = 0;
@@ -532,6 +536,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     setHasRenderedFrame(false);
     setShowPausedPlayOverlay(false);
     setIsThumbScrubbing(false);
+    setIsThumbScrubPending(false);
     setScrubProgressValue(null);
     progress.value = 0;
     badgeOpacity.value = 0;
@@ -752,7 +757,10 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   });
 
   const replySwipeEnabled =
-    enableReplySwipe && typeof onReplySwipe === 'function' && !isThumbScrubbing;
+    enableReplySwipe &&
+    typeof onReplySwipe === 'function' &&
+    !isThumbScrubbing &&
+    !isThumbScrubPending;
 
   const replyGesture = React.useMemo(() => Gesture.Pan()
     .enabled(replySwipeEnabled)
@@ -851,6 +859,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
   const finalizeThumbScrub = React.useCallback((didActivate: boolean) => {
     setIsThumbScrubbing(false);
+    setIsThumbScrubPending(false);
     if (!didActivate) {
       return;
     }
@@ -862,7 +871,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     () =>
       Gesture.Pan()
         .enabled(showPausedPlayOverlay)
-        .manualActivation(true)
+        .activateAfterLongPress(SCRUB_THUMB_HOLD_DURATION_MS)
         .onTouchesDown((event, stateManager) => {
           const touch = event.allTouches[0];
           if (!touch || !showPausedPlayOverlay) {
@@ -894,16 +903,16 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
               scrubThumbCaptureRadius
             )
           ) {
-            didActivateThumbScrub.value = true;
-            runOnJS(setIsThumbScrubbing)(true);
-            stateManager.activate();
+            runOnJS(setIsThumbScrubPending)(true);
             return;
           }
 
           didActivateThumbScrub.value = false;
           stateManager.fail();
         })
-        .onBegin((event) => {
+        .onStart((event) => {
+          didActivateThumbScrub.value = true;
+          runOnJS(setIsThumbScrubbing)(true);
           runOnJS(updateScrubProgress)(
             progressForScrubPoint(event.x, event.y, scrubRingCenter)
           );
