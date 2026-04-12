@@ -48,6 +48,7 @@ const SCRUB_RING_PROGRESS_SHADOW_WIDTH = 7;
 const SCRUB_RING_INSET = 8;
 const SCRUB_THUMB_SIZE = 18;
 const SCRUB_THUMB_CAPTURE_PADDING = 10;
+const CENTER_PLAY_TAP_EXCLUSION_RADIUS = 44;
 const generatedThumbnailCache = new Map<string, string>();
 const posterImageStyle: ImageStyle = {
   ...StyleSheet.absoluteFillObject,
@@ -85,6 +86,19 @@ function isScrubThumbTouchTarget(
   const dx = locationX - thumbCenterX;
   const dy = locationY - thumbCenterY;
   return dx * dx + dy * dy <= captureRadius * captureRadius;
+}
+
+function isPointWithinRadius(
+  locationX: number,
+  locationY: number,
+  centerX: number,
+  centerY: number,
+  radius: number
+) {
+  'worklet';
+  const dx = locationX - centerX;
+  const dy = locationY - centerY;
+  return dx * dx + dy * dy <= radius * radius;
 }
 
 type ActiveVideoNoteListener = (activeId: string | null) => void;
@@ -852,6 +866,20 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         .onTouchesDown((event, stateManager) => {
           const touch = event.allTouches[0];
           if (!touch || !showPausedPlayOverlay) {
+            didActivateThumbScrub.value = false;
+            stateManager.fail();
+            return;
+          }
+
+          if (
+            isPointWithinRadius(
+              touch.x,
+              touch.y,
+              scrubRingCenter,
+              scrubRingCenter,
+              CENTER_PLAY_TAP_EXCLUSION_RADIUS
+            )
+          ) {
             didActivateThumbScrub.value = false;
             stateManager.fail();
             return;
