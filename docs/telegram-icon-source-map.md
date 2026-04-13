@@ -28,6 +28,19 @@
 | `search` | `outline_search_1_24.xml` | |
 | `more` | — | В доступном наборе не найден отдельный drawable «три точки» для профиля; см. divergences. |
 
+## Звонок — нижние controls (`CallContext`)
+
+| Наш UI | Telegram drawable | Примечание |
+|--------|-------------------|------------|
+| `accept` | `menu_phone.xml` | Использован literal path из Telegram Android action icon. |
+| `video` | `menu_videocall.xml` | Использован literal path из upstream video-call action. |
+| `microphone on` | `mute.xml` | В Telegram drawable это small white mute-control glyph. |
+| `microphone off` | `unmute.xml` | Slashed variant из того же call control набора. |
+| `speaker` | `filled_sound_on.xml` | Использован как наиболее близкий upstream speaker/audio-route glyph из Telegram Android. |
+| `hangup` | `call.xml` | Для векторного RN glyph используется `call.xml`; upstream decline notification дополнительно tint-ит raster asset `ic_call_end_white_24dp.png`. |
+
+Источник маппинга для call controls был получен напрямую из upstream GitHub API (`DrKLO/Telegram`, `TMessagesProj/src/main/res/drawable*`), потому что локальный sparse reference `Improvements/telegram-android-ref/` отсутствовал.
+
 ## Экран настроек — строки меню (`SettingsScreen`)
 
 Иконки секций (литеральные path из `settings_*.xml`):

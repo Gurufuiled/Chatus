@@ -156,6 +156,13 @@ function setActiveVideoNoteController(nextController: ActiveVideoNoteController)
   activeVideoNoteController = nextController;
 }
 
+function clearActiveVideoNoteController(controller: ActiveVideoNoteController) {
+  if (activeVideoNoteController !== controller) {
+    return;
+  }
+  activeVideoNoteController = null;
+}
+
 function cancelPendingVideoNoteOwnershipRelease(noteId?: string | null, uri?: string | null) {
   if (!pendingVideoNoteOwnershipRelease) {
     return;
@@ -337,6 +344,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const isMountedRef = React.useRef(true);
   const suppressPressUntilRef = React.useRef(0);
   const scrubProgressRef = React.useRef<number | null>(null);
+  const playbackControllerRef = React.useRef<ActiveVideoNoteController>(null);
   const didActivateThumbScrub = useSharedValue(false);
 
   const player = useVideoPlayer(normalizedUri, (instance) => {
@@ -376,8 +384,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       }
       if (getVideoNotePlaybackSnapshot().messageId === noteId) {
         clearVideoNotePlaybackSnapshot(noteId);
-        setActiveVideoNoteController(null);
       }
+      clearActiveVideoNoteController(playbackControllerRef.current);
       if (pausePlayer) {
         try {
           player.pause();
@@ -659,9 +667,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
     if (!isExpanded || !normalizedUri) {
       clearVideoNotePlaybackSnapshot(noteId);
-      if (activeVideoNoteController && videoNotePlaybackSnapshot.messageId === noteId) {
-        setActiveVideoNoteController(null);
-      }
+      clearActiveVideoNoteController(playbackControllerRef.current);
+      playbackControllerRef.current = null;
       return;
     }
 
@@ -674,6 +681,12 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     const progressValue =
       durationForState > 0 ? clampUnit(positionMs / durationForState) : 0;
 
+    const controller: ActiveVideoNoteController = {
+      togglePlayback: handlePress,
+      stopPlayback: collapseInline,
+    };
+    playbackControllerRef.current = controller;
+
     setVideoNotePlaybackSnapshot({
       messageId: noteId,
       uri: normalizedUri,
@@ -682,17 +695,15 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       durationMs: durationForState,
       progress: progressValue,
     });
-    setActiveVideoNoteController({
-      togglePlayback: handlePress,
-      stopPlayback: collapseInline,
-    });
+    setActiveVideoNoteController(controller);
 
     return () => {
-      if (videoNotePlaybackSnapshot.messageId === noteId) {
+      if (getVideoNotePlaybackSnapshot().messageId === noteId) {
         clearVideoNotePlaybackSnapshot(noteId);
       }
-      if (activeVideoNoteController && videoNotePlaybackSnapshot.messageId === noteId) {
-        setActiveVideoNoteController(null);
+      clearActiveVideoNoteController(controller);
+      if (playbackControllerRef.current === controller) {
+        playbackControllerRef.current = null;
       }
     };
   }, [

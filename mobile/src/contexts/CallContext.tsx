@@ -7,7 +7,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Audio } from 'expo-av';
 import {
   RTCIceCandidate,
@@ -34,6 +33,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
 import { resolveAvatarUrl } from '../config';
+import { TelegramGlyph, TELEGRAM_CALL_GLYPHS, type CallGlyph } from '../icons/telegram';
 import { SignalingService } from '../services/SignalingService';
 import { VoicePlayerService } from '../services/VoicePlayerService';
 import { chatStore } from '../stores/chatStore';
@@ -56,6 +56,7 @@ type CallUiState = {
   isLocalVideoReady: boolean;
   isLocalVideoEnabled: boolean;
   isRemoteVideoEnabled: boolean;
+  hasRemoteVideoEverEnabled: boolean;
   localStreamUrl: string | null;
   remoteStreamUrl: string | null;
 };
@@ -106,9 +107,6 @@ type CallActionTone = 'neutral' | 'accent' | 'success' | 'danger' | 'disabled';
 
 type CallControlsLayout = {
   screenHorizontalPadding: number;
-  panelHorizontalPadding: number;
-  panelVerticalPadding: number;
-  panelRadius: number;
   rowGap: number;
   incomingGap: number;
   incomingPaddingHorizontal: number;
@@ -118,7 +116,6 @@ type CallControlsLayout = {
   iconSize: number;
   prominentIconSize: number;
   labelFontSize: number;
-  bottomNoteFontSize: number;
 };
 
 function buildCallAudioMode(isSpeakerOn: boolean) {
@@ -131,13 +128,17 @@ function buildCallAudioMode(isSpeakerOn: boolean) {
   } satisfies Parameters<typeof Audio.setAudioModeAsync>[0];
 }
 
+function buildOfferOptions(shouldReceiveVideo: boolean) {
+  return {
+    offerToReceiveAudio: true,
+    offerToReceiveVideo: shouldReceiveVideo,
+  };
+}
+
 function getCallControlsLayout(screenWidth: number): CallControlsLayout {
   if (screenWidth <= 340) {
     return {
       screenHorizontalPadding: 14,
-      panelHorizontalPadding: 6,
-      panelVerticalPadding: 14,
-      panelRadius: 24,
       rowGap: 4,
       incomingGap: 18,
       incomingPaddingHorizontal: 6,
@@ -147,16 +148,12 @@ function getCallControlsLayout(screenWidth: number): CallControlsLayout {
       iconSize: 20,
       prominentIconSize: 24,
       labelFontSize: 11,
-      bottomNoteFontSize: 12,
     };
   }
 
   if (screenWidth <= 380) {
     return {
       screenHorizontalPadding: 18,
-      panelHorizontalPadding: 8,
-      panelVerticalPadding: 16,
-      panelRadius: 28,
       rowGap: 6,
       incomingGap: 22,
       incomingPaddingHorizontal: 8,
@@ -166,15 +163,11 @@ function getCallControlsLayout(screenWidth: number): CallControlsLayout {
       iconSize: 22,
       prominentIconSize: 26,
       labelFontSize: 12,
-      bottomNoteFontSize: 12,
     };
   }
 
   return {
     screenHorizontalPadding: 24,
-    panelHorizontalPadding: 12,
-    panelVerticalPadding: 18,
-    panelRadius: 32,
     rowGap: 8,
     incomingGap: 28,
     incomingPaddingHorizontal: 12,
@@ -184,7 +177,6 @@ function getCallControlsLayout(screenWidth: number): CallControlsLayout {
     iconSize: 24,
     prominentIconSize: 28,
     labelFontSize: 13,
-    bottomNoteFontSize: 13,
   };
 }
 
@@ -205,25 +197,27 @@ function getStatusText(callState: CallUiState | null, nowTick: number) {
   }
 }
 
-function getPhaseCaption(phase?: CallPhase) {
+function getPhaseCaption(callState: CallUiState | null) {
+  const phase = callState?.phase;
+  const isVideo = callState?.callKind === 'video';
+
   switch (phase) {
     case 'incoming':
-      return 'Голосовой звонок';
+      return isVideo ? 'Видеозвонок' : 'Голосовой звонок';
     case 'outgoing':
-      return 'Ожидаем ответа';
+      return isVideo ? 'Ожидаем ответа на видео' : 'Ожидаем ответа';
     case 'connecting':
-      return 'Подключаем аудио';
+      return isVideo ? 'Подключаем видео' : 'Подключаем аудио';
     case 'active':
-      return 'Голосовой разговор';
+      return isVideo ? 'Видеозвонок' : 'Голосовой разговор';
     default:
       return '';
   }
 }
 
-function getCallKindFromOffer(callType: CallKind | undefined, sdp: RTCSessionDescriptionInit) {
+function getCallKindFromOffer(callType: CallKind | undefined) {
   if (callType === 'video') return 'video';
-  if (callType === 'audio') return 'audio';
-  return sdp.sdp?.includes('m=video') ? 'video' : 'audio';
+  return 'audio';
 }
 
 function hasEnabledVideoTrack(stream: RTCMediaStream | null | undefined) {
@@ -259,7 +253,7 @@ function getActionLabelStyle(tone: CallActionTone) {
 }
 
 type CallActionButtonProps = {
-  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  icon: CallGlyph;
   label: string;
   layout: CallControlsLayout;
   tone?: CallActionTone;
@@ -306,8 +300,10 @@ const CallActionButton = React.memo(function CallActionButton({
           getActionCircleStyle(effectiveTone),
         ]}
       >
-        <MaterialCommunityIcons
-          name={icon}
+        <TelegramGlyph
+          d={icon.d}
+          fillRule={icon.fillRule}
+          viewBox={icon.viewBox}
           size={prominent ? layout.prominentIconSize : layout.iconSize}
           color={effectiveTone === 'disabled' ? 'rgba(255,255,255,0.58)' : '#FFFFFF'}
         />
@@ -368,31 +364,28 @@ const CallOverlay = React.memo(function CallOverlay({
     return () => clearInterval(timer);
   }, [callState?.phase, callState?.startedAt]);
   const statusText = useMemo(() => getStatusText(callState, nowTick), [callState, nowTick]);
-  const phaseCaption = getPhaseCaption(callState?.phase);
+  const phaseCaption = getPhaseCaption(callState);
   const initial = callState ? buildInitial(callState.displayName) : '?';
   const isIncoming = callState?.phase === 'incoming';
   const showUtilityControls = Boolean(callState && !isIncoming);
   const canToggleSpeaker = Platform.OS === 'android' && showUtilityControls;
   const canToggleMute = Boolean(callState?.isLocalAudioReady && showUtilityControls);
   const canToggleVideo = Boolean(callState?.isLocalAudioReady && showUtilityControls);
-  const showVideoStage = Boolean(
-    callState &&
-      !isIncoming &&
-      (callState.callKind === 'video' ||
-        callState.isLocalVideoEnabled ||
-        callState.isRemoteVideoEnabled)
-  );
-  const fullVideoUrl =
-    callState?.isRemoteVideoEnabled && callState.remoteStreamUrl
+  const remoteVideoStageUrl =
+    callState?.hasRemoteVideoEverEnabled && callState.remoteStreamUrl
       ? callState.remoteStreamUrl
-      : callState?.isLocalVideoEnabled
-        ? callState.localStreamUrl
-        : null;
+      : null;
+  const localVideoStageUrl =
+    callState?.callKind === 'video' &&
+    !callState.hasRemoteVideoEverEnabled &&
+    callState.isLocalVideoEnabled &&
+    callState.localStreamUrl
+      ? callState.localStreamUrl
+      : null;
+  const fullVideoUrl = remoteVideoStageUrl ?? localVideoStageUrl ?? null;
+  const showVideoStage = Boolean(callState && !isIncoming && fullVideoUrl);
   const showLocalPreview = Boolean(
-    callState?.isRemoteVideoEnabled &&
-      callState.remoteStreamUrl &&
-      callState.isLocalVideoEnabled &&
-      callState.localStreamUrl
+    remoteVideoStageUrl && callState?.isLocalVideoEnabled && callState.localStreamUrl
   );
   const endLabel = callState?.phase === 'active' ? 'Завершить' : 'Отменить';
   const controlsLayout = useMemo(() => getCallControlsLayout(screenWidth), [screenWidth]);
@@ -463,50 +456,39 @@ const CallOverlay = React.memo(function CallOverlay({
           </View>
           <View style={styles.bottomDock}>
             {showUtilityControls ? (
-              <View
-                style={[
-                  styles.controlsPanel,
-                  {
-                    borderRadius: controlsLayout.panelRadius,
-                    paddingHorizontal: controlsLayout.panelHorizontalPadding,
-                    paddingVertical: controlsLayout.panelVerticalPadding,
-                  },
-                ]}
-              >
-                <View style={[styles.controlsRow, { gap: controlsLayout.rowGap }]}>
-                  <CallActionButton
-                    icon={callState?.isSpeakerOn ? 'volume-high' : 'volume-low'}
-                    label={callState?.isSpeakerOn ? 'Динамик' : 'Разговорный'}
-                    layout={controlsLayout}
-                    tone={callState?.isSpeakerOn ? 'accent' : 'neutral'}
-                    disabled={!canToggleSpeaker}
-                    onPress={onToggleSpeaker}
-                  />
-                  <CallActionButton
-                    icon="video-outline"
-                    label="Видео"
-                    layout={controlsLayout}
-                    tone={callState?.isLocalVideoEnabled ? 'accent' : 'neutral'}
-                    disabled={!canToggleVideo}
-                    onPress={onToggleVideo}
-                  />
-                  <CallActionButton
-                    icon={callState?.isMuted ? 'microphone-off' : 'microphone'}
-                    label={callState?.isMuted ? 'Микрофон выкл.' : 'Микрофон'}
-                    layout={controlsLayout}
-                    tone={callState?.isMuted ? 'accent' : 'neutral'}
-                    disabled={!canToggleMute}
-                    onPress={onToggleMute}
-                  />
-                  <CallActionButton
-                    icon="phone-hangup"
-                    label={endLabel}
-                    layout={controlsLayout}
-                    tone="danger"
-                    prominent
-                    onPress={onEnd}
-                  />
-                </View>
+              <View style={[styles.controlsRow, { gap: controlsLayout.rowGap }]}>
+                <CallActionButton
+                  icon={TELEGRAM_CALL_GLYPHS.speaker}
+                  label={callState?.isSpeakerOn ? 'Динамик' : 'Разговорный'}
+                  layout={controlsLayout}
+                  tone={callState?.isSpeakerOn ? 'accent' : 'neutral'}
+                  disabled={!canToggleSpeaker}
+                  onPress={onToggleSpeaker}
+                />
+                <CallActionButton
+                  icon={TELEGRAM_CALL_GLYPHS.video}
+                  label="Видео"
+                  layout={controlsLayout}
+                  tone={callState?.isLocalVideoEnabled ? 'accent' : 'neutral'}
+                  disabled={!canToggleVideo}
+                  onPress={onToggleVideo}
+                />
+                <CallActionButton
+                  icon={callState?.isMuted ? TELEGRAM_CALL_GLYPHS.unmute : TELEGRAM_CALL_GLYPHS.mute}
+                  label={callState?.isMuted ? 'Микрофон выкл.' : 'Микрофон'}
+                  layout={controlsLayout}
+                  tone={callState?.isMuted ? 'accent' : 'neutral'}
+                  disabled={!canToggleMute}
+                  onPress={onToggleMute}
+                />
+                <CallActionButton
+                  icon={TELEGRAM_CALL_GLYPHS.hangup}
+                  label={endLabel}
+                  layout={controlsLayout}
+                  tone="danger"
+                  prominent
+                  onPress={onEnd}
+                />
               </View>
             ) : (
               <View
@@ -519,7 +501,7 @@ const CallOverlay = React.memo(function CallOverlay({
                 ]}
               >
                 <CallActionButton
-                  icon="phone-hangup"
+                  icon={TELEGRAM_CALL_GLYPHS.hangup}
                   label="Отклонить"
                   layout={controlsLayout}
                   tone="danger"
@@ -527,7 +509,7 @@ const CallOverlay = React.memo(function CallOverlay({
                   onPress={onDecline}
                 />
                 <CallActionButton
-                  icon="phone"
+                  icon={TELEGRAM_CALL_GLYPHS.phone}
                   label="Принять"
                   layout={controlsLayout}
                   tone="success"
@@ -653,13 +635,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const updateRemoteStreamState = useCallback((nextKind?: CallKind) => {
     const remoteStream = remoteStreamRef.current;
+    const nextRemoteStreamUrl = getStreamUrl(remoteStream);
+    const hasRemoteVideo = hasEnabledVideoTrack(remoteStream);
     setCallState((state) =>
       state
         ? {
             ...state,
             callKind: nextKind ?? state.callKind,
-            isRemoteVideoEnabled: hasEnabledVideoTrack(remoteStream),
-            remoteStreamUrl: getStreamUrl(remoteStream),
+            isRemoteVideoEnabled: hasRemoteVideo,
+            hasRemoteVideoEverEnabled: state.hasRemoteVideoEverEnabled || hasRemoteVideo,
+            remoteStreamUrl: nextRemoteStreamUrl,
           }
         : state
     );
@@ -820,10 +805,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const currentState = callStateRef.current;
     if (!pc || !currentState) return;
 
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: true,
-    });
+    const offer = await pc.createOffer(
+      buildOfferOptions(nextCallKind === 'video' || currentState.hasRemoteVideoEverEnabled)
+    );
     await pc.setLocalDescription(offer);
 
     const localDescription = pc.localDescription;
@@ -888,15 +872,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           isLocalVideoReady: false,
           isLocalVideoEnabled: false,
           isRemoteVideoEnabled: false,
+          hasRemoteVideoEverEnabled: false,
           localStreamUrl: null,
           remoteStreamUrl: null,
         });
 
         const pc = await createPeerConnection(userId, callKind === 'video');
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        });
+        const offer = await pc.createOffer(buildOfferOptions(callKind === 'video'));
         await pc.setLocalDescription(offer);
 
         const localDescription = pc.localDescription;
@@ -1035,7 +1017,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     try {
       if (currentState.isLocalVideoEnabled) {
         stopLocalVideo();
-        const nextKind: CallKind = currentState.isRemoteVideoEnabled ? 'video' : 'audio';
+        const nextKind: CallKind =
+          currentState.isRemoteVideoEnabled || currentState.hasRemoteVideoEverEnabled
+            ? 'video'
+            : 'audio';
         setCallState((state) => (state ? { ...state, callKind: nextKind } : state));
         await sendRenegotiationOffer(nextKind);
         return;
@@ -1046,8 +1031,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       await sendRenegotiationOffer('video');
     } catch (error) {
       Alert.alert(
-        'РќРµ СѓРґР°Р»РѕСЃСЊ РІРєР»СЋС‡РёС‚СЊ РІРёРґРµРѕ',
-        error instanceof Error ? error.message : 'РџСЂРѕРІРµСЂСЊ РґРѕСЃС‚СѓРї Рє РєР°РјРµСЂРµ Рё РїРѕРїСЂРѕР±СѓР№ РµС‰Рµ СЂР°Р·.'
+        'Не удалось включить видео',
+        error instanceof Error ? error.message : 'Проверь доступ к камере и попробуй еще раз.'
       );
     }
   }, [ensureLocalMediaStream, sendRenegotiationOffer, stopLocalVideo]);
@@ -1055,7 +1040,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = SignalingService.addListener({
       onOffer: async (fromUserId, sdp, callType) => {
-        const nextCallKind = getCallKindFromOffer(callType, sdp);
+        const nextCallKind = getCallKindFromOffer(callType);
         const currentState = callStateRef.current;
         const currentPc = pcRef.current;
         if (currentState?.remoteUserId === fromUserId && currentPc) {
@@ -1083,15 +1068,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
                 ? {
                     ...state,
                     callKind: nextCallKind,
-                    isRemoteVideoEnabled:
-                      nextCallKind === 'video' ? state.isRemoteVideoEnabled : false,
+                    isRemoteVideoEnabled: nextCallKind === 'video' ? state.isRemoteVideoEnabled : false,
+                    hasRemoteVideoEverEnabled:
+                      nextCallKind === 'video' ? state.hasRemoteVideoEverEnabled : false,
                     remoteStreamUrl: nextCallKind === 'video' ? state.remoteStreamUrl : null,
                   }
                 : state
             );
           } catch {
             await cleanupCallSession();
-            Alert.alert('Р—РІРѕРЅРѕРє РїСЂРµСЂРІР°РЅ', 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РјРµРґРёР°СЃРѕРµРґРёРЅРµРЅРёРµ.');
+            Alert.alert('Звонок прерван', 'Не удалось обновить медиасоединение.');
           }
           return;
         }
@@ -1115,7 +1101,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           isLocalAudioReady: false,
           isLocalVideoReady: false,
           isLocalVideoEnabled: false,
-          isRemoteVideoEnabled: nextCallKind === 'video',
+          isRemoteVideoEnabled: false,
+          hasRemoteVideoEverEnabled: false,
           localStreamUrl: null,
           remoteStreamUrl: null,
         });
@@ -1365,12 +1352,7 @@ const styles = StyleSheet.create({
   },
   bottomDock: {
     width: '100%',
-    gap: 14,
-  },
-  controlsPanel: {
-    backgroundColor: 'rgba(12, 24, 38, 0.54)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    paddingBottom: 6,
   },
   controlsRow: {
     flexDirection: 'row',
@@ -1398,22 +1380,28 @@ const styles = StyleSheet.create({
   actionCircle: {
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   actionCircleProminent: {},
   actionCircleNeutral: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   actionCircleAccent: {
     backgroundColor: withAlpha(colors.accent, 0.96),
+    borderColor: withAlpha(colors.accent, 0.24),
   },
   actionCircleSuccess: {
     backgroundColor: '#34C759',
+    borderColor: 'rgba(52,199,89,0.28)',
   },
   actionCircleDanger: {
     backgroundColor: '#F05757',
+    borderColor: 'rgba(240,87,87,0.24)',
   },
   actionCircleDisabled: {
     backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.04)',
   },
   actionLabelBase: {
     fontSize: 13,
@@ -1425,11 +1413,6 @@ const styles = StyleSheet.create({
   },
   actionLabelDisabled: {
     color: 'rgba(255,255,255,0.5)',
-  },
-  bottomNote: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.54)',
-    textAlign: 'center',
   },
 });
 
