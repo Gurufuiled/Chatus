@@ -8,7 +8,7 @@ import { getSignalingUrl } from '../config';
 import { authStore } from '../stores/authStore';
 
 export type SignalingEventHandlers = {
-  onOffer?: (fromUserId: string, sdp: RTCSessionDescriptionInit) => void;
+  onOffer?: (fromUserId: string, sdp: RTCSessionDescriptionInit, callType?: 'audio' | 'video') => void;
   onAnswer?: (fromUserId: string, sdp: RTCSessionDescriptionInit) => void;
   onIceCandidate?: (fromUserId: string, candidate: RTCIceCandidateInit | null) => void;
   onCallCancel?: (fromUserId: string) => void;
@@ -30,6 +30,7 @@ type SignalingMessage = {
   offer?: string | RTCSessionDescriptionInit;
   answer?: string | RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit | null;
+  call_type?: 'audio' | 'video';
   code?: string;
   message?: string;
   token?: string;
@@ -155,7 +156,7 @@ class SignalingServiceClass {
             typeof (msg.offer ?? msg.sdp) === 'string'
               ? { type: 'offer', sdp: String(msg.offer ?? msg.sdp) }
               : ((msg.offer ?? msg.sdp) as RTCSessionDescriptionInit);
-          this.emit('onOffer', fromUserId, sdpInit);
+          this.emit('onOffer', fromUserId, sdpInit, msg.call_type);
         }
         break;
       case 'answer':
@@ -239,9 +240,14 @@ class SignalingServiceClass {
     this.send({ event, data });
   }
 
-  sendOffer(targetUserId: string, sdp: RTCSessionDescriptionInit): void {
+  sendOffer(
+    targetUserId: string,
+    sdp: RTCSessionDescriptionInit,
+    callType: 'audio' | 'video' = 'audio'
+  ): void {
     this.sendEvent('offer', {
       target_user_id: targetUserId,
+      call_type: callType,
       offer: {
         type: 'offer',
         sdp: typeof sdp === 'object' && sdp?.sdp != null ? sdp.sdp : '',

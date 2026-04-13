@@ -35,6 +35,7 @@ type ChatProfileHeroProps = {
   expandedHeroHeight: number;
   onToggleHeroExpanded: () => void;
   onStartCallPress: () => void | Promise<void>;
+  onStartVideoCallPress: () => void | Promise<void>;
   onMutePress: () => void;
   onSearchPress: () => void;
   onMorePress: () => void;
@@ -161,6 +162,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   expandedHeroHeight,
   onToggleHeroExpanded,
   onStartCallPress,
+  onStartVideoCallPress,
   onMutePress,
   onSearchPress,
   onMorePress,
@@ -261,6 +263,13 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
             label="Звонок"
             onPress={() => {
               void onStartCallPress();
+            }}
+          />
+          <QuickActionButton
+            icon="video"
+            label="Видео"
+            onPress={() => {
+              void onStartVideoCallPress();
             }}
           />
           <QuickActionButton

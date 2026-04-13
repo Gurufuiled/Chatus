@@ -23,6 +23,7 @@
 | Имя в приложении | Telegram drawable(s) | Состояния |
 |------------------|----------------------|-----------|
 | `call` | `outline_profile_call_24.xml` / `filled_profile_call_24.xml` | outline = обычное; filled = «активное» (как в Material/Telegram filled set). |
+| `video` | `outline_profile_video_24.xml` / `filled_profile_video_24.xml` | Отдельный quick action видеозвонка рядом с обычным звонком. |
 | `sound` | `outline_profile_mute_24.xml` / `outline_profile_unmute_24.xml` | В нашем UI `active === true` означает «звук выкл./заглушено» → показываем `outline_profile_unmute` (колокол со слешем). |
 | `search` | `outline_search_1_24.xml` | |
 | `more` | — | В доступном наборе не найден отдельный drawable «три точки» для профиля; см. divergences. |

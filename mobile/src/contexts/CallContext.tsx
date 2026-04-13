@@ -7,22 +7,28 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import Feather from '@expo/vector-icons/Feather';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Audio } from 'expo-av';
 import {
   RTCIceCandidate,
   MediaStream as RTCMediaStream,
+  MediaStreamTrack,
   RTCPeerConnection,
   RTCSessionDescription,
+  RTCView,
+  type RTCRtpSender,
   mediaDevices,
 } from 'react-native-webrtc';
 import {
   Alert,
   Image,
   Modal,
+  Platform,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,9 +37,10 @@ import { resolveAvatarUrl } from '../config';
 import { SignalingService } from '../services/SignalingService';
 import { VoicePlayerService } from '../services/VoicePlayerService';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 
 type CallPhase = 'incoming' | 'outgoing' | 'connecting' | 'active';
+type CallKind = 'audio' | 'video';
 
 type CallUiState = {
   phase: CallPhase;
@@ -41,8 +48,16 @@ type CallUiState = {
   displayName: string;
   avatarUrl: string | null;
   chatId?: string;
+  callKind: CallKind;
   startedAt?: number;
   isMuted: boolean;
+  isSpeakerOn: boolean;
+  isLocalAudioReady: boolean;
+  isLocalVideoReady: boolean;
+  isLocalVideoEnabled: boolean;
+  isRemoteVideoEnabled: boolean;
+  localStreamUrl: string | null;
+  remoteStreamUrl: string | null;
 };
 
 type StartCallOptions = {
@@ -50,6 +65,7 @@ type StartCallOptions = {
   displayName: string;
   avatarUrl?: string | null;
   chatId?: string;
+  callKind?: CallKind;
 };
 
 type CallContextType = {
@@ -59,11 +75,14 @@ type CallContextType = {
   declineIncomingCall: () => Promise<void>;
   endCall: () => Promise<void>;
   toggleMute: () => void;
+  toggleSpeaker: () => Promise<void>;
+  toggleVideo: () => Promise<void>;
 };
 
 type PendingOffer = {
   fromUserId: string;
   sdp: RTCSessionDescriptionInit;
+  callKind: CallKind;
 };
 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -82,6 +101,231 @@ function formatCallDuration(startedAt?: number, now = Date.now()) {
 function buildInitial(name: string) {
   return (name.trim()[0] || '?').toUpperCase();
 }
+
+type CallActionTone = 'neutral' | 'accent' | 'success' | 'danger' | 'disabled';
+
+type CallControlsLayout = {
+  screenHorizontalPadding: number;
+  panelHorizontalPadding: number;
+  panelVerticalPadding: number;
+  panelRadius: number;
+  rowGap: number;
+  incomingGap: number;
+  incomingPaddingHorizontal: number;
+  buttonGap: number;
+  circleSize: number;
+  prominentCircleSize: number;
+  iconSize: number;
+  prominentIconSize: number;
+  labelFontSize: number;
+  bottomNoteFontSize: number;
+};
+
+function buildCallAudioMode(isSpeakerOn: boolean) {
+  return {
+    allowsRecordingIOS: true,
+    playsInSilentModeIOS: true,
+    staysActiveInBackground: false,
+    shouldDuckAndroid: true,
+    playThroughEarpieceAndroid: !isSpeakerOn,
+  } satisfies Parameters<typeof Audio.setAudioModeAsync>[0];
+}
+
+function getCallControlsLayout(screenWidth: number): CallControlsLayout {
+  if (screenWidth <= 340) {
+    return {
+      screenHorizontalPadding: 14,
+      panelHorizontalPadding: 6,
+      panelVerticalPadding: 14,
+      panelRadius: 24,
+      rowGap: 4,
+      incomingGap: 18,
+      incomingPaddingHorizontal: 6,
+      buttonGap: 7,
+      circleSize: 50,
+      prominentCircleSize: 58,
+      iconSize: 20,
+      prominentIconSize: 24,
+      labelFontSize: 11,
+      bottomNoteFontSize: 12,
+    };
+  }
+
+  if (screenWidth <= 380) {
+    return {
+      screenHorizontalPadding: 18,
+      panelHorizontalPadding: 8,
+      panelVerticalPadding: 16,
+      panelRadius: 28,
+      rowGap: 6,
+      incomingGap: 22,
+      incomingPaddingHorizontal: 8,
+      buttonGap: 8,
+      circleSize: 58,
+      prominentCircleSize: 66,
+      iconSize: 22,
+      prominentIconSize: 26,
+      labelFontSize: 12,
+      bottomNoteFontSize: 12,
+    };
+  }
+
+  return {
+    screenHorizontalPadding: 24,
+    panelHorizontalPadding: 12,
+    panelVerticalPadding: 18,
+    panelRadius: 32,
+    rowGap: 8,
+    incomingGap: 28,
+    incomingPaddingHorizontal: 12,
+    buttonGap: 10,
+    circleSize: 68,
+    prominentCircleSize: 78,
+    iconSize: 24,
+    prominentIconSize: 28,
+    labelFontSize: 13,
+    bottomNoteFontSize: 13,
+  };
+}
+
+function getStatusText(callState: CallUiState | null, nowTick: number) {
+  if (!callState) return '';
+
+  switch (callState.phase) {
+    case 'incoming':
+      return 'Входящий звонок';
+    case 'outgoing':
+      return 'Вызываем...';
+    case 'connecting':
+      return 'Соединяем...';
+    case 'active':
+      return formatCallDuration(callState.startedAt, nowTick);
+    default:
+      return '';
+  }
+}
+
+function getPhaseCaption(phase?: CallPhase) {
+  switch (phase) {
+    case 'incoming':
+      return 'Голосовой звонок';
+    case 'outgoing':
+      return 'Ожидаем ответа';
+    case 'connecting':
+      return 'Подключаем аудио';
+    case 'active':
+      return 'Голосовой разговор';
+    default:
+      return '';
+  }
+}
+
+function getCallKindFromOffer(callType: CallKind | undefined, sdp: RTCSessionDescriptionInit) {
+  if (callType === 'video') return 'video';
+  if (callType === 'audio') return 'audio';
+  return sdp.sdp?.includes('m=video') ? 'video' : 'audio';
+}
+
+function hasEnabledVideoTrack(stream: RTCMediaStream | null | undefined) {
+  return Boolean(stream?.getVideoTracks().some((track) => track.enabled));
+}
+
+function getStreamUrl(stream: RTCMediaStream | null | undefined) {
+  try {
+    return stream?.toURL() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function getActionCircleStyle(tone: CallActionTone) {
+  switch (tone) {
+    case 'accent':
+      return styles.actionCircleAccent;
+    case 'success':
+      return styles.actionCircleSuccess;
+    case 'danger':
+      return styles.actionCircleDanger;
+    case 'disabled':
+      return styles.actionCircleDisabled;
+    case 'neutral':
+    default:
+      return styles.actionCircleNeutral;
+  }
+}
+
+function getActionLabelStyle(tone: CallActionTone) {
+  return tone === 'disabled' ? styles.actionLabelDisabled : styles.actionLabel;
+}
+
+type CallActionButtonProps = {
+  icon: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  label: string;
+  layout: CallControlsLayout;
+  tone?: CallActionTone;
+  onPress?: () => void;
+  disabled?: boolean;
+  prominent?: boolean;
+};
+
+const CallActionButton = React.memo(function CallActionButton({
+  icon,
+  label,
+  layout,
+  tone = 'neutral',
+  onPress,
+  disabled = false,
+  prominent = false,
+}: CallActionButtonProps) {
+  const effectiveTone: CallActionTone = disabled ? 'disabled' : tone;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionButton,
+        prominent && styles.actionButtonProminent,
+        { gap: layout.buttonGap },
+        pressed && !disabled && styles.actionButtonPressed,
+      ]}
+    >
+      <View
+        style={[
+          styles.actionCircle,
+          prominent && styles.actionCircleProminent,
+          {
+            width: prominent ? layout.prominentCircleSize : layout.circleSize,
+            height: prominent ? layout.prominentCircleSize : layout.circleSize,
+            borderRadius: prominent
+              ? layout.prominentCircleSize / 2
+              : layout.circleSize / 2,
+          },
+          getActionCircleStyle(effectiveTone),
+        ]}
+      >
+        <MaterialCommunityIcons
+          name={icon}
+          size={prominent ? layout.prominentIconSize : layout.iconSize}
+          color={effectiveTone === 'disabled' ? 'rgba(255,255,255,0.58)' : '#FFFFFF'}
+        />
+      </View>
+      <Text
+        numberOfLines={2}
+        minimumFontScale={0.9}
+        style={[
+          styles.actionLabelBase,
+          { fontSize: layout.labelFontSize, lineHeight: layout.labelFontSize + 3 },
+          getActionLabelStyle(effectiveTone),
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+});
 
 function resolvePeerMeta(userId: string) {
   const chats = chatStore.getState().chats;
@@ -102,14 +346,19 @@ const CallOverlay = React.memo(function CallOverlay({
   onDecline,
   onEnd,
   onToggleMute,
+  onToggleSpeaker,
+  onToggleVideo,
 }: {
   callState: CallUiState | null;
   onAccept: () => void;
   onDecline: () => void;
   onEnd: () => void;
   onToggleMute: () => void;
+  onToggleSpeaker: () => void;
+  onToggleVideo: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => {
     if (callState?.phase !== 'active' || !callState.startedAt) return undefined;
@@ -118,117 +367,174 @@ const CallOverlay = React.memo(function CallOverlay({
     }, 1000);
     return () => clearInterval(timer);
   }, [callState?.phase, callState?.startedAt]);
-  const statusText = useMemo(() => {
-    if (!callState) return '';
-    switch (callState.phase) {
-      case 'incoming':
-        return '\u0412\u0445\u043e\u0434\u044f\u0449\u0438\u0439 \u0437\u0432\u043e\u043d\u043e\u043a';
-      case 'outgoing':
-        return '\u0412\u044b\u0437\u044b\u0432\u0430\u0435\u043c...';
-      case 'connecting':
-        return '\u0421\u043e\u0435\u0434\u0438\u043d\u044f\u0435\u043c...';
-      case 'active':
-        return formatCallDuration(callState.startedAt, nowTick);
-      default:
-        return '';
-    }
-  }, [callState, nowTick]);
+  const statusText = useMemo(() => getStatusText(callState, nowTick), [callState, nowTick]);
+  const phaseCaption = getPhaseCaption(callState?.phase);
   const initial = callState ? buildInitial(callState.displayName) : '?';
+  const isIncoming = callState?.phase === 'incoming';
+  const showUtilityControls = Boolean(callState && !isIncoming);
+  const canToggleSpeaker = Platform.OS === 'android' && showUtilityControls;
+  const canToggleMute = Boolean(callState?.isLocalAudioReady && showUtilityControls);
+  const canToggleVideo = Boolean(callState?.isLocalAudioReady && showUtilityControls);
+  const showVideoStage = Boolean(
+    callState &&
+      !isIncoming &&
+      (callState.callKind === 'video' ||
+        callState.isLocalVideoEnabled ||
+        callState.isRemoteVideoEnabled)
+  );
+  const fullVideoUrl =
+    callState?.isRemoteVideoEnabled && callState.remoteStreamUrl
+      ? callState.remoteStreamUrl
+      : callState?.isLocalVideoEnabled
+        ? callState.localStreamUrl
+        : null;
+  const showLocalPreview = Boolean(
+    callState?.isRemoteVideoEnabled &&
+      callState.remoteStreamUrl &&
+      callState.isLocalVideoEnabled &&
+      callState.localStreamUrl
+  );
+  const endLabel = callState?.phase === 'active' ? 'Завершить' : 'Отменить';
+  const controlsLayout = useMemo(() => getCallControlsLayout(screenWidth), [screenWidth]);
+
   return (
-    <Modal visible={callState != null} transparent animationType="fade" onRequestClose={onEnd}>
+    <Modal
+      visible={callState != null}
+      animationType="fade"
+      presentationStyle="fullScreen"
+      statusBarTranslucent
+      onRequestClose={onEnd}
+    >
       <View style={styles.overlay}>
-        <View style={[styles.overlayCard, { paddingTop: Math.max(insets.top, 20) + 18 }]}>
-          <View style={styles.heroSpacer} />
-          {callState?.avatarUrl ? (
-            <Image source={{ uri: callState.avatarUrl }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarFallbackText}>{initial}</Text>
-            </View>
-          )}
-          <Text style={styles.name}>{callState?.displayName ?? ''}</Text>
-          <Text style={styles.status}>{statusText}</Text>
-          <View style={styles.controlsRow}>
-            {callState?.phase === 'incoming' ? (
-              <>
-                <Pressable
-                  onPress={onDecline}
-                  style={({ pressed }) => [
-                    styles.controlButton,
-                    styles.controlButtonDanger,
-                    pressed && styles.controlButtonPressed,
-                  ]}
-                >
-                  <Feather name="phone-off" size={22} color="#FFFFFF" />
-                  <Text style={styles.controlLabelLight}>
-                    {'\u041e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={onAccept}
-                  style={({ pressed }) => [
-                    styles.controlButton,
-                    styles.controlButtonSuccess,
-                    pressed && styles.controlButtonPressed,
-                  ]}
-                >
-                  <Feather name="phone-call" size={22} color="#FFFFFF" />
-                  <Text style={styles.controlLabelLight}>
-                    {'\u041f\u0440\u0438\u043d\u044f\u0442\u044c'}
-                  </Text>
-                </Pressable>
-              </>
-            ) : callState?.phase === 'active' ? (
-              <>
-                <Pressable
-                  onPress={onToggleMute}
-                  style={({ pressed }) => [
-                    styles.controlButton,
-                    callState.isMuted
-                      ? styles.controlButtonMuted
-                      : styles.controlButtonNeutral,
-                    pressed && styles.controlButtonPressed,
-                  ]}
-                >
-                  <Feather
-                    name={callState.isMuted ? 'mic-off' : 'mic'}
-                    size={22}
-                    color={callState.isMuted ? '#FFFFFF' : '#1F2937'}
-                  />
-                  <Text style={callState.isMuted ? styles.controlLabelLight : styles.controlLabelDark}>
-                    {callState.isMuted
-                      ? '\u041c\u0438\u043a\u0440\u043e\u0444\u043e\u043d \u0432\u044b\u043a\u043b.'
-                      : '\u041c\u0438\u043a\u0440\u043e\u0444\u043e\u043d'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={onEnd}
-                  style={({ pressed }) => [
-                    styles.controlButton,
-                    styles.controlButtonDanger,
-                    pressed && styles.controlButtonPressed,
-                  ]}
-                >
-                  <Feather name="phone-off" size={22} color="#FFFFFF" />
-                  <Text style={styles.controlLabelLight}>
-                    {'\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u044c'}
-                  </Text>
-                </Pressable>
-              </>
-            ) : (
-              <Pressable
-                onPress={onEnd}
-                style={({ pressed }) => [
-                  styles.controlButtonWide,
-                  styles.controlButtonDanger,
-                  pressed && styles.controlButtonPressed,
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        {fullVideoUrl ? (
+          <RTCView
+            streamURL={fullVideoUrl}
+            style={styles.remoteVideo}
+            objectFit="cover"
+            mirror={fullVideoUrl === callState?.localStreamUrl}
+            zOrder={0}
+          />
+        ) : (
+          <>
+            <View style={styles.backgroundBase} />
+            <View style={styles.backgroundGlowTop} />
+            <View style={styles.backgroundGlowBottom} />
+          </>
+        )}
+        <View style={[styles.backgroundVeil, showVideoStage && styles.videoVeil]} />
+        <View
+          style={[
+            styles.screenContent,
+            {
+              paddingTop: Math.max(insets.top, 20) + 22,
+              paddingBottom: Math.max(insets.bottom, 20) + 18,
+              paddingHorizontal: controlsLayout.screenHorizontalPadding,
+            },
+          ]}
+        >
+          <View style={styles.topMeta}>
+            <Text style={styles.topMetaText}>
+              {callState?.callKind === 'video' ? 'Видео' : 'Звонок'}
+            </Text>
+          </View>
+          {showLocalPreview ? (
+            <RTCView
+              streamURL={callState?.localStreamUrl ?? undefined}
+              style={[styles.localVideoPreview, { top: Math.max(insets.top, 20) + 72 }]}
+              objectFit="cover"
+              mirror
+              zOrder={1}
+            />
+          ) : null}
+          <View style={[styles.centerStage, showVideoStage && styles.centerStageVideo]}>
+            {!showVideoStage ? (
+              callState?.avatarUrl ? (
+                <Image source={{ uri: callState.avatarUrl }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarFallbackText}>{initial}</Text>
+                </View>
+              )
+            ) : null}
+            <Text style={styles.name}>{callState?.displayName ?? ''}</Text>
+            <Text style={styles.status}>{statusText}</Text>
+            <Text style={styles.phaseCaption}>{phaseCaption}</Text>
+          </View>
+          <View style={styles.bottomDock}>
+            {showUtilityControls ? (
+              <View
+                style={[
+                  styles.controlsPanel,
+                  {
+                    borderRadius: controlsLayout.panelRadius,
+                    paddingHorizontal: controlsLayout.panelHorizontalPadding,
+                    paddingVertical: controlsLayout.panelVerticalPadding,
+                  },
                 ]}
               >
-                <Feather name="phone-off" size={22} color="#FFFFFF" />
-                <Text style={styles.controlLabelLight}>
-                  {'\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c'}
-                </Text>
-              </Pressable>
+                <View style={[styles.controlsRow, { gap: controlsLayout.rowGap }]}>
+                  <CallActionButton
+                    icon={callState?.isSpeakerOn ? 'volume-high' : 'volume-low'}
+                    label={callState?.isSpeakerOn ? 'Динамик' : 'Разговорный'}
+                    layout={controlsLayout}
+                    tone={callState?.isSpeakerOn ? 'accent' : 'neutral'}
+                    disabled={!canToggleSpeaker}
+                    onPress={onToggleSpeaker}
+                  />
+                  <CallActionButton
+                    icon="video-outline"
+                    label="Видео"
+                    layout={controlsLayout}
+                    tone={callState?.isLocalVideoEnabled ? 'accent' : 'neutral'}
+                    disabled={!canToggleVideo}
+                    onPress={onToggleVideo}
+                  />
+                  <CallActionButton
+                    icon={callState?.isMuted ? 'microphone-off' : 'microphone'}
+                    label={callState?.isMuted ? 'Микрофон выкл.' : 'Микрофон'}
+                    layout={controlsLayout}
+                    tone={callState?.isMuted ? 'accent' : 'neutral'}
+                    disabled={!canToggleMute}
+                    onPress={onToggleMute}
+                  />
+                  <CallActionButton
+                    icon="phone-hangup"
+                    label={endLabel}
+                    layout={controlsLayout}
+                    tone="danger"
+                    prominent
+                    onPress={onEnd}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.incomingControlsRow,
+                  {
+                    gap: controlsLayout.incomingGap,
+                    paddingHorizontal: controlsLayout.incomingPaddingHorizontal,
+                  },
+                ]}
+              >
+                <CallActionButton
+                  icon="phone-hangup"
+                  label="Отклонить"
+                  layout={controlsLayout}
+                  tone="danger"
+                  prominent
+                  onPress={onDecline}
+                />
+                <CallActionButton
+                  icon="phone"
+                  label="Принять"
+                  layout={controlsLayout}
+                  tone="success"
+                  prominent
+                  onPress={onAccept}
+                />
+              </View>
             )}
           </View>
         </View>
@@ -244,6 +550,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<RTCMediaStream | null>(null);
   const remoteStreamRef = useRef<RTCMediaStream | null>(null);
+  const localVideoSenderRef = useRef<RTCRtpSender | null>(null);
   const pendingOfferRef = useRef<PendingOffer | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const outgoingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -315,6 +622,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
     localStreamRef.current = null;
     remoteStreamRef.current = null;
+    localVideoSenderRef.current = null;
     pcRef.current = null;
     pendingIceCandidatesRef.current = [];
     pendingOfferRef.current = null;
@@ -327,29 +635,84 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setCallState(null);
   }, [cleanupMedia]);
 
-  const ensureLocalAudioStream = useCallback(async () => {
-    if (localStreamRef.current) return localStreamRef.current;
-
-    const { status } = await Audio.requestPermissionsAsync();
-    if (status !== 'granted') {
-      throw new Error('Microphone permission denied');
-    }
-
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
-
-    const stream = await mediaDevices.getUserMedia({
-      audio: true,
-      video: false,
-    });
-    localStreamRef.current = stream;
-    return stream;
+  const updateLocalStreamState = useCallback((nextKind?: CallKind) => {
+    const localStream = localStreamRef.current;
+    setCallState((state) =>
+      state
+        ? {
+            ...state,
+            callKind: nextKind ?? state.callKind,
+            isLocalAudioReady: Boolean(localStream?.getAudioTracks().length),
+            isLocalVideoReady: Boolean(localStream?.getVideoTracks().length),
+            isLocalVideoEnabled: hasEnabledVideoTrack(localStream),
+            localStreamUrl: getStreamUrl(localStream),
+          }
+        : state
+    );
   }, []);
+
+  const updateRemoteStreamState = useCallback((nextKind?: CallKind) => {
+    const remoteStream = remoteStreamRef.current;
+    setCallState((state) =>
+      state
+        ? {
+            ...state,
+            callKind: nextKind ?? state.callKind,
+            isRemoteVideoEnabled: hasEnabledVideoTrack(remoteStream),
+            remoteStreamUrl: getStreamUrl(remoteStream),
+          }
+        : state
+    );
+  }, []);
+
+  const ensureLocalMediaStream = useCallback(
+    async (withVideo: boolean) => {
+      const existingStream = localStreamRef.current;
+      if (existingStream) {
+        if (withVideo && existingStream.getVideoTracks().length === 0) {
+          const videoStream = await mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              facingMode: 'user',
+            },
+          } as Parameters<typeof mediaDevices.getUserMedia>[0]);
+          const videoTrack = videoStream.getVideoTracks()[0];
+
+          if (videoTrack) {
+            existingStream.addTrack(videoTrack);
+            const pc = pcRef.current;
+            if (pc) {
+              localVideoSenderRef.current = pc.addTrack(videoTrack, existingStream);
+            }
+          }
+        }
+
+        updateLocalStreamState(withVideo ? 'video' : undefined);
+        return existingStream;
+      }
+
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        throw new Error('Microphone permission denied');
+      }
+
+      const desiredSpeakerOn = callStateRef.current?.isSpeakerOn ?? true;
+      await Audio.setAudioModeAsync(buildCallAudioMode(desiredSpeakerOn));
+
+      const stream = await mediaDevices.getUserMedia({
+        audio: true,
+        video: withVideo
+          ? {
+              facingMode: 'user',
+            }
+          : false,
+      } as Parameters<typeof mediaDevices.getUserMedia>[0]);
+      localStreamRef.current = stream;
+      updateLocalStreamState(withVideo ? 'video' : undefined);
+      return stream;
+    },
+    [updateLocalStreamState]
+  );
 
   const flushPendingIceCandidates = useCallback(async () => {
     const pc = pcRef.current;
@@ -370,12 +733,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const createPeerConnection = useCallback(
-    async (remoteUserId: string) => {
-      const localStream = await ensureLocalAudioStream();
+    async (remoteUserId: string, withVideo: boolean) => {
+      const localStream = await ensureLocalMediaStream(withVideo);
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
       localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
+        const sender = pc.addTrack(track, localStream);
+        if ((track as MediaStreamTrack).kind === 'video') {
+          localVideoSenderRef.current = sender;
+        }
       });
 
       (pc as RTCPeerConnection & {
@@ -392,6 +758,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         ontrack?: (event: { streams?: RTCMediaStream[]; track: MediaStreamTrack }) => void;
       }).ontrack = (event) => {
         remoteStreamRef.current = event.streams?.[0] ?? null;
+        updateRemoteStreamState();
         setCallState((current) =>
           current
             ? {
@@ -434,7 +801,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       pcRef.current = pc;
       return pc;
     },
-    [cleanupCallSession, clearOutgoingTimeout, ensureLocalAudioStream]
+    [cleanupCallSession, clearOutgoingTimeout, ensureLocalMediaStream, updateRemoteStreamState]
   );
 
   const startOutgoingTimeout = useCallback(
@@ -448,8 +815,60 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     [cleanupCallSession, clearOutgoingTimeout]
   );
 
+  const sendRenegotiationOffer = useCallback(async (nextCallKind: CallKind) => {
+    const pc = pcRef.current;
+    const currentState = callStateRef.current;
+    if (!pc || !currentState) return;
+
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    });
+    await pc.setLocalDescription(offer);
+
+    const localDescription = pc.localDescription;
+    if (localDescription) {
+      SignalingService.sendOffer(
+        currentState.remoteUserId,
+        {
+          type: 'offer',
+          sdp: localDescription.sdp ?? '',
+        },
+        nextCallKind
+      );
+    }
+  }, []);
+
+  const stopLocalVideo = useCallback(() => {
+    const localStream = localStreamRef.current;
+    const pc = pcRef.current;
+
+    localStream?.getVideoTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch {
+        // Ignore.
+      }
+      try {
+        localStream.removeTrack(track);
+      } catch {
+        // Ignore.
+      }
+    });
+
+    if (pc && localVideoSenderRef.current) {
+      try {
+        pc.removeTrack(localVideoSenderRef.current);
+      } catch {
+        // Ignore.
+      }
+    }
+    localVideoSenderRef.current = null;
+    updateLocalStreamState();
+  }, [updateLocalStreamState]);
+
   const startCall = useCallback(
-    async ({ userId, displayName, avatarUrl, chatId }: StartCallOptions) => {
+    async ({ userId, displayName, avatarUrl, chatId, callKind = 'audio' }: StartCallOptions) => {
       if (callStateRef.current) return;
 
       try {
@@ -462,13 +881,21 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           displayName,
           avatarUrl: avatarUrl ? resolveAvatarUrl(avatarUrl) : null,
           chatId,
+          callKind,
           isMuted: false,
+          isSpeakerOn: true,
+          isLocalAudioReady: false,
+          isLocalVideoReady: false,
+          isLocalVideoEnabled: false,
+          isRemoteVideoEnabled: false,
+          localStreamUrl: null,
+          remoteStreamUrl: null,
         });
 
-        const pc = await createPeerConnection(userId);
+        const pc = await createPeerConnection(userId, callKind === 'video');
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
-          offerToReceiveVideo: false,
+          offerToReceiveVideo: true,
         });
         await pc.setLocalDescription(offer);
 
@@ -477,7 +904,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           SignalingService.sendOffer(userId, {
             type: 'offer',
             sdp: localDescription.sdp ?? '',
-          });
+          }, callKind);
         }
 
         startOutgoingTimeout(displayName);
@@ -506,7 +933,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         phase: 'connecting',
       });
 
-      const pc = await createPeerConnection(pendingOffer.fromUserId);
+      const pc = await createPeerConnection(
+        pendingOffer.fromUserId,
+        pendingOffer.callKind === 'video'
+      );
       const remoteOffer = new RTCSessionDescription({
         type: pendingOffer.sdp.type ?? 'offer',
         sdp: pendingOffer.sdp.sdp ?? '',
@@ -566,7 +996,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const toggleMute = useCallback(() => {
     const localStream = localStreamRef.current;
     const currentState = callStateRef.current;
-    if (!localStream || !currentState) return;
+    if (!localStream || !currentState || !currentState.isLocalAudioReady) return;
 
     const nextMuted = !currentState.isMuted;
     localStream.getAudioTracks().forEach((track) => {
@@ -576,24 +1006,118 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setCallState((state) => (state ? { ...state, isMuted: nextMuted } : state));
   }, []);
 
+  const toggleSpeaker = useCallback(async () => {
+    const currentState = callStateRef.current;
+    if (!currentState) return;
+
+    if (Platform.OS !== 'android') {
+      Alert.alert(
+        'Переключение звука недоступно',
+        'В текущей реализации переключение динамика поддерживается только на Android.'
+      );
+      return;
+    }
+
+    const nextSpeakerOn = !currentState.isSpeakerOn;
+
+    try {
+      await Audio.setAudioModeAsync(buildCallAudioMode(nextSpeakerOn));
+      setCallState((state) => (state ? { ...state, isSpeakerOn: nextSpeakerOn } : state));
+    } catch {
+      Alert.alert('Ошибка звука', 'Не удалось переключить текущий аудиовыход.');
+    }
+  }, []);
+
+  const toggleVideo = useCallback(async () => {
+    const currentState = callStateRef.current;
+    if (!currentState || !pcRef.current || !currentState.isLocalAudioReady) return;
+
+    try {
+      if (currentState.isLocalVideoEnabled) {
+        stopLocalVideo();
+        const nextKind: CallKind = currentState.isRemoteVideoEnabled ? 'video' : 'audio';
+        setCallState((state) => (state ? { ...state, callKind: nextKind } : state));
+        await sendRenegotiationOffer(nextKind);
+        return;
+      }
+
+      await ensureLocalMediaStream(true);
+      setCallState((state) => (state ? { ...state, callKind: 'video' } : state));
+      await sendRenegotiationOffer('video');
+    } catch (error) {
+      Alert.alert(
+        'РќРµ СѓРґР°Р»РѕСЃСЊ РІРєР»СЋС‡РёС‚СЊ РІРёРґРµРѕ',
+        error instanceof Error ? error.message : 'РџСЂРѕРІРµСЂСЊ РґРѕСЃС‚СѓРї Рє РєР°РјРµСЂРµ Рё РїРѕРїСЂРѕР±СѓР№ РµС‰Рµ СЂР°Р·.'
+      );
+    }
+  }, [ensureLocalMediaStream, sendRenegotiationOffer, stopLocalVideo]);
+
   useEffect(() => {
     const unsubscribe = SignalingService.addListener({
-      onOffer: (fromUserId, sdp) => {
+      onOffer: async (fromUserId, sdp, callType) => {
+        const nextCallKind = getCallKindFromOffer(callType, sdp);
         const currentState = callStateRef.current;
+        const currentPc = pcRef.current;
+        if (currentState?.remoteUserId === fromUserId && currentPc) {
+          try {
+            const remoteOffer = new RTCSessionDescription({
+              type: sdp.type ?? 'offer',
+              sdp: sdp.sdp ?? '',
+            });
+            await currentPc.setRemoteDescription(remoteOffer);
+            await flushPendingIceCandidates();
+
+            const answer = await currentPc.createAnswer();
+            await currentPc.setLocalDescription(answer);
+
+            const localDescription = currentPc.localDescription;
+            if (localDescription) {
+              SignalingService.sendAnswer(fromUserId, {
+                type: 'answer',
+                sdp: localDescription.sdp ?? '',
+              });
+            }
+
+            setCallState((state) =>
+              state
+                ? {
+                    ...state,
+                    callKind: nextCallKind,
+                    isRemoteVideoEnabled:
+                      nextCallKind === 'video' ? state.isRemoteVideoEnabled : false,
+                    remoteStreamUrl: nextCallKind === 'video' ? state.remoteStreamUrl : null,
+                  }
+                : state
+            );
+          } catch {
+            await cleanupCallSession();
+            Alert.alert('Р—РІРѕРЅРѕРє РїСЂРµСЂРІР°РЅ', 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РјРµРґРёР°СЃРѕРµРґРёРЅРµРЅРёРµ.');
+          }
+          return;
+        }
+
         if (currentState) {
           SignalingService.sendCallBusy(fromUserId);
           return;
         }
 
         const meta = resolvePeerMeta(fromUserId);
-        pendingOfferRef.current = { fromUserId, sdp };
+        pendingOfferRef.current = { fromUserId, sdp, callKind: nextCallKind };
         setCallState({
           phase: 'incoming',
           remoteUserId: fromUserId,
           displayName: meta.displayName,
           avatarUrl: meta.avatarUrl,
           chatId: meta.chatId,
+          callKind: nextCallKind,
           isMuted: false,
+          isSpeakerOn: true,
+          isLocalAudioReady: false,
+          isLocalVideoReady: false,
+          isLocalVideoEnabled: false,
+          isRemoteVideoEnabled: nextCallKind === 'video',
+          localStreamUrl: null,
+          remoteStreamUrl: null,
         });
       },
       onAnswer: async (fromUserId, sdp) => {
@@ -669,8 +1193,19 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       declineIncomingCall,
       endCall,
       toggleMute,
+      toggleSpeaker,
+      toggleVideo,
     }),
-    [acceptIncomingCall, callState, declineIncomingCall, endCall, startCall, toggleMute]
+    [
+      acceptIncomingCall,
+      callState,
+      declineIncomingCall,
+      endCall,
+      startCall,
+      toggleMute,
+      toggleSpeaker,
+      toggleVideo,
+    ]
   );
   return (
     <CallContext.Provider value={contextValue}>
@@ -687,6 +1222,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           void endCall();
         }}
         onToggleMute={toggleMute}
+        onToggleSpeaker={() => {
+          void toggleSpeaker();
+        }}
+        onToggleVideo={() => {
+          void toggleVideo();
+        }}
       />
     </CallContext.Provider>
   );
@@ -702,104 +1243,192 @@ export function useCall() {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(8, 15, 28, 0.74)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
+    backgroundColor: '#07111E',
   },
-  overlayCard: {
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    paddingHorizontal: 24,
-    paddingBottom: 28,
+  backgroundBase: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#07111E',
+  },
+  backgroundGlowTop: {
+    position: 'absolute',
+    top: -120,
+    right: -60,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: withAlpha(colors.accent, 0.36),
+    transform: [{ scaleX: 1.15 }],
+  },
+  backgroundGlowBottom: {
+    position: 'absolute',
+    bottom: -180,
+    left: -100,
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    backgroundColor: 'rgba(123, 92, 255, 0.28)',
+  },
+  backgroundVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(6, 14, 24, 0.68)',
+  },
+  videoVeil: {
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+  },
+  remoteVideo: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#050A12',
+  },
+  localVideoPreview: {
+    position: 'absolute',
+    right: 18,
+    width: 118,
+    height: 166,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.72)',
+    backgroundColor: '#101827',
+  },
+  screenContent: {
+    flex: 1,
+  },
+  topMeta: {
+    alignSelf: 'center',
+    minHeight: 36,
+    paddingHorizontal: 16,
+    borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
-  heroSpacer: {
-    height: 8,
+  topMetaText: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    color: 'rgba(255,255,255,0.74)',
+  },
+  centerStage: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerStageVideo: {
+    justifyContent: 'flex-start',
+    paddingTop: 64,
   },
   avatar: {
-    width: 118,
-    height: 118,
-    borderRadius: 59,
-    marginTop: 8,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   avatarFallback: {
-    width: 118,
-    height: 118,
-    borderRadius: 59,
-    marginTop: 8,
+    width: 136,
+    height: 136,
+    borderRadius: 68,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.accent,
+    backgroundColor: withAlpha(colors.accent, 0.92),
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   avatarFallbackText: {
-    fontSize: 42,
+    fontSize: 46,
     fontWeight: '800',
     color: '#FFFFFF',
   },
   name: {
-    marginTop: 20,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '700',
-    color: '#18202E',
-    textAlign: 'center',
-  },
-  status: {
-    marginTop: 8,
-    fontSize: 17,
-    color: '#667085',
-    textAlign: 'center',
-  },
-  controlsRow: {
-    marginTop: 28,
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 14,
-  },
-  controlButton: {
-    flex: 1,
-    minHeight: 92,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    gap: 8,
-  },
-  controlButtonWide: {
-    width: '100%',
-    minHeight: 92,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    gap: 8,
-  },
-  controlButtonNeutral: {
-    backgroundColor: '#EDF2FA',
-  },
-  controlButtonMuted: {
-    backgroundColor: '#64748B',
-  },
-  controlButtonSuccess: {
-    backgroundColor: '#22C55E',
-  },
-  controlButtonDanger: {
-    backgroundColor: '#EF4444',
-  },
-  controlButtonPressed: {
-    opacity: 0.82,
-  },
-  controlLabelLight: {
-    fontSize: 14,
+    marginTop: 24,
+    fontSize: 34,
+    lineHeight: 40,
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
   },
-  controlLabelDark: {
+  status: {
+    marginTop: 10,
+    fontSize: 18,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.88)',
+    textAlign: 'center',
+  },
+  phaseCaption: {
+    marginTop: 8,
     fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.56)',
+    textAlign: 'center',
+  },
+  bottomDock: {
+    width: '100%',
+    gap: 14,
+  },
+  controlsPanel: {
+    backgroundColor: 'rgba(12, 24, 38, 0.54)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  incomingControlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  actionButton: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 2,
+  },
+  actionButtonProminent: {
+    minWidth: 0,
+  },
+  actionButtonPressed: {
+    opacity: 0.84,
+  },
+  actionCircle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionCircleProminent: {},
+  actionCircleNeutral: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  actionCircleAccent: {
+    backgroundColor: withAlpha(colors.accent, 0.96),
+  },
+  actionCircleSuccess: {
+    backgroundColor: '#34C759',
+  },
+  actionCircleDanger: {
+    backgroundColor: '#F05757',
+  },
+  actionCircleDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  actionLabelBase: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  actionLabel: {
+    color: '#FFFFFF',
+  },
+  actionLabelDisabled: {
+    color: 'rgba(255,255,255,0.5)',
+  },
+  bottomNote: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.54)',
     textAlign: 'center',
   },
 });

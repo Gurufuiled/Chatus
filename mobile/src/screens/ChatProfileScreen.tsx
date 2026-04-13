@@ -493,6 +493,23 @@ export function ChatProfileScreen() {
     }
   }, [avatarUrl, chatId, displayName, startCall, userId]);
 
+  const handleStartVideoCallPress = useCallback(async () => {
+    try {
+      await startCall({
+        userId,
+        displayName,
+        avatarUrl,
+        chatId,
+        callKind: 'video',
+      });
+    } catch (error) {
+      Alert.alert(
+        'Не удалось начать видеозвонок',
+        error instanceof Error ? error.message : 'Проверь камеру и попробуй еще раз.'
+      );
+    }
+  }, [avatarUrl, chatId, displayName, startCall, userId]);
+
   const openMoreMenu = useCallback(() => {
     const target = moreButtonRef.current;
     if (!target) return;
@@ -750,6 +767,7 @@ export function ChatProfileScreen() {
           expandedHeroHeight={expandedHeroHeight}
           onToggleHeroExpanded={toggleHeroExpanded}
           onStartCallPress={handleStartCallPress}
+          onStartVideoCallPress={handleStartVideoCallPress}
           onMutePress={handleMutePress}
           onSearchPress={handleSearchPress}
           onMorePress={handleMorePress}

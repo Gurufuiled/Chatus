@@ -4,7 +4,7 @@ import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
 import { colors } from '../theme/colors';
 
-export type ProfileActionIconName = 'call' | 'sound' | 'search' | 'more';
+export type ProfileActionIconName = 'call' | 'video' | 'sound' | 'search' | 'more';
 
 type ProfileActionIconProps = {
   name: ProfileActionIconName;
@@ -26,6 +26,10 @@ export function ProfileActionIcon({
   switch (name) {
     case 'call': {
       const g = active ? TELEGRAM_PROFILE_GLYPHS.callFilled : TELEGRAM_PROFILE_GLYPHS.callOutline;
+      return <TelegramGlyph d={g.d} fillRule={g.fillRule} color={color} size={size} />;
+    }
+    case 'video': {
+      const g = active ? TELEGRAM_PROFILE_GLYPHS.videoFilled : TELEGRAM_PROFILE_GLYPHS.videoOutline;
       return <TelegramGlyph d={g.d} fillRule={g.fillRule} color={color} size={size} />;
     }
     case 'sound': {

@@ -92,16 +92,21 @@ export class SignalingGateway
   @SubscribeMessage('offer')
   handleOffer(
     client: AuthenticatedSocket,
-    payload: { target_user_id: string; offer: RTCSessionDescriptionInit },
+    payload: {
+      target_user_id: string;
+      offer: RTCSessionDescriptionInit;
+      call_type?: 'audio' | 'video';
+    },
   ) {
     if (!client.userId) return;
-    const { target_user_id: targetUserId, offer } = payload;
+    const { target_user_id: targetUserId, offer, call_type: callType } = payload;
     if (!targetUserId || !offer) return;
 
     const data = JSON.stringify({
       type: 'offer',
       from_user_id: client.userId,
       offer,
+      call_type: callType === 'video' ? 'video' : 'audio',
     });
     this.sendToUser(targetUserId, data);
   }
