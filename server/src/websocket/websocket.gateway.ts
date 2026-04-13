@@ -11,6 +11,8 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessagesService } from '../messages/messages.service';
 import { ChatsService } from '../chats/chats.service';
+import { ChannelsService } from '../channels/channels.service';
+import { RealtimeService } from '../realtime/realtime.service';
 
 const WS_PORT = parseInt(process.env.WS_PORT ?? '4001', 10);
 
@@ -28,14 +30,13 @@ export class WebsocketGateway
 
   private readonly logger = new Logger(WebsocketGateway.name);
 
-  /** userId -> Set of WebSocket connections */
-  private readonly userSockets = new Map<string, Set<AuthenticatedSocket>>();
-
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
     private readonly messagesService: MessagesService,
     private readonly chatsService: ChatsService,
+    private readonly channelsService: ChannelsService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -60,12 +61,7 @@ export class WebsocketGateway
       }
 
       client.userId = payload.sub;
-      let set = this.userSockets.get(payload.sub);
-      if (!set) {
-        set = new Set();
-        this.userSockets.set(payload.sub, set);
-      }
-      set.add(client);
+      this.realtimeService.registerClient(payload.sub, client);
 
       const now = new Date();
       await this.prisma.user.update({
@@ -85,25 +81,22 @@ export class WebsocketGateway
     const userId = client.userId;
     if (!userId) return;
 
-    const set = this.userSockets.get(userId);
-    if (set) {
-      set.delete(client);
-      if (set.size === 0) {
-        this.userSockets.delete(userId);
-        const lastSeen = new Date();
-        this.prisma.user
-          .update({
-            where: { id: userId },
-            data: { isOnline: false, lastSeen },
-          })
-          .catch((err) =>
-            this.logger.error(
-              `Failed to update user ${userId} offline status`,
-              err,
-            ),
-          );
-        this.broadcastPresence(userId, false, lastSeen);
-      }
+    const disconnectedLastSocket = this.realtimeService.unregisterClient(userId, client);
+
+    if (disconnectedLastSocket) {
+      const lastSeen = new Date();
+      this.prisma.user
+        .update({
+          where: { id: userId },
+          data: { isOnline: false, lastSeen },
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Failed to update user ${userId} offline status`,
+            err,
+          ),
+        );
+      this.broadcastPresence(userId, false, lastSeen);
     }
     this.logger.log(`User ${userId} disconnected (WS)`);
   }
@@ -115,35 +108,12 @@ export class WebsocketGateway
         : typeof lastSeen === 'number'
           ? lastSeen
           : null;
-    const msg = JSON.stringify({
+    this.realtimeService.broadcastToAuthenticatedUsers({
       type: 'presence',
       user_id: userId,
       is_online: isOnline,
       last_seen: normalizedLastSeen,
     });
-    this.server.clients.forEach((c) => {
-      if ((c as unknown as AuthenticatedSocket).userId) {
-        c.send(msg);
-      }
-    });
-  }
-
-  private getChatMemberIds(chatId: string): Promise<string[]> {
-    return this.prisma.chatMember
-      .findMany({
-        where: { chatId },
-        select: { userId: true },
-      })
-      .then((members) => members.map((m) => m.userId));
-  }
-
-  private sendToUser(userId: string, data: string) {
-    const set = this.userSockets.get(userId);
-    if (set) {
-      set.forEach((client) => {
-        if (client.readyState === 1) client.send(data);
-      });
-    }
   }
 
   @SubscribeMessage('send_message')
@@ -218,8 +188,11 @@ export class WebsocketGateway
           forwarded_from_sender_id: forwardedFromSenderId ?? null,
         },
       );
-      const members = await this.getChatMemberIds(chatId);
-      this.logger.log(`send_message broadcast: msgId=${message.id} content=${message.content?.slice(0, 50)} to ${members.length} members: ${members.join(',')}`);
+      const members = await this.prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true },
+      });
+      this.logger.log(`send_message broadcast: msgId=${message.id} content=${message.content?.slice(0, 50)} to ${members.length} members: ${members.map((member) => member.userId).join(',')}`);
       const data = JSON.stringify({
         type: 'message',
         message: {
@@ -227,7 +200,7 @@ export class WebsocketGateway
           client_temp_id: clientTempId ?? null,
         },
       });
-      members.forEach((uid) => this.sendToUser(uid, data));
+      members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
     } catch (err) {
       this.logger.warn(`send_message failed: ${err}`);
     }
@@ -243,30 +216,29 @@ export class WebsocketGateway
     if (!chatId || !messageId) return;
 
     try {
+      const chatBeforeDelete = await this.prisma.chat.findUnique({
+        where: { id: chatId },
+        select: { pinnedMessageId: true },
+      });
+      const deletedPinnedMessage = chatBeforeDelete?.pinnedMessageId === messageId;
+
       const message = await this.messagesService.deleteMessage(
         chatId,
         messageId,
         client.userId,
       );
-      const members = await this.getChatMemberIds(chatId);
-      const data = JSON.stringify({
+      await this.realtimeService.broadcastToChatMembers(chatId, {
         type: 'message_deleted',
         chat_id: chatId,
         message_id: message.id,
       });
-      members.forEach((uid) => this.sendToUser(uid, data));
 
-      const chat = await this.prisma.chat.findUnique({
-        where: { id: chatId },
-        select: { pinnedMessageId: true },
-      });
-      if (!chat?.pinnedMessageId) {
-        const pinnedData = JSON.stringify({
+      if (deletedPinnedMessage) {
+        await this.realtimeService.broadcastToChatMembers(chatId, {
           type: 'chat_pinned_message_updated',
           chat_id: chatId,
           pinned_message_id: null,
         });
-        members.forEach((uid) => this.sendToUser(uid, pinnedData));
       }
     } catch (err) {
       this.logger.warn(`delete_message failed: ${err}`);
@@ -288,13 +260,11 @@ export class WebsocketGateway
         client.userId,
         messageId ?? null,
       );
-      const members = await this.getChatMemberIds(chatId);
-      const data = JSON.stringify({
+      await this.realtimeService.broadcastToChatMembers(chatId, {
         type: 'chat_pinned_message_updated',
         chat_id: chat.id,
         pinned_message_id: chat.pinned_message_id,
       });
-      members.forEach((uid) => this.sendToUser(uid, data));
     } catch (err) {
       this.logger.warn(`pin_message failed: ${err}`);
     }
@@ -309,8 +279,11 @@ export class WebsocketGateway
     const { chat_id: chatId, message } = payload;
     if (!chatId || !message) return;
 
-    const members = await this.getChatMemberIds(chatId);
-    if (!members.includes(client.userId)) return;
+    const members = await this.prisma.chatMember.findMany({
+      where: { chatId },
+      select: { userId: true },
+    });
+    if (!members.some((member) => member.userId === client.userId)) return;
 
     const data = JSON.stringify({
       type: 'message',
@@ -318,8 +291,8 @@ export class WebsocketGateway
       sender_id: client.userId,
       message,
     });
-    members.forEach((uid) => {
-      if (uid !== client.userId) this.sendToUser(uid, data);
+    members.forEach(({ userId }) => {
+      if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
     });
   }
 
@@ -332,8 +305,11 @@ export class WebsocketGateway
     const { chat_id: chatId, is_typing: isTyping } = payload;
     if (!chatId) return;
 
-    const members = await this.getChatMemberIds(chatId);
-    if (!members.includes(client.userId)) return;
+    const members = await this.prisma.chatMember.findMany({
+      where: { chatId },
+      select: { userId: true },
+    });
+    if (!members.some((member) => member.userId === client.userId)) return;
 
     const data = JSON.stringify({
       type: 'typing',
@@ -341,8 +317,8 @@ export class WebsocketGateway
       user_id: client.userId,
       is_typing: isTyping,
     });
-    members.forEach((uid) => {
-      if (uid !== client.userId) this.sendToUser(uid, data);
+    members.forEach(({ userId }) => {
+      if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
     });
   }
 
@@ -359,8 +335,11 @@ export class WebsocketGateway
     const { chat_id: chatId, message_id: messageId, status } = payload;
     if (!chatId || !messageId || !status) return;
 
-    const members = await this.getChatMemberIds(chatId);
-    if (!members.includes(client.userId)) return;
+    const members = await this.prisma.chatMember.findMany({
+      where: { chatId },
+      select: { userId: true },
+    });
+    if (!members.some((member) => member.userId === client.userId)) return;
     const updatedMessage = await this.messagesService.updateMessageStatus(
       chatId,
       messageId,
@@ -376,6 +355,96 @@ export class WebsocketGateway
       user_id: client.userId,
       status: effectiveStatus,
     });
-    members.forEach((uid) => this.sendToUser(uid, data));
+    members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
+  }
+
+  @SubscribeMessage('channel_publish_post')
+  async handleChannelPublishPost(
+    client: AuthenticatedSocket,
+    payload: {
+      channel_id?: string;
+      content?: string | null;
+      msg_type?: string;
+      media?: Record<string, unknown>;
+    },
+  ) {
+    if (!client.userId) return;
+    const channelId = payload?.channel_id;
+    if (!channelId) return;
+
+    try {
+      await this.channelsService.publishPost(channelId, client.userId, {
+        content: payload.content ?? null,
+        msg_type: payload.msg_type ?? 'text',
+        media: payload.media,
+      });
+    } catch (err) {
+      this.logger.warn(`channel_publish_post failed: ${err}`);
+    }
+  }
+
+  @SubscribeMessage('discussion_send_message')
+  async handleDiscussionSendMessage(
+    client: AuthenticatedSocket,
+    payload: {
+      channel_id?: string;
+      post_id?: string;
+      content?: string | null;
+      msg_type?: string;
+      reply_to_id?: string | null;
+      media?: Record<string, unknown>;
+    },
+  ) {
+    if (!client.userId) return;
+    const channelId = payload?.channel_id;
+    const postId = payload?.post_id;
+    if (!channelId || !postId) return;
+
+    try {
+      await this.channelsService.createDiscussionMessage(
+        channelId,
+        postId,
+        client.userId,
+        {
+          content: payload.content ?? null,
+          msg_type: payload.msg_type ?? 'text',
+          reply_to_id: payload.reply_to_id ?? null,
+          media: payload.media,
+        },
+      );
+    } catch (err) {
+      this.logger.warn(`discussion_send_message failed: ${err}`);
+    }
+  }
+
+  @SubscribeMessage('toggle_reaction')
+  async handleToggleReaction(
+    client: AuthenticatedSocket,
+    payload: {
+      chat_id?: string;
+      message_id?: string;
+      emoji?: string;
+    },
+  ) {
+    if (!client.userId) return;
+    const chatId = payload?.chat_id;
+    const messageId = payload?.message_id;
+    const emoji = payload?.emoji;
+    if (!chatId || !messageId || !emoji) return;
+
+    try {
+      const updated = await this.messagesService.toggleReaction(
+        chatId,
+        messageId,
+        client.userId,
+        emoji,
+      );
+      await this.realtimeService.broadcastToChatMembers(chatId, {
+        type: 'message_reactions_updated',
+        ...updated,
+      });
+    } catch (err) {
+      this.logger.warn(`toggle_reaction failed: ${err}`);
+    }
   }
 }

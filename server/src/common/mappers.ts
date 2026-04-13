@@ -1,4 +1,11 @@
-import type { User, Chat, Message, Media, ChatMember } from '@prisma/client';
+import type {
+  User,
+  Chat,
+  Message,
+  Media,
+  ChatMember,
+  MessageReaction,
+} from '@prisma/client';
 
 // --- Helpers ---
 
@@ -92,6 +99,8 @@ export type MappedChatMember = {
   chat_id: string;
   user_id: string;
   role: string;
+  access_status: string;
+  subscription_expires_at: number | null;
   tag: string | null;
   tag_color: string | null;
   joined_at: number;
@@ -111,6 +120,8 @@ export function mapChatMember(member: ChatMember & { user?: User | null }): Mapp
     chat_id: member.chatId,
     user_id: member.userId,
     role: member.role,
+    access_status: member.accessStatus,
+    subscription_expires_at: dateToUnixMs(member.subscriptionExpiresAt),
     tag: member.tag ?? null,
     tag_color: member.tagColor ?? null,
     joined_at: dateToUnixMs(member.joinedAt) ?? 0,
@@ -135,6 +146,22 @@ export type MappedChat = {
   name: string | null;
   description: string | null;
   avatar_url: string | null;
+  visibility: string;
+  access_type: string;
+  subscription_price_cents: number | null;
+  subscription_period_days: number | null;
+  linked_discussion_chat_id: string | null;
+  invite_token: string | null;
+  allow_comments: boolean;
+  allow_reactions: boolean;
+  preview_post_count: number;
+  subscriber_count: number;
+  active_subscriber_count: number;
+  access_status: string | null;
+  subscription_expires_at: number | null;
+  pending_earnings_cents: number;
+  available_payout_cents: number;
+  paid_out_cents: number;
   peer_display_name?: string | null;
   created_by_id: string;
   last_message_id: string | null;
@@ -166,6 +193,10 @@ export function mapChat(
     chat.chatType === 'private' && opts?.currentUserId && chat.members?.length
       ? chat.members.find((m) => m.userId !== opts.currentUserId)
       : undefined;
+  const currentMembership =
+    opts?.currentUserId && chat.members?.length
+      ? chat.members.find((m) => m.userId === opts.currentUserId)
+      : undefined;
 
   const base: MappedChat = {
     id: chat.id,
@@ -176,6 +207,22 @@ export function mapChat(
       chat.chatType === 'private'
         ? peer?.user?.avatarUrl ?? null
         : chat.avatarUrl ?? null,
+    visibility: chat.visibility,
+    access_type: chat.accessType,
+    subscription_price_cents: chat.subscriptionPriceCents ?? null,
+    subscription_period_days: chat.subscriptionPeriodDays ?? null,
+    linked_discussion_chat_id: chat.linkedDiscussionChatId ?? null,
+    invite_token: chat.inviteToken ?? null,
+    allow_comments: chat.allowComments,
+    allow_reactions: chat.allowReactions,
+    preview_post_count: chat.previewPostCount,
+    subscriber_count: chat.subscriberCount,
+    active_subscriber_count: chat.activeSubscriberCount,
+    access_status: currentMembership?.accessStatus ?? null,
+    subscription_expires_at: dateToUnixMs(currentMembership?.subscriptionExpiresAt),
+    pending_earnings_cents: chat.pendingEarningsCents,
+    available_payout_cents: chat.availablePayoutCents,
+    paid_out_cents: chat.paidOutCents,
     peer_display_name: null,
     created_by_id: chat.createdById,
     last_message_id: chat.lastMessageId ?? null,
@@ -217,6 +264,10 @@ export type MappedMessage = {
   msg_type: string;
   content: string | null;
   reply_to_id: string | null;
+  thread_root_message_id: string | null;
+  is_channel_post: boolean;
+  view_count: number;
+  comment_count: number;
   forwarded_from_message_id: string | null;
   forwarded_from_name: string | null;
   forwarded_from_chat_id: string | null;
@@ -228,11 +279,22 @@ export type MappedMessage = {
   created_at: number;
   updated_at: number;
   media?: MappedMedia[];
+  reactions?: MappedMessageReaction[];
+};
+
+export type MappedMessageReaction = {
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
 };
 
 export function mapMessage(
-  message: Message & { media?: Media[] },
-  opts?: { includeMedia?: boolean },
+  message: Message & { media?: Media[]; reactions?: MessageReaction[] },
+  opts?: {
+    includeMedia?: boolean;
+    includeReactions?: boolean;
+    currentUserId?: string;
+  },
 ): MappedMessage {
   const base: MappedMessage = {
     id: message.id,
@@ -241,6 +303,10 @@ export function mapMessage(
     msg_type: message.msgType,
     content: message.content ?? null,
     reply_to_id: message.replyToId ?? null,
+    thread_root_message_id: message.threadRootMessageId ?? null,
+    is_channel_post: message.isChannelPost,
+    view_count: message.viewCount,
+    comment_count: message.commentCount,
     forwarded_from_message_id: message.forwardedFromMessageId ?? null,
     forwarded_from_name: message.forwardedFromName ?? null,
     forwarded_from_chat_id: message.forwardedFromChatId ?? null,
@@ -254,6 +320,25 @@ export function mapMessage(
   };
   if (opts?.includeMedia && message.media) {
     base.media = message.media.map(mapMedia);
+  }
+  if (opts?.includeReactions) {
+    const grouped = new Map<string, { count: number; reacted_by_me: boolean }>();
+    for (const reaction of message.reactions ?? []) {
+      const existing = grouped.get(reaction.emoji) ?? {
+        count: 0,
+        reacted_by_me: false,
+      };
+      existing.count += 1;
+      if (opts.currentUserId && reaction.userId === opts.currentUserId) {
+        existing.reacted_by_me = true;
+      }
+      grouped.set(reaction.emoji, existing);
+    }
+    base.reactions = [...grouped.entries()].map(([emoji, reaction]) => ({
+      emoji,
+      count: reaction.count,
+      reacted_by_me: reaction.reacted_by_me,
+    }));
   }
   return base;
 }

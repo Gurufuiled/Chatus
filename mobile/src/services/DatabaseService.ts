@@ -9,6 +9,139 @@ const DB_NAME = 'messenger.db';
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 
+const SCHEMA_REPAIRS: Array<{ table: string; column: string; sql: string }> = [
+  {
+    table: 'users',
+    column: 'handle',
+    sql: 'ALTER TABLE users ADD COLUMN handle TEXT;',
+  },
+  {
+    table: 'chats',
+    column: 'pinned_message_id',
+    sql: 'ALTER TABLE chats ADD COLUMN pinned_message_id TEXT;',
+  },
+  {
+    table: 'chats',
+    column: 'description',
+    sql: 'ALTER TABLE chats ADD COLUMN description TEXT;',
+  },
+  {
+    table: 'sync_queue',
+    column: 'user_id',
+    sql: 'ALTER TABLE sync_queue ADD COLUMN user_id TEXT;',
+  },
+  {
+    table: 'chat_members',
+    column: 'tag',
+    sql: 'ALTER TABLE chat_members ADD COLUMN tag TEXT;',
+  },
+  {
+    table: 'chat_members',
+    column: 'tag_color',
+    sql: 'ALTER TABLE chat_members ADD COLUMN tag_color TEXT;',
+  },
+  {
+    table: 'chats',
+    column: 'visibility',
+    sql: "ALTER TABLE chats ADD COLUMN visibility TEXT DEFAULT 'public';",
+  },
+  {
+    table: 'chats',
+    column: 'access_type',
+    sql: "ALTER TABLE chats ADD COLUMN access_type TEXT DEFAULT 'free';",
+  },
+  {
+    table: 'chats',
+    column: 'subscription_price_cents',
+    sql: 'ALTER TABLE chats ADD COLUMN subscription_price_cents INTEGER;',
+  },
+  {
+    table: 'chats',
+    column: 'subscription_period_days',
+    sql: 'ALTER TABLE chats ADD COLUMN subscription_period_days INTEGER;',
+  },
+  {
+    table: 'chats',
+    column: 'linked_discussion_chat_id',
+    sql: 'ALTER TABLE chats ADD COLUMN linked_discussion_chat_id TEXT;',
+  },
+  {
+    table: 'chats',
+    column: 'invite_token',
+    sql: 'ALTER TABLE chats ADD COLUMN invite_token TEXT;',
+  },
+  {
+    table: 'chats',
+    column: 'allow_comments',
+    sql: 'ALTER TABLE chats ADD COLUMN allow_comments INTEGER DEFAULT 1;',
+  },
+  {
+    table: 'chats',
+    column: 'allow_reactions',
+    sql: 'ALTER TABLE chats ADD COLUMN allow_reactions INTEGER DEFAULT 1;',
+  },
+  {
+    table: 'chats',
+    column: 'preview_post_count',
+    sql: 'ALTER TABLE chats ADD COLUMN preview_post_count INTEGER DEFAULT 3;',
+  },
+  {
+    table: 'chats',
+    column: 'subscriber_count',
+    sql: 'ALTER TABLE chats ADD COLUMN subscriber_count INTEGER DEFAULT 0;',
+  },
+  {
+    table: 'chats',
+    column: 'active_subscriber_count',
+    sql: 'ALTER TABLE chats ADD COLUMN active_subscriber_count INTEGER DEFAULT 0;',
+  },
+  {
+    table: 'chats',
+    column: 'access_status',
+    sql: "ALTER TABLE chats ADD COLUMN access_status TEXT DEFAULT 'active';",
+  },
+  {
+    table: 'chats',
+    column: 'subscription_expires_at',
+    sql: 'ALTER TABLE chats ADD COLUMN subscription_expires_at INTEGER;',
+  },
+  {
+    table: 'chats',
+    column: 'pending_earnings_cents',
+    sql: 'ALTER TABLE chats ADD COLUMN pending_earnings_cents INTEGER DEFAULT 0;',
+  },
+  {
+    table: 'chats',
+    column: 'available_payout_cents',
+    sql: 'ALTER TABLE chats ADD COLUMN available_payout_cents INTEGER DEFAULT 0;',
+  },
+  {
+    table: 'chats',
+    column: 'paid_out_cents',
+    sql: 'ALTER TABLE chats ADD COLUMN paid_out_cents INTEGER DEFAULT 0;',
+  },
+  {
+    table: 'messages',
+    column: 'thread_root_message_id',
+    sql: 'ALTER TABLE messages ADD COLUMN thread_root_message_id TEXT;',
+  },
+  {
+    table: 'messages',
+    column: 'is_channel_post',
+    sql: 'ALTER TABLE messages ADD COLUMN is_channel_post INTEGER DEFAULT 0;',
+  },
+  {
+    table: 'messages',
+    column: 'view_count',
+    sql: 'ALTER TABLE messages ADD COLUMN view_count INTEGER DEFAULT 0;',
+  },
+  {
+    table: 'messages',
+    column: 'comment_count',
+    sql: 'ALTER TABLE messages ADD COLUMN comment_count INTEGER DEFAULT 0;',
+  },
+];
+
 async function hasColumn(
   db: SQLite.SQLiteDatabase,
   tableName: string,
@@ -19,40 +152,7 @@ async function hasColumn(
 }
 
 async function ensureSchemaColumns(db: SQLite.SQLiteDatabase): Promise<void> {
-  const repairs: Array<{ table: string; column: string; sql: string }> = [
-    {
-      table: 'users',
-      column: 'handle',
-      sql: 'ALTER TABLE users ADD COLUMN handle TEXT;',
-    },
-    {
-      table: 'chats',
-      column: 'pinned_message_id',
-      sql: 'ALTER TABLE chats ADD COLUMN pinned_message_id TEXT;',
-    },
-    {
-      table: 'chats',
-      column: 'description',
-      sql: 'ALTER TABLE chats ADD COLUMN description TEXT;',
-    },
-    {
-      table: 'sync_queue',
-      column: 'user_id',
-      sql: 'ALTER TABLE sync_queue ADD COLUMN user_id TEXT;',
-    },
-    {
-      table: 'chat_members',
-      column: 'tag',
-      sql: 'ALTER TABLE chat_members ADD COLUMN tag TEXT;',
-    },
-    {
-      table: 'chat_members',
-      column: 'tag_color',
-      sql: 'ALTER TABLE chat_members ADD COLUMN tag_color TEXT;',
-    },
-  ];
-
-  for (const repair of repairs) {
+  for (const repair of SCHEMA_REPAIRS) {
     const exists = await hasColumn(db, repair.table, repair.column);
     if (!exists) {
       await db.execAsync(repair.sql);
@@ -135,6 +235,42 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
         await db.execAsync('ALTER TABLE chat_members ADD COLUMN tag_color TEXT;');
       } catch {
         // Column may already exist
+      }
+    }
+    // v8->v9: add channel/discussion/subscription metadata to chats and messages
+    if (currentVersion >= 8 && currentVersion < 9) {
+      const migrations = SCHEMA_REPAIRS.filter(
+        (repair) =>
+          (repair.table === 'chats' &&
+            [
+              'visibility',
+              'access_type',
+              'subscription_price_cents',
+              'subscription_period_days',
+              'linked_discussion_chat_id',
+              'invite_token',
+              'allow_comments',
+              'allow_reactions',
+              'preview_post_count',
+              'subscriber_count',
+              'active_subscriber_count',
+              'access_status',
+              'subscription_expires_at',
+              'pending_earnings_cents',
+              'available_payout_cents',
+              'paid_out_cents',
+            ].includes(repair.column)) ||
+          (repair.table === 'messages' &&
+            ['thread_root_message_id', 'is_channel_post', 'view_count', 'comment_count'].includes(
+              repair.column
+            ))
+      );
+      for (const migration of migrations) {
+        try {
+          await db.execAsync(migration.sql);
+        } catch {
+          // Column may already exist
+        }
       }
     }
     await db.execAsync(SCHEMA_SQL);

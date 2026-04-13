@@ -30,4 +30,9 @@ export type Message = MessageRow & {
     file_size?: number;
     remote_url?: string;
   }[];
+  reactions?: {
+    emoji: string;
+    count: number;
+    reacted_by_me: boolean;
+  }[];
 };

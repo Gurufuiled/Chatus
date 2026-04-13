@@ -9,6 +9,7 @@ import { MessagesModule } from './messages/messages.module';
 import { UploadModule } from './upload/upload.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { SignalingModule } from './signaling/signaling.module';
+import { ChannelsModule } from './channels/channels.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SignalingModule } from './signaling/signaling.module';
     UsersModule,
     ChatsModule,
     MessagesModule,
+    ChannelsModule,
     UploadModule,
     WebsocketModule,
     SignalingModule,

@@ -13,13 +13,29 @@ export class ChatDao {
 
   async insert(row: ChatRow): Promise<void> {
     await this.db.runAsync(
-      `INSERT INTO chats (id, chat_type, name, description, avatar_url, created_by, last_message_id, pinned_message_id, last_message_at, last_message_preview, unread_count, is_muted, is_pinned, is_archived, draft, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO chats (id, chat_type, name, description, avatar_url, visibility, access_type, subscription_price_cents, subscription_period_days, linked_discussion_chat_id, invite_token, allow_comments, allow_reactions, preview_post_count, subscriber_count, active_subscriber_count, access_status, subscription_expires_at, pending_earnings_cents, available_payout_cents, paid_out_cents, created_by, last_message_id, pinned_message_id, last_message_at, last_message_preview, unread_count, is_muted, is_pinned, is_archived, draft, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       row.id,
       row.chat_type,
       row.name ?? null,
       row.description ?? null,
       row.avatar_url ?? null,
+      row.visibility ?? 'public',
+      row.access_type ?? 'free',
+      row.subscription_price_cents ?? null,
+      row.subscription_period_days ?? null,
+      row.linked_discussion_chat_id ?? null,
+      row.invite_token ?? null,
+      row.allow_comments ?? 1,
+      row.allow_reactions ?? 1,
+      row.preview_post_count ?? 3,
+      row.subscriber_count ?? 0,
+      row.active_subscriber_count ?? 0,
+      row.access_status ?? 'active',
+      row.subscription_expires_at ?? null,
+      row.pending_earnings_cents ?? 0,
+      row.available_payout_cents ?? 0,
+      row.paid_out_cents ?? 0,
       row.created_by ?? null,
       row.last_message_id ?? null,
       row.pinned_message_id ?? null,
@@ -51,8 +67,12 @@ export class ChatDao {
     const values: unknown[] = [];
 
     const fields = [
-      'chat_type', 'name', 'description', 'avatar_url', 'created_by', 'last_message_id',
-      'pinned_message_id', 'last_message_at', 'last_message_preview', 'unread_count', 'is_muted',
+      'chat_type', 'name', 'description', 'avatar_url', 'visibility', 'access_type',
+      'subscription_price_cents', 'subscription_period_days', 'linked_discussion_chat_id',
+      'invite_token', 'allow_comments', 'allow_reactions', 'preview_post_count',
+      'subscriber_count', 'active_subscriber_count', 'access_status', 'subscription_expires_at',
+      'pending_earnings_cents', 'available_payout_cents', 'paid_out_cents', 'created_by',
+      'last_message_id', 'pinned_message_id', 'last_message_at', 'last_message_preview', 'unread_count', 'is_muted',
       'is_pinned', 'is_archived', 'draft', 'created_at', 'updated_at'
     ] as const;
     for (const f of fields) {

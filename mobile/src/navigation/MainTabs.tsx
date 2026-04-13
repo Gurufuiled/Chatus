@@ -10,6 +10,7 @@ import {
 } from '@react-navigation/native';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChatsStack } from './ChatsStack';
+import { ChannelsStack } from './ChannelsStack';
 import { ContactsScreen, SettingsScreen } from '../screens';
 import type { MainTabParamList } from './types';
 import { colors, withAlpha } from '../theme/colors';
@@ -28,9 +29,12 @@ function TabTelegramIcon({
   tab,
   color,
   focused,
-}: IconProps & { tab: 'contacts' | 'chats' | 'settings' }) {
-  const g = TELEGRAM_TAB_GLYPHS[tab];
-  const glyph = focused ? g.active : g.inactive;
+}: IconProps & { tab: 'contacts' | 'chats' | 'settings' | 'channels' }) {
+  const glyphs =
+    tab === 'channels'
+      ? TELEGRAM_TAB_GLYPHS.chats
+      : TELEGRAM_TAB_GLYPHS[tab];
+  const glyph = focused ? glyphs.active : glyphs.inactive;
   return (
     <View style={[styles.iconFrame, focused && styles.iconFocused]}>
       <TelegramGlyph
@@ -45,6 +49,8 @@ function TabTelegramIcon({
 
 function getTabIcon(routeName: keyof MainTabParamList, color: string, focused: boolean) {
   switch (routeName) {
+    case 'Channels':
+      return <TabTelegramIcon tab="channels" color={color} focused={focused} />;
     case 'Contacts':
       return <TabTelegramIcon tab="contacts" color={color} focused={focused} />;
     case 'Settings':
@@ -57,6 +63,8 @@ function getTabIcon(routeName: keyof MainTabParamList, color: string, focused: b
 
 function getTabLabel(routeName: keyof MainTabParamList) {
   switch (routeName) {
+    case 'Channels':
+      return 'Channels';
     case 'Contacts':
       return 'Контакты';
     case 'Settings':
@@ -102,10 +110,12 @@ function ChatsQuickActionsMenu({
   visible,
   onClose,
   onCreateGroup,
+  onCreateChannel,
 }: {
   visible: boolean;
   onClose: () => void;
   onCreateGroup: () => void;
+  onCreateChannel: () => void;
 }) {
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
@@ -124,6 +134,20 @@ function ChatsQuickActionsMenu({
             </View>
             <View style={styles.quickMenuTextWrap}>
               <Text style={styles.quickMenuTitle}>Создать групповой чат</Text>
+            </View>
+          </Pressable>
+          <Pressable
+            onPress={onCreateChannel}
+            style={({ pressed }) => [
+              styles.quickMenuButton,
+              pressed && styles.quickMenuButtonPressed,
+            ]}
+          >
+            <View style={styles.quickMenuIconWrap}>
+              <GroupChatIcon />
+            </View>
+            <View style={styles.quickMenuTextWrap}>
+              <Text style={styles.quickMenuTitle}>Создать канал</Text>
             </View>
           </Pressable>
         </View>
@@ -195,6 +219,11 @@ export function MainTabs() {
     navigation.navigate('Chats', { screen: 'CreateGroupChat' });
   }, [closeChatsQuickMenu, navigation]);
 
+  const handleCreateChannel = React.useCallback(() => {
+    closeChatsQuickMenu();
+    navigation.navigate('Channels', { screen: 'CreateChannel' });
+  }, [closeChatsQuickMenu, navigation]);
+
   return (
     <>
       <Tab.Navigator
@@ -255,6 +284,14 @@ export function MainTabs() {
           }}
         />
         <Tab.Screen
+          name="Channels"
+          component={ChannelsStack}
+          options={{
+            title: 'Channels',
+            headerShown: false,
+          }}
+        />
+        <Tab.Screen
           name="Settings"
           component={SettingsScreen}
           options={{ title: 'Настройки' }}
@@ -265,6 +302,7 @@ export function MainTabs() {
         visible={isChatsQuickMenuVisible}
         onClose={closeChatsQuickMenu}
         onCreateGroup={handleCreateGroup}
+        onCreateChannel={handleCreateChannel}
       />
     </>
   );

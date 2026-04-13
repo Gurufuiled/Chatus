@@ -14,6 +14,7 @@ import { SyncService } from '../services/SyncService';
 import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
 import { chatStore } from '../stores/chatStore';
+import { channelStore } from '../stores/channelStore';
 import { uiStore } from '../stores/uiStore';
 import type { Message } from '../stores/types';
 import { decodeServerWaveform } from '../services/waveformTransport';
@@ -28,6 +29,10 @@ interface ServerMessagePayload {
   msg_type: string;
   status: string;
   reply_to_id?: string | null;
+  thread_root_message_id?: string | null;
+  is_channel_post?: boolean;
+  view_count?: number;
+  comment_count?: number;
   forwarded_from_message_id?: string | null;
   forwarded_from_name?: string | null;
   forwarded_from_chat_id?: string | null;
@@ -59,6 +64,10 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
     msg_type: payload.msg_type,
     content: payload.content,
     reply_to_id: payload.reply_to_id ?? null,
+    thread_root_message_id: payload.thread_root_message_id ?? null,
+    is_channel_post: payload.is_channel_post ? 1 : 0,
+    view_count: payload.view_count ?? 0,
+    comment_count: payload.comment_count ?? 0,
     forwarded_from_message_id: payload.forwarded_from_message_id ?? null,
     forwarded_from_name: payload.forwarded_from_name ?? null,
     forwarded_from_chat_id: payload.forwarded_from_chat_id ?? null,
@@ -271,6 +280,74 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               chatStore.getState().incrementUnread(msg.chat_id);
             }
           }
+        },
+
+        onChannelPost: (payload) => {
+          const raw = payload as { channel_id?: string; message?: ServerMessagePayload };
+          if (!raw.channel_id || !raw.message) return;
+          const mapped = mapServerMessageToMessage(raw.message);
+          channelStore.getState().prependFeedPost(raw.channel_id, mapped);
+          const channel = chatStore.getState().chats.find((item) => item.id === raw.channel_id);
+          if (channel) {
+            chatStore.getState().updateChat({
+              ...channel,
+              last_message_id: mapped.id,
+              last_message_at: mapped.created_at,
+              last_message_preview: buildMessagePreview(mapped),
+            });
+          }
+        },
+
+        onDiscussionMessage: (payload) => {
+          const raw = payload as {
+            channel_id?: string;
+            post_id?: string;
+            message?: ServerMessagePayload;
+          };
+          if (!raw.channel_id || !raw.post_id || !raw.message) return;
+          const mapped = mapServerMessageToMessage(raw.message);
+          const key = `${raw.channel_id}:${raw.post_id}`;
+          channelStore.getState().prependDiscussionMessage(key, mapped);
+        },
+
+        onMessageReactionsUpdated: (payload) => {
+          const raw = payload as {
+            chat_id?: string;
+            message_id?: string;
+            channel_id?: string;
+            post_id?: string;
+            discussion_chat_id?: string;
+            reactions?: { emoji: string; count: number; reacted_by_me: boolean }[];
+          };
+          if (!raw.message_id || !raw.reactions) return;
+
+          if (raw.channel_id && raw.post_id && raw.discussion_chat_id === raw.chat_id) {
+            channelStore
+              .getState()
+              .updateDiscussionMessage(`${raw.channel_id}:${raw.post_id}`, raw.message_id, {
+                reactions: raw.reactions,
+              });
+            return;
+          }
+
+          const feedChannelId = raw.channel_id ?? raw.chat_id;
+          if (!feedChannelId) return;
+
+          channelStore.getState().updateFeedMessage(feedChannelId, raw.message_id, {
+            reactions: raw.reactions,
+          });
+        },
+
+        onChannelPostCommentCountUpdated: (payload) => {
+          const raw = payload as {
+            channel_id?: string;
+            post_id?: string;
+            comment_count?: number;
+          };
+          if (!raw.channel_id || !raw.post_id || typeof raw.comment_count !== 'number') return;
+          channelStore.getState().updateFeedMessage(raw.channel_id, raw.post_id, {
+            comment_count: raw.comment_count,
+          });
         },
 
         onMessageAck: async (payload) => {

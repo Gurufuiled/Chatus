@@ -19,7 +19,9 @@ function ChatSeparator() {
 }
 
 function sortChatsForList(chats: Chat[]) {
-  return [...chats].sort((a, b) => {
+  return [...chats]
+    .filter((chat) => chat.chat_type === 'private' || chat.chat_type === 'group')
+    .sort((a, b) => {
     if (a.is_pinned !== b.is_pinned) return b.is_pinned - a.is_pinned;
     const atA = a.last_message_at ?? 0;
     const atB = b.last_message_at ?? 0;

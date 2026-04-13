@@ -13,6 +13,10 @@ type WebSocketMessage = {
 
 export type WebSocketEventHandlers = {
   onNewMessage?: (payload: WebSocketMessage) => void;
+  onChannelPost?: (payload: WebSocketMessage) => void;
+  onDiscussionMessage?: (payload: WebSocketMessage) => void;
+  onMessageReactionsUpdated?: (payload: WebSocketMessage) => void;
+  onChannelPostCommentCountUpdated?: (payload: WebSocketMessage) => void;
   onMessageAck?: (payload: WebSocketMessage) => void;
   onMessageDeleted?: (payload: WebSocketMessage) => void;
   onChatPinnedMessageUpdated?: (payload: WebSocketMessage) => void;
@@ -109,6 +113,18 @@ class WebSocketServiceClass {
       case 'message':
       case 'new_message':
         this.handlers.onNewMessage?.(msg);
+        break;
+      case 'channel_post':
+        this.handlers.onChannelPost?.(msg);
+        break;
+      case 'discussion_message':
+        this.handlers.onDiscussionMessage?.(msg);
+        break;
+      case 'message_reactions_updated':
+        this.handlers.onMessageReactionsUpdated?.(msg);
+        break;
+      case 'channel_post_comment_count_updated':
+        this.handlers.onChannelPostCommentCountUpdated?.(msg);
         break;
       case 'ack':
       case 'message_ack':

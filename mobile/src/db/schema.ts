@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 8;
+export const DB_VERSION = 9;
 
 export const SCHEMA_SQL = `
 -- users
@@ -39,6 +39,22 @@ CREATE TABLE IF NOT EXISTS chats (
   name TEXT,
   description TEXT,
   avatar_url TEXT,
+  visibility TEXT DEFAULT 'public',
+  access_type TEXT DEFAULT 'free',
+  subscription_price_cents INTEGER,
+  subscription_period_days INTEGER,
+  linked_discussion_chat_id TEXT,
+  invite_token TEXT,
+  allow_comments INTEGER DEFAULT 1,
+  allow_reactions INTEGER DEFAULT 1,
+  preview_post_count INTEGER DEFAULT 3,
+  subscriber_count INTEGER DEFAULT 0,
+  active_subscriber_count INTEGER DEFAULT 0,
+  access_status TEXT DEFAULT 'active',
+  subscription_expires_at INTEGER,
+  pending_earnings_cents INTEGER DEFAULT 0,
+  available_payout_cents INTEGER DEFAULT 0,
+  paid_out_cents INTEGER DEFAULT 0,
   created_by TEXT,
   last_message_id TEXT,
   pinned_message_id TEXT,
@@ -76,6 +92,10 @@ CREATE TABLE IF NOT EXISTS messages (
   msg_type TEXT NOT NULL,
   content TEXT,
   reply_to_id TEXT,
+  thread_root_message_id TEXT,
+  is_channel_post INTEGER DEFAULT 0,
+  view_count INTEGER DEFAULT 0,
+  comment_count INTEGER DEFAULT 0,
   is_edited INTEGER DEFAULT 0,
   is_deleted INTEGER DEFAULT 0,
   status TEXT DEFAULT 'sending',

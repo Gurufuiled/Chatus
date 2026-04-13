@@ -1,13 +1,26 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, ForbiddenException } from '@nestjs/common';
 import {
-  MessageType,
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  ChatMemberRole,
+  ChatType,
   MediaType,
   MessageStatus,
+  MessageType,
+  Prisma,
+  SubscriptionStatus,
   Transport,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { mapMessage, type MappedMessage } from '../common/mappers';
+import {
+  mapMessage,
+  type MappedMessage,
+  type MappedMessageReaction,
+} from '../common/mappers';
 
 const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   voice: MediaType.voice,
@@ -25,6 +38,11 @@ const VALID_MSG_TYPES: MessageType[] = [
   MessageType.video,
   MessageType.file,
 ];
+
+const MESSAGE_INCLUDE = {
+  media: true,
+  reactions: true,
+} satisfies Prisma.MessageInclude;
 
 export interface CreateMessageMedia {
   url?: string;
@@ -45,6 +63,12 @@ export interface CreateForwardMetadata {
   forwarded_from_name?: string | null;
   forwarded_from_chat_id?: string | null;
   forwarded_from_sender_id?: string | null;
+}
+
+export interface CreateMessageOptions {
+  threadRootMessageId?: string | null;
+  isChannelPost?: boolean;
+  transport?: Transport;
 }
 
 @Injectable()
@@ -86,6 +110,59 @@ export class MessagesService {
     return new Uint8Array(buffer);
   }
 
+  private async ensureChatMember(
+    chatId: string,
+    userId: string,
+  ) {
+    const member = await this.prisma.chatMember.findUnique({
+      where: { chatId_userId: { chatId, userId } },
+    });
+    if (!member) {
+      throw new ForbiddenException('Not a member of this chat');
+    }
+    return member;
+  }
+
+  private async ensureChannelPublisher(
+    channelId: string,
+    userId: string,
+  ) {
+    const member = await this.prisma.chatMember.findUnique({
+      where: { chatId_userId: { chatId: channelId, userId } },
+    });
+    if (!member) {
+      throw new ForbiddenException('Not a member of this channel');
+    }
+    if (member.role !== ChatMemberRole.owner && member.role !== ChatMemberRole.admin) {
+      throw new ForbiddenException('Only channel admins can publish posts');
+    }
+    return member;
+  }
+
+  private async getMessageWithRelationsOrThrow(
+    messageId: string,
+  ) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: MESSAGE_INCLUDE,
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    return message;
+  }
+
+  private mapMessageForUser(
+    message: Prisma.MessageGetPayload<{ include: typeof MESSAGE_INCLUDE }>,
+    currentUserId?: string,
+  ): MappedMessage {
+    return mapMessage(message, {
+      includeMedia: true,
+      includeReactions: true,
+      currentUserId,
+    });
+  }
+
   async createMessage(
     chatId: string,
     senderId: string,
@@ -94,13 +171,9 @@ export class MessagesService {
     media?: CreateMessageMedia,
     replyToId?: string | null,
     forwardedFrom?: CreateForwardMetadata,
+    options?: CreateMessageOptions,
   ): Promise<MappedMessage> {
-    const member = await this.prisma.chatMember.findUnique({
-      where: { chatId_userId: { chatId, userId: senderId } },
-    });
-    if (!member) {
-      throw new ForbiddenException('Not a member of this chat');
-    }
+    await this.ensureChatMember(chatId, senderId);
 
     const prismaMsgType = this.toMessageType(msgType);
 
@@ -113,12 +186,14 @@ export class MessagesService {
           msgType: prismaMsgType,
           content,
           replyToId: replyToId ?? null,
+          threadRootMessageId: options?.threadRootMessageId ?? null,
           forwardedFromMessageId: forwardedFrom?.forwarded_from_message_id ?? null,
           forwardedFromName: forwardedFrom?.forwarded_from_name ?? null,
           forwardedFromChatId: forwardedFrom?.forwarded_from_chat_id ?? null,
           forwardedFromSenderId: forwardedFrom?.forwarded_from_sender_id ?? null,
+          isChannelPost: options?.isChannelPost ?? false,
           status: MessageStatus.sent,
-          transport: Transport.websocket,
+          transport: options?.transport ?? Transport.websocket,
         },
       });
 
@@ -166,15 +241,36 @@ export class MessagesService {
 
     const withMedia = await this.prisma.message.findUnique({
       where: { id: result.id },
-      include: { media: true },
+      include: MESSAGE_INCLUDE,
     });
-    return mapMessage(withMedia!, { includeMedia: true });
+    return this.mapMessageForUser(withMedia!, senderId);
+  }
+
+  async createChannelPost(
+    channelId: string,
+    senderId: string,
+    msgType: string,
+    content: string | null,
+    media?: CreateMessageMedia,
+  ): Promise<MappedMessage> {
+    const channel = await this.prisma.chat.findUnique({
+      where: { id: channelId },
+      select: { id: true, chatType: true },
+    });
+    if (!channel || channel.chatType !== ChatType.channel) {
+      throw new NotFoundException('Channel not found');
+    }
+    await this.ensureChannelPublisher(channelId, senderId);
+    return this.createMessage(channelId, senderId, msgType, content, media, null, undefined, {
+      isChannelPost: true,
+      transport: Transport.websocket,
+    });
   }
 
   async deleteMessage(chatId: string, messageId: string, userId: string): Promise<MappedMessage> {
     const existing = await this.prisma.message.findFirst({
       where: { id: messageId, chatId },
-      include: { media: true },
+      include: MESSAGE_INCLUDE,
     });
     if (!existing) {
       throw new ForbiddenException('Message not found');
@@ -184,42 +280,71 @@ export class MessagesService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      const chat = await tx.chat.findUnique({
+        where: { id: chatId },
+        select: { lastMessageId: true, pinnedMessageId: true },
+      });
+
       const next = await tx.message.update({
         where: { id: messageId },
         data: {
           isDeleted: true,
           content: null,
         },
-        include: { media: true },
+        include: MESSAGE_INCLUDE,
       });
 
-      const chat = await tx.chat.findUnique({
-        where: { id: chatId },
-        select: { lastMessageId: true, pinnedMessageId: true },
-      });
+      const chatUpdates: {
+        lastMessageId?: string | null;
+        lastMessageAt?: Date | null;
+        lastMessagePreview?: string | null;
+        pinnedMessageId?: string | null;
+      } = {};
 
       if (chat?.lastMessageId === messageId) {
-        await tx.chat.update({
-          where: { id: chatId },
-          data: {
-            lastMessagePreview: 'Deleted message',
+        const latestMessage = await tx.message.findFirst({
+          where: {
+            chatId,
+            isDeleted: false,
+          },
+          include: {
+            media: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
           },
         });
+
+        chatUpdates.lastMessageId = latestMessage?.id ?? null;
+        chatUpdates.lastMessageAt = latestMessage?.createdAt ?? null;
+        chatUpdates.lastMessagePreview = latestMessage
+          ? this.buildLastMessagePreview(
+              latestMessage.msgType,
+              latestMessage.content,
+              latestMessage.media[0]
+                ? {
+                    file_name: latestMessage.media[0].fileName ?? undefined,
+                  }
+                : undefined,
+            )
+          : null;
       }
 
       if (chat?.pinnedMessageId === messageId) {
+        chatUpdates.pinnedMessageId = null;
+      }
+
+      if (Object.keys(chatUpdates).length > 0) {
         await tx.chat.update({
           where: { id: chatId },
-          data: {
-            pinnedMessageId: null,
-          },
+          data: chatUpdates,
         });
       }
 
       return next;
     });
 
-    return mapMessage(updated, { includeMedia: true });
+    return this.mapMessageForUser(updated, userId);
   }
 
   async updateMessageStatus(
@@ -230,28 +355,133 @@ export class MessagesService {
   ): Promise<MappedMessage | null> {
     const existing = await this.prisma.message.findFirst({
       where: { id: messageId, chatId },
-      include: { media: true },
+      include: MESSAGE_INCLUDE,
     });
     if (!existing) {
       return null;
     }
     if (existing.senderId === actorUserId) {
-      return mapMessage(existing, { includeMedia: true });
+      return this.mapMessageForUser(existing, actorUserId);
     }
 
     const nextStatus =
       status === 'read' ? MessageStatus.read : MessageStatus.delivered;
     if (this.getStatusRank(nextStatus) <= this.getStatusRank(existing.status)) {
-      return mapMessage(existing, { includeMedia: true });
+      return this.mapMessageForUser(existing, actorUserId);
     }
 
     const updated = await this.prisma.message.update({
       where: { id: messageId },
       data: { status: nextStatus },
-      include: { media: true },
+      include: MESSAGE_INCLUDE,
     });
 
-    return mapMessage(updated, { includeMedia: true });
+    return this.mapMessageForUser(updated, actorUserId);
+  }
+
+  async toggleReaction(
+    chatId: string,
+    messageId: string,
+    userId: string,
+    emoji: string,
+  ): Promise<{
+    chat_id: string;
+    message_id: string;
+    reactions: MappedMessageReaction[];
+    channel_id?: string;
+    post_id?: string;
+    discussion_chat_id?: string;
+  }> {
+    const normalizedEmoji = emoji.trim();
+    if (!normalizedEmoji) {
+      throw new BadRequestException('Emoji is required');
+    }
+
+    await this.ensureChatMember(chatId, userId);
+
+    const message = await this.prisma.message.findFirst({
+      where: { id: messageId, chatId, isDeleted: false },
+      include: MESSAGE_INCLUDE,
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const existing = await this.prisma.messageReaction.findUnique({
+      where: {
+        messageId_userId: {
+          messageId,
+          userId,
+        },
+      },
+    });
+
+    if (existing && existing.emoji === normalizedEmoji) {
+      await this.prisma.messageReaction.delete({
+        where: {
+          messageId_userId: {
+            messageId,
+            userId,
+          },
+        },
+      });
+    } else if (existing) {
+      await this.prisma.messageReaction.update({
+        where: {
+          messageId_userId: {
+            messageId,
+            userId,
+          },
+        },
+        data: { emoji: normalizedEmoji },
+      });
+    } else {
+      await this.prisma.messageReaction.create({
+        data: {
+          id: randomUUID(),
+          messageId,
+          userId,
+          emoji: normalizedEmoji,
+        },
+      });
+    }
+
+    const updated = await this.getMessageWithRelationsOrThrow(messageId);
+    const chat = await this.prisma.chat.findUnique({
+      where: { id: chatId },
+      select: { chatType: true },
+    });
+
+    let channelId: string | undefined;
+    let postId: string | undefined;
+    let discussionChatId: string | undefined;
+
+    if (chat?.chatType === ChatType.channel && message.isChannelPost) {
+      channelId = chatId;
+      postId = messageId;
+    } else if (chat?.chatType === ChatType.discussion && message.threadRootMessageId) {
+      const parentChannel = await this.prisma.chat.findFirst({
+        where: {
+          chatType: ChatType.channel,
+          linkedDiscussionChatId: chatId,
+        },
+        select: { id: true },
+      });
+
+      channelId = parentChannel?.id;
+      postId = message.threadRootMessageId;
+      discussionChatId = chatId;
+    }
+
+    return {
+      chat_id: chatId,
+      message_id: messageId,
+      reactions:
+        this.mapMessageForUser(updated, userId).reactions ?? [],
+      ...(channelId ? { channel_id: channelId } : {}),
+      ...(postId ? { post_id: postId } : {}),
+      ...(discussionChatId ? { discussion_chat_id: discussionChatId } : {}),
+    };
   }
 
   private toMessageType(msgType: string): MessageType {
@@ -291,11 +521,14 @@ export class MessagesService {
     limit: number,
     before?: string,
   ): Promise<MappedMessage[]> {
-    const member = await this.prisma.chatMember.findUnique({
-      where: { chatId_userId: { chatId, userId } },
-    });
-    if (!member) {
-      throw new ForbiddenException('Not a member of this chat');
+    const member = await this.ensureChatMember(chatId, userId);
+
+    if (
+      member.accessStatus === SubscriptionStatus.pending ||
+      member.accessStatus === SubscriptionStatus.expired ||
+      member.accessStatus === SubscriptionStatus.canceled
+    ) {
+      throw new ForbiddenException('Channel subscription is not active');
     }
 
     const where: { chatId: string; createdAt?: { lt: Date } } = { chatId };
@@ -310,11 +543,11 @@ export class MessagesService {
 
     const messages = await this.prisma.message.findMany({
       where,
-      include: { media: true },
+      include: MESSAGE_INCLUDE,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
 
-    return messages.map((m) => mapMessage(m, { includeMedia: true }));
+    return messages.map((message) => this.mapMessageForUser(message, userId));
   }
 }

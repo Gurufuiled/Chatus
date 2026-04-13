@@ -27,10 +27,26 @@ export interface AuthSessionRow {
 
 export interface ChatRow {
   id: string;
-  chat_type: 'private' | 'group';
+  chat_type: 'private' | 'group' | 'channel' | 'discussion';
   name: string | null;
   description?: string | null;
   avatar_url: string | null;
+  visibility?: 'public' | 'private';
+  access_type?: 'free' | 'paid';
+  subscription_price_cents?: number | null;
+  subscription_period_days?: number | null;
+  linked_discussion_chat_id?: string | null;
+  invite_token?: string | null;
+  allow_comments?: number;
+  allow_reactions?: number;
+  preview_post_count?: number;
+  subscriber_count?: number;
+  active_subscriber_count?: number;
+  access_status?: 'none' | 'pending' | 'active' | 'expired' | 'canceled';
+  subscription_expires_at?: number | null;
+  pending_earnings_cents?: number;
+  available_payout_cents?: number;
+  paid_out_cents?: number;
   created_by: string | null;
   last_message_id: string | null;
   pinned_message_id: string | null;
@@ -80,6 +96,10 @@ export interface MessageRow {
   msg_type: string;
   content: string | null;
   reply_to_id: string | null;
+  thread_root_message_id?: string | null;
+  is_channel_post?: number;
+  view_count?: number;
+  comment_count?: number;
   is_edited: number;
   is_deleted: number;
   status: string;

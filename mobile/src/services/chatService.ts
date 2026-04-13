@@ -13,6 +13,22 @@ interface ApiChat {
   name: string | null;
   description?: string | null;
   avatar_url: string | null;
+  visibility?: 'public' | 'private';
+  access_type?: 'free' | 'paid';
+  subscription_price_cents?: number | null;
+  subscription_period_days?: number | null;
+  linked_discussion_chat_id?: string | null;
+  invite_token?: string | null;
+  allow_comments?: boolean;
+  allow_reactions?: boolean;
+  preview_post_count?: number;
+  subscriber_count?: number;
+  active_subscriber_count?: number;
+  access_status?: 'none' | 'pending' | 'active' | 'expired' | 'canceled';
+  subscription_expires_at?: number | null;
+  pending_earnings_cents?: number;
+  available_payout_cents?: number;
+  paid_out_cents?: number;
   created_by_id: string;
   last_message_id: string | null;
   pinned_message_id: string | null;
@@ -47,10 +63,26 @@ interface ApiChat {
 function mapApiChatToChat(api: ApiChat): Chat {
   return {
     id: api.id ?? '',
-    chat_type: (api.chat_type ?? 'private') as 'private' | 'group',
+    chat_type: (api.chat_type ?? 'private') as 'private' | 'group' | 'channel' | 'discussion',
     name: api.name ?? null,
     description: api.description ?? null,
     avatar_url: api.avatar_url ?? null,
+    visibility: api.visibility ?? 'public',
+    access_type: api.access_type ?? 'free',
+    subscription_price_cents: api.subscription_price_cents ?? null,
+    subscription_period_days: api.subscription_period_days ?? null,
+    linked_discussion_chat_id: api.linked_discussion_chat_id ?? null,
+    invite_token: api.invite_token ?? null,
+    allow_comments: api.allow_comments === false ? 0 : 1,
+    allow_reactions: api.allow_reactions === false ? 0 : 1,
+    preview_post_count: api.preview_post_count ?? 3,
+    subscriber_count: api.subscriber_count ?? 0,
+    active_subscriber_count: api.active_subscriber_count ?? 0,
+    access_status: api.access_status ?? 'active',
+    subscription_expires_at: api.subscription_expires_at ?? null,
+    pending_earnings_cents: api.pending_earnings_cents ?? 0,
+    available_payout_cents: api.available_payout_cents ?? 0,
+    paid_out_cents: api.paid_out_cents ?? 0,
     created_by: api.created_by_id ?? null,
     last_message_id: api.last_message_id,
     pinned_message_id: api.pinned_message_id ?? null,

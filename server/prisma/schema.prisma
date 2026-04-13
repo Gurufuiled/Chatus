@@ -16,6 +16,18 @@ datasource db {
 enum ChatType {
   private
   group
+  channel
+  discussion
+}
+
+enum ChatVisibility {
+  public
+  private
+}
+
+enum ChatAccessType {
+  free
+  paid
 }
 
 enum MessageType {
@@ -54,6 +66,14 @@ enum ChatMemberRole {
   member
 }
 
+enum SubscriptionStatus {
+  none
+  pending
+  active
+  expired
+  canceled
+}
+
 // --- Models ---
 
 model User {
@@ -73,6 +93,7 @@ model User {
   chatMembers   ChatMember[]
   createdChats  Chat[]         @relation("ChatCreator")
   messages      Message[]
+  messageReactions MessageReaction[]
 
   @@map("users")
 }
@@ -97,6 +118,20 @@ model Chat {
   name                String?
   description         String?
   avatarUrl           String?   @map("avatar_url")
+  visibility          ChatVisibility @default(public)
+  accessType          ChatAccessType @default(free) @map("access_type")
+  subscriptionPriceCents Int?   @map("subscription_price_cents")
+  subscriptionPeriodDays Int?   @map("subscription_period_days")
+  linkedDiscussionChatId String? @map("linked_discussion_chat_id")
+  inviteToken         String?   @unique @map("invite_token")
+  allowComments       Boolean   @default(true) @map("allow_comments")
+  allowReactions      Boolean   @default(true) @map("allow_reactions")
+  previewPostCount    Int       @default(3) @map("preview_post_count")
+  subscriberCount     Int       @default(0) @map("subscriber_count")
+  activeSubscriberCount Int     @default(0) @map("active_subscriber_count")
+  pendingEarningsCents Int      @default(0) @map("pending_earnings_cents")
+  availablePayoutCents Int      @default(0) @map("available_payout_cents")
+  paidOutCents        Int       @default(0) @map("paid_out_cents")
   createdById         String    @map("created_by_id")
   lastMessageId       String?   @map("last_message_id")
   pinnedMessageId     String?   @map("pinned_message_id")
@@ -125,6 +160,8 @@ model ChatMember {
   chatId   String        @map("chat_id")
   userId   String        @map("user_id")
   role     ChatMemberRole @default(member)
+  accessStatus SubscriptionStatus @default(active) @map("access_status")
+  subscriptionExpiresAt DateTime? @map("subscription_expires_at")
   tag      String?
   tagColor String?       @map("tag_color")
   joinedAt DateTime      @default(now()) @map("joined_at")
@@ -144,10 +181,14 @@ model Message {
   msgType                MessageType   @map("msg_type")
   content                String?
   replyToId              String?       @map("reply_to_id")
+  threadRootMessageId    String?       @map("thread_root_message_id")
   forwardedFromMessageId String?       @map("forwarded_from_message_id")
   forwardedFromName      String?       @map("forwarded_from_name")
   forwardedFromChatId    String?       @map("forwarded_from_chat_id")
   forwardedFromSenderId  String?       @map("forwarded_from_sender_id")
+  isChannelPost          Boolean       @default(false) @map("is_channel_post")
+  viewCount              Int           @default(0) @map("view_count")
+  commentCount           Int           @default(0) @map("comment_count")
   isEdited               Boolean       @default(false) @map("is_edited")
   isDeleted              Boolean       @default(false) @map("is_deleted")
   status                 MessageStatus @default(pending)
@@ -159,6 +200,7 @@ model Message {
   sender     User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
   replyTo    Message? @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies    Message[] @relation("MessageReplies")
+  reactions  MessageReaction[]
   media      Media[]
   chatsAsLastMessage Chat[] @relation("ChatLastMessage")
   chatsAsPinnedMessage Chat[] @relation("ChatPinnedMessage")
@@ -166,11 +208,28 @@ model Message {
   @@index([chatId])
   @@index([senderId])
   @@index([replyToId])
+  @@index([threadRootMessageId])
   @@index([forwardedFromMessageId])
   @@index([forwardedFromChatId])
   @@index([forwardedFromSenderId])
   @@index([createdAt])
   @@map("messages")
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  emoji     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+  @@map("message_reactions")
 }
 
 model Media {

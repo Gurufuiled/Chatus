@@ -14,8 +14,18 @@ export type ChatsStackParamList = {
   CreateGroupChat: undefined;
 };
 
+export type ChannelsStackParamList = {
+  ChannelCatalog: undefined;
+  ChannelPreview: { channelId: string };
+  ChannelFeed: { channelId: string };
+  ChannelDiscussion: { channelId: string; postId: string };
+  CreateChannel: undefined;
+  ChannelAdmin: { channelId: string };
+};
+
 export type MainTabParamList = {
   Chats: NavigatorScreenParams<ChatsStackParamList>;
+  Channels: NavigatorScreenParams<ChannelsStackParamList>;
   Contacts: undefined;
   Settings: undefined;
 };
@@ -28,6 +38,10 @@ export type MainTabScreenProps<T extends keyof MainTabParamList> =
 
 declare global {
   namespace ReactNavigation {
-    interface RootParamList extends AuthStackParamList, MainTabParamList, ChatsStackParamList {}
+    interface RootParamList
+      extends AuthStackParamList,
+        MainTabParamList,
+        ChatsStackParamList,
+        ChannelsStackParamList {}
   }
 }

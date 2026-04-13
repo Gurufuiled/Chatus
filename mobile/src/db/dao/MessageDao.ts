@@ -13,14 +13,18 @@ export class MessageDao {
 
   async insert(row: MessageRow): Promise<void> {
     await this.db.runAsync(
-      `INSERT INTO messages (id, chat_id, sender_id, msg_type, content, reply_to_id, is_edited, is_deleted, status, transport, server_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO messages (id, chat_id, sender_id, msg_type, content, reply_to_id, thread_root_message_id, is_channel_post, view_count, comment_count, is_edited, is_deleted, status, transport, server_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       row.id,
       row.chat_id,
       row.sender_id,
       row.msg_type,
       row.content ?? null,
       row.reply_to_id ?? null,
+      row.thread_root_message_id ?? null,
+      row.is_channel_post ?? 0,
+      row.view_count ?? 0,
+      row.comment_count ?? 0,
       row.is_edited ?? 0,
       row.is_deleted ?? 0,
       row.status ?? 'sending',
@@ -55,7 +59,8 @@ export class MessageDao {
     const values: unknown[] = [];
 
     const fields = [
-      'chat_id', 'sender_id', 'msg_type', 'content', 'reply_to_id',
+      'chat_id', 'sender_id', 'msg_type', 'content', 'reply_to_id', 'thread_root_message_id',
+      'is_channel_post', 'view_count', 'comment_count',
       'is_edited', 'is_deleted', 'status', 'transport', 'server_id',
       'created_at', 'updated_at'
     ] as const;
