@@ -1,6 +1,6 @@
 # Telegram Android icon source map
 
-Литеральный перенос векторных `pathData` из репозитория **DrKLO/Telegram** (`TMessagesProj/src/main/res/drawable/*.xml`) в React Native (`react-native-svg`), плюс явные отклонения — см. [telegram-icon-divergences.md](./telegram-icon-divergences.md).
+Литеральный перенос векторных `pathData` из репозитория **DrKLO/Telegram** (`TMessagesProj/src/main/res/drawable/*.xml`) в React Native (`react-native-svg`), а для отдельных call-control glyphs при необходимости — статические пути, derived from upstream VoIP `raw/*.json` assets. Явные отклонения — см. [telegram-icon-divergences.md](./telegram-icon-divergences.md).
 
 Локальный эталон для аудита (не коммитится в продуктовый код): `Improvements/telegram-android-ref/` (sparse checkout `res`).
 
@@ -34,12 +34,12 @@
 |--------|-------------------|------------|
 | `accept` | `menu_phone.xml` | Использован literal path из Telegram Android action icon. |
 | `video` | `menu_videocall.xml` | Использован literal path из upstream video-call action. |
-| `microphone on` | `mute.xml` | В Telegram drawable это small white mute-control glyph. |
-| `microphone off` | `unmute.xml` | Slashed variant из того же call control набора. |
+| `microphone on` | `raw/call_mute.json` | Статический RN glyph теперь derived from the Telegram VoIP `call_mute` animation mic silhouette, because current upstream call controls no longer use a microphone-shaped `drawable/mute.xml`. |
+| `microphone off` | `raw/call_mute.json` | Uses the same Telegram VoIP mic silhouette plus a slash, matching the muted state from the upstream `call_mute` animation. |
 | `speaker` | `filled_sound_on.xml` | Использован как наиболее близкий upstream speaker/audio-route glyph из Telegram Android. |
 | `hangup` | `call.xml` | Для векторного RN glyph используется `call.xml`; upstream decline notification дополнительно tint-ит raster asset `ic_call_end_white_24dp.png`. |
 
-Источник маппинга для call controls был получен напрямую из upstream GitHub API (`DrKLO/Telegram`, `TMessagesProj/src/main/res/drawable*`), потому что локальный sparse reference `Improvements/telegram-android-ref/` отсутствовал.
+Источник маппинга для call controls был получен напрямую из upstream GitHub API (`DrKLO/Telegram`). Для `accept` / `video` / `speaker` / `hangup` использованы drawable assets, а для `microphone on/off` — VoIP raw animation `TMessagesProj/src/main/res/raw/call_mute.json`, потому что исторические `drawable/mute.xml` / `drawable/unmute.xml` в upstream оказались bell-like notification-style glyphs и не соответствуют текущему in-call microphone control.
 
 ## Экран настроек — строки меню (`SettingsScreen`)
 

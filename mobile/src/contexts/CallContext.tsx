@@ -744,15 +744,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }).ontrack = (event) => {
         remoteStreamRef.current = event.streams?.[0] ?? null;
         updateRemoteStreamState();
-        setCallState((current) =>
-          current
-            ? {
-                ...current,
-                phase: 'active',
-                startedAt: current.startedAt ?? Date.now(),
-              }
-            : current
-        );
       };
 
       (pc as RTCPeerConnection & { onconnectionstatechange?: () => void }).onconnectionstatechange =
