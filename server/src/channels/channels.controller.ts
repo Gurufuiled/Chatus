@@ -33,6 +33,15 @@ export class ChannelsController {
     return this.channelsService.getCatalog(user.id);
   }
 
+  @Get('search')
+  async searchChannels(
+    @CurrentUser() user: User,
+    @Query('q') query = '',
+    @Query('limit', new LimitPipe(1, 50, 20)) limit: number,
+  ) {
+    return this.channelsService.searchChannels(user.id, query, limit);
+  }
+
   @Get(':id')
   async getChannel(@Param('id') channelId: string, @CurrentUser() user: User) {
     return this.channelsService.getChannelById(channelId, user.id);

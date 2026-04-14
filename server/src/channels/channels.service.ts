@@ -143,13 +143,72 @@ export class ChannelsService {
       take: limit,
     });
 
-    return posts.map((post) =>
-      mapMessage(post, {
+    const viewedNowIds = await this.markChannelPostsViewed(
+      channelId,
+      userId,
+      posts.map((post) => post.id),
+    );
+
+    return posts.map((post) => {
+      const mapped = mapMessage(post, {
         includeMedia: true,
         includeReactions: true,
         currentUserId: userId,
-      }),
-    );
+      });
+      if (viewedNowIds.has(post.id)) {
+        mapped.view_count += 1;
+      }
+      return mapped;
+    });
+  }
+
+  private async markChannelPostsViewed(
+    channelId: string,
+    userId: string,
+    postIds: string[],
+  ): Promise<Set<string>> {
+    const uniquePostIds = [...new Set(postIds.filter(Boolean))];
+    if (uniquePostIds.length === 0) {
+      return new Set();
+    }
+
+    const viewedNowIds = new Set<string>();
+    for (const postId of uniquePostIds) {
+      try {
+        await this.prisma.channelPostView.create({
+          data: {
+            messageId: postId,
+            userId,
+          },
+        });
+
+        await this.prisma.message.updateMany({
+          where: {
+            id: postId,
+            chatId: channelId,
+            isChannelPost: true,
+            isDeleted: false,
+          },
+          data: {
+            viewCount: { increment: 1 },
+          },
+        });
+
+        viewedNowIds.add(postId);
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === 'P2002') {
+            continue;
+          }
+          if (error.code === 'P2021' || error.code === 'P2022') {
+            return new Set();
+          }
+        }
+        throw error;
+      }
+    }
+
+    return viewedNowIds;
   }
 
   private async ensureDiscussionMembership(channel: ChannelWithRelations, userId: string) {
@@ -263,6 +322,56 @@ export class ChannelsService {
       });
   }
 
+  async searchChannels(userId: string, query: string, limit: number) {
+    const q = query.trim();
+    if (!q) {
+      return [];
+    }
+
+    const take = Math.max(1, Math.min(limit, 50));
+    const channels = await this.prisma.chat.findMany({
+      where: {
+        chatType: ChatType.channel,
+        AND: [
+          {
+            OR: [
+              { name: { contains: q, mode: 'insensitive' } },
+              { description: { contains: q, mode: 'insensitive' } },
+              { inviteToken: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+          {
+            OR: [
+              { visibility: 'public' },
+              { members: { some: { userId } } },
+            ],
+          },
+        ],
+      },
+      include: CHANNEL_INCLUDE,
+      orderBy: [{ subscriberCount: 'desc' }, { lastMessageAt: 'desc' }],
+      take: Math.min(take * 2, 50),
+    });
+
+    return channels
+      .filter((channel) => {
+        const access = this.getAccessState(channel, userId);
+        return access.canPreview || access.canViewFullFeed || access.isAdmin;
+      })
+      .slice(0, take)
+      .map((channel) => {
+        const access = this.getAccessState(channel, userId);
+        return {
+          ...this.mapChannelForUser(channel, userId),
+          can_view_full_feed: access.canViewFullFeed,
+          can_comment: access.canComment,
+          can_react: access.canReact,
+          can_post: access.isAdmin,
+          is_subscribed: !!access.member,
+        };
+      });
+  }
+
   async getChannelById(channelId: string, userId: string) {
     const channel = await this.getChannelOrThrow(channelId);
     const access = this.getAccessState(channel, userId);
@@ -315,6 +424,12 @@ export class ChannelsService {
       take,
     });
 
+    const viewedNowIds = await this.markChannelPostsViewed(
+      channelId,
+      userId,
+      posts.map((post) => post.id),
+    );
+
     return {
       channel: {
         ...this.mapChannelForUser(channel, userId),
@@ -324,13 +439,17 @@ export class ChannelsService {
         can_post: access.isAdmin,
         is_subscribed: !!access.member,
       },
-      posts: posts.map((post) =>
-        mapMessage(post, {
+      posts: posts.map((post) => {
+        const mapped = mapMessage(post, {
           includeMedia: true,
           includeReactions: true,
           currentUserId: userId,
-        }),
-      ),
+        });
+        if (viewedNowIds.has(post.id)) {
+          mapped.view_count += 1;
+        }
+        return mapped;
+      }),
     };
   }
 

@@ -8,15 +8,16 @@ import {
   useNavigation,
   type NavigationProp,
 } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChatsStack } from './ChatsStack';
-import { ChannelsStack } from './ChannelsStack';
 import { ContactsScreen, SettingsScreen } from '../screens';
 import type { MainTabParamList } from './types';
-import { colors, withAlpha } from '../theme/colors';
+import { colors } from '../theme/colors';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_TAB_GLYPHS } from '../icons/telegram/tabPaths';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -29,11 +30,8 @@ function TabTelegramIcon({
   tab,
   color,
   focused,
-}: IconProps & { tab: 'contacts' | 'chats' | 'settings' | 'channels' }) {
-  const glyphs =
-    tab === 'channels'
-      ? TELEGRAM_TAB_GLYPHS.chats
-      : TELEGRAM_TAB_GLYPHS[tab];
+}: IconProps & { tab: 'contacts' | 'chats' | 'settings' }) {
+  const glyphs = TELEGRAM_TAB_GLYPHS[tab];
   const glyph = focused ? glyphs.active : glyphs.inactive;
   return (
     <View style={[styles.iconFrame, focused && styles.iconFocused]}>
@@ -49,8 +47,6 @@ function TabTelegramIcon({
 
 function getTabIcon(routeName: keyof MainTabParamList, color: string, focused: boolean) {
   switch (routeName) {
-    case 'Channels':
-      return <TabTelegramIcon tab="channels" color={color} focused={focused} />;
     case 'Contacts':
       return <TabTelegramIcon tab="contacts" color={color} focused={focused} />;
     case 'Settings':
@@ -63,8 +59,6 @@ function getTabIcon(routeName: keyof MainTabParamList, color: string, focused: b
 
 function getTabLabel(routeName: keyof MainTabParamList) {
   switch (routeName) {
-    case 'Channels':
-      return 'Каналы';
     case 'Contacts':
       return 'Контакты';
     case 'Settings':
@@ -86,7 +80,6 @@ function TabBarItem({
 }) {
   return (
     <View style={[styles.tabButton, focused && styles.tabButtonActive]}>
-      {focused ? <View style={styles.activeGlow} /> : null}
       <View style={styles.tabButtonContent}>
         {getTabIcon(routeName, color, focused)}
         <Text style={[styles.customLabel, { color }]} numberOfLines={1}>
@@ -106,22 +99,36 @@ function GroupChatIcon() {
   );
 }
 
+function ChannelIcon() {
+  return (
+    <View style={styles.quickActionIcon}>
+      <MaterialCommunityIcons
+        name="bullhorn-outline"
+        color={colors.accent}
+        size={25}
+      />
+    </View>
+  );
+}
+
 function ChatsQuickActionsMenu({
   visible,
   onClose,
   onCreateGroup,
   onCreateChannel,
+  bottomInset,
 }: {
   visible: boolean;
   onClose: () => void;
   onCreateGroup: () => void;
   onCreateChannel: () => void;
+  bottomInset: number;
 }) {
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={styles.menuRoot}>
         <Pressable style={styles.menuBackdrop} onPress={onClose} />
-        <View style={styles.quickMenuCard}>
+        <View style={[styles.quickMenuCard, { marginBottom: 86 + bottomInset }]}>
           <Pressable
             onPress={onCreateGroup}
             style={({ pressed }) => [
@@ -133,7 +140,7 @@ function ChatsQuickActionsMenu({
               <GroupChatIcon />
             </View>
             <View style={styles.quickMenuTextWrap}>
-              <Text style={styles.quickMenuTitle}>Создать групповой чат</Text>
+              <Text style={styles.quickMenuTitle}>Создать группу</Text>
             </View>
           </Pressable>
           <Pressable
@@ -144,7 +151,7 @@ function ChatsQuickActionsMenu({
             ]}
           >
             <View style={styles.quickMenuIconWrap}>
-              <GroupChatIcon />
+              <ChannelIcon />
             </View>
             <View style={styles.quickMenuTextWrap}>
               <Text style={styles.quickMenuTitle}>Создать канал</Text>
@@ -203,8 +210,19 @@ function ChatsTabButton({
 
 export function MainTabs() {
   const navigation = useNavigation<NavigationProp<MainTabParamList>>();
+  const insets = useSafeAreaInsets();
   const [isChatsQuickMenuVisible, setIsChatsQuickMenuVisible] = React.useState(false);
   const ignoreNextChatsPressRef = React.useRef(false);
+  const tabBarStyle = React.useMemo(
+    () => [
+      styles.tabBar,
+      {
+        height: 57 + Math.max(insets.bottom, 0),
+        paddingBottom: Math.max(insets.bottom, 5),
+      },
+    ],
+    [insets.bottom]
+  );
 
   const closeChatsQuickMenu = React.useCallback(() => {
     setIsChatsQuickMenuVisible(false);
@@ -221,7 +239,7 @@ export function MainTabs() {
 
   const handleCreateChannel = React.useCallback(() => {
     closeChatsQuickMenu();
-    navigation.navigate('Channels', { screen: 'CreateChannel' });
+    navigation.navigate('Chats', { screen: 'CreateChannel' });
   }, [closeChatsQuickMenu, navigation]);
 
   return (
@@ -246,7 +264,7 @@ export function MainTabs() {
           tabBarActiveTintColor: colors.accent,
           tabBarInactiveTintColor: '#273142',
           tabBarItemStyle: styles.nativeTabItem,
-          tabBarStyle: styles.tabBar,
+          tabBarStyle,
           tabBarIcon: ({ color, focused }) => (
             <TabBarItem routeName={route.name} color={color} focused={focused} />
           ),
@@ -266,12 +284,18 @@ export function MainTabs() {
               focusedRoute === 'Chat' ||
               focusedRoute === 'ChatProfile' ||
               focusedRoute === 'CreateGroupChat' ||
-              focusedRoute === 'GroupProfile';
+              focusedRoute === 'GroupProfile' ||
+              focusedRoute === 'ChannelCatalog' ||
+              focusedRoute === 'ChannelPreview' ||
+              focusedRoute === 'ChannelFeed' ||
+              focusedRoute === 'ChannelDiscussion' ||
+              focusedRoute === 'CreateChannel' ||
+              focusedRoute === 'ChannelAdmin';
 
             return {
               title: 'Чаты',
               headerShown: false,
-              tabBarStyle: shouldHideTabBar ? styles.hiddenTabBar : styles.tabBar,
+              tabBarStyle: shouldHideTabBar ? styles.hiddenTabBar : tabBarStyle,
               tabBarButton: (props) => (
                 <ChatsTabButton
                   {...props}
@@ -281,14 +305,6 @@ export function MainTabs() {
                 />
               ),
             };
-          }}
-        />
-        <Tab.Screen
-          name="Channels"
-          component={ChannelsStack}
-          options={{
-            title: 'Каналы',
-            headerShown: false,
           }}
         />
         <Tab.Screen
@@ -303,6 +319,7 @@ export function MainTabs() {
         onClose={closeChatsQuickMenu}
         onCreateGroup={handleCreateGroup}
         onCreateChannel={handleCreateChannel}
+        bottomInset={Math.max(insets.bottom, 0)}
       />
     </>
   );
@@ -310,9 +327,9 @@ export function MainTabs() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    height: 58,
-    paddingTop: 5,
-    paddingBottom: 6,
+    height: 57,
+    paddingTop: 6,
+    paddingBottom: 5,
     paddingHorizontal: 10,
     backgroundColor: colors.inputBackgroundSolid,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -327,7 +344,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   tabButton: {
-    height: 42,
+    height: 43,
     minWidth: 0,
     paddingHorizontal: 10,
     borderRadius: 14,
@@ -336,19 +353,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tabButtonActive: {
-    backgroundColor: colors.inputBackground,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  activeGlow: {
-    position: 'absolute',
-    top: -7,
-    width: 54,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: withAlpha(colors.accent, 0.1),
+    backgroundColor: 'transparent',
   },
   tabButtonContent: {
     alignItems: 'center',
@@ -382,7 +387,6 @@ const styles = StyleSheet.create({
   },
   quickMenuCard: {
     width: 228,
-    marginBottom: 86,
     borderRadius: 14,
     backgroundColor: colors.inputBackgroundSolid,
     shadowColor: '#1F2937',

@@ -8,6 +8,7 @@ import { InputBar, type FilePickResult, type MediaPickResult } from './InputBar'
 type ChatInputDockProps = {
   onLayout: (event: LayoutChangeEvent) => void;
   animatedStyle: StyleProp<ViewStyle>;
+  placeholder?: string;
   onSendText: (text: string) => void;
   onSendVoice: (result: { uri: string; waveform: number[]; durationMs: number }) => void | Promise<void>;
   onSendVideoNote?: (result: VideoNoteRecordingResult) => void | Promise<void>;
@@ -22,6 +23,7 @@ type ChatInputDockProps = {
 export function ChatInputDock({
   onLayout,
   animatedStyle,
+  placeholder,
   onSendText,
   onSendVoice,
   onSendVideoNote,
@@ -35,6 +37,7 @@ export function ChatInputDock({
   return (
     <Reanimated.View onLayout={onLayout} style={animatedStyle}>
       <InputBar
+        placeholder={placeholder}
         onSendText={onSendText}
         onSendVoice={onSendVoice}
         onSendVideoNote={onSendVideoNote}

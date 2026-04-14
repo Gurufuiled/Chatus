@@ -8,19 +8,25 @@ import {
   Text,
   View,
 } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ChannelsStackParamList } from '../navigation/types';
+import type { ChatsStackParamList } from '../navigation/types';
 import {
   fetchChannelDetail,
   mockCheckoutChannel,
   subscribeToChannel,
 } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
+import { chatStore } from '../stores/chatStore';
 import { colors } from '../theme/colors';
 
-type Route = RouteProp<ChannelsStackParamList, 'ChannelPreview'>;
-type Nav = NativeStackNavigationProp<ChannelsStackParamList, 'ChannelPreview'>;
+type Route = RouteProp<ChatsStackParamList, 'ChannelPreview'>;
+type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelPreview'>;
+
+function formatAccessText(priceCents?: number | null, periodDays?: number | null) {
+  return `$${((priceCents ?? 0) / 100).toFixed(2)} / ${periodDays ?? 30} дн.`;
+}
 
 export function ChannelPreviewScreen() {
   const navigation = useNavigation<Nav>();
@@ -40,6 +46,9 @@ export function ChannelPreviewScreen() {
         const nextDetail = await fetchChannelDetail(channelId);
         if (!cancelled) {
           channelStore.getState().setDetail(channelId, nextDetail);
+          if (nextDetail.is_subscribed || nextDetail.can_view_full_feed) {
+            chatStore.getState().addOrUpdateChat(nextDetail.channel);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -64,6 +73,7 @@ export function ChannelPreviewScreen() {
 
       channelStore.getState().setCheckoutState(channelId, 'paid');
       channelStore.getState().upsertChannel(updated);
+      chatStore.getState().addOrUpdateChat(updated);
       navigation.replace('ChannelFeed', { channelId });
     } catch (error) {
       channelStore.getState().setCheckoutState(channelId, 'error');
@@ -90,189 +100,202 @@ export function ChannelPreviewScreen() {
     );
   }
 
+  const title = detail.channel.name ?? 'Безымянный канал';
+  const accessTitle = detail.channel.access_type === 'paid' ? 'Платная подписка' : 'Бесплатный канал';
+  const accessValue =
+    detail.channel.access_type === 'paid'
+      ? formatAccessText(detail.channel.subscription_price_cents, detail.channel.subscription_period_days)
+      : 'Подписка бесплатная';
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.hero}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {(detail.channel.name?.trim()[0] ?? 'К').toUpperCase()}
-          </Text>
-        </View>
-        <Text style={styles.title}>{detail.channel.name ?? 'Безымянный канал'}</Text>
-        <Text style={styles.meta}>
-          {detail.channel.subscriber_count ?? 0} подписчиков
-        </Text>
-        <Text style={styles.description}>
-          {detail.channel.description || 'Посмотрите превью публикаций и откройте полную ленту канала.'}
-        </Text>
-      </View>
-
-      <View style={styles.paywallCard}>
-        <Text style={styles.paywallLabel}>
-          {detail.channel.access_type === 'paid' ? 'Платная подписка' : 'Бесплатный доступ'}
-        </Text>
-        <Text style={styles.paywallValue}>
-          {detail.channel.access_type === 'paid'
-            ? `$${((detail.channel.subscription_price_cents ?? 0) / 100).toFixed(2)} каждые ${
-                detail.channel.subscription_period_days ?? 30
-              } дн.`
-            : 'Вступите, чтобы читать все публикации и открыть обсуждение'}
-        </Text>
-        <Text style={styles.mockNote}>
-          Оплата пока смоделирована для V1, пока не готова реальная интеграция биллинга.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Публикации в превью</Text>
-        {detail.preview_posts.map((post) => (
-          <View key={post.id} style={styles.postCard}>
-            <Text style={styles.postText}>{post.content || 'Медиапубликация'}</Text>
-            <Text style={styles.postMeta}>
-              {post.comment_count ?? 0} комментариев
-            </Text>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.headerBlock}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(title.trim()[0] || 'К').toUpperCase()}</Text>
           </View>
-        ))}
-      </View>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.meta}>{detail.channel.subscriber_count ?? 0} подписчиков</Text>
+        </View>
 
-      <Pressable
-        onPress={() => void handleJoin()}
-        style={({ pressed }) => [
-          styles.cta,
-          pressed && styles.ctaPressed,
-          checkoutState === 'processing' && styles.ctaDisabled,
-        ]}
-        disabled={checkoutState === 'processing'}
-      >
-        {checkoutState === 'processing' ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Text style={styles.ctaText}>
-            {detail.channel.access_type === 'paid' ? 'Оплатить и открыть' : 'Вступить в канал'}
-          </Text>
-        )}
-      </Pressable>
-    </ScrollView>
+        {detail.channel.description ? (
+          <View style={styles.infoCard}>
+            <Text style={styles.description}>{detail.channel.description}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoLabel}>{accessTitle}</Text>
+          <Text style={styles.infoValue}>{accessValue}</Text>
+        </View>
+
+        <View style={styles.previewSection}>
+          <Text style={styles.previewTitle}>Превью публикаций</Text>
+          {detail.preview_posts.map((post) => (
+            <View key={post.id} style={styles.previewPost}>
+              <Text style={styles.previewText}>{post.content || 'Медиапубликация'}</Text>
+              <View style={styles.previewMeta}>
+                <Feather name="message-circle" size={13} color={colors.textSecondary} />
+                <Text style={styles.previewMetaText}>{post.comment_count ?? 0}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      <View style={styles.actionDock}>
+        <Pressable
+          onPress={() => void handleJoin()}
+          style={({ pressed }) => [
+            styles.joinButton,
+            pressed && styles.joinButtonPressed,
+            checkoutState === 'processing' && styles.joinButtonDisabled,
+          ]}
+          disabled={checkoutState === 'processing'}
+        >
+          {checkoutState === 'processing' ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.joinButtonText}>
+              {detail.channel.access_type === 'paid' ? 'Оплатить и открыть' : 'Подписаться'}
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F7FB',
+    backgroundColor: colors.inputBackgroundSolid,
   },
   content: {
-    padding: 16,
-    paddingBottom: 28,
+    paddingBottom: 96,
   },
   loading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.inputBackgroundSolid,
   },
   errorText: {
     color: colors.textSecondary,
   },
-  hero: {
+  headerBlock: {
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
+    paddingTop: 22,
+    paddingHorizontal: 16,
+    paddingBottom: 20,
   },
   avatar: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: '#DDEBFF',
+    backgroundColor: '#60A5FA',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: colors.accent,
+    color: '#FFFFFF',
+    fontSize: 34,
+    fontWeight: '700',
   },
   title: {
     marginTop: 14,
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '700',
     color: colors.textPrimary,
+    textAlign: 'center',
   },
   meta: {
     marginTop: 6,
+    fontSize: 14,
     color: colors.textSecondary,
   },
-  description: {
-    marginTop: 14,
-    textAlign: 'center',
-    color: '#556070',
-    lineHeight: 20,
-  },
-  paywallCard: {
-    marginTop: 16,
-    borderRadius: 24,
-    padding: 18,
-    backgroundColor: '#111827',
-  },
-  paywallLabel: {
-    color: '#9FB3D1',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    fontSize: 12,
-  },
-  paywallValue: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  mockNote: {
-    marginTop: 10,
-    color: '#D7E4FF',
-    lineHeight: 18,
-  },
-  section: {
-    marginTop: 18,
-  },
-  sectionTitle: {
+  infoCard: {
+    marginHorizontal: 12,
     marginBottom: 10,
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  postCard: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 10,
   },
-  postText: {
+  description: {
     color: colors.textPrimary,
     lineHeight: 20,
+    fontSize: 15,
   },
-  postMeta: {
-    marginTop: 8,
+  infoLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+  infoValue: {
+    marginTop: 4,
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  previewSection: {
+    marginTop: 4,
+    paddingHorizontal: 12,
+  },
+  previewTitle: {
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  previewPost: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  previewText: {
+    color: colors.textPrimary,
+    lineHeight: 20,
+    fontSize: 15,
+  },
+  previewMeta: {
+    marginTop: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  previewMetaText: {
     color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
-  cta: {
-    marginTop: 8,
-    borderRadius: 20,
-    height: 54,
+  actionDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+  },
+  joinButton: {
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.accent,
   },
-  ctaPressed: {
+  joinButtonPressed: {
     opacity: 0.92,
   },
-  ctaDisabled: {
-    opacity: 0.7,
+  joinButtonDisabled: {
+    opacity: 0.72,
   },
-  ctaText: {
+  joinButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 });

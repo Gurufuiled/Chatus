@@ -19,6 +19,7 @@ export interface VoiceBubbleProps {
   durationMs: number;
   isMe: boolean;
   time?: string;
+  viewCount?: number;
   status?: string;
   embedded?: boolean;
   header?: React.ReactNode;
@@ -29,7 +30,7 @@ export interface VoiceBubbleProps {
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
-const VOICE_BAR_COUNT = 34;
+const VOICE_BAR_COUNT = 56;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -110,6 +111,7 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.durationMs === next.durationMs &&
     prev.isMe === next.isMe &&
     prev.time === next.time &&
+    prev.viewCount === next.viewCount &&
     prev.status === next.status &&
     prev.embedded === next.embedded &&
     prev.header === next.header &&
@@ -127,6 +129,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   durationMs,
   isMe,
   time,
+  viewCount,
   status: messageStatus,
   embedded = false,
   header,
@@ -225,7 +228,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           <Feather
             name={isPlaying ? 'pause' : 'play'}
             size={14}
-            color={isMe ? outgoingAccentColor ?? colors.accent : '#605719'}
+            color={isMe ? outgoingAccentColor ?? colors.accent : '#FFFFFF'}
             style={isPlaying ? undefined : styles.playIconPlay}
           />
         </Pressable>
@@ -267,7 +270,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
                         ? hasPlaybackProgress
                           ? '#C8D0DC'
                           : outgoingTextColor ?? '#FFFFFF'
-                        : 'rgba(188, 188, 194, 0.72)',
+                        : 'rgba(130, 163, 214, 0.72)',
                   },
                 ]}
                 />
@@ -279,17 +282,24 @@ export const VoiceBubble = React.memo(function VoiceBubble({
             <Text style={[styles.duration, isMe && styles.durationMe]}>
               {durationLabel}
             </Text>
-
-            {time ? (
-              <MessageTimeStatus
-                time={time}
-                status={messageStatus ?? 'sent'}
-                isMe={isMe}
-                compact
-                timeColor={isMe ? outgoingMetaColor : undefined}
-                iconColor={isMe ? outgoingMetaColor : undefined}
-              />
-            ) : null}
+            <View style={styles.metaRight}>
+              {viewCount != null ? (
+                <View style={styles.metricWrap}>
+                  <Feather name="eye" size={12} color="rgba(120, 126, 138, 0.9)" />
+                  <Text style={styles.metricText}>{viewCount}</Text>
+                </View>
+              ) : null}
+              {time ? (
+                <MessageTimeStatus
+                  time={time}
+                  status={messageStatus ?? 'sent'}
+                  isMe={isMe}
+                  compact
+                  timeColor={isMe ? outgoingMetaColor : undefined}
+                  iconColor={isMe ? outgoingMetaColor : undefined}
+                />
+              ) : null}
+            </View>
           </View>
         </View>
       </View>
@@ -311,7 +321,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
     marginVertical: 0,
-    width: '100%',
+    width: VOICE_BUBBLE_WIDTH,
+    maxWidth: '100%',
     backgroundColor: 'transparent',
   },
   bubbleMe: {
@@ -344,8 +355,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.95)',
   },
   playButtonOther: {
-    backgroundColor: 'rgba(138, 89, 214, 0.12)',
-    borderColor: 'rgba(138, 89, 214, 0.16)',
+    backgroundColor: '#4A8FF5',
+    borderColor: '#4A8FF5',
   },
   playButtonActive: {
     transform: [{ scale: 0.98 }],
@@ -367,6 +378,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 28,
     position: 'relative',
+    overflow: 'hidden',
   },
   waveformPressed: {
     opacity: 0.9,
@@ -385,10 +397,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
   waveformTrackFilledOther: {
-    backgroundColor: 'rgba(184, 184, 190, 0.16)',
+    backgroundColor: 'rgba(74, 143, 245, 0.22)',
   },
   bar: {
-    width: 2,
+    width: 1.5,
     borderRadius: 999,
     minHeight: 2,
   },
@@ -397,6 +409,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   duration: {
     fontSize: typography.timeStatus,
@@ -406,5 +419,21 @@ const styles = StyleSheet.create({
   },
   durationMe: {
     color: colors.textSecondaryMuted,
+  },
+  metaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metricWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricText: {
+    fontSize: typography.timeStatus,
+    lineHeight: 14,
+    color: 'rgba(120, 126, 138, 0.9)',
+    fontWeight: '600',
   },
 });

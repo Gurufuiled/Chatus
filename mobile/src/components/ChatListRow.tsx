@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { resolveAvatarUrl } from '../config';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
@@ -84,8 +85,10 @@ export const ChatListRow = React.memo(function ChatListRow({
     )
   );
 
-  const title = chat.peer_display_name || chat.name || 'Chat';
-  const preview = chat.last_message_preview;
+  const title = chat.peer_display_name || chat.name || (chat.chat_type === 'channel' ? 'Канал' : 'Chat');
+  const preview =
+    chat.last_message_preview ||
+    (chat.chat_type === 'channel' ? chat.description || 'Канал' : null);
   const avatarUrl = resolveAvatarUrl(chat.avatar_url);
   const initial = (title.trim()[0] || '?').toUpperCase();
   const avatarColor = getAvatarColor(title);
@@ -105,6 +108,10 @@ export const ChatListRow = React.memo(function ChatListRow({
     >
       {avatarUrl ? (
         <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+      ) : chat.chat_type === 'channel' ? (
+        <View style={[styles.avatarPlaceholder, styles.channelAvatarPlaceholder]}>
+          <MaterialCommunityIcons name="bullhorn-outline" size={24} color="#FFFFFF" />
+        </View>
       ) : (
         <View style={[styles.avatarPlaceholder, { backgroundColor: avatarColor }]}>
           <Text style={styles.avatarPlaceholderText}>{initial}</Text>
@@ -181,6 +188,9 @@ const styles = StyleSheet.create({
     borderRadius: CHAT_LIST_AVATAR_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  channelAvatarPlaceholder: {
+    backgroundColor: colors.accent,
   },
   avatarPlaceholderText: {
     fontSize: 20,

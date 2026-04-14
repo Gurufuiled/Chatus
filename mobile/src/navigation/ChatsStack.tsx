@@ -2,9 +2,15 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  ChannelAdminScreen,
+  ChannelCatalogScreen,
+  ChannelDiscussionScreen,
+  ChannelFeedScreen,
+  ChannelPreviewScreen,
   ChatListScreen,
   ChatProfileScreen,
   ChatScreen,
+  CreateChannelScreen,
   CreateGroupChatScreen,
   GroupProfileScreen,
 } from '../screens';
@@ -43,7 +49,7 @@ function formatGroupSubtitle(memberCount?: number) {
 
 function getChatPeerId(
   chat: ReturnType<typeof chatStore.getState>['chats'][number] | null,
-  currentUserId: string | null,
+  currentUserId: string | null
 ): string | null {
   if (!chat || !currentUserId || chat.chat_type !== 'private') return null;
   return chat.members?.find((member) => member.user_id !== currentUserId)?.user_id ?? null;
@@ -118,11 +124,8 @@ export function ChatsStack() {
         headerTitleAlign: 'center',
       }}
     >
-      <Stack.Screen
-        name="ChatList"
-        component={ChatListScreen}
-        options={{ title: 'Chats' }}
-      />
+      <Stack.Screen name="ChatList" component={ChatListScreen} options={{ title: 'Чаты' }} />
+
       <Stack.Screen
         name="Chat"
         component={ChatScreen}
@@ -190,6 +193,7 @@ export function ChatsStack() {
           };
         }}
       />
+
       <Stack.Screen
         name="ChatProfile"
         component={ChatProfileScreen}
@@ -198,6 +202,7 @@ export function ChatsStack() {
           headerBackTitle: 'Назад',
         }}
       />
+
       <Stack.Screen
         name="CreateGroupChat"
         component={CreateGroupChatScreen}
@@ -206,6 +211,81 @@ export function ChatsStack() {
           headerBackTitle: 'Назад',
         }}
       />
+
+      <Stack.Screen
+        name="ChannelCatalog"
+        component={ChannelCatalogScreen}
+        options={{
+          title: 'Каналы',
+          headerBackTitle: 'Назад',
+        }}
+      />
+
+      <Stack.Screen
+        name="ChannelPreview"
+        component={ChannelPreviewScreen}
+        options={{
+          title: 'Превью',
+          headerBackTitle: 'Назад',
+        }}
+      />
+
+      <Stack.Screen
+        name="ChannelFeed"
+        component={ChannelFeedScreen}
+        options={({ route, navigation }) => {
+          const channel = chats.find((item) => item.id === route.params.channelId) ?? null;
+          const title = channel?.name || 'Канал';
+          const subtitle = `${channel?.subscriber_count ?? 0} подписчиков`;
+          const avatarUrl = resolveAvatarUrl(channel?.avatar_url);
+
+          return {
+            headerBackTitle: 'Назад',
+            headerTitle: () => <ChatHeaderTitle title={title} subtitle={subtitle} />,
+            headerRight: () => (
+              <Pressable
+                onPress={() =>
+                  navigation.navigate('ChannelAdmin', { channelId: route.params.channelId })
+                }
+                style={({ pressed }) => [
+                  styles.headerActionsPressable,
+                  pressed && styles.headerPressablePressed,
+                ]}
+              >
+                <ChatHeaderActions avatarUrl={avatarUrl} title={title} />
+              </Pressable>
+            ),
+          };
+        }}
+      />
+
+      <Stack.Screen
+        name="ChannelDiscussion"
+        component={ChannelDiscussionScreen}
+        options={{
+          title: 'Обсуждение',
+          headerBackTitle: 'Назад',
+        }}
+      />
+
+      <Stack.Screen
+        name="CreateChannel"
+        component={CreateChannelScreen}
+        options={{
+          title: 'Создать канал',
+          headerBackTitle: 'Назад',
+        }}
+      />
+
+      <Stack.Screen
+        name="ChannelAdmin"
+        component={ChannelAdminScreen}
+        options={{
+          title: 'Управление каналом',
+          headerBackTitle: 'Назад',
+        }}
+      />
+
       <Stack.Screen
         name="GroupProfile"
         component={GroupProfileScreen}

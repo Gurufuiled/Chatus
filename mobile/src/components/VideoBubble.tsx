@@ -51,6 +51,8 @@ export interface VideoBubbleProps {
   header?: React.ReactNode;
   bubbleMeColor?: string;
   outgoingTextColor?: string;
+  centered?: boolean;
+  viewCount?: number;
 }
 
 function computeDisplaySize(
@@ -397,6 +399,8 @@ export function VideoBubble({
   header,
   bubbleMeColor,
   outgoingTextColor,
+  centered = false,
+  viewCount,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -491,6 +495,7 @@ export function VideoBubble({
       <View
         style={[
           styles.container,
+          centered && styles.containerCentered,
           embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
           isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
         ]}
@@ -524,6 +529,12 @@ export function VideoBubble({
 
             {time ? (
               <View style={styles.timePill}>
+                {viewCount != null ? (
+                  <View style={styles.timePillMetric}>
+                    <Feather name="eye" size={12} color="#FFFFFF" />
+                    <Text style={styles.timePillMetricText}>{viewCount}</Text>
+                  </View>
+                ) : null}
                 <MessageTimeStatus
                   time={time}
                   status={status ?? 'sent'}
@@ -569,6 +580,9 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     maxWidth: '100%',
     alignSelf: 'flex-start',
+  },
+  containerCentered: {
+    alignSelf: 'center',
   },
   containerEmbedded: {
     paddingHorizontal: 0,
@@ -641,10 +655,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   timePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
+  },
+  timePillMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timePillMetricText: {
+    color: '#FFFFFF',
+    fontSize: typography.timeStatus,
+    lineHeight: 14,
+    fontWeight: '600',
   },
   durationText: {
     fontSize: typography.timeStatus,

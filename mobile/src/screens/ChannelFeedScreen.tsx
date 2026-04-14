@@ -1,42 +1,175 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Alert,
+  Dimensions,
   FlatList,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
+import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ChannelsStackParamList } from '../navigation/types';
+import {
+  ChatInputDock,
+  ChatContextMenuOverlay,
+  FileBubble,
+  ImageBubble,
+  VideoBubble,
+  VideoNoteBubble,
+  VoiceBubble,
+} from '../components';
+import type { FilePickResult, MediaPickResult } from '../components/InputBar';
+import type { ChatsStackParamList } from '../navigation/types';
 import {
   fetchChannelFeed,
   publishChannelPost,
   toggleChannelReaction,
 } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
+import { chatStore } from '../stores/chatStore';
+import { authStore } from '../stores/authStore';
 import type { Message } from '../stores/types';
-import { colors } from '../theme/colors';
+import { bubbleRadius, colors } from '../theme/colors';
+import { ChatBackgroundPattern, formatTime } from './chatScreen.shared';
 
-type Route = RouteProp<ChannelsStackParamList, 'ChannelFeed'>;
-type Nav = NativeStackNavigationProp<ChannelsStackParamList, 'ChannelFeed'>;
+type Route = RouteProp<ChatsStackParamList, 'ChannelFeed'>;
+type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelFeed'>;
 
 const QUICK_REACTIONS = ['🔥', '👍', '❤️', '👏'];
+const EMPTY_FEED: Message[] = [];
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const CHANNEL_MEDIA_MAX_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 320);
+const CHANNEL_MEDIA_MAX_HEIGHT = Math.min(SCREEN_HEIGHT * 0.5, 380);
+const CHANNEL_MEDIA_MIN_PORTRAIT_WIDTH = 154;
+const MENU_EDGE_GAP = 12;
+const MENU_HEIGHT = 272;
+const OVERLAY_BOTTOM_INSET = 18;
+
+function sortPostsOldestFirst(messages: Message[]) {
+  return [...messages].sort((a, b) => {
+    if (a.created_at !== b.created_at) return a.created_at - b.created_at;
+    if (a.updated_at !== b.updated_at) return a.updated_at - b.updated_at;
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
+function computeChannelMediaWidth(media?: Message['media'][number]): number | null {
+  const rawWidth = media?.width ?? null;
+  const rawHeight = media?.height ?? null;
+  if (!rawWidth || !rawHeight || rawWidth <= 0 || rawHeight <= 0) {
+    return null;
+  }
+
+  const baseScale = Math.min(
+    CHANNEL_MEDIA_MAX_WIDTH / rawWidth,
+    CHANNEL_MEDIA_MAX_HEIGHT / rawHeight,
+    1,
+  );
+  let width = Math.round(rawWidth * baseScale);
+  const isPortrait = rawHeight / rawWidth > 1.28;
+  if (isPortrait && width < CHANNEL_MEDIA_MIN_PORTRAIT_WIDTH) {
+    const minWidthScale = CHANNEL_MEDIA_MIN_PORTRAIT_WIDTH / rawWidth;
+    const safeScale = Math.min(
+      Math.max(baseScale, minWidthScale),
+      CHANNEL_MEDIA_MAX_HEIGHT / rawHeight,
+      1,
+    );
+    width = Math.round(rawWidth * safeScale);
+  }
+
+  return Math.min(Math.max(width, 120), CHANNEL_MEDIA_MAX_WIDTH);
+}
+
+type ChannelPostMedia = {
+  url?: string;
+  duration_ms?: number;
+  waveform?: number[];
+  thumbnail_url?: string;
+  is_round?: boolean;
+  width?: number;
+  height?: number;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+};
+
+function buildOptimisticMessage({
+  channelId,
+  userId,
+  type,
+  content,
+  media,
+}: {
+  channelId: string;
+  userId: string;
+  type: Message['msg_type'];
+  content: string | null;
+  media?: Message['media'];
+}): Message {
+  const now = Date.now();
+  return {
+    id: `temp-channel-post-${now}-${Math.round(Math.random() * 1000)}`,
+    chat_id: channelId,
+    sender_id: userId,
+    msg_type: type,
+    content,
+    reply_to_id: null,
+    thread_root_message_id: null,
+    is_channel_post: 1,
+    view_count: 0,
+    comment_count: 0,
+    is_edited: 0,
+    is_deleted: 0,
+    status: 'sending',
+    transport: 'api',
+    server_id: null,
+    created_at: now,
+    updated_at: now,
+    reactions: [],
+    media,
+  };
+}
 
 export function ChannelFeedScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const postContentRefs = React.useRef<Record<string, View | null>>({});
+  const menuAnim = React.useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
+  const animatedKeyboard = useAnimatedKeyboard();
   const { channelId } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
-  const feed = channelStore((state) => state.feedByChannelId[channelId] ?? []);
+  const feed = channelStore((state) => state.feedByChannelId[channelId] ?? EMPTY_FEED);
+  const currentUserId = authStore((state) => state.user?.id ?? null);
   const [loading, setLoading] = React.useState(feed.length === 0);
-  const [postDraft, setPostDraft] = React.useState('');
-  const [publishing, setPublishing] = React.useState(false);
+  const [inputBarHeight, setInputBarHeight] = React.useState(88);
+  const [menuState, setMenuState] = React.useState<{
+    messageId: string;
+    isMe: boolean;
+    previewTop: number;
+    previewLeft: number;
+    previewWidth: number;
+    previewHeight: number;
+    menuTop: number;
+    menuLeft: number;
+    placement: 'above' | 'below';
+  } | null>(null);
+  const sortedFeed = React.useMemo(() => sortPostsOldestFirst(feed), [feed]);
   const canComment = detail?.can_comment ?? false;
   const canReact = detail?.can_react ?? false;
+  const activeMenuMessage = React.useMemo(
+    () => (menuState ? sortedFeed.find((item) => item.id === menuState.messageId) ?? null : null),
+    [menuState, sortedFeed],
+  );
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -44,22 +177,30 @@ export function ChannelFeedScreen() {
       const next = await fetchChannelFeed(channelId);
       const store = channelStore.getState();
       store.upsertChannel(next.channel);
-      store.setFeed(channelId, next.posts);
+      store.setFeed(channelId, sortPostsOldestFirst(next.posts));
+      chatStore.getState().addOrUpdateChat(next.channel);
 
       const currentDetail = store.detailsById[channelId];
-      if (currentDetail) {
-        store.setDetail(channelId, {
-          ...currentDetail,
+      store.setDetail(channelId, {
+        ...(currentDetail ?? {
           channel: next.channel,
-          preview_posts: next.posts,
+          preview_posts: [],
           can_view_full_feed: next.can_view_full_feed,
           can_comment: next.can_comment,
           can_react: next.can_react,
           can_post: next.can_post,
           is_subscribed: next.is_subscribed,
           linked_discussion_chat_id: next.channel.linked_discussion_chat_id ?? null,
-        });
-      }
+        }),
+        channel: next.channel,
+          preview_posts: sortPostsOldestFirst(next.posts),
+        can_view_full_feed: next.can_view_full_feed,
+        can_comment: next.can_comment,
+        can_react: next.can_react,
+        can_post: next.can_post,
+        is_subscribed: next.is_subscribed,
+        linked_discussion_chat_id: next.channel.linked_discussion_chat_id ?? null,
+      });
     } finally {
       setLoading(false);
     }
@@ -69,144 +210,574 @@ export function ChannelFeedScreen() {
     void load();
   }, [load]);
 
-  const handlePublish = React.useCallback(async () => {
-    const content = postDraft.trim();
-    if (!content) return;
-    setPublishing(true);
-    try {
-      const post = await publishChannelPost(channelId, { content });
-      channelStore.getState().prependFeedPost(channelId, post);
-      setPostDraft('');
-    } catch (error) {
-      Alert.alert(
-        'Не удалось опубликовать пост',
-        error instanceof Error ? error.message : 'Попробуйте еще раз.'
-      );
-    } finally {
-      setPublishing(false);
-    }
-  }, [channelId, postDraft]);
+  const publishWithOptimistic = React.useCallback(
+    async ({
+      type,
+      content,
+      mediaPayload,
+      optimisticMedia,
+    }: {
+      type: Message['msg_type'];
+      content: string | null;
+      mediaPayload?: ChannelPostMedia;
+      optimisticMedia?: Message['media'];
+    }) => {
+      if (!currentUserId) return;
 
-  const handleReaction = React.useCallback(async (message: Message, emoji: string) => {
-    try {
-      const reactions = await toggleChannelReaction(channelId, message.id, emoji);
-      channelStore.getState().updateFeedMessage(channelId, message.id, { reactions });
-    } catch (error) {
-      Alert.alert(
-        'Не удалось обновить реакцию',
-        error instanceof Error ? error.message : 'Попробуйте еще раз.'
-      );
+      const optimistic = buildOptimisticMessage({
+        channelId,
+        userId: currentUserId,
+        type,
+        content,
+        media: optimisticMedia,
+      });
+
+      const currentFeedBeforeSend = channelStore.getState().feedByChannelId[channelId] ?? [];
+      channelStore
+        .getState()
+        .setFeed(channelId, sortPostsOldestFirst([...currentFeedBeforeSend, optimistic]));
+
+      try {
+        const saved = await publishChannelPost(channelId, {
+          msg_type: type,
+          content,
+          media: mediaPayload,
+        });
+        const currentFeed = channelStore.getState().feedByChannelId[channelId] ?? [];
+        channelStore
+          .getState()
+          .setFeed(
+            channelId,
+            sortPostsOldestFirst([
+              ...currentFeed.filter((item) => item.id !== optimistic.id && item.id !== saved.id),
+              saved,
+            ])
+          );
+      } catch (error) {
+        channelStore
+          .getState()
+          .setFeed(
+            channelId,
+            (channelStore.getState().feedByChannelId[channelId] ?? []).filter((item) => item.id !== optimistic.id)
+          );
+        Alert.alert(
+          'Не удалось опубликовать пост',
+          error instanceof Error ? error.message : 'Попробуйте еще раз.'
+        );
+      }
+    },
+    [channelId, currentUserId]
+  );
+
+  const handleSendText = React.useCallback(
+    (text: string) => {
+      const content = text.trim();
+      if (!content) return;
+      void publishWithOptimistic({
+        type: 'text',
+        content,
+      });
+    },
+    [publishWithOptimistic]
+  );
+
+  const handleSendVoice = React.useCallback(
+    async (result: { uri: string; waveform: number[]; durationMs: number }) => {
+      await publishWithOptimistic({
+        type: 'voice',
+        content: null,
+        mediaPayload: {
+          url: result.uri,
+          waveform: result.waveform,
+          duration_ms: result.durationMs,
+        },
+        optimisticMedia: [
+          {
+            remote_url: result.uri,
+            waveform: result.waveform,
+            duration_ms: result.durationMs,
+          },
+        ],
+      });
+    },
+    [publishWithOptimistic]
+  );
+
+  const handleSendVideoNote = React.useCallback(
+    async (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
+      await publishWithOptimistic({
+        type: 'video_note',
+        content: null,
+        mediaPayload: {
+          url: result.uri,
+          duration_ms: result.durationMs,
+          thumbnail_url: result.thumbnailUri,
+          is_round: true,
+        },
+        optimisticMedia: [
+          {
+            remote_url: result.uri,
+            duration_ms: result.durationMs,
+            thumbnail_url: result.thumbnailUri,
+            is_round: true,
+          },
+        ],
+      });
+    },
+    [publishWithOptimistic]
+  );
+
+  const handleSendMedia = React.useCallback(
+    async (result: MediaPickResult) => {
+      const type: Message['msg_type'] = result.kind === 'video' ? 'video' : 'image';
+      await publishWithOptimistic({
+        type,
+        content: result.caption?.trim() || null,
+        mediaPayload: {
+          url: result.uri,
+          thumbnail_url: result.previewUri,
+          width: result.width,
+          height: result.height,
+          duration_ms: result.durationMs,
+          file_name: result.fileName,
+          mime_type: result.mimeType,
+        },
+        optimisticMedia: [
+          {
+            remote_url: result.uri,
+            thumbnail_url: result.previewUri,
+            width: result.width,
+            height: result.height,
+            duration_ms: result.durationMs,
+            file_name: result.fileName,
+          },
+        ],
+      });
+    },
+    [publishWithOptimistic]
+  );
+
+  const handleSendFile = React.useCallback(
+    async (result: FilePickResult) => {
+      await publishWithOptimistic({
+        type: 'file',
+        content: result.name,
+        mediaPayload: {
+          url: result.uri,
+          file_name: result.name,
+          file_size: result.size,
+          mime_type: result.mimeType,
+        },
+        optimisticMedia: [
+          {
+            remote_url: result.uri,
+            file_name: result.name,
+            file_size: result.size,
+          },
+        ],
+      });
+    },
+    [publishWithOptimistic]
+  );
+
+  const handleReaction = React.useCallback(
+    async (message: Message, emoji: string) => {
+      try {
+        const reactions = await toggleChannelReaction(channelId, message.id, emoji);
+        channelStore.getState().updateFeedMessage(channelId, message.id, { reactions });
+      } catch (error) {
+        Alert.alert(
+          'Не удалось обновить реакцию',
+          error instanceof Error ? error.message : 'Попробуйте еще раз.'
+        );
+      }
+    },
+    [channelId]
+  );
+
+  const setPostContentRef = React.useCallback((messageId: string, node: View | null) => {
+    if (node) {
+      postContentRefs.current[messageId] = node;
+      return;
     }
-  }, [channelId]);
+    delete postContentRefs.current[messageId];
+  }, []);
+
+  const closeMenu = React.useCallback(() => {
+    Animated.timing(menuAnim, {
+      toValue: 0,
+      duration: 140,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setMenuState(null);
+      }
+    });
+  }, [menuAnim]);
+
+  const openReactionMenu = React.useCallback((message: Message) => {
+    if (!canReact) return;
+    const target = postContentRefs.current[message.id];
+    if (!target) return;
+
+    Keyboard.dismiss();
+    target.measureInWindow((pageX, pageY, width, height) => {
+      const reactionBarHeight = 42;
+      const reactionGap = 4;
+      const menuGap = 4;
+      const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
+      const previewLeft = Math.max(
+        MENU_EDGE_GAP,
+        Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP),
+      );
+      const minPreviewTop = Math.max(
+        insets.top + 12,
+        MENU_EDGE_GAP + reactionBarHeight + reactionGap,
+      );
+      const maxPreviewTop = bottomLimit - MENU_HEIGHT - menuGap - height;
+      const anchoredTop = Math.max(
+        minPreviewTop,
+        Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop)),
+      );
+
+      let previewTop = anchoredTop;
+      previewTop = Math.max(
+        minPreviewTop,
+        Math.min(previewTop, bottomLimit - MENU_HEIGHT - menuGap - height),
+      );
+      const menuTop = previewTop + height + menuGap;
+      const menuLeft = Math.max(
+        MENU_EDGE_GAP,
+        Math.min(previewLeft, SCREEN_WIDTH - 202 - MENU_EDGE_GAP),
+      );
+
+      setMenuState({
+        messageId: message.id,
+        isMe: false,
+        previewTop,
+        previewLeft,
+        previewWidth: width,
+        previewHeight: height,
+        menuTop,
+        menuLeft,
+        placement: 'below',
+      });
+    });
+  }, [canReact, insets.bottom, insets.top]);
+
+  React.useEffect(() => {
+    if (!menuState) {
+      menuAnim.setValue(0);
+      return;
+    }
+
+    Animated.spring(menuAnim, {
+      toValue: 1,
+      damping: 18,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start();
+  }, [menuAnim, menuState]);
+
+  const handlePickReactionFromMenu = React.useCallback(async (emoji: string) => {
+    if (!activeMenuMessage) return;
+    await handleReaction(activeMenuMessage, emoji);
+    closeMenu();
+  }, [activeMenuMessage, closeMenu, handleReaction]);
+
+  const inputBarAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }],
+  }));
+
+  const listWrapAnimatedStyle = useAnimatedStyle(() => ({
+    marginBottom: Math.max(animatedKeyboard.height.value, 0),
+  }));
+
+  const handleInputBarLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
+    if (nextHeight > 0 && nextHeight !== inputBarHeight) {
+      setInputBarHeight(nextHeight);
+    }
+  }, [inputBarHeight]);
+
+  const renderPostContent = React.useCallback(
+    (item: Message) => {
+      const media = item.media?.[0];
+      const time = formatTime(item.created_at);
+
+      if (item.msg_type === 'voice' && media?.remote_url) {
+        return (
+          <VoiceBubble
+            uri={media.remote_url}
+            waveform={media.waveform ?? []}
+            durationMs={media.duration_ms ?? 0}
+            isMe={false}
+            embedded={false}
+            time={time}
+            viewCount={item.view_count ?? 0}
+            status={item.status}
+          />
+        );
+      }
+
+      if (item.msg_type === 'video_note' && media?.remote_url) {
+        return (
+          <VideoNoteBubble
+            messageId={item.id}
+            uri={media.remote_url}
+            thumbnailUri={media.thumbnail_url ?? undefined}
+            durationMs={media.duration_ms ?? 0}
+            isMe={false}
+            embedded
+            time={time}
+            status={item.status}
+            registerPlaybackState={false}
+          />
+        );
+      }
+
+      if (item.msg_type === 'image' && media?.remote_url) {
+        const caption = item.content?.trim() ?? '';
+        const hasCaption = caption.length > 0;
+        return (
+          <>
+            <ImageBubble
+              uri={media.remote_url}
+              isMe={false}
+              embedded={false}
+              centered
+              width={media.width}
+              height={media.height}
+              time={hasCaption ? undefined : time}
+              status={item.status}
+              viewCount={hasCaption ? undefined : item.view_count ?? 0}
+            />
+            {hasCaption ? (
+              <View style={styles.mediaCaptionBlock}>
+                <Text style={styles.mediaCaptionText}>{caption}</Text>
+                <View style={styles.mediaCaptionMetaRight}>
+                  <Feather name="eye" size={13} color="#68849A" />
+                  <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
+                  <Text style={styles.metaText}>{time}</Text>
+                </View>
+              </View>
+            ) : null}
+          </>
+        );
+      }
+
+      if (item.msg_type === 'video' && media?.remote_url) {
+        const caption = item.content?.trim() ?? '';
+        const hasCaption = caption.length > 0;
+        return (
+          <>
+            <VideoBubble
+              uri={media.remote_url}
+              thumbnailUri={media.thumbnail_url ?? undefined}
+              isMe={false}
+              embedded={false}
+              centered
+              width={media.width}
+              height={media.height}
+              durationMs={media.duration_ms ?? 0}
+              time={hasCaption ? undefined : time}
+              status={item.status}
+              viewCount={hasCaption ? undefined : item.view_count ?? 0}
+            />
+            {hasCaption ? (
+              <View style={styles.mediaCaptionBlock}>
+                <Text style={styles.mediaCaptionText}>{caption}</Text>
+                <View style={styles.mediaCaptionMetaRight}>
+                  <Feather name="eye" size={13} color="#68849A" />
+                  <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
+                  <Text style={styles.metaText}>{time}</Text>
+                </View>
+              </View>
+            ) : null}
+          </>
+        );
+      }
+
+      if (item.msg_type === 'file' && media?.remote_url) {
+        return (
+          <FileBubble
+            fileName={media.file_name ?? item.content ?? 'Файл'}
+            fileSize={media.file_size}
+            uri={media.remote_url}
+            isMe={false}
+            caption={item.content}
+            time={time}
+            status={item.status}
+          />
+        );
+      }
+
+      return (
+        <>
+          <Text style={styles.postText}>{item.content || 'Публикация'}</Text>
+          <View style={styles.postFooter}>
+            <View style={styles.footerMetric}>
+              <Feather name="eye" size={13} color="#68849A" />
+              <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
+            </View>
+            <Text style={styles.metaText}>{time}</Text>
+          </View>
+        </>
+      );
+    },
+    []
+  );
 
   const renderPost = React.useCallback(
-    ({ item }: { item: Message }) => (
-      <View style={styles.postCard}>
-        <Text style={styles.postText}>{item.content || 'Медиапубликация'}</Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>{item.view_count ?? 0} просмотров</Text>
-          {canComment ? (
-            <Pressable
-              onPress={() =>
-                navigation.navigate('ChannelDiscussion', {
-                  channelId,
-                  postId: item.id,
-                })
-              }
-            >
-              <Text style={styles.discussionLink}>
-                {item.comment_count ?? 0} комментариев
-              </Text>
-            </Pressable>
+    ({ item }: { item: Message }) => {
+      const media = item.media?.[0];
+      const isVisualMediaPost = item.msg_type === 'image' || item.msg_type === 'video';
+      const mediaWidth = isVisualMediaPost ? (computeChannelMediaWidth(media) ?? 240) : null;
+      const hasReactions = (item.reactions?.length ?? 0) > 0;
+
+      return (
+      <Pressable
+        ref={(node) => setPostContentRef(item.id, node)}
+        style={styles.postWrap}
+        onLongPress={() => openReactionMenu(item)}
+        delayLongPress={220}
+      >
+        <View
+          style={[
+            styles.postBubble,
+            item.msg_type !== 'text' && styles.postBubbleMedia,
+            isVisualMediaPost && mediaWidth ? { width: mediaWidth + 12 } : null,
+          ]}
+        >
+            {isVisualMediaPost ? (
+              <View style={styles.mediaContentWrap}>{renderPostContent(item)}</View>
+            ) : (
+              renderPostContent(item)
+            )}
+
+          {canComment || hasReactions ? (
+            <View style={[styles.postActionsRow, item.msg_type !== 'text' && styles.postActionsRowMedia]}>
+              {canComment ? (
+                <Pressable
+                  style={({ pressed }) => [styles.discussionPill, pressed && styles.discussionPillPressed]}
+                  onPress={() =>
+                    navigation.navigate('ChannelDiscussion', {
+                      channelId,
+                      postId: item.id,
+                    })
+                  }
+                >
+                  <Feather name="message-circle" size={14} color={colors.accent} />
+                  <Text style={styles.discussionLink}>{item.comment_count ?? 0} комментариев</Text>
+                </Pressable>
+	              ) : null}
+	              {hasReactions ? (
+	                <View style={styles.reactionSummaryRow}>
+	                  {item.reactions?.map((reaction) => (
+	                    <Text key={reaction.emoji} style={styles.reactionSummaryText}>
+	                      {reaction.emoji} {reaction.count}
+	                    </Text>
+	                  ))}
+	                </View>
+	              ) : null}
+
+	            </View>
+	          ) : null}
+        </View>
+      </Pressable>
+      );
+    },
+    [canComment, channelId, navigation, openReactionMenu, renderPostContent, setPostContentRef]
+  );
+
+  const renderMenuPreviewBody = React.useCallback(
+    (message: Message, forcedWidth?: number) => {
+      const media = message.media?.[0];
+      const isVisualMediaPost = message.msg_type === 'image' || message.msg_type === 'video';
+      const mediaWidth = isVisualMediaPost ? (computeChannelMediaWidth(media) ?? 240) : null;
+
+      return (
+        <View
+          style={[
+            styles.menuPreviewBubble,
+            message.msg_type !== 'text' && styles.postBubbleMedia,
+            isVisualMediaPost && mediaWidth ? { width: mediaWidth + 12 } : null,
+            forcedWidth ? { width: forcedWidth } : null,
+          ]}
+        >
+          {isVisualMediaPost ? (
+            <View style={styles.mediaContentWrap}>{renderPostContent(message)}</View>
           ) : (
-            <Text style={styles.metaText}>Комментарии выключены</Text>
+            renderPostContent(message)
           )}
         </View>
-        {canReact ? (
-          <View style={styles.reactionRow}>
-            {QUICK_REACTIONS.map((emoji) => {
-              const reaction = item.reactions?.find((entry) => entry.emoji === emoji);
-              return (
-                <Pressable
-                  key={emoji}
-                  style={[
-                    styles.reactionButton,
-                    reaction?.reacted_by_me && styles.reactionButtonActive,
-                  ]}
-                  onPress={() => void handleReaction(item, emoji)}
-                >
-                  <Text style={styles.reactionText}>
-                    {emoji} {reaction?.count ?? 0}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-      </View>
-    ),
-    [canComment, canReact, channelId, handleReaction, navigation]
+      );
+    },
+    [renderPostContent],
   );
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerCard}>
-        <Text style={styles.channelTitle}>{detail?.channel.name ?? 'Канал'}</Text>
-        <Text style={styles.channelMeta}>
-          {(detail?.channel.subscriber_count ?? 0).toString()} подписчиков
-        </Text>
-        {detail?.can_post ? (
-          <Pressable
-            style={styles.adminLink}
-            onPress={() => navigation.navigate('ChannelAdmin', { channelId })}
-          >
-            <Text style={styles.adminLinkText}>Настройки канала</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      {detail?.can_post ? (
-        <View style={styles.composerCard}>
-          <TextInput
-            value={postDraft}
-            onChangeText={setPostDraft}
-            placeholder="Напишите публикацию"
-            placeholderTextColor={colors.placeholder}
-            style={styles.input}
-            multiline
-          />
-          <Pressable
-            onPress={() => void handlePublish()}
-            style={({ pressed }) => [
-              styles.publishButton,
-              pressed && styles.publishButtonPressed,
-              publishing && styles.publishButtonDisabled,
-            ]}
-            disabled={publishing}
-          >
-            {publishing ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.publishText}>Опубликовать</Text>
-            )}
-          </Pressable>
-        </View>
-      ) : null}
-
+      <ChatBackgroundPattern />
       {loading && feed.length === 0 ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={colors.accent} />
         </View>
       ) : (
-        <FlatList
-          data={feed}
-          keyExtractor={(item) => item.id}
-          renderItem={renderPost}
-          refreshing={loading}
-          onRefresh={() => void load()}
-          contentContainerStyle={styles.list}
-        />
+        <Reanimated.View style={[styles.listWrap, listWrapAnimatedStyle]}>
+          <FlatList
+          data={sortedFeed}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPost}
+            refreshing={loading}
+            onRefresh={() => void load()}
+            contentContainerStyle={[
+              styles.list,
+              detail?.can_post
+                ? { paddingBottom: inputBarHeight + Math.max(insets.bottom, 8) + 12 }
+                : styles.listWithoutComposer,
+            ]}
+            ListEmptyComponent={<Text style={styles.emptyText}>Пока нет публикаций</Text>}
+          />
+        </Reanimated.View>
       )}
+
+      {detail?.can_post ? (
+        <ChatInputDock
+          onLayout={handleInputBarLayout}
+          animatedStyle={[
+            styles.inputBarWrap,
+            inputBarAnimatedStyle,
+            { paddingBottom: Math.max(insets.bottom, 8) },
+          ]}
+          placeholder="Публикация"
+          onSendText={handleSendText}
+          onSendVoice={handleSendVoice}
+          onSendVideoNote={handleSendVideoNote}
+          onSendMedia={handleSendMedia}
+          onSendFile={handleSendFile}
+          replyToMessage={null}
+          replyAuthorName={null}
+          onCancelReply={() => undefined}
+        />
+      ) : null}
+
+      <ChatContextMenuOverlay
+        menuState={menuState}
+        activeMenuMessage={activeMenuMessage}
+        menuActions={[]}
+        menuAnim={menuAnim}
+        screenWidth={SCREEN_WIDTH}
+        showReactions={canReact}
+        showMenuCard={false}
+        onClose={closeMenu}
+        onMenuAction={() => undefined}
+        onPickReaction={(emoji) => {
+          void handlePickReactionFromMenu(emoji);
+        }}
+        renderMenuPreviewBody={renderMenuPreviewBody}
+      />
     </View>
   );
 }
@@ -214,59 +785,16 @@ export function ChannelFeedScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F4F7FB',
+    backgroundColor: '#DCE9D3',
   },
-  headerCard: {
-    backgroundColor: '#FFFFFF',
-    margin: 16,
-    borderRadius: 24,
-    padding: 18,
+  listWrap: {
+    flex: 1,
   },
-  channelTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  channelMeta: {
-    marginTop: 4,
-    color: colors.textSecondary,
-  },
-  adminLink: {
-    marginTop: 10,
-  },
-  adminLinkText: {
-    color: colors.accent,
-    fontWeight: '700',
-  },
-  composerCard: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-  },
-  input: {
-    minHeight: 72,
-    color: colors.textPrimary,
-    textAlignVertical: 'top',
-  },
-  publishButton: {
-    marginTop: 12,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  publishButtonPressed: {
-    opacity: 0.92,
-  },
-  publishButtonDisabled: {
-    opacity: 0.7,
-  },
-  publishText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
+  inputBarWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   loading: {
     flex: 1,
@@ -274,53 +802,157 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   list: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  listWithoutComposer: {
     paddingBottom: 24,
   },
-  postCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 16,
-    marginBottom: 12,
+  postWrap: {
+    marginBottom: 8,
+    alignItems: 'flex-start',
+  },
+  postBubble: {
+    maxWidth: '90%',
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+    alignItems: 'flex-start',
+    backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
+    ...bubbleRadius.other,
+  },
+  postBubbleMedia: {
+    alignSelf: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  menuPreviewBubble: {
+    maxWidth: '90%',
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 8,
+    alignItems: 'flex-start',
+    backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
+    ...bubbleRadius.other,
+  },
+  mediaContentWrap: {
+    alignSelf: 'center',
+  },
+  postActionsRowMedia: {
+    alignSelf: 'stretch',
+    paddingHorizontal: 10,
+    paddingBottom: 8,
   },
   postText: {
-    color: colors.textPrimary,
-    lineHeight: 21,
-    fontSize: 15,
+    color: '#000000',
+    fontSize: 16,
+    lineHeight: 20,
   },
-  metaRow: {
+  mediaCaptionBlock: {
+    alignSelf: 'stretch',
+    paddingHorizontal: 10,
+    paddingTop: 4,
+  },
+  mediaCaptionText: {
+    color: '#000000',
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  mediaCaptionMetaRight: {
+    marginTop: 4,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-end',
+  },
+  postFooter: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 5,
+  },
+  footerMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
   },
   metaText: {
-    color: colors.textSecondary,
+    color: '#68849A',
     fontSize: 12,
     fontWeight: '600',
+  },
+  postActionsRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(104,132,154,0.35)',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  discussionPill: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
+  discussionPillPressed: {
+    opacity: 0.82,
   },
   discussionLink: {
     color: colors.accent,
     fontSize: 12,
     fontWeight: '700',
   },
+  reactionSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 2,
+  },
+  reactionSummaryText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
   reactionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
+    gap: 12,
   },
   reactionButton: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: '#F0F4F9',
+    borderRadius: 8,
+    paddingHorizontal: 0,
+    minHeight: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   reactionButtonActive: {
-    backgroundColor: '#DCEBFF',
+    backgroundColor: 'rgba(87,151,238,0.12)',
+  },
+  reactionButtonPressed: {
+    opacity: 0.72,
   },
   reactionText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  emptyText: {
+    marginTop: 40,
+    textAlign: 'center',
+    color: colors.textSecondary,
+    fontWeight: '600',
   },
 });

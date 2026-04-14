@@ -7,20 +7,28 @@ import {
   Text,
   View,
 } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ChannelsStackParamList } from '../navigation/types';
+import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelCatalog } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
+import { chatStore } from '../stores/chatStore';
 import type { Chat } from '../stores/types';
 import { colors } from '../theme/colors';
 
-type Nav = NativeStackNavigationProp<ChannelsStackParamList, 'ChannelCatalog'>;
+type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelCatalog'>;
 
-function formatPrice(channel: Chat) {
-  if (channel.access_type !== 'paid') return 'Бесплатно';
-  const cents = channel.subscription_price_cents ?? 0;
-  return `$${(cents / 100).toFixed(2)} / ${(channel.subscription_period_days ?? 30)} дн.`;
+function isPreviewRequired(channel: Chat) {
+  return channel.access_type === 'paid' && channel.access_status !== 'active';
+}
+
+function ChannelAvatar({ title }: { title: string }) {
+  return (
+    <View style={styles.avatar}>
+      <Text style={styles.avatarText}>{(title.trim()[0] || 'К').toUpperCase()}</Text>
+    </View>
+  );
 }
 
 export function ChannelCatalogScreen() {
@@ -32,9 +40,11 @@ export function ChannelCatalogScreen() {
     channelStore.getState().setLoadingCatalog(true);
     try {
       const channels = await fetchChannelCatalog();
-      channelStore.getState().setCatalog(
-        channels.filter((channel) => channel.chat_type === 'channel')
-      );
+      const onlyChannels = channels.filter((channel) => channel.chat_type === 'channel');
+      channelStore.getState().setCatalog(onlyChannels);
+      onlyChannels
+        .filter((channel) => channel.access_status === 'active')
+        .forEach((channel) => chatStore.getState().addOrUpdateChat(channel));
     } finally {
       channelStore.getState().setLoadingCatalog(false);
     }
@@ -48,202 +58,135 @@ export function ChannelCatalogScreen() {
 
   const renderItem = React.useCallback(
     ({ item }: { item: Chat }) => {
-      const isLocked = item.access_type === 'paid' && item.access_status !== 'active';
+      const title = item.name ?? 'Безымянный канал';
+      const locked = isPreviewRequired(item);
+      const subtitle = `${item.subscriber_count ?? 0} подписчиков`;
+
       return (
         <Pressable
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() =>
-            navigation.navigate(isLocked ? 'ChannelPreview' : 'ChannelFeed', {
+            navigation.navigate(locked ? 'ChannelPreview' : 'ChannelFeed', {
               channelId: item.id,
             })
           }
         >
-          <View style={styles.cardHeader}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {(item.name?.trim()[0] ?? 'C').toUpperCase()}
-              </Text>
-            </View>
-            <View style={styles.cardMeta}>
-              <Text style={styles.title}>{item.name ?? 'Безымянный канал'}</Text>
-              <Text style={styles.subtitle}>
-                {item.subscriber_count ?? 0} подписчиков
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.badge,
-                item.access_type === 'paid' ? styles.badgePaid : styles.badgeFree,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.badgeText,
-                  item.access_type === 'paid' ? styles.badgeTextPaid : styles.badgeTextFree,
-                ]}
-              >
-                {item.access_type === 'paid' ? 'Платный' : 'Бесплатный'}
-              </Text>
-            </View>
+          <ChannelAvatar title={title} />
+          <View style={styles.textWrap}>
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {subtitle}
+            </Text>
           </View>
-
-          <Text style={styles.description} numberOfLines={3}>
-            {item.description || 'Канал для публикаций с привязанным обсуждением.'}
-          </Text>
-
-          <View style={styles.cardFooter}>
-            <Text style={styles.metaLabel}>{formatPrice(item)}</Text>
-            <Text style={styles.openLabel}>{isLocked ? 'Превью' : 'Открыть'}</Text>
-          </View>
+          {locked ? <Feather name="lock" size={16} color={colors.textSecondary} /> : null}
         </Pressable>
       );
     },
     [navigation]
   );
 
+  if (isLoading && catalog.length === 0) {
+    return (
+      <View style={styles.loadingState}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      {isLoading && catalog.length === 0 ? (
-        <View style={styles.loadingState}>
-          <ActivityIndicator size="large" color={colors.accent} />
+    <FlatList
+      data={catalog}
+      keyExtractor={(item) => item.id}
+      renderItem={renderItem}
+      refreshing={isLoading}
+      onRefresh={() => void load()}
+      ItemSeparatorComponent={RowSeparator}
+      contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
+      ListEmptyComponent={
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyTitle}>Пока нет каналов</Text>
+          <Text style={styles.emptySubtitle}>Создайте канал через меню удержания вкладки чатов.</Text>
         </View>
-      ) : (
-        <FlatList
-          data={catalog}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          refreshing={isLoading}
-          onRefresh={() => void load()}
-          contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>Пока нет каналов</Text>
-              <Text style={styles.emptySubtitle}>
-                Создайте первый канал через быстрое действие на вкладке.
-              </Text>
-            </View>
-          }
-        />
-      )}
-    </View>
+      }
+    />
   );
 }
 
+function RowSeparator() {
+  return <View style={styles.separator} />;
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F4F7FB',
-  },
-  listContent: {
-    padding: 16,
-    gap: 12,
-  },
-  loadingState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  emptyState: {
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  emptySubtitle: {
-    marginTop: 8,
-    textAlign: 'center',
-    color: colors.textSecondary,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 16,
-    shadowColor: '#18233A',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 2,
-  },
-  cardPressed: {
-    opacity: 0.92,
-  },
-  cardHeader: {
+  row: {
+    minHeight: 76,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.inputBackgroundSolid,
+  },
+  rowPressed: {
+    backgroundColor: colors.rowPressed,
   },
   avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#DDEBFF',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#60A5FA',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
+    color: '#FFFFFF',
     fontSize: 20,
-    fontWeight: '800',
-    color: colors.accent,
+    fontWeight: '700',
   },
-  cardMeta: {
+  textWrap: {
     flex: 1,
     marginLeft: 12,
   },
   title: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
     color: colors.textPrimary,
   },
   subtitle: {
     marginTop: 2,
+    fontSize: 14,
     color: colors.textSecondary,
   },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 80,
+    backgroundColor: colors.separator,
   },
-  badgePaid: {
-    backgroundColor: '#FFF0DA',
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.inputBackgroundSolid,
   },
-  badgeFree: {
-    backgroundColor: '#E8F7ED',
+  emptyContainer: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: colors.inputBackgroundSolid,
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  badgeTextPaid: {
-    color: '#A15D00',
-  },
-  badgeTextFree: {
-    color: '#247D4D',
-  },
-  description: {
-    marginTop: 14,
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#556070',
-  },
-  cardFooter: {
-    marginTop: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyState: {
     alignItems: 'center',
   },
-  metaLabel: {
-    color: colors.textSecondary,
-    fontSize: 13,
+  emptyTitle: {
+    fontSize: 17,
     fontWeight: '600',
+    color: colors.textPrimary,
   },
-  openLabel: {
-    color: colors.accent,
-    fontWeight: '700',
+  emptySubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    textAlign: 'center',
+    color: colors.textSecondary,
   },
 });

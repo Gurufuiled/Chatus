@@ -248,6 +248,12 @@ export async function fetchChannelCatalog(): Promise<Chat[]> {
   return data.map(mapApiChatToChat);
 }
 
+export async function searchChannels(query: string): Promise<Chat[]> {
+  const res = await apiGet(`/channels/search?q=${encodeURIComponent(query)}`);
+  const data = await parseJsonOrThrow<ApiChat[]>(res, 'Failed to search channels');
+  return data.map(mapApiChatToChat);
+}
+
 export async function fetchChannelDetail(channelId: string): Promise<ChannelDetail> {
   const res = await apiGet(`/channels/${encodeURIComponent(channelId)}`);
   const data = await parseJsonOrThrow<ApiChannelDetail>(res, 'Failed to load channel');
@@ -352,7 +358,22 @@ export async function mockCheckoutChannel(channelId: string): Promise<Chat> {
 
 export async function publishChannelPost(
   channelId: string,
-  payload: { content: string; msg_type?: string }
+  payload: {
+    content?: string | null;
+    msg_type?: string;
+    media?: {
+      url?: string;
+      duration_ms?: number;
+      waveform?: number[];
+      thumbnail_url?: string;
+      is_round?: boolean;
+      width?: number;
+      height?: number;
+      file_name?: string;
+      file_size?: number;
+      mime_type?: string;
+    };
+  }
 ): Promise<Message> {
   const res = await apiPost(`/channels/${encodeURIComponent(channelId)}/posts`, payload);
   const data = await parseJsonOrThrow<ApiMessage>(res, 'Failed to publish post');

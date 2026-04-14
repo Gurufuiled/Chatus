@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import Feather from '@expo/vector-icons/Feather';
 import {
   Dimensions,
   Image,
@@ -35,6 +36,8 @@ export interface ImageBubbleProps {
   header?: React.ReactNode;
   bubbleMeColor?: string;
   outgoingTextColor?: string;
+  centered?: boolean;
+  viewCount?: number;
 }
 
 function computeDisplaySize(
@@ -82,6 +85,8 @@ export function ImageBubble({
   header,
   bubbleMeColor,
   outgoingTextColor,
+  centered = false,
+  viewCount,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
@@ -142,6 +147,7 @@ export function ImageBubble({
       <View
         style={[
           styles.container,
+          centered && styles.containerCentered,
           embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
           isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
         ]}
@@ -185,16 +191,24 @@ export function ImageBubble({
             resizeMode="cover"
           />
 
-          {time ? (
+          {time || viewCount != null ? (
             <View style={styles.overlayMeta}>
-              <MessageTimeStatus
-                time={time}
-                status={status ?? 'sent'}
-                isMe={isMe}
-                compact
-                timeColor="#FFFFFF"
-                iconColor="#FFFFFF"
-              />
+              {viewCount != null ? (
+                <View style={styles.overlayMetric}>
+                  <Feather name="eye" size={12} color="#FFFFFF" />
+                  <Text style={styles.overlayMetricText}>{viewCount}</Text>
+                </View>
+              ) : null}
+              {time ? (
+                <MessageTimeStatus
+                  time={time}
+                  status={status ?? 'sent'}
+                  isMe={isMe}
+                  compact
+                  timeColor="#FFFFFF"
+                  iconColor="#FFFFFF"
+                />
+              ) : null}
             </View>
           ) : null}
         </Pressable>
@@ -248,6 +262,9 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     alignSelf: 'flex-start',
   },
+  containerCentered: {
+    alignSelf: 'center',
+  },
   containerEmbedded: {
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -291,10 +308,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 8,
     bottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: 'rgba(15, 23, 42, 0.45)',
+  },
+  overlayMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  overlayMetricText: {
+    color: '#FFFFFF',
+    fontSize: typography.timeStatus,
+    lineHeight: 14,
+    fontWeight: '600',
   },
   caption: {
     marginTop: 6,

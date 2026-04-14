@@ -12,9 +12,6 @@ export type ChatsStackParamList = {
   ChatProfile: { chatId: string; userId: string; chatTitle?: string };
   GroupProfile: { chatId: string; chatTitle?: string };
   CreateGroupChat: undefined;
-};
-
-export type ChannelsStackParamList = {
   ChannelCatalog: undefined;
   ChannelPreview: { channelId: string };
   ChannelFeed: { channelId: string };
@@ -25,7 +22,6 @@ export type ChannelsStackParamList = {
 
 export type MainTabParamList = {
   Chats: NavigatorScreenParams<ChatsStackParamList>;
-  Channels: NavigatorScreenParams<ChannelsStackParamList>;
   Contacts: undefined;
   Settings: undefined;
 };
@@ -41,7 +37,6 @@ declare global {
     interface RootParamList
       extends AuthStackParamList,
         MainTabParamList,
-        ChatsStackParamList,
-        ChannelsStackParamList {}
+        ChatsStackParamList {}
   }
 }

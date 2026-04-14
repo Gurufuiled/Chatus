@@ -10,12 +10,13 @@ import {
   View,
 } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
-import type { ChannelsStackParamList } from '../navigation/types';
+import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
+import { chatStore } from '../stores/chatStore';
 import { colors } from '../theme/colors';
 
-type Route = RouteProp<ChannelsStackParamList, 'ChannelAdmin'>;
+type Route = RouteProp<ChatsStackParamList, 'ChannelAdmin'>;
 
 export function ChannelAdminScreen() {
   const route = useRoute<Route>();
@@ -39,6 +40,7 @@ export function ChannelAdminScreen() {
     if (detail) return;
     void fetchChannelDetail(channelId).then((next) => {
       channelStore.getState().setDetail(channelId, next);
+      chatStore.getState().addOrUpdateChat(next.channel);
       setName(next.channel.name ?? '');
       setDescription(next.channel.description ?? '');
       setAllowComments(next.channel.allow_comments !== 0);
@@ -64,6 +66,7 @@ export function ChannelAdminScreen() {
             : undefined,
       });
       channelStore.getState().upsertChannel(updated);
+      chatStore.getState().addOrUpdateChat(updated);
       Alert.alert('Сохранено', 'Настройки канала обновлены.');
     } catch (error) {
       Alert.alert(

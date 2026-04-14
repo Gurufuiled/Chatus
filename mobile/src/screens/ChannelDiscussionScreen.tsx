@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
-import type { ChannelsStackParamList } from '../navigation/types';
+import type { ChatsStackParamList } from '../navigation/types';
 import {
   fetchDiscussionThread,
   sendDiscussionMessage,
@@ -19,7 +19,7 @@ import { channelStore } from '../stores/channelStore';
 import type { Message } from '../stores/types';
 import { colors } from '../theme/colors';
 
-type Route = RouteProp<ChannelsStackParamList, 'ChannelDiscussion'>;
+type Route = RouteProp<ChatsStackParamList, 'ChannelDiscussion'>;
 
 export function ChannelDiscussionScreen() {
   const route = useRoute<Route>();

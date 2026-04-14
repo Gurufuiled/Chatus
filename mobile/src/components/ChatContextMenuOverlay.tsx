@@ -51,13 +51,15 @@ type ChatContextMenuOverlayProps = {
     textOnly?: boolean;
   }[];
   menuAnim: Animated.Value;
-  blurTargetRef: React.RefObject<View | null>;
+  blurTargetRef?: React.RefObject<View | null>;
   screenWidth: number;
   showReactions?: boolean;
   menuCardWidth?: number;
   onClose: () => void;
   onMenuAction: (key: string) => void;
+  onPickReaction?: (emoji: string) => void;
   renderMenuPreviewBody: (message: Message, forcedWidth?: number) => React.ReactNode;
+  showMenuCard?: boolean;
 };
 
 export function ChatContextMenuOverlay({
@@ -71,7 +73,9 @@ export function ChatContextMenuOverlay({
   menuCardWidth = MENU_WIDTH,
   onClose,
   onMenuAction,
+  onPickReaction,
   renderMenuPreviewBody,
+  showMenuCard = true,
 }: ChatContextMenuOverlayProps) {
   if (!menuState) {
     return null;
@@ -117,6 +121,11 @@ export function ChatContextMenuOverlay({
     outputRange: [6, 0],
   });
 
+  const blurProps =
+    blurTargetRef && blurTargetRef.current
+      ? { blurTarget: blurTargetRef }
+      : {};
+
   return (
     <View pointerEvents="box-none" style={styles.menuOverlayRoot}>
       <Pressable style={styles.menuBackdrop} onPress={onClose}>
@@ -126,7 +135,7 @@ export function ChatContextMenuOverlay({
             tint="default"
             blurMethod="dimezisBlurView"
             blurReductionFactor={1}
-            blurTarget={blurTargetRef}
+            {...blurProps}
             style={styles.menuBackdropBlur}
           />
         </Animated.View>
@@ -146,9 +155,18 @@ export function ChatContextMenuOverlay({
           ]}
         >
           {MENU_REACTIONS.map((reaction) => (
-            <Text key={reaction} style={styles.reactionEmoji}>
-              {reaction}
-            </Text>
+            <Pressable
+              key={reaction}
+              onPress={() => {
+                onPickReaction?.(reaction);
+              }}
+              style={({ pressed }) => [styles.reactionPressable, pressed && styles.reactionPressablePressed]}
+              hitSlop={6}
+            >
+              <Text style={styles.reactionEmoji}>
+                {reaction}
+              </Text>
+            </Pressable>
           ))}
           <View style={styles.reactionCheck}>
             <Feather name="check" size={18} color="#FFFFFF" />
@@ -186,41 +204,43 @@ export function ChatContextMenuOverlay({
         </Animated.View>
       ) : null}
 
-      <Animated.View
-        style={[
-          styles.menuCard,
-          {
-            width: menuCardWidth,
-            top: menuState.menuTop,
-            left: menuLeft,
-            opacity: menuAnim,
-            transform: [{ translateY: menuTranslateY }, { scale: menuScale }],
-          },
-        ]}
-      >
-        <View pointerEvents="none" style={styles.menuCardTint} />
-        {menuActions.map((action, index) => (
-          <Pressable
-            key={action.key}
-            disabled={action.disabled}
-            style={({ pressed }) => [
-              styles.menuAction,
-              action.textOnly && styles.menuActionTextOnly,
-              action.disabled && styles.menuActionDisabled,
-              index < menuActions.length - 1 && styles.menuActionBorder,
-              pressed && !action.disabled && styles.menuActionPressed,
-            ]}
-            onPress={() => onMenuAction(action.key)}
-          >
-            <Text style={[styles.menuActionLabel, { color: action.color }]}>
-              {action.label}
-            </Text>
-            {action.icon ? (
-              <Feather name={action.icon as never} size={18} color={action.color} />
-            ) : null}
-          </Pressable>
-        ))}
-      </Animated.View>
+      {showMenuCard ? (
+        <Animated.View
+          style={[
+            styles.menuCard,
+            {
+              width: menuCardWidth,
+              top: menuState.menuTop,
+              left: menuLeft,
+              opacity: menuAnim,
+              transform: [{ translateY: menuTranslateY }, { scale: menuScale }],
+            },
+          ]}
+        >
+          <View pointerEvents="none" style={styles.menuCardTint} />
+          {menuActions.map((action, index) => (
+            <Pressable
+              key={action.key}
+              disabled={action.disabled}
+              style={({ pressed }) => [
+                styles.menuAction,
+                action.textOnly && styles.menuActionTextOnly,
+                action.disabled && styles.menuActionDisabled,
+                index < menuActions.length - 1 && styles.menuActionBorder,
+                pressed && !action.disabled && styles.menuActionPressed,
+              ]}
+              onPress={() => onMenuAction(action.key)}
+            >
+              <Text style={[styles.menuActionLabel, { color: action.color }]}>
+                {action.label}
+              </Text>
+              {action.icon ? (
+                <Feather name={action.icon as never} size={18} color={action.color} />
+              ) : null}
+            </Pressable>
+          ))}
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -279,6 +299,16 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: 'center',
     width: 28,
+  },
+  reactionPressable: {
+    width: 28,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactionPressablePressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.96 }],
   },
   reactionCheck: {
     marginLeft: 'auto',

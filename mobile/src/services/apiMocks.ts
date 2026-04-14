@@ -387,7 +387,10 @@ const mockUsers = [
   },
 ];
 
-let dynamicChats = [...mockChats];
+let dynamicChats = [
+  ...mockChannels.filter((channel) => channel.access_status === 'active'),
+  ...mockChats,
+];
 let dynamicChannels = [...mockChannels];
 let dynamicMessages: Record<string, Array<Record<string, unknown>>> = JSON.parse(
   JSON.stringify(mockMessagesByChat)
@@ -408,6 +411,22 @@ export async function mockApiGet(path: string): Promise<Response> {
 
   if (path === '/channels' || path === '/channels/catalog') {
     return createMockResponse(dynamicChannels);
+  }
+
+  if (path.startsWith('/channels/search')) {
+    const query = new URL(`http://local${path}`).searchParams.get('q')?.trim().toLowerCase() ?? '';
+    if (!query) {
+      return createMockResponse([]);
+    }
+    return createMockResponse(
+      dynamicChannels.filter((channel) =>
+        [channel.name, channel.description, channel.invite_token]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(query)
+      )
+    );
   }
 
   const channelMatch = path.match(/^\/channels\/([^/?]+)$/);
@@ -660,6 +679,7 @@ export async function mockApiPost(
       ],
     };
     dynamicChannels = [newChannel, ...dynamicChannels];
+    dynamicChats = [newChannel, ...dynamicChats];
     dynamicMessages[channelId] = [];
     dynamicMessages[discussionId] = [];
     return createMockResponse(newChannel);
@@ -682,6 +702,7 @@ export async function mockApiPost(
           subscription_expires_at: null,
         },
       ];
+      dynamicChats = [channel, ...dynamicChats.filter((item) => item.id !== channel.id)];
       return createMockResponse(channel);
     }
   }
@@ -704,6 +725,7 @@ export async function mockApiPost(
           subscription_expires_at: channel.subscription_expires_at,
         },
       ];
+      dynamicChats = [channel, ...dynamicChats.filter((item) => item.id !== channel.id)];
       return createMockResponse({ checkout_state: 'paid', channel });
     }
   }
@@ -713,7 +735,22 @@ export async function mockApiPost(
     const channelId = publishMatch[1];
     const channel = dynamicChannels.find((item) => item.id === channelId);
     if (channel) {
-      const b = body as { content?: string; msg_type?: string };
+      const b = body as {
+        content?: string;
+        msg_type?: string;
+        media?: {
+          url?: string;
+          duration_ms?: number;
+          waveform?: number[];
+          thumbnail_url?: string;
+          is_round?: boolean;
+          width?: number;
+          height?: number;
+          file_name?: string;
+          file_size?: number;
+          mime_type?: string;
+        };
+      };
       const post = {
         id: `mock-channel-post-${Date.now()}`,
         chat_id: channelId,
@@ -733,11 +770,38 @@ export async function mockApiPost(
         server_id: null,
         created_at: Date.now(),
         updated_at: Date.now(),
+        media: b.media
+          ? [
+              {
+                remote_url: b.media.url ?? null,
+                duration_ms: b.media.duration_ms ?? null,
+                waveform: b.media.waveform ?? null,
+                thumbnail_url: b.media.thumbnail_url ?? null,
+                is_round: b.media.is_round ?? false,
+                width: b.media.width ?? null,
+                height: b.media.height ?? null,
+                file_name: b.media.file_name ?? null,
+                file_size: b.media.file_size ?? null,
+              },
+            ]
+          : undefined,
       };
       dynamicMessages[channelId] = [post, ...(dynamicMessages[channelId] ?? [])];
       channel.last_message_id = post.id;
       channel.last_message_at = post.created_at;
-      channel.last_message_preview = post.content ?? 'New post';
+      channel.last_message_preview =
+        post.content ??
+        (post.msg_type === 'image'
+          ? 'Фото'
+          : post.msg_type === 'video'
+            ? 'Видео'
+            : post.msg_type === 'voice'
+              ? 'Голосовое сообщение'
+              : post.msg_type === 'video_note'
+                ? 'Видеосообщение'
+                : post.msg_type === 'file'
+                  ? post.media?.[0]?.file_name ?? 'Файл'
+                  : 'Новый пост');
       channel.updated_at = Date.now();
       return createMockResponse(post);
     }

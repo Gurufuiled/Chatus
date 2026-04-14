@@ -94,6 +94,7 @@ model User {
   createdChats  Chat[]         @relation("ChatCreator")
   messages      Message[]
   messageReactions MessageReaction[]
+  channelPostViews ChannelPostView[]
 
   @@map("users")
 }
@@ -201,6 +202,7 @@ model Message {
   replyTo    Message? @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
   replies    Message[] @relation("MessageReplies")
   reactions  MessageReaction[]
+  views      ChannelPostView[]
   media      Media[]
   chatsAsLastMessage Chat[] @relation("ChatLastMessage")
   chatsAsPinnedMessage Chat[] @relation("ChatPinnedMessage")
@@ -230,6 +232,19 @@ model MessageReaction {
   @@index([messageId])
   @@index([userId])
   @@map("message_reactions")
+}
+
+model ChannelPostView {
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  viewedAt  DateTime @default(now()) @map("viewed_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId])
+  @@map("channel_post_views")
 }
 
 model Media {

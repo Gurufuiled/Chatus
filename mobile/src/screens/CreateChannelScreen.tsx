@@ -11,12 +11,13 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ChannelsStackParamList } from '../navigation/types';
+import type { ChatsStackParamList } from '../navigation/types';
 import { createChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
+import { chatStore } from '../stores/chatStore';
 import { colors } from '../theme/colors';
 
-type Nav = NativeStackNavigationProp<ChannelsStackParamList, 'CreateChannel'>;
+type Nav = NativeStackNavigationProp<ChatsStackParamList, 'CreateChannel'>;
 
 export function CreateChannelScreen() {
   const navigation = useNavigation<Nav>();
@@ -41,6 +42,7 @@ export function CreateChannelScreen() {
         allow_reactions: allowReactions,
       });
       channelStore.getState().upsertChannel(channel);
+      chatStore.getState().addOrUpdateChat(channel);
       navigation.replace('ChannelAdmin', { channelId: channel.id });
     } catch (error) {
       Alert.alert(

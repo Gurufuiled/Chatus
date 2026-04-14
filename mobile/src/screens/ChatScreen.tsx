@@ -1117,6 +1117,16 @@ export function ChatScreen() {
     }
   }, [activeMenuMessage, confirmDeleteMessage]);
 
+  const handlePickReaction = useCallback((emoji: string) => {
+    if (!activeMenuMessage) return;
+    WebSocketService.sendEvent('toggle_reaction', {
+      chat_id: chatId,
+      message_id: activeMenuMessage.id,
+      emoji,
+    });
+    closeMenu();
+  }, [activeMenuMessage, chatId, closeMenu]);
+
   const handleInputBarLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = Math.ceil(event.nativeEvent.layout.height);
     if (nextHeight > 0 && nextHeight !== inputBarHeight) {
@@ -1634,7 +1644,11 @@ export function ChatScreen() {
         ) : (
           <ChatInputDock
             onLayout={handleInputBarLayout}
-            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle]}
+            animatedStyle={[
+              styles.inputBarWrap,
+              inputBarAnimatedStyle,
+              { paddingBottom: Math.max(insets.bottom, 8) },
+            ]}
             onSendText={handleSendText}
             onSendVoice={handleSendVoice}
             onSendVideoNote={handleSendVideoNote}
@@ -1658,6 +1672,7 @@ export function ChatScreen() {
         onClose={closeMenu}
         showReactions={menuMode === 'actions'}
         menuCardWidth={menuMode === 'deleteConfirm' ? 224 : undefined}
+        onPickReaction={handlePickReaction}
         onMenuAction={(key) => {
           if (menuMode === 'deleteConfirm') {
             handleDeleteConfirmAction(key);
