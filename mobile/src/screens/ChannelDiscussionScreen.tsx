@@ -29,9 +29,11 @@ export function ChannelDiscussionScreen() {
   const [loading, setLoading] = React.useState(!thread);
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const next = await fetchDiscussionThread(channelId, postId);
       channelStore.getState().setDiscussion(key, {
@@ -40,6 +42,9 @@ export function ChannelDiscussionScreen() {
         can_comment: next.can_comment,
         messages: next.messages,
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Попробуйте еще раз.';
+      setLoadError(message);
     } finally {
       setLoading(false);
     }
@@ -59,8 +64,8 @@ export function ChannelDiscussionScreen() {
       setDraft('');
     } catch (error) {
       Alert.alert(
-        'Unable to send comment',
-        error instanceof Error ? error.message : 'Please try again.'
+        'Не удалось отправить комментарий',
+        error instanceof Error ? error.message : 'Попробуйте еще раз.'
       );
     } finally {
       setSending(false);
@@ -70,7 +75,7 @@ export function ChannelDiscussionScreen() {
   const renderMessage = React.useCallback(
     ({ item }: { item: Message }) => (
       <View style={styles.messageCard}>
-        <Text style={styles.messageText}>{item.content || 'Media reply'}</Text>
+        <Text style={styles.messageText}>{item.content || 'Медиаответ'}</Text>
       </View>
     ),
     []
@@ -78,9 +83,13 @@ export function ChannelDiscussionScreen() {
 
   return (
     <View style={styles.container}>
-      {loading && !thread ? (
+      {loading && !thread && !loadError ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={colors.accent} />
+        </View>
+      ) : loadError && !thread ? (
+        <View style={styles.loading}>
+          <Text style={styles.headerText}>{loadError}</Text>
         </View>
       ) : (
         <>
@@ -92,7 +101,9 @@ export function ChannelDiscussionScreen() {
             onRefresh={() => void load()}
             contentContainerStyle={styles.list}
             ListHeaderComponent={
-              <Text style={styles.headerText}>Telegram-style linked discussion</Text>
+              <Text style={styles.headerText}>
+                {loadError ?? 'Привязанное обсуждение канала'}
+              </Text>
             }
           />
           {thread?.can_comment ? (
@@ -100,7 +111,7 @@ export function ChannelDiscussionScreen() {
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
-                placeholder="Write a comment"
+                placeholder="Напишите комментарий"
                 placeholderTextColor={colors.placeholder}
                 style={styles.input}
               />
@@ -113,7 +124,7 @@ export function ChannelDiscussionScreen() {
                 ]}
                 disabled={sending}
               >
-                <Text style={styles.sendButtonText}>Send</Text>
+                <Text style={styles.sendButtonText}>Отправить</Text>
               </Pressable>
             </View>
           ) : null}

@@ -18,9 +18,9 @@ import { colors } from '../theme/colors';
 type Nav = NativeStackNavigationProp<ChannelsStackParamList, 'ChannelCatalog'>;
 
 function formatPrice(channel: Chat) {
-  if (channel.access_type !== 'paid') return 'Free';
+  if (channel.access_type !== 'paid') return 'Бесплатно';
   const cents = channel.subscription_price_cents ?? 0;
-  return `$${(cents / 100).toFixed(2)} / ${(channel.subscription_period_days ?? 30)}d`;
+  return `$${(cents / 100).toFixed(2)} / ${(channel.subscription_period_days ?? 30)} дн.`;
 }
 
 export function ChannelCatalogScreen() {
@@ -65,9 +65,9 @@ export function ChannelCatalogScreen() {
               </Text>
             </View>
             <View style={styles.cardMeta}>
-              <Text style={styles.title}>{item.name ?? 'Untitled channel'}</Text>
+              <Text style={styles.title}>{item.name ?? 'Безымянный канал'}</Text>
               <Text style={styles.subtitle}>
-                {item.subscriber_count ?? 0} subscribers
+                {item.subscriber_count ?? 0} подписчиков
               </Text>
             </View>
             <View
@@ -82,18 +82,18 @@ export function ChannelCatalogScreen() {
                   item.access_type === 'paid' ? styles.badgeTextPaid : styles.badgeTextFree,
                 ]}
               >
-                {item.access_type === 'paid' ? 'Paid' : 'Free'}
+                {item.access_type === 'paid' ? 'Платный' : 'Бесплатный'}
               </Text>
             </View>
           </View>
 
           <Text style={styles.description} numberOfLines={3}>
-            {item.description || 'Telegram-like broadcast channel with linked discussion.'}
+            {item.description || 'Канал для публикаций с привязанным обсуждением.'}
           </Text>
 
           <View style={styles.cardFooter}>
             <Text style={styles.metaLabel}>{formatPrice(item)}</Text>
-            <Text style={styles.openLabel}>{isLocked ? 'Preview' : 'Open'}</Text>
+            <Text style={styles.openLabel}>{isLocked ? 'Превью' : 'Открыть'}</Text>
           </View>
         </Pressable>
       );
@@ -117,9 +117,9 @@ export function ChannelCatalogScreen() {
           contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : styles.listContent}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No channels yet</Text>
+              <Text style={styles.emptyTitle}>Пока нет каналов</Text>
               <Text style={styles.emptySubtitle}>
-                Create the first one from the tab quick action.
+                Создайте первый канал через быстрое действие на вкладке.
               </Text>
             </View>
           }

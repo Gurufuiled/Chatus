@@ -44,18 +44,18 @@ export function CreateChannelScreen() {
       navigation.replace('ChannelAdmin', { channelId: channel.id });
     } catch (error) {
       Alert.alert(
-        'Unable to create channel',
-        error instanceof Error ? error.message : 'Please try again.'
+        'Не удалось создать канал',
+        error instanceof Error ? error.message : 'Попробуйте еще раз.'
       );
     }
   }, [allowComments, allowReactions, description, isPaid, isPrivate, name, navigation, price]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.label}>Name</Text>
+      <Text style={styles.label}>Название</Text>
       <TextInput value={name} onChangeText={setName} style={styles.input} />
 
-      <Text style={styles.label}>Description</Text>
+      <Text style={styles.label}>Описание</Text>
       <TextInput
         value={description}
         onChangeText={setDescription}
@@ -64,18 +64,18 @@ export function CreateChannelScreen() {
       />
 
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>Private channel</Text>
+        <Text style={styles.rowLabel}>Приватный канал</Text>
         <Switch value={isPrivate} onValueChange={setIsPrivate} />
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>Paid subscription</Text>
+        <Text style={styles.rowLabel}>Платная подписка</Text>
         <Switch value={isPaid} onValueChange={setIsPaid} />
       </View>
 
       {isPaid ? (
         <>
-          <Text style={styles.label}>Monthly price</Text>
+          <Text style={styles.label}>Цена за месяц</Text>
           <TextInput
             value={price}
             onChangeText={setPrice}
@@ -86,17 +86,17 @@ export function CreateChannelScreen() {
       ) : null}
 
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>Allow comments</Text>
+        <Text style={styles.rowLabel}>Разрешить комментарии</Text>
         <Switch value={allowComments} onValueChange={setAllowComments} />
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>Allow reactions</Text>
+        <Text style={styles.rowLabel}>Разрешить реакции</Text>
         <Switch value={allowReactions} onValueChange={setAllowReactions} />
       </View>
 
       <Pressable style={styles.button} onPress={() => void handleCreate()}>
-        <Text style={styles.buttonText}>Create channel</Text>
+        <Text style={styles.buttonText}>Создать канал</Text>
       </Pressable>
     </ScrollView>
   );

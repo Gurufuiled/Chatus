@@ -35,16 +35,21 @@ export function ChannelFeedScreen() {
   const [loading, setLoading] = React.useState(feed.length === 0);
   const [postDraft, setPostDraft] = React.useState('');
   const [publishing, setPublishing] = React.useState(false);
+  const canComment = detail?.can_comment ?? false;
+  const canReact = detail?.can_react ?? false;
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
       const next = await fetchChannelFeed(channelId);
-      channelStore.getState().upsertChannel(next.channel);
-      channelStore.getState().setFeed(channelId, next.posts);
-      if (detail) {
-        channelStore.getState().setDetail(channelId, {
-          ...detail,
+      const store = channelStore.getState();
+      store.upsertChannel(next.channel);
+      store.setFeed(channelId, next.posts);
+
+      const currentDetail = store.detailsById[channelId];
+      if (currentDetail) {
+        store.setDetail(channelId, {
+          ...currentDetail,
           channel: next.channel,
           preview_posts: next.posts,
           can_view_full_feed: next.can_view_full_feed,
@@ -58,7 +63,7 @@ export function ChannelFeedScreen() {
     } finally {
       setLoading(false);
     }
-  }, [channelId, detail]);
+  }, [channelId]);
 
   React.useEffect(() => {
     void load();
@@ -74,8 +79,8 @@ export function ChannelFeedScreen() {
       setPostDraft('');
     } catch (error) {
       Alert.alert(
-        'Unable to publish',
-        error instanceof Error ? error.message : 'Please try again.'
+        'Не удалось опубликовать пост',
+        error instanceof Error ? error.message : 'Попробуйте еще раз.'
       );
     } finally {
       setPublishing(false);
@@ -88,8 +93,8 @@ export function ChannelFeedScreen() {
       channelStore.getState().updateFeedMessage(channelId, message.id, { reactions });
     } catch (error) {
       Alert.alert(
-        'Unable to update reaction',
-        error instanceof Error ? error.message : 'Please try again.'
+        'Не удалось обновить реакцию',
+        error instanceof Error ? error.message : 'Попробуйте еще раз.'
       );
     }
   }, [channelId]);
@@ -97,59 +102,65 @@ export function ChannelFeedScreen() {
   const renderPost = React.useCallback(
     ({ item }: { item: Message }) => (
       <View style={styles.postCard}>
-        <Text style={styles.postText}>{item.content || 'Media post'}</Text>
+        <Text style={styles.postText}>{item.content || 'Медиапубликация'}</Text>
         <View style={styles.metaRow}>
-          <Text style={styles.metaText}>{item.view_count ?? 0} views</Text>
-          <Pressable
-            onPress={() =>
-              navigation.navigate('ChannelDiscussion', {
-                channelId,
-                postId: item.id,
-              })
-            }
-          >
-            <Text style={styles.discussionLink}>
-              {item.comment_count ?? 0} comments
-            </Text>
-          </Pressable>
+          <Text style={styles.metaText}>{item.view_count ?? 0} просмотров</Text>
+          {canComment ? (
+            <Pressable
+              onPress={() =>
+                navigation.navigate('ChannelDiscussion', {
+                  channelId,
+                  postId: item.id,
+                })
+              }
+            >
+              <Text style={styles.discussionLink}>
+                {item.comment_count ?? 0} комментариев
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.metaText}>Комментарии выключены</Text>
+          )}
         </View>
-        <View style={styles.reactionRow}>
-          {QUICK_REACTIONS.map((emoji) => {
-            const reaction = item.reactions?.find((entry) => entry.emoji === emoji);
-            return (
-              <Pressable
-                key={emoji}
-                style={[
-                  styles.reactionButton,
-                  reaction?.reacted_by_me && styles.reactionButtonActive,
-                ]}
-                onPress={() => void handleReaction(item, emoji)}
-              >
-                <Text style={styles.reactionText}>
-                  {emoji} {reaction?.count ?? 0}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {canReact ? (
+          <View style={styles.reactionRow}>
+            {QUICK_REACTIONS.map((emoji) => {
+              const reaction = item.reactions?.find((entry) => entry.emoji === emoji);
+              return (
+                <Pressable
+                  key={emoji}
+                  style={[
+                    styles.reactionButton,
+                    reaction?.reacted_by_me && styles.reactionButtonActive,
+                  ]}
+                  onPress={() => void handleReaction(item, emoji)}
+                >
+                  <Text style={styles.reactionText}>
+                    {emoji} {reaction?.count ?? 0}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
     ),
-    [channelId, handleReaction, navigation]
+    [canComment, canReact, channelId, handleReaction, navigation]
   );
 
   return (
     <View style={styles.container}>
       <View style={styles.headerCard}>
-        <Text style={styles.channelTitle}>{detail?.channel.name ?? 'Channel'}</Text>
+        <Text style={styles.channelTitle}>{detail?.channel.name ?? 'Канал'}</Text>
         <Text style={styles.channelMeta}>
-          {(detail?.channel.subscriber_count ?? 0).toString()} subscribers
+          {(detail?.channel.subscriber_count ?? 0).toString()} подписчиков
         </Text>
         {detail?.can_post ? (
           <Pressable
             style={styles.adminLink}
             onPress={() => navigation.navigate('ChannelAdmin', { channelId })}
           >
-            <Text style={styles.adminLinkText}>Manage channel</Text>
+            <Text style={styles.adminLinkText}>Настройки канала</Text>
           </Pressable>
         ) : null}
       </View>
@@ -159,7 +170,7 @@ export function ChannelFeedScreen() {
           <TextInput
             value={postDraft}
             onChangeText={setPostDraft}
-            placeholder="Write a channel post"
+            placeholder="Напишите публикацию"
             placeholderTextColor={colors.placeholder}
             style={styles.input}
             multiline
@@ -176,7 +187,7 @@ export function ChannelFeedScreen() {
             {publishing ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Text style={styles.publishText}>Publish</Text>
+              <Text style={styles.publishText}>Опубликовать</Text>
             )}
           </Pressable>
         </View>

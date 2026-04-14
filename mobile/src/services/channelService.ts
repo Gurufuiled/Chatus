@@ -193,10 +193,51 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
   };
 }
 
+function localizeChannelApiMessage(message: string): string {
+  switch (message) {
+    case 'Reactions are unavailable for this channel':
+      return 'Реакции недоступны в этом канале.';
+    case 'Comments are unavailable for this channel':
+      return 'Комментарии недоступны в этом канале.';
+    case 'Channel discussion is not configured':
+      return 'Обсуждение для этого канала не настроено.';
+    case 'Join the channel before opening the discussion':
+      return 'Сначала вступите в канал, чтобы открыть обсуждение.';
+    case 'Paid channels require checkout first':
+      return 'Для платного канала сначала нужно оформить доступ.';
+    case 'Channel is private':
+      return 'Это приватный канал.';
+    case 'Channel not found':
+      return 'Канал не найден.';
+    case 'Channel post not found':
+      return 'Публикация канала не найдена.';
+    default:
+      return message;
+  }
+}
+
 async function parseJsonOrThrow<T>(res: Response, defaultMessage: string): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `${defaultMessage}: ${res.status}`);
+    if (!text) {
+      throw new Error(`${defaultMessage}: ${res.status}`);
+    }
+
+    try {
+      const payload = JSON.parse(text) as { message?: string | string[]; error?: string };
+      const message = Array.isArray(payload.message)
+        ? payload.message.join('\n')
+        : payload.message ?? payload.error;
+      if (message) {
+        throw new Error(localizeChannelApiMessage(message));
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message !== text) {
+        throw error;
+      }
+    }
+
+    throw new Error(text);
   }
   return res.json() as Promise<T>;
 }

@@ -28,6 +28,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
@@ -39,7 +40,6 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script_stop: true
           envs: REPO_DIR,COMPOSE_DIR
           script: |
             set -euo pipefail

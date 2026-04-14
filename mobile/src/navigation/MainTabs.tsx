@@ -64,7 +64,7 @@ function getTabIcon(routeName: keyof MainTabParamList, color: string, focused: b
 function getTabLabel(routeName: keyof MainTabParamList) {
   switch (routeName) {
     case 'Channels':
-      return 'Channels';
+      return 'Каналы';
     case 'Contacts':
       return 'Контакты';
     case 'Settings':
@@ -287,7 +287,7 @@ export function MainTabs() {
           name="Channels"
           component={ChannelsStack}
           options={{
-            title: 'Channels',
+            title: 'Каналы',
             headerShown: false,
           }}
         />

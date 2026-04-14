@@ -64,21 +64,21 @@ export function ChannelAdminScreen() {
             : undefined,
       });
       channelStore.getState().upsertChannel(updated);
-      Alert.alert('Saved', 'Channel settings updated.');
+      Alert.alert('Сохранено', 'Настройки канала обновлены.');
     } catch (error) {
       Alert.alert(
-        'Unable to save',
-        error instanceof Error ? error.message : 'Please try again.'
+        'Не удалось сохранить',
+        error instanceof Error ? error.message : 'Попробуйте еще раз.'
       );
     }
   }, [allowComments, allowReactions, channelId, description, detail?.channel.access_type, name, price]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.label}>Channel name</Text>
+      <Text style={styles.label}>Название канала</Text>
       <TextInput value={name} onChangeText={setName} style={styles.input} />
 
-      <Text style={styles.label}>Description</Text>
+      <Text style={styles.label}>Описание</Text>
       <TextInput
         value={description}
         onChangeText={setDescription}
@@ -88,7 +88,7 @@ export function ChannelAdminScreen() {
 
       {detail?.channel.access_type === 'paid' ? (
         <>
-          <Text style={styles.label}>Mock subscription price</Text>
+          <Text style={styles.label}>Цена подписки</Text>
           <TextInput
             value={price}
             onChangeText={setPrice}
@@ -99,29 +99,29 @@ export function ChannelAdminScreen() {
       ) : null}
 
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>Allow comments</Text>
+        <Text style={styles.rowLabel}>Разрешить комментарии</Text>
         <Switch value={allowComments} onValueChange={setAllowComments} />
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>Allow reactions</Text>
+        <Text style={styles.rowLabel}>Разрешить реакции</Text>
         <Switch value={allowReactions} onValueChange={setAllowReactions} />
       </View>
 
       <View style={styles.statsCard}>
         <Text style={styles.statsLine}>
-          Subscribers: {detail?.channel.subscriber_count ?? 0}
+          Подписчиков: {detail?.channel.subscriber_count ?? 0}
         </Text>
         <Text style={styles.statsLine}>
-          Active: {detail?.channel.active_subscriber_count ?? 0}
+          Активных: {detail?.channel.active_subscriber_count ?? 0}
         </Text>
         <Text style={styles.statsLine}>
-          Pending earnings: ${(detail?.channel.pending_earnings_cents ?? 0) / 100}
+          Ожидаемые выплаты: ${(detail?.channel.pending_earnings_cents ?? 0) / 100}
         </Text>
       </View>
 
       <Pressable style={styles.button} onPress={() => void handleSave()}>
-        <Text style={styles.buttonText}>Save changes</Text>
+        <Text style={styles.buttonText}>Сохранить изменения</Text>
       </Pressable>
     </ScrollView>
   );

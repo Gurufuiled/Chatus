@@ -27,32 +27,32 @@ export function ChannelsStack() {
       <Stack.Screen
         name="ChannelCatalog"
         component={ChannelCatalogScreen}
-        options={{ title: 'Channels' }}
+        options={{ title: 'Каналы' }}
       />
       <Stack.Screen
         name="ChannelPreview"
         component={ChannelPreviewScreen}
-        options={{ title: 'Preview' }}
+        options={{ title: 'Превью' }}
       />
       <Stack.Screen
         name="ChannelFeed"
         component={ChannelFeedScreen}
-        options={{ title: 'Channel' }}
+        options={{ title: 'Канал' }}
       />
       <Stack.Screen
         name="ChannelDiscussion"
         component={ChannelDiscussionScreen}
-        options={{ title: 'Discussion' }}
+        options={{ title: 'Обсуждение' }}
       />
       <Stack.Screen
         name="CreateChannel"
         component={CreateChannelScreen}
-        options={{ title: 'Create channel' }}
+        options={{ title: 'Создать канал' }}
       />
       <Stack.Screen
         name="ChannelAdmin"
         component={ChannelAdminScreen}
-        options={{ title: 'Manage channel' }}
+        options={{ title: 'Управление каналом' }}
       />
     </Stack.Navigator>
   );

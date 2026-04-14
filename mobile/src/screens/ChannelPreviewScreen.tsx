@@ -68,8 +68,8 @@ export function ChannelPreviewScreen() {
     } catch (error) {
       channelStore.getState().setCheckoutState(channelId, 'error');
       Alert.alert(
-        'Unable to unlock channel',
-        error instanceof Error ? error.message : 'Please try again.'
+        'Не удалось открыть канал',
+        error instanceof Error ? error.message : 'Попробуйте еще раз.'
       );
     }
   }, [channelId, detail, navigation]);
@@ -85,7 +85,7 @@ export function ChannelPreviewScreen() {
   if (!detail) {
     return (
       <View style={styles.loading}>
-        <Text style={styles.errorText}>Channel unavailable.</Text>
+        <Text style={styles.errorText}>Канал недоступен.</Text>
       </View>
     );
   }
@@ -95,41 +95,41 @@ export function ChannelPreviewScreen() {
       <View style={styles.hero}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {(detail.channel.name?.trim()[0] ?? 'C').toUpperCase()}
+            {(detail.channel.name?.trim()[0] ?? 'К').toUpperCase()}
           </Text>
         </View>
-        <Text style={styles.title}>{detail.channel.name ?? 'Untitled channel'}</Text>
+        <Text style={styles.title}>{detail.channel.name ?? 'Безымянный канал'}</Text>
         <Text style={styles.meta}>
-          {detail.channel.subscriber_count ?? 0} subscribers
+          {detail.channel.subscriber_count ?? 0} подписчиков
         </Text>
         <Text style={styles.description}>
-          {detail.channel.description || 'Read preview posts and unlock the full channel feed.'}
+          {detail.channel.description || 'Посмотрите превью публикаций и откройте полную ленту канала.'}
         </Text>
       </View>
 
       <View style={styles.paywallCard}>
         <Text style={styles.paywallLabel}>
-          {detail.channel.access_type === 'paid' ? 'Paid subscription' : 'Free membership'}
+          {detail.channel.access_type === 'paid' ? 'Платная подписка' : 'Бесплатный доступ'}
         </Text>
         <Text style={styles.paywallValue}>
           {detail.channel.access_type === 'paid'
-            ? `$${((detail.channel.subscription_price_cents ?? 0) / 100).toFixed(2)} every ${
+            ? `$${((detail.channel.subscription_price_cents ?? 0) / 100).toFixed(2)} каждые ${
                 detail.channel.subscription_period_days ?? 30
-              } days`
-            : 'Join instantly to read all posts and open discussion'}
+              } дн.`
+            : 'Вступите, чтобы читать все публикации и открыть обсуждение'}
         </Text>
         <Text style={styles.mockNote}>
-          Checkout is mocked for V1 until billing integration is ready.
+          Оплата пока смоделирована для V1, пока не готова реальная интеграция биллинга.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preview posts</Text>
+        <Text style={styles.sectionTitle}>Публикации в превью</Text>
         {detail.preview_posts.map((post) => (
           <View key={post.id} style={styles.postCard}>
-            <Text style={styles.postText}>{post.content || 'Media post'}</Text>
+            <Text style={styles.postText}>{post.content || 'Медиапубликация'}</Text>
             <Text style={styles.postMeta}>
-              {post.comment_count ?? 0} comments
+              {post.comment_count ?? 0} комментариев
             </Text>
           </View>
         ))}
@@ -148,7 +148,7 @@ export function ChannelPreviewScreen() {
           <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
           <Text style={styles.ctaText}>
-            {detail.channel.access_type === 'paid' ? 'Mock checkout and open' : 'Join channel'}
+            {detail.channel.access_type === 'paid' ? 'Оплатить и открыть' : 'Вступить в канал'}
           </Text>
         )}
       </Pressable>
