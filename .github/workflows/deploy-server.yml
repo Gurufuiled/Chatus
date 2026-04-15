@@ -30,13 +30,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # secrets нельзя использовать в jobs.<id>.if — workflow станет invalid и GitHub шлёт письма о сбое.
-      - name: Skip deploy (secrets not configured)
-        if: ${{ secrets.DEPLOY_HOST == '' || secrets.DEPLOY_USER == '' || secrets.DEPLOY_SSH_KEY == '' }}
-        run: echo "::notice title=Deploy skipped::Add DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY in repo Actions secrets to enable deploy."
+      # В выражениях if: нельзя ссылаться на secrets (ни у job, ни у step) — workflow будет invalid.
+      # Проверяем наличие секретов в shell через env и выставляем output для условного шага деплоя.
+      - name: Check deploy secrets
+        id: gate
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_USER" ] && [ -n "$DEPLOY_SSH_KEY" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy skipped::Add DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY in repository Actions secrets to enable deploy."
+          fi
 
       - name: Deploy over SSH
-        if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
+        if: steps.gate.outputs.deploy == 'true'
         uses: appleboy/ssh-action@v1.2.5
         env:
           REPO_DIR: ${{ vars.DEPLOY_REPO_DIR || '/root/chatus' }}
