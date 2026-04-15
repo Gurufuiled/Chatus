@@ -28,10 +28,15 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
     runs-on: ubuntu-latest
     steps:
+      # secrets нельзя использовать в jobs.<id>.if — workflow станет invalid и GitHub шлёт письма о сбое.
+      - name: Skip deploy (secrets not configured)
+        if: ${{ secrets.DEPLOY_HOST == '' || secrets.DEPLOY_USER == '' || secrets.DEPLOY_SSH_KEY == '' }}
+        run: echo "::notice title=Deploy skipped::Add DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY in repo Actions secrets to enable deploy."
+
       - name: Deploy over SSH
+        if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' }}
         uses: appleboy/ssh-action@v1.2.5
         env:
           REPO_DIR: ${{ vars.DEPLOY_REPO_DIR || '/root/chatus' }}
