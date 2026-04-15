@@ -261,6 +261,8 @@ export type MappedMessage = {
   id: string;
   chat_id: string;
   sender_id: string;
+  sender_name?: string | null;
+  sender_avatar_url?: string | null;
   msg_type: string;
   content: string | null;
   reply_to_id: string | null;
@@ -289,10 +291,11 @@ export type MappedMessageReaction = {
 };
 
 export function mapMessage(
-  message: Message & { media?: Media[]; reactions?: MessageReaction[] },
+  message: Message & { media?: Media[]; reactions?: MessageReaction[]; sender?: User | null },
   opts?: {
     includeMedia?: boolean;
     includeReactions?: boolean;
+    includeSender?: boolean;
     currentUserId?: string;
   },
 ): MappedMessage {
@@ -318,6 +321,11 @@ export function mapMessage(
     created_at: dateToUnixMs(message.createdAt) ?? 0,
     updated_at: dateToUnixMs(message.updatedAt) ?? 0,
   };
+  if (opts?.includeSender && message.sender) {
+    base.sender_name =
+      message.sender.displayName ?? message.sender.username ?? message.sender.handle ?? null;
+    base.sender_avatar_url = message.sender.avatarUrl ?? null;
+  }
   if (opts?.includeMedia && message.media) {
     base.media = message.media.map(mapMedia);
   }

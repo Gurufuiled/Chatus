@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type ImageResizeMode,
 } from 'react-native';
 import { colors, bubbleRadius, typography } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +39,7 @@ export interface ImageBubbleProps {
   outgoingTextColor?: string;
   centered?: boolean;
   viewCount?: number;
+  resizeMode?: ImageResizeMode;
 }
 
 function computeDisplaySize(
@@ -87,6 +89,7 @@ export function ImageBubble({
   outgoingTextColor,
   centered = false,
   viewCount,
+  resizeMode = 'cover',
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
@@ -162,6 +165,7 @@ export function ImageBubble({
             styles.imageWrapper,
             { width: w, height: h },
             isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
+            embedded && styles.imageWrapperEmbedded,
           ]}
         >
           {!imageLoaded ? (
@@ -188,7 +192,7 @@ export function ImageBubble({
               { width: w, height: h },
               !imageLoaded && styles.imageHidden,
             ]}
-            resizeMode="cover"
+            resizeMode={resizeMode}
           />
 
           {time || viewCount != null ? (
@@ -292,6 +296,9 @@ const styles = StyleSheet.create({
   },
   imageWrapperOther: {
     backgroundColor: 'transparent',
+  },
+  imageWrapperEmbedded: {
+    borderRadius: 0,
   },
   imagePlaceholder: {
     ...StyleSheet.absoluteFillObject,

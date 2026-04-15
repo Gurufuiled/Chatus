@@ -15,6 +15,7 @@ import {
 import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
+import { BlurTargetView } from 'expo-blur';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -102,6 +103,27 @@ type ChannelPostMedia = {
   mime_type?: string;
 };
 
+type RenderPostContentOptions = {
+  visualMediaWidth?: number;
+};
+
+function resolveVisualMediaSize(
+  media: Message['media'][number] | undefined,
+  targetWidth?: number,
+): { width?: number; height?: number } {
+  if (!targetWidth || !media?.width || !media.height || media.width <= 0 || media.height <= 0) {
+    return {
+      width: media?.width,
+      height: media?.height,
+    };
+  }
+
+  return {
+    width: targetWidth,
+    height: Math.round((media.height / media.width) * targetWidth),
+  };
+}
+
 function buildOptimisticMessage({
   channelId,
   userId,
@@ -142,6 +164,7 @@ function buildOptimisticMessage({
 export function ChannelFeedScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const blurTargetRef = React.useRef<View | null>(null);
   const postContentRefs = React.useRef<Record<string, View | null>>({});
   const menuAnim = React.useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
@@ -425,16 +448,17 @@ export function ChannelFeedScreen() {
       const reactionBarHeight = 42;
       const reactionGap = 4;
       const menuGap = 4;
+      const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
       const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
       const previewLeft = Math.max(
         MENU_EDGE_GAP,
-        Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP),
+        Math.min(pageX, SCREEN_WIDTH - previewWidth - MENU_EDGE_GAP),
       );
       const minPreviewTop = Math.max(
         insets.top + 12,
         MENU_EDGE_GAP + reactionBarHeight + reactionGap,
       );
-      const maxPreviewTop = bottomLimit - MENU_HEIGHT - menuGap - height;
+      const maxPreviewTop = bottomLimit - height;
       const anchoredTop = Math.max(
         minPreviewTop,
         Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop)),
@@ -443,7 +467,7 @@ export function ChannelFeedScreen() {
       let previewTop = anchoredTop;
       previewTop = Math.max(
         minPreviewTop,
-        Math.min(previewTop, bottomLimit - MENU_HEIGHT - menuGap - height),
+        Math.min(previewTop, bottomLimit - height),
       );
       const menuTop = previewTop + height + menuGap;
       const menuLeft = Math.max(
@@ -456,7 +480,7 @@ export function ChannelFeedScreen() {
         isMe: false,
         previewTop,
         previewLeft,
-        previewWidth: width,
+        previewWidth,
         previewHeight: height,
         menuTop,
         menuLeft,
@@ -502,7 +526,7 @@ export function ChannelFeedScreen() {
   }, [inputBarHeight]);
 
   const renderPostContent = React.useCallback(
-    (item: Message) => {
+    (item: Message, options?: RenderPostContentOptions) => {
       const media = item.media?.[0];
       const time = formatTime(item.created_at);
 
@@ -513,7 +537,7 @@ export function ChannelFeedScreen() {
             waveform={media.waveform ?? []}
             durationMs={media.duration_ms ?? 0}
             isMe={false}
-            embedded={false}
+            embedded
             time={time}
             viewCount={item.view_count ?? 0}
             status={item.status}
@@ -540,18 +564,20 @@ export function ChannelFeedScreen() {
       if (item.msg_type === 'image' && media?.remote_url) {
         const caption = item.content?.trim() ?? '';
         const hasCaption = caption.length > 0;
+        const mediaSize = resolveVisualMediaSize(media, options?.visualMediaWidth);
         return (
           <>
             <ImageBubble
               uri={media.remote_url}
               isMe={false}
-              embedded={false}
+              embedded
               centered
-              width={media.width}
-              height={media.height}
+              width={mediaSize.width}
+              height={mediaSize.height}
               time={hasCaption ? undefined : time}
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
+              resizeMode="contain"
             />
             {hasCaption ? (
               <View style={styles.mediaCaptionBlock}>
@@ -570,16 +596,17 @@ export function ChannelFeedScreen() {
       if (item.msg_type === 'video' && media?.remote_url) {
         const caption = item.content?.trim() ?? '';
         const hasCaption = caption.length > 0;
+        const mediaSize = resolveVisualMediaSize(media, options?.visualMediaWidth);
         return (
           <>
             <VideoBubble
               uri={media.remote_url}
               thumbnailUri={media.thumbnail_url ?? undefined}
               isMe={false}
-              embedded={false}
+              embedded
               centered
-              width={media.width}
-              height={media.height}
+              width={mediaSize.width}
+              height={mediaSize.height}
               durationMs={media.duration_ms ?? 0}
               time={hasCaption ? undefined : time}
               status={item.status}
@@ -629,25 +656,123 @@ export function ChannelFeedScreen() {
     []
   );
 
+  const renderPostExtras = React.useCallback(
+    (item: Message) => {
+      const hasReactions = (item.reactions?.length ?? 0) > 0;
+      if (!canComment && !hasReactions) return null;
+      const isVisual = item.msg_type === 'image' || item.msg_type === 'video';
+
+      return (
+        <View style={[styles.postActionsRow, isVisual && styles.postActionsRowMedia]}>
+          {canComment ? (
+            <Pressable
+              style={({ pressed }) => [styles.discussionPill, pressed && styles.discussionPillPressed]}
+              onPress={() =>
+                navigation.navigate('ChannelDiscussion', {
+                  channelId,
+                  postId: item.id,
+                })
+              }
+            >
+              <Feather name="message-circle" size={14} color={colors.accent} />
+              <Text style={styles.discussionLink}>{item.comment_count ?? 0} комментариев</Text>
+            </Pressable>
+          ) : null}
+          {hasReactions ? (
+            <View style={styles.reactionSummaryRow}>
+              {item.reactions?.map((reaction) => (
+                <Text key={reaction.emoji} style={styles.reactionSummaryText}>
+                  {reaction.emoji} {reaction.count}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      );
+    },
+    [canComment, channelId, navigation],
+  );
+
+  const renderPostExtrasPreview = React.useCallback(
+    (item: Message) => {
+      const hasReactions = (item.reactions?.length ?? 0) > 0;
+      if (!canComment && !hasReactions) return null;
+      const isVisual = item.msg_type === 'image' || item.msg_type === 'video';
+
+      return (
+        <View
+          style={[
+            styles.postActionsRow,
+            isVisual && styles.postActionsRowMedia,
+            isVisual && styles.postActionsRowPreviewMedia,
+          ]}
+        >
+          {canComment ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.discussionPill,
+                isVisual && styles.discussionPillPreview,
+                pressed && styles.discussionPillPressed,
+              ]}
+              onPress={() =>
+                navigation.navigate('ChannelDiscussion', {
+                  channelId,
+                  postId: item.id,
+                })
+              }
+            >
+              <View style={styles.discussionPreviewLeft}>
+                <Feather name="message-circle" size={14} color={colors.accent} />
+                <Text style={styles.discussionLink}>
+                  {item.comment_count ?? 0} комментариев
+                </Text>
+              </View>
+              {isVisual ? (
+                <Feather
+                  name="chevron-right"
+                  size={16}
+                  color={colors.accent}
+                  style={styles.discussionPreviewChevron}
+                />
+              ) : null}
+            </Pressable>
+          ) : null}
+          {hasReactions ? (
+            <View style={styles.reactionSummaryRow}>
+              {item.reactions?.map((reaction) => (
+                <Text key={reaction.emoji} style={styles.reactionSummaryText}>
+                  {reaction.emoji} {reaction.count}
+                </Text>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      );
+    },
+    [canComment, channelId, navigation],
+  );
+
   const renderPost = React.useCallback(
     ({ item }: { item: Message }) => {
       const media = item.media?.[0];
       const isVisualMediaPost = item.msg_type === 'image' || item.msg_type === 'video';
+      const isVoicePost = item.msg_type === 'voice';
       const mediaWidth = isVisualMediaPost ? (computeChannelMediaWidth(media) ?? 240) : null;
       const hasReactions = (item.reactions?.length ?? 0) > 0;
 
       return (
       <Pressable
-        ref={(node) => setPostContentRef(item.id, node)}
         style={styles.postWrap}
         onLongPress={() => openReactionMenu(item)}
         delayLongPress={220}
       >
         <View
+          ref={(node) => setPostContentRef(item.id, node)}
           style={[
             styles.postBubble,
-            item.msg_type !== 'text' && styles.postBubbleMedia,
-            isVisualMediaPost && mediaWidth ? { width: mediaWidth + 12 } : null,
+            isVisualMediaPost && styles.postBubbleVisualMedia,
+            isVoicePost && styles.postBubbleVoice,
+            isVisualMediaPost && mediaWidth ? { width: mediaWidth } : null,
           ]}
         >
             {isVisualMediaPost ? (
@@ -657,10 +782,14 @@ export function ChannelFeedScreen() {
             )}
 
           {canComment || hasReactions ? (
-            <View style={[styles.postActionsRow, item.msg_type !== 'text' && styles.postActionsRowMedia]}>
+            <View style={[styles.postActionsRow, isVisualMediaPost && styles.postActionsRowMedia]}>
               {canComment ? (
                 <Pressable
-                  style={({ pressed }) => [styles.discussionPill, pressed && styles.discussionPillPressed]}
+                  style={({ pressed }) => [
+                    styles.discussionPill,
+                    isVisualMediaPost && styles.discussionPillMedia,
+                    pressed && styles.discussionPillPressed,
+                  ]}
                   onPress={() =>
                     navigation.navigate('ChannelDiscussion', {
                       channelId,
@@ -669,21 +798,27 @@ export function ChannelFeedScreen() {
                   }
                 >
                   <Feather name="message-circle" size={14} color={colors.accent} />
-                  <Text style={styles.discussionLink}>{item.comment_count ?? 0} комментариев</Text>
+                  <Text style={styles.discussionLink}>
+                    {(item.comment_count ?? 0) > 0
+                      ? `${item.comment_count} комментариев`
+                      : 'Прокомментировать'}
+                  </Text>
+                  {isVisualMediaPost ? (
+                    <Feather name="chevron-right" size={16} color={colors.accent} style={{ marginLeft: 'auto' }} />
+                  ) : null}
                 </Pressable>
-	              ) : null}
-	              {hasReactions ? (
-	                <View style={styles.reactionSummaryRow}>
-	                  {item.reactions?.map((reaction) => (
-	                    <Text key={reaction.emoji} style={styles.reactionSummaryText}>
-	                      {reaction.emoji} {reaction.count}
-	                    </Text>
-	                  ))}
-	                </View>
-	              ) : null}
-
-	            </View>
-	          ) : null}
+              ) : null}
+              {hasReactions ? (
+                <View style={styles.reactionSummaryRow}>
+                  {item.reactions?.map((reaction) => (
+                    <Text key={reaction.emoji} style={styles.reactionSummaryText}>
+                      {reaction.emoji} {reaction.count}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </Pressable>
       );
@@ -693,32 +828,38 @@ export function ChannelFeedScreen() {
 
   const renderMenuPreviewBody = React.useCallback(
     (message: Message, forcedWidth?: number) => {
-      const media = message.media?.[0];
       const isVisualMediaPost = message.msg_type === 'image' || message.msg_type === 'video';
-      const mediaWidth = isVisualMediaPost ? (computeChannelMediaWidth(media) ?? 240) : null;
+      const previewWidth = forcedWidth ? Math.ceil(forcedWidth) : undefined;
+      const visualMediaWidth = isVisualMediaPost && previewWidth
+        ? Math.max(120, previewWidth - 12)
+        : undefined;
 
       return (
         <View
           style={[
             styles.menuPreviewBubble,
-            message.msg_type !== 'text' && styles.postBubbleMedia,
-            isVisualMediaPost && mediaWidth ? { width: mediaWidth + 12 } : null,
-            forcedWidth ? { width: forcedWidth } : null,
+            isVisualMediaPost && styles.postBubbleVisualMedia,
+            message.msg_type === 'voice' && styles.postBubbleVoice,
+            previewWidth ? { width: previewWidth } : null,
           ]}
         >
           {isVisualMediaPost ? (
-            <View style={styles.mediaContentWrap}>{renderPostContent(message)}</View>
+            <View style={styles.mediaContentWrap}>
+              {renderPostContent(message, { visualMediaWidth })}
+            </View>
           ) : (
             renderPostContent(message)
           )}
+          {renderPostExtrasPreview(message)}
         </View>
       );
     },
-    [renderPostContent],
+    [renderPostContent, renderPostExtrasPreview],
   );
 
   return (
     <View style={styles.container}>
+      <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
       <ChatBackgroundPattern />
       {loading && feed.length === 0 ? (
         <View style={styles.loading}>
@@ -757,17 +898,20 @@ export function ChannelFeedScreen() {
           onSendVideoNote={handleSendVideoNote}
           onSendMedia={handleSendMedia}
           onSendFile={handleSendFile}
+          blurTargetRef={blurTargetRef}
           replyToMessage={null}
           replyAuthorName={null}
           onCancelReply={() => undefined}
         />
       ) : null}
+      </BlurTargetView>
 
       <ChatContextMenuOverlay
         menuState={menuState}
         activeMenuMessage={activeMenuMessage}
         menuActions={[]}
         menuAnim={menuAnim}
+        blurTargetRef={blurTargetRef}
         screenWidth={SCREEN_WIDTH}
         showReactions={canReact}
         showMenuCard={false}
@@ -810,6 +954,8 @@ const styles = StyleSheet.create({
   },
   postWrap: {
     marginBottom: 8,
+    width: '100%',
+    alignSelf: 'stretch',
     alignItems: 'flex-start',
   },
   postBubble: {
@@ -821,14 +967,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bubbleOther,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.bubbleOtherBorder,
-    ...bubbleRadius.other,
+    borderRadius: 12,
   },
-  postBubbleMedia: {
+  postBubbleVisualMedia: {
     alignSelf: 'flex-start',
-    alignItems: 'center',
+    alignItems: 'stretch',
     paddingHorizontal: 0,
     paddingTop: 0,
     paddingBottom: 0,
+    overflow: 'hidden',
+  },
+  postBubbleVoice: {
+    paddingHorizontal: 6,
+    paddingTop: 6,
+    paddingBottom: 6,
   },
   menuPreviewBubble: {
     maxWidth: '90%',
@@ -839,15 +991,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bubbleOther,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.bubbleOtherBorder,
-    ...bubbleRadius.other,
+    overflow: 'hidden',
+    borderRadius: 12,
   },
   mediaContentWrap: {
-    alignSelf: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
+    alignItems: 'center',
   },
   postActionsRowMedia: {
     alignSelf: 'stretch',
+    width: '100%',
     paddingHorizontal: 10,
-    paddingBottom: 8,
+    paddingBottom: 10,
+    marginTop: 4,
+  },
+  postActionsRowPreviewMedia: {
+    width: '100%',
+    alignSelf: 'stretch',
+    paddingHorizontal: 10,
+    marginRight: 0,
+    paddingRight: 10,
   },
   postText: {
     color: '#000000',
@@ -892,9 +1056,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(104,132,154,0.35)',
+    borderTopColor: 'rgba(104,132,154,0.25)',
     flexDirection: 'column',
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     gap: 6,
   },
   discussionPill: {
@@ -903,11 +1067,36 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-start',
     gap: 5,
     backgroundColor: 'rgba(255,255,255,0.9)',
+    alignSelf: 'stretch',
+  },
+  discussionPillMedia: {
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    justifyContent: 'flex-start',
   },
   discussionPillPressed: {
     opacity: 0.82,
+  },
+  discussionPillPreview: {
+    width: '100%',
+    minHeight: 28,
+    paddingHorizontal: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    justifyContent: 'space-between',
+  },
+  discussionPreviewLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginLeft: 10,
+  },
+  discussionPreviewChevron: {
+    marginRight: 4,
   },
   discussionLink: {
     color: colors.accent,
@@ -919,6 +1108,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 2,
+    paddingHorizontal: 2,
   },
   reactionSummaryText: {
     fontSize: 13,

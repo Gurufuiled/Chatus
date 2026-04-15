@@ -481,6 +481,7 @@ export class ChannelsService {
       include: {
         media: true,
         reactions: true,
+        sender: true,
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -495,6 +496,7 @@ export class ChannelsService {
         mapMessage(message, {
           includeMedia: true,
           includeReactions: true,
+          includeSender: true,
           currentUserId: userId,
         }),
       ),

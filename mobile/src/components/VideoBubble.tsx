@@ -510,6 +510,7 @@ export function VideoBubble({
             styles.videoWrapper,
             { width: w, height: h },
             isMe ? styles.videoWrapperMe : styles.videoWrapperOther,
+            embedded && styles.videoWrapperEmbedded,
           ]}
         >
           {posterUri ? (
@@ -612,6 +613,9 @@ const styles = StyleSheet.create({
   },
   videoWrapperOther: {
     backgroundColor: '#0B1020',
+  },
+  videoWrapperEmbedded: {
+    borderRadius: 0,
   },
   poster: {
     ...StyleSheet.absoluteFillObject,

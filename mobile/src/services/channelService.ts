@@ -75,6 +75,8 @@ type ApiMessage = {
   id: string;
   chat_id: string;
   sender_id: string;
+  sender_name?: string | null;
+  sender_avatar_url?: string | null;
   msg_type: string;
   content: string | null;
   reply_to_id?: string | null;
@@ -159,6 +161,8 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
     id: api.id,
     chat_id: api.chat_id,
     sender_id: api.sender_id,
+    sender_name: api.sender_name ?? null,
+    sender_avatar_url: api.sender_avatar_url ?? null,
     msg_type: api.msg_type,
     content: api.content,
     reply_to_id: api.reply_to_id ?? null,
