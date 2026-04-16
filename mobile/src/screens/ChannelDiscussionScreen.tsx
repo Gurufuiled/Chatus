@@ -1,19 +1,32 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
-  Image,
   Keyboard,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Feather from '@expo/vector-icons/Feather';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurTargetView } from 'expo-blur';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChatsStackParamList } from '../navigation/types';
 import {
   fetchDiscussionThread,
@@ -22,62 +35,420 @@ import {
 import { channelStore } from '../stores/channelStore';
 import { authStore } from '../stores/authStore';
 import type { Message } from '../stores/types';
-import { colors } from '../theme/colors';
-import { formatTime } from './chatScreen.shared';
+import { bubbleRadius, colors } from '../theme/colors';
+import {
+  ChatContextMenuOverlay,
+  ChatInputDock,
+  FileBubble,
+  ImageBubble,
+  MessageTimeStatus,
+  ReplyPreview,
+  VideoBubble,
+  VideoNoteBubble,
+  VoiceBubble,
+  buildReplyPreviewText,
+  getReplyPreviewThumbnailUri,
+} from '../components';
+import type { FilePickResult, MediaPickResult } from '../components/InputBar';
+import {
+  ChatBackgroundPattern,
+  MENU_EDGE_GAP,
+  MENU_HEIGHT,
+  MENU_WIDTH,
+  SCREEN_HEIGHT,
+  SCREEN_WIDTH,
+  formatTime,
+} from './chatScreen.shared';
+import { resolveAvatarUrl } from '../config';
+import { TransportService } from '../services/TransportService';
+import { WebSocketService } from '../services/WebSocketService';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelDiscussion'>;
+type DiscussionMenuActionKey = 'reply' | 'copy' | 'delete';
+type DiscussionOverlayActionKey = DiscussionMenuActionKey | 'delete_confirm' | 'delete_cancel';
+type DiscussionMenuMode = 'actions' | 'deleteConfirm';
 
+type MenuAction = {
+  key: DiscussionOverlayActionKey;
+  label: string;
+  icon?: React.ComponentProps<typeof Feather>['name'] | null;
+  color: string;
+  disabled: boolean;
+  textOnly?: boolean;
+};
+
+type MenuState = {
+  messageId: string;
+  isMe: boolean;
+  previewTop: number;
+  previewLeft: number;
+  previewWidth: number;
+  previewHeight: number;
+  menuTop: number;
+  menuLeft: number;
+  placement: 'above' | 'below';
+} | null;
+
+const EMPTY_MESSAGES: Message[] = [];
+const REPLY_SWIPE_TRIGGER = 34;
+const REPLY_SWIPE_MAX = 72;
 const AVATAR_SIZE = 36;
-const AVATAR_COLORS = [
-  '#E57373', '#F06292', '#BA68C8', '#9575CD',
-  '#7986CB', '#64B5F6', '#4FC3F7', '#4DB6AC',
-  '#81C784', '#AED581', '#FFD54F', '#FFB74D',
-];
+const AVATAR_COLORS = ['#8B5CF6', '#EC4899', '#F97316', '#0EA5E9', '#10B981', '#EAB308'];
 
 function hashColor(id: string): string {
   let hash = 0;
-  for (let i = 0; i < id.length; i++) {
+  for (let i = 0; i < id.length; i += 1) {
     hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? colors.accent;
 }
 
-function nameInitial(name?: string | null): string {
-  if (!name) return '?';
-  return name.charAt(0).toUpperCase();
+function getInitial(name: string | null | undefined): string {
+  return name?.trim().charAt(0).toUpperCase() || '?';
+}
+
+function clampReplySwipe(value: number) {
+  'worklet';
+  return Math.max(-REPLY_SWIPE_MAX, Math.min(0, value));
+}
+
+type ReplySwipeWrapperProps = {
+  enabled: boolean;
+  onReply: () => void;
+  children: React.ReactNode;
+};
+
+const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({ enabled, onReply, children }: ReplySwipeWrapperProps) {
+  const translateX = useSharedValue(0);
+  const hasTriggered = useSharedValue(false);
+  const triggerPop = useSharedValue(0);
+
+  const gesture = Gesture.Pan()
+    .enabled(enabled)
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-10, 10])
+    .onBegin(() => {
+      hasTriggered.value = false;
+    })
+    .onUpdate((event) => {
+      if (event.translationX > 0) {
+        translateX.value = 0;
+        return;
+      }
+      const nextX = clampReplySwipe(event.translationX);
+      translateX.value = nextX;
+      if (!hasTriggered.value && nextX <= -REPLY_SWIPE_TRIGGER) {
+        hasTriggered.value = true;
+        triggerPop.value = withSequence(withTiming(1, { duration: 70 }), withTiming(0, { duration: 120 }));
+        runOnJS(onReply)();
+      }
+    })
+    .onFinalize(() => {
+      translateX.value = withTiming(0, { duration: 140 });
+      hasTriggered.value = false;
+    });
+
+  const contentStyle = useAnimatedStyle(() => {
+    const scale = interpolate(triggerPop.value, [0, 1], [1, 0.985], Extrapolation.CLAMP);
+    return { transform: [{ translateX: translateX.value }, { scale }] as const };
+  });
+
+  const iconStyle = useAnimatedStyle(() => {
+    const progress = Math.abs(translateX.value) / REPLY_SWIPE_TRIGGER;
+    const opacity = interpolate(progress, [0, 0.3, 1], [0, 0.45, 1], Extrapolation.CLAMP);
+    const baseScale = interpolate(progress, [0, 1], [0.84, 1], Extrapolation.CLAMP);
+    const scaleBoost = interpolate(triggerPop.value, [0, 1], [0, 0.18], Extrapolation.CLAMP);
+    return { opacity, transform: [{ scale: baseScale + scaleBoost }] };
+  });
+
+  if (!enabled) {
+    return <View style={styles.replyGestureContainer}>{children}</View>;
+  }
+
+  return (
+    <GestureDetector gesture={gesture}>
+      <View style={styles.replyGestureContainer}>
+        <Reanimated.View style={[styles.replySwipeAction, iconStyle]}>
+          <View style={styles.replySwipeIconWrap}>
+            <Feather name="corner-left-up" size={18} color={colors.accent} />
+          </View>
+        </Reanimated.View>
+        <Reanimated.View style={contentStyle}>{children}</Reanimated.View>
+      </View>
+    </GestureDetector>
+  );
+});
+type DiscussionMessageBubbleProps = {
+  item: Message;
+  isMe: boolean;
+  repliedMessage: Message | null;
+  forcedWidth?: number;
+  setContentRef?: (node: View | null) => void;
+  onLongPress?: () => void;
+  onReplyPreviewPress?: (messageId: string) => void;
+};
+
+function DiscussionMessageBubble({
+  item,
+  isMe,
+  repliedMessage,
+  forcedWidth,
+  setContentRef,
+  onLongPress,
+  onReplyPreviewPress,
+}: DiscussionMessageBubbleProps) {
+  const time = formatTime(item.created_at);
+  const displayStatus =
+    isMe && (item.status === 'delivered' || item.status === 'read')
+      ? 'sent'
+      : item.status;
+  const reactionSummary =
+    item.reactions && item.reactions.length > 0
+      ? item.reactions.map((reaction) => `${reaction.emoji} ${reaction.count}`).join('   ')
+      : null;
+
+  const renderReplySnippet = () => {
+    if (!item.reply_to_id) return null;
+    const author = repliedMessage ? repliedMessage.sender_name || repliedMessage.sender_id : 'Original message';
+    const text = repliedMessage ? buildReplyPreviewText(repliedMessage) : 'Original message unavailable';
+    return (
+      <ReplyPreview
+        author={author}
+        text={text}
+        accentColor={isMe ? '#DFF2A8' : '#F28C28'}
+        backgroundColor={isMe ? '#6A9EFF' : '#F2F4D9'}
+        textColor={isMe ? 'rgba(255,255,255,0.88)' : '#5F6368'}
+        authorColor={isMe ? '#FFD08A' : '#D1782B'}
+        thumbnailUri={getReplyPreviewThumbnailUri(repliedMessage)}
+        onPress={onReplyPreviewPress && item.reply_to_id ? () => onReplyPreviewPress(item.reply_to_id!) : undefined}
+      />
+    );
+  };
+
+  const media = item.media?.[0];
+  const replySnippet = renderReplySnippet();
+
+  const content = (() => {
+    if (item.is_deleted === 1) {
+      return (
+        <View style={[styles.textBubble, isMe ? styles.textBubbleMe : styles.textBubbleOther]}>
+          {replySnippet}
+          <Text style={styles.deletedText}>{isMe ? 'Вы удалили сообщение' : 'Сообщение удалено'}</Text>
+          <MessageTimeStatus time={time} status={displayStatus} isMe={isMe} compact />
+        </View>
+      );
+    }
+
+    if (item.msg_type === 'voice' && media) {
+      return (
+        <View style={styles.mediaWrap}>
+          {replySnippet}
+          <VoiceBubble
+            uri={media.remote_url ?? `file://${item.id}`}
+            waveform={media.waveform ?? []}
+            durationMs={media.duration_ms ?? 0}
+            isMe={isMe}
+            time={time}
+            status={displayStatus}
+            embedded={!!replySnippet}
+          />
+        </View>
+      );
+    }
+
+    if (item.msg_type === 'video_note' && media?.remote_url) {
+      return (
+        <View style={styles.mediaWrap}>
+          {replySnippet}
+          <VideoNoteBubble
+            messageId={item.id}
+            uri={media.remote_url}
+            thumbnailUri={media.thumbnail_url ?? undefined}
+            durationMs={media.duration_ms ?? 0}
+            isMe={isMe}
+            time={time}
+            status={displayStatus}
+            embedded={!!replySnippet}
+            registerPlaybackState={false}
+          />
+        </View>
+      );
+    }
+
+    if (item.msg_type === 'image' && media?.remote_url) {
+      return (
+        <View style={styles.mediaWrap}>
+          {replySnippet}
+          <ImageBubble
+            uri={media.remote_url}
+            isMe={isMe}
+            width={media.width}
+            height={media.height}
+            caption={item.content ?? undefined}
+            time={time}
+            status={displayStatus}
+            embedded={!!replySnippet}
+          />
+        </View>
+      );
+    }
+
+    if (item.msg_type === 'video' && media?.remote_url) {
+      return (
+        <View style={styles.mediaWrap}>
+          {replySnippet}
+          <VideoBubble
+            uri={media.remote_url}
+            thumbnailUri={media.thumbnail_url ?? undefined}
+            isMe={isMe}
+            width={media.width}
+            height={media.height}
+            durationMs={media.duration_ms ?? 0}
+            caption={item.content ?? undefined}
+            time={time}
+            status={displayStatus}
+            embedded={!!replySnippet}
+          />
+        </View>
+      );
+    }
+
+    if (item.msg_type === 'file' && media) {
+      return (
+        <View style={styles.mediaWrap}>
+          {replySnippet}
+          <FileBubble
+            fileName={media.file_name ?? item.content ?? 'File'}
+            fileSize={media.file_size}
+            uri={media.remote_url ?? undefined}
+            isMe={isMe}
+            caption={item.content ?? undefined}
+            time={time}
+            status={displayStatus}
+          />
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.textBubble, isMe ? styles.textBubbleMe : styles.textBubbleOther]}>
+        {replySnippet}
+        {!isMe ? (
+          <Text style={[styles.authorText, { color: hashColor(item.sender_id) }]}>{item.sender_name || item.sender_id}</Text>
+        ) : null}
+        <View style={styles.textContentRow}>
+          <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.content?.trim() || 'Сообщение'}</Text>
+          <MessageTimeStatus time={time} status={displayStatus} isMe={isMe} compact />
+        </View>
+      </View>
+    );
+  })();
+
+  return (
+    <View
+      ref={setContentRef}
+      style={[
+        styles.bubbleColumn,
+        isMe ? styles.bubbleColumnMe : styles.bubbleColumnOther,
+        forcedWidth ? { width: Math.ceil(forcedWidth), maxWidth: Math.ceil(forcedWidth) } : null,
+      ]}
+    >
+      <Pressable onLongPress={onLongPress} delayLongPress={220}>{content}</Pressable>
+      {reactionSummary ? <Text style={styles.reactionSummaryText}>{reactionSummary}</Text> : null}
+    </View>
+  );
+}
+
+function scaleMedia(media: Message['media'][number] | undefined, maxWidth: number) {
+  const w = media?.width ?? 0;
+  const h = media?.height ?? 0;
+  if (!w || !h) return null;
+  const scale = Math.min(maxWidth / w, 1);
+  return { width: Math.round(w * scale), height: Math.round(h * scale) };
 }
 
 function OriginalPostHeader({ post }: { post: Message | null }) {
   if (!post) return null;
   const time = formatTime(post.created_at);
+  const media = post.media?.[0];
+  const text = post.content?.trim() ?? '';
+  const isVisualMedia = post.msg_type === 'image' || post.msg_type === 'video';
+  const captionText = isVisualMedia ? text : '';
 
   return (
-    <View style={styles.originalPost}>
-      <View style={styles.originalPostBody}>
-        {post.content ? (
-          <Text style={styles.originalPostText} numberOfLines={6}>
-            {post.content}
-          </Text>
-        ) : (
-          <Text style={styles.originalPostMediaLabel}>
-            {post.msg_type === 'image'
-              ? '🖼 Фото'
-              : post.msg_type === 'video'
-                ? '🎬 Видео'
-                : post.msg_type === 'voice'
-                  ? '🎤 Голосовое'
-                  : post.msg_type === 'video_note'
-                    ? '📹 Видео-кружок'
-                    : post.msg_type === 'file'
-                      ? '📎 Файл'
-                      : 'Публикация'}
-          </Text>
-        )}
-        <View style={styles.originalPostMeta}>
-          <Feather name="eye" size={12} color="#8E99A4" />
-          <Text style={styles.originalPostMetaText}>{post.view_count ?? 0}</Text>
-          <Text style={styles.originalPostMetaText}>{time}</Text>
-        </View>
+    <View style={styles.originalPostWrap}>
+      <View style={styles.originalPostAlign}>
+        {post.msg_type === 'image' && media?.remote_url ? (
+          <ImageBubble
+            uri={media.remote_url}
+            isMe={false}
+            width={media.width}
+            height={media.height}
+            caption={captionText || undefined}
+            time={time}
+            status={post.status}
+            viewCount={post.view_count ?? 0}
+            resizeMode="cover"
+          />
+        ) : null}
+        {post.msg_type === 'video' && media?.remote_url ? (
+          <VideoBubble
+            uri={media.remote_url}
+            thumbnailUri={media.thumbnail_url ?? undefined}
+            isMe={false}
+            width={media.width}
+            height={media.height}
+            durationMs={media.duration_ms ?? 0}
+            caption={captionText || undefined}
+            time={time}
+            status={post.status}
+            viewCount={post.view_count ?? 0}
+          />
+        ) : null}
+        {post.msg_type === 'voice' && media ? (
+          <VoiceBubble
+            uri={media.remote_url ?? `file://${post.id}`}
+            waveform={media.waveform ?? []}
+            durationMs={media.duration_ms ?? 0}
+            isMe={false}
+            time={time}
+            status={post.status}
+            viewCount={post.view_count ?? 0}
+          />
+        ) : null}
+        {post.msg_type === 'video_note' && media?.remote_url ? (
+          <VideoNoteBubble
+            messageId={post.id}
+            uri={media.remote_url}
+            thumbnailUri={media.thumbnail_url ?? undefined}
+            durationMs={media.duration_ms ?? 0}
+            isMe={false}
+            time={time}
+            status={post.status}
+            registerPlaybackState={false}
+          />
+        ) : null}
+        {post.msg_type === 'file' && media ? (
+          <FileBubble
+            fileName={media.file_name ?? post.content ?? 'File'}
+            fileSize={media.file_size}
+            uri={media.remote_url ?? undefined}
+            isMe={false}
+            caption={text || undefined}
+            time={time}
+            status={post.status}
+          />
+        ) : null}
+        {post.msg_type === 'text' || (!isVisualMedia && post.msg_type !== 'voice' && post.msg_type !== 'video_note' && post.msg_type !== 'file') ? (
+          <View style={styles.originalPostTextBubble}>
+            {text ? <Text style={styles.originalPostText}>{text}</Text> : null}
+            <View style={styles.originalPostMeta}>
+              <Feather name="eye" size={12} color="#6B7E8F" />
+              <Text style={styles.originalPostMetaText}>{post.view_count ?? 0}</Text>
+              <Text style={styles.originalPostMetaText}>{time}</Text>
+            </View>
+          </View>
+        ) : null}
       </View>
       <View style={styles.discussionDivider}>
         <View style={styles.discussionDividerLine} />
@@ -87,76 +458,50 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
     </View>
   );
 }
-
-function CommentBubble({ item }: { item: Message }) {
-  const currentUserId = authStore((s) => s.user?.id);
-  const isMe = item.sender_id === currentUserId;
-  const name = item.sender_name || item.sender_id.slice(0, 8);
-  const avatarUrl = item.sender_avatar_url;
-  const time = formatTime(item.created_at);
-  const bgColor = hashColor(item.sender_id);
-
-  return (
-    <View style={styles.commentRow}>
-      {!isMe ? (
-        avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: bgColor }]}>
-            <Text style={styles.avatarInitial}>{nameInitial(name)}</Text>
-          </View>
-        )
-      ) : (
-        <View style={styles.avatarSpacer} />
-      )}
-      <View
-        style={[
-          styles.commentBubble,
-          isMe ? styles.commentBubbleMe : styles.commentBubbleOther,
-        ]}
-      >
-        {!isMe ? (
-          <Text style={[styles.commentAuthor, { color: bgColor }]}>{name}</Text>
-        ) : null}
-        <Text style={[styles.commentText, isMe && styles.commentTextMe]}>
-          {item.content || 'Медиаответ'}
-        </Text>
-        <View style={styles.commentMeta}>
-          {item.reactions && item.reactions.length > 0 ? (
-            <View style={styles.commentReactions}>
-              {item.reactions.map((r) => (
-                <Text key={r.emoji} style={styles.commentReactionText}>
-                  {r.emoji} {r.count}
-                </Text>
-              ))}
-            </View>
-          ) : null}
-          <Text style={[styles.commentTime, isMe && styles.commentTimeMe]}>{time}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 export function ChannelDiscussionScreen() {
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
+  const animatedKeyboard = useAnimatedKeyboard();
+  const blurTargetRef = React.useRef<View | null>(null);
+  const listRef = React.useRef<FlatList<Message> | null>(null);
+  const contentRefs = React.useRef<Record<string, View | null>>({});
+  const menuAnim = React.useRef(new Animated.Value(0)).current;
+
   const { channelId, postId } = route.params;
   const key = `${channelId}:${postId}`;
   const thread = channelStore((state) => state.discussionByKey[key]);
-  const originalPost = channelStore(
-    (state) => (state.feedByChannelId[channelId] ?? []).find((p) => p.id === postId) ?? null,
-  );
-  const [loading, setLoading] = React.useState(!thread);
-  const [draft, setDraft] = React.useState('');
-  const [sending, setSending] = React.useState(false);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
-  const listRef = React.useRef<FlatList<Message>>(null);
+  const currentUser = authStore((state) => state.user);
+  const currentUserId = currentUser?.id ?? null;
 
-  const sortedMessages = React.useMemo(() => {
-    if (!thread?.messages) return [];
-    return [...thread.messages].sort((a, b) => a.created_at - b.created_at);
-  }, [thread?.messages]);
+  const [loading, setLoading] = React.useState(!thread);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [inputBarHeight, setInputBarHeight] = React.useState(88);
+  const [replyToMessageId, setReplyToMessageId] = React.useState<string | null>(null);
+  const [menuState, setMenuState] = React.useState<MenuState>(null);
+  const [menuMode, setMenuMode] = React.useState<DiscussionMenuMode>('actions');
+
+  const messages = thread?.messages ?? EMPTY_MESSAGES;
+  const sortedMessages = React.useMemo(() => [...messages].sort((a, b) => a.created_at - b.created_at), [messages]);
+  const messageById = React.useMemo(() => {
+    const map = new Map<string, Message>();
+    for (const message of sortedMessages) {
+      map.set(message.id, message);
+    }
+    return map;
+  }, [sortedMessages]);
+
+  const replyToMessage = replyToMessageId ? messageById.get(replyToMessageId) ?? null : null;
+  const replyAuthorName = replyToMessage ? replyToMessage.sender_name || replyToMessage.sender_id : null;
+  const activeMenuMessage = menuState ? messageById.get(menuState.messageId) ?? null : null;
+
+  const updateThread = React.useCallback(
+    (updater: (current: NonNullable<typeof thread>) => NonNullable<typeof thread>) => {
+      const current = channelStore.getState().discussionByKey[key];
+      if (!current) return;
+      channelStore.getState().setDiscussion(key, updater(current));
+    },
+    [key],
+  );
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -167,11 +512,11 @@ export function ChannelDiscussionScreen() {
         discussion_chat_id: next.discussion_chat_id,
         thread_root_message_id: next.thread_root_message_id,
         can_comment: next.can_comment,
+        post: next.post,
         messages: next.messages,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Попробуйте еще раз.';
-      setLoadError(message);
+      setLoadError(error instanceof Error ? error.message : 'Не удалось загрузить обсуждение.');
     } finally {
       setLoading(false);
     }
@@ -181,307 +526,529 @@ export function ChannelDiscussionScreen() {
     void load();
   }, [load]);
 
-  const handleSend = React.useCallback(async () => {
-    const content = draft.trim();
-    if (!content) return;
-    Keyboard.dismiss();
-    setSending(true);
-    try {
-      const message = await sendDiscussionMessage(channelId, postId, { content });
-      channelStore.getState().prependDiscussionMessage(key, message);
-      setDraft('');
-      setTimeout(() => {
-        listRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    } catch (error) {
-      Alert.alert(
-        'Не удалось отправить комментарий',
-        error instanceof Error ? error.message : 'Попробуйте еще раз.',
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [channelId, draft, key, postId]);
+  React.useEffect(() => {
+    if (!replyToMessageId) return;
+    if (messageById.has(replyToMessageId)) return;
+    setReplyToMessageId(null);
+  }, [messageById, replyToMessageId]);
 
-  const renderComment = React.useCallback(
-    ({ item }: { item: Message }) => <CommentBubble item={item} />,
-    [],
+  const closeMenu = React.useCallback(() => {
+    Animated.timing(menuAnim, { toValue: 0, duration: 140, useNativeDriver: true }).start(({ finished }) => {
+      if (finished) {
+        setMenuMode('actions');
+        setMenuState(null);
+      }
+    });
+  }, [menuAnim]);
+
+  React.useEffect(() => {
+    if (!menuState) {
+      menuAnim.setValue(0);
+      return;
+    }
+    Animated.spring(menuAnim, { toValue: 1, damping: 18, stiffness: 220, mass: 0.9, useNativeDriver: true }).start();
+  }, [menuAnim, menuState]);
+
+  const setContentRef = React.useCallback((messageId: string, node: View | null) => {
+    if (node) {
+      contentRefs.current[messageId] = node;
+      return;
+    }
+    delete contentRefs.current[messageId];
+  }, []);
+
+  const openMessageMenu = React.useCallback((message: Message) => {
+    const target = contentRefs.current[message.id];
+    if (!target) return;
+    Keyboard.dismiss();
+    setMenuMode('actions');
+
+    target.measureInWindow((pageX, pageY, width, height) => {
+      const reactionBarHeight = 42;
+      const reactionGap = 4;
+      const menuGap = 4;
+      const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
+      const previewLeft = Math.max(MENU_EDGE_GAP, Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP));
+      const minPreviewTop = Math.max(insets.top + 12, MENU_EDGE_GAP + reactionBarHeight + reactionGap);
+      const maxPreviewTop = bottomLimit - MENU_HEIGHT - menuGap - height;
+      const anchoredTop = Math.max(minPreviewTop, Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop)));
+      const menuLeftBase = message.sender_id === currentUserId ? previewLeft + width - MENU_WIDTH : previewLeft;
+      const menuLeft = Math.max(MENU_EDGE_GAP, Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP));
+      const previewTop = Math.max(minPreviewTop, Math.min(anchoredTop, bottomLimit - MENU_HEIGHT - menuGap - height));
+      const menuTop = previewTop + height + menuGap;
+
+      setMenuState({
+        messageId: message.id,
+        isMe: message.sender_id === currentUserId,
+        previewTop,
+        previewLeft,
+        previewWidth: width,
+        previewHeight: height,
+        menuTop,
+        menuLeft,
+        placement: 'below',
+      });
+    });
+  }, [currentUserId, insets.bottom, insets.top]);
+
+  const menuActions = React.useMemo<MenuAction[]>(() => {
+    if (!activeMenuMessage) return [];
+    if (menuMode === 'deleteConfirm') {
+      return [
+        { key: 'delete_confirm', label: 'Удалить для всех', icon: null, color: '#E53935', disabled: false, textOnly: true },
+        { key: 'delete_cancel', label: 'Отмена', icon: null, color: '#111827', disabled: false, textOnly: true },
+      ];
+    }
+    return [
+      { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: '#111827', disabled: false },
+      { key: 'copy', label: 'Скопировать', icon: 'copy', color: '#111827', disabled: false },
+      { key: 'delete', label: 'Удалить', icon: 'trash-2', color: '#E53935', disabled: activeMenuMessage.sender_id !== currentUserId },
+    ];
+  }, [activeMenuMessage, currentUserId, menuMode]);
+
+  const handleDeleteMessage = React.useCallback((message: Message) => {
+    if (!thread) return;
+    if (message.sender_id !== currentUserId) {
+      closeMenu();
+      Alert.alert('Удаление недоступно', 'Можно удалять только свои комментарии.');
+      return;
+    }
+    updateThread((current) => ({
+      ...current,
+      messages: current.messages.map((item) => (item.id === message.id ? { ...item, is_deleted: 1, content: null } : item)),
+    }));
+    closeMenu();
+    TransportService.deleteMessage(thread.discussion_chat_id, message.id);
+  }, [closeMenu, currentUserId, thread, updateThread]);
+
+  const handleMenuAction = React.useCallback(async (keyAction: DiscussionMenuActionKey) => {
+    if (!activeMenuMessage) return;
+    if (keyAction === 'reply') {
+      setReplyToMessageId(activeMenuMessage.id);
+      closeMenu();
+      return;
+    }
+    if (keyAction === 'copy') {
+      const value = (activeMenuMessage.content ?? '').trim();
+      closeMenu();
+      if (!value) {
+        Alert.alert('Нечего копировать', 'В этом комментарии нет текста.');
+        return;
+      }
+      await Clipboard.setStringAsync(value);
+      return;
+    }
+    if (activeMenuMessage.sender_id !== currentUserId) {
+      closeMenu();
+      Alert.alert('Удаление недоступно', 'Можно удалять только свои комментарии.');
+      return;
+    }
+    setMenuMode('deleteConfirm');
+  }, [activeMenuMessage, closeMenu, currentUserId]);
+
+  const handleDeleteConfirmAction = React.useCallback((action: 'delete_confirm' | 'delete_cancel') => {
+    if (!activeMenuMessage) return;
+    if (action === 'delete_cancel') {
+      setMenuMode('actions');
+      return;
+    }
+    handleDeleteMessage(activeMenuMessage);
+  }, [activeMenuMessage, handleDeleteMessage]);
+  const canSwipeReply = React.useCallback((message: Message) => {
+    if (message.is_deleted === 1) return false;
+    return ['text', 'voice', 'video_note', 'image', 'video', 'file'].includes(message.msg_type);
+  }, []);
+
+  const sendWithOptimistic = React.useCallback(
+    async ({
+      type,
+      content,
+      mediaPayload,
+      optimisticMedia,
+    }: {
+      type: Message['msg_type'];
+      content: string | null;
+      mediaPayload?: {
+        url?: string;
+        waveform?: number[];
+        duration_ms?: number;
+        thumbnail_url?: string;
+        is_round?: boolean;
+        width?: number;
+        height?: number;
+        file_name?: string;
+        file_size?: number;
+        mime_type?: string;
+      };
+      optimisticMedia?: Message['media'];
+    }) => {
+      if (!currentUserId || !thread) return;
+      const now = Date.now();
+      const tempId = `temp-discussion-${now}-${Math.round(Math.random() * 1000)}`;
+      const optimistic: Message = {
+        id: tempId,
+        chat_id: thread.discussion_chat_id,
+        sender_id: currentUserId,
+        sender_name: currentUser?.display_name ?? currentUser?.username ?? null,
+        sender_avatar_url: currentUser?.avatar_url ?? null,
+        msg_type: type,
+        content,
+        reply_to_id: replyToMessageId,
+        thread_root_message_id: postId,
+        is_channel_post: 0,
+        view_count: 0,
+        comment_count: 0,
+        is_edited: 0,
+        is_deleted: 0,
+        status: 'sending',
+        transport: 'api',
+        server_id: null,
+        created_at: now,
+        updated_at: now,
+        reactions: [],
+        media: optimisticMedia,
+      };
+
+      updateThread((current) => ({ ...current, messages: [...current.messages, optimistic] }));
+      setReplyToMessageId(null);
+
+      try {
+        const saved = await sendDiscussionMessage(channelId, postId, {
+          msg_type: type,
+          content,
+          reply_to_id: optimistic.reply_to_id,
+          media: mediaPayload,
+        });
+        updateThread((current) => ({
+          ...current,
+          messages: [...current.messages.filter((item) => item.id !== tempId && item.id !== saved.id), saved],
+        }));
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+      } catch (error) {
+        updateThread((current) => ({ ...current, messages: current.messages.filter((item) => item.id !== tempId) }));
+        Alert.alert('Не удалось отправить комментарий', error instanceof Error ? error.message : 'Попробуйте ещё раз.');
+      }
+    },
+    [channelId, currentUser, currentUserId, postId, replyToMessageId, thread, updateThread],
   );
+
+  const handleSendText = React.useCallback((text: string) => {
+    const content = text.trim();
+    if (!content) return;
+    void sendWithOptimistic({ type: 'text', content });
+  }, [sendWithOptimistic]);
+
+  const handleSendVoice = React.useCallback(async (result: { uri: string; waveform: number[]; durationMs: number }) => {
+    await sendWithOptimistic({
+      type: 'voice',
+      content: null,
+      mediaPayload: { url: result.uri, waveform: result.waveform, duration_ms: result.durationMs },
+      optimisticMedia: [{ remote_url: result.uri, waveform: result.waveform, duration_ms: result.durationMs }],
+    });
+  }, [sendWithOptimistic]);
+
+  const handleSendVideoNote = React.useCallback(async (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
+    await sendWithOptimistic({
+      type: 'video_note',
+      content: null,
+      mediaPayload: { url: result.uri, duration_ms: result.durationMs, thumbnail_url: result.thumbnailUri, is_round: true },
+      optimisticMedia: [{ remote_url: result.uri, duration_ms: result.durationMs, thumbnail_url: result.thumbnailUri, is_round: true }],
+    });
+  }, [sendWithOptimistic]);
+
+  const handleSendMedia = React.useCallback(async (result: MediaPickResult) => {
+    const type: Message['msg_type'] = result.kind === 'video' ? 'video' : 'image';
+    await sendWithOptimistic({
+      type,
+      content: result.caption?.trim() || null,
+      mediaPayload: {
+        url: result.uri,
+        thumbnail_url: result.previewUri,
+        width: result.width,
+        height: result.height,
+        duration_ms: result.durationMs,
+        file_name: result.fileName,
+        mime_type: result.mimeType,
+      },
+      optimisticMedia: [{
+        remote_url: result.uri,
+        thumbnail_url: result.previewUri,
+        width: result.width,
+        height: result.height,
+        duration_ms: result.durationMs,
+        file_name: result.fileName,
+      }],
+    });
+  }, [sendWithOptimistic]);
+
+  const handleSendFile = React.useCallback(async (result: FilePickResult) => {
+    await sendWithOptimistic({
+      type: 'file',
+      content: result.name,
+      mediaPayload: { url: result.uri, file_name: result.name, file_size: result.size, mime_type: result.mimeType },
+      optimisticMedia: [{ remote_url: result.uri, file_name: result.name, file_size: result.size }],
+    });
+  }, [sendWithOptimistic]);
+
+  const handlePickReaction = React.useCallback((emoji: string) => {
+    if (!activeMenuMessage || !thread) return;
+    WebSocketService.sendEvent('toggle_reaction', {
+      chat_id: thread.discussion_chat_id,
+      message_id: activeMenuMessage.id,
+      emoji,
+    });
+    closeMenu();
+  }, [activeMenuMessage, closeMenu, thread]);
+
+  const handleInputBarLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const next = Math.ceil(event.nativeEvent.layout.height);
+    if (next > 0 && next !== inputBarHeight) {
+      setInputBarHeight(next);
+    }
+  }, [inputBarHeight]);
+
+  const inputBarAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }] }));
+  const listWrapAnimatedStyle = useAnimatedStyle(() => ({ marginBottom: Math.max(animatedKeyboard.height.value, 0) }));
+
+  const renderRow = React.useCallback(({ item }: { item: Message }) => {
+    const isMe = item.sender_id === currentUserId;
+    const avatarUri = resolveAvatarUrl(item.sender_avatar_url ?? null);
+    const avatarLabel = item.sender_name || item.sender_id;
+    const replied = item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null;
+
+    return (
+      <ReplySwipeWrapper enabled={thread?.can_comment === true && canSwipeReply(item)} onReply={() => setReplyToMessageId(item.id)}>
+        <View style={[styles.row, isMe ? styles.rowMe : styles.rowOther]}>
+          {!isMe ? (
+            avatarUri ? (
+              <Reanimated.Image source={{ uri: avatarUri }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: hashColor(item.sender_id) }]}>
+                <Text style={styles.avatarInitial}>{getInitial(avatarLabel)}</Text>
+              </View>
+            )
+          ) : null}
+          <DiscussionMessageBubble
+            item={item}
+            isMe={isMe}
+            repliedMessage={replied}
+            setContentRef={(node) => setContentRef(item.id, node)}
+            onLongPress={() => openMessageMenu(item)}
+            onReplyPreviewPress={(messageId) => {
+              const targetIndex = sortedMessages.findIndex((m) => m.id === messageId);
+              if (targetIndex < 0) return;
+              listRef.current?.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0.5 });
+            }}
+          />
+        </View>
+      </ReplySwipeWrapper>
+    );
+  }, [canSwipeReply, currentUserId, messageById, openMessageMenu, setContentRef, sortedMessages, thread?.can_comment]);
+
+  const renderMenuPreviewBody = React.useCallback((item: Message, forcedWidth?: number) => {
+    const replied = item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null;
+    return (
+      <DiscussionMessageBubble
+        item={item}
+        isMe={item.sender_id === currentUserId}
+        repliedMessage={replied}
+        forcedWidth={forcedWidth}
+      />
+    );
+  }, [currentUserId, messageById]);
 
   return (
     <View style={styles.container}>
-      {loading && !thread && !loadError ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      ) : loadError && !thread ? (
-        <View style={styles.loading}>
-          <Text style={styles.errorText}>{loadError}</Text>
-          <Pressable style={styles.retryButton} onPress={() => void load()}>
-            <Text style={styles.retryButtonText}>Повторить</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <>
-          <FlatList
-            ref={listRef}
-            data={sortedMessages}
-            keyExtractor={(item) => item.id}
-            renderItem={renderComment}
-            refreshing={loading}
-            onRefresh={() => void load()}
-            contentContainerStyle={[
-              styles.list,
-              { paddingBottom: 68 + Math.max(insets.bottom, 8) },
-            ]}
-            ListHeaderComponent={<OriginalPostHeader post={originalPost} />}
-            ListEmptyComponent={
-              !loading ? (
-                <Text style={styles.emptyText}>Пока нет комментариев</Text>
-              ) : null
-            }
+      <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
+        <ChatBackgroundPattern />
+
+        {loading && !thread && !loadError ? (
+          <View style={styles.loading}><ActivityIndicator size="large" color={colors.accent} /></View>
+        ) : loadError && !thread ? (
+          <View style={styles.loading}>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <Pressable style={styles.retryButton} onPress={() => void load()}><Text style={styles.retryButtonText}>Повторить</Text></Pressable>
+          </View>
+        ) : (
+          <Reanimated.View style={[styles.listWrap, listWrapAnimatedStyle]}>
+            <FlatList
+              ref={listRef}
+              data={sortedMessages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderRow}
+              refreshing={loading}
+              onRefresh={() => void load()}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={[styles.listContent, { paddingBottom: (thread?.can_comment ? inputBarHeight : 16) + Math.max(insets.bottom, 8) }]}
+              ListHeaderComponent={<OriginalPostHeader post={thread?.post ?? null} />}
+              ListEmptyComponent={!loading ? <Text style={styles.emptyText}>Комментариев пока нет</Text> : null}
+            />
+          </Reanimated.View>
+        )}
+
+        {thread?.can_comment ? (
+          <ChatInputDock
+            onLayout={handleInputBarLayout}
+            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle, { paddingBottom: Math.max(insets.bottom, 8) }]}
+            placeholder="Прокомментировать"
+            onSendText={handleSendText}
+            onSendVoice={handleSendVoice}
+            onSendVideoNote={handleSendVideoNote}
+            onSendMedia={handleSendMedia}
+            onSendFile={handleSendFile}
+            blurTargetRef={blurTargetRef}
+            replyToMessage={replyToMessage}
+            replyAuthorName={replyAuthorName}
+            onCancelReply={() => setReplyToMessageId(null)}
           />
-          {thread?.can_comment ? (
-            <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-              <TextInput
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Комментарий"
-                placeholderTextColor={colors.placeholder}
-                style={styles.input}
-                multiline
-                maxLength={2000}
-              />
-              <Pressable
-                onPress={() => void handleSend()}
-                disabled={sending || !draft.trim()}
-                style={({ pressed }) => [
-                  styles.sendButton,
-                  pressed && styles.sendButtonPressed,
-                  (sending || !draft.trim()) && styles.sendButtonDisabled,
-                ]}
-                hitSlop={8}
-              >
-                <Feather name="send" size={20} color="#FFFFFF" />
-              </Pressable>
-            </View>
-          ) : null}
-        </>
-      )}
+        ) : null}
+      </BlurTargetView>
+
+      <ChatContextMenuOverlay
+        menuState={menuState}
+        activeMenuMessage={activeMenuMessage}
+        menuActions={menuActions}
+        menuAnim={menuAnim}
+        blurTargetRef={blurTargetRef}
+        screenWidth={SCREEN_WIDTH}
+        showReactions={menuMode === 'actions'}
+        menuCardWidth={menuMode === 'deleteConfirm' ? 224 : undefined}
+        onClose={closeMenu}
+        onPickReaction={handlePickReaction}
+        onMenuAction={(keyAction) => {
+          if (menuMode === 'deleteConfirm') {
+            handleDeleteConfirmAction(keyAction as 'delete_confirm' | 'delete_cancel');
+            return;
+          }
+          void handleMenuAction(keyAction as DiscussionMenuActionKey);
+        }}
+        renderMenuPreviewBody={renderMenuPreviewBody}
+      />
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#EFEAE2',
-  },
-  loading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
+  container: { flex: 1, backgroundColor: '#E8F4D6' },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   errorText: {
     color: colors.textSecondary,
-    fontWeight: '600',
     textAlign: 'center',
+    fontWeight: '600',
     paddingHorizontal: 20,
   },
   retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
     borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
     backgroundColor: colors.accent,
   },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  list: {
-    paddingHorizontal: 8,
-    paddingTop: 8,
-  },
-
-  originalPost: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.08)',
-  },
-  originalPostBody: {
-    padding: 12,
-  },
-  originalPostText: {
-    color: '#000000',
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  originalPostMediaLabel: {
-    color: '#555555',
-    fontSize: 15,
-    fontStyle: 'italic',
-  },
-  originalPostMeta: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-end',
-  },
-  originalPostMetaText: {
-    color: '#8E99A4',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  discussionDivider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.08)',
-  },
-  discussionDividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.12)',
-  },
-  discussionDividerText: {
-    color: '#8E99A4',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  commentRow: {
+  retryButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  listWrap: { flex: 1 },
+  listContent: { paddingHorizontal: 8, paddingTop: 8 },
+  row: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: 4,
     gap: 6,
+    marginBottom: 8,
   },
+  rowOther: { justifyContent: 'flex-start' },
+  rowMe: { justifyContent: 'flex-end' },
   avatar: {
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
     marginBottom: 2,
   },
-  avatarPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  avatarSpacer: {
-    width: AVATAR_SIZE,
-  },
-
-  commentBubble: {
-    maxWidth: '75%',
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  bubbleColumn: { maxWidth: '84%' },
+  bubbleColumnMe: { alignSelf: 'flex-end' },
+  bubbleColumnOther: { alignSelf: 'flex-start' },
+  textBubble: {
     paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 6,
-    borderRadius: 12,
+    paddingTop: 7,
+    paddingBottom: 7,
+    borderRadius: 16,
   },
-  commentBubbleOther: {
+  textBubbleOther: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
+    ...bubbleRadius.other,
   },
-  commentBubbleMe: {
-    backgroundColor: '#DCF8C6',
-    borderTopRightRadius: 4,
-    marginLeft: 'auto',
+  textBubbleMe: { backgroundColor: colors.bubbleMe, ...bubbleRadius.mine },
+  authorText: { fontSize: 13, fontWeight: '700', marginBottom: 1 },
+  textContentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 6,
   },
-  commentAuthor: {
+  messageText: { color: '#000000', fontSize: 16, lineHeight: 21, flexShrink: 1 },
+  deletedText: { color: '#6B7280', fontSize: 14, fontStyle: 'italic' },
+  mediaWrap: { alignSelf: 'stretch' },
+  messageTextMe: { color: '#FFFFFF' },
+  reactionSummaryText: {
+    marginTop: 2,
+    color: '#5D6C7B',
     fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 1,
+    fontWeight: '600',
+    paddingHorizontal: 4,
   },
-  commentText: {
-    color: '#000000',
-    fontSize: 15,
-    lineHeight: 20,
+  emptyText: {
+    marginTop: 30,
+    textAlign: 'center',
+    color: '#6B7E8F',
+    fontWeight: '600',
   },
-  commentTextMe: {
-    color: '#000000',
+  originalPostWrap: {
+    marginBottom: 4,
   },
-  commentMeta: {
+  originalPostAlign: {
+    alignItems: 'flex-start',
+  },
+  originalPostTextBubble: {
+    alignSelf: 'flex-start',
+    maxWidth: '82%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  originalPostText: {
+    color: '#111827',
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  originalPostMeta: {
+    marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 2,
+    gap: 5,
   },
-  commentReactions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  commentReactionText: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  commentTime: {
-    fontSize: 11,
-    color: '#8E99A4',
-  },
-  commentTimeMe: {
-    color: '#6B8A5E',
-  },
-
-  emptyText: {
-    marginTop: 24,
-    textAlign: 'center',
-    color: '#8E99A4',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-
-  composer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    backgroundColor: '#F0EBE3',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0,0,0,0.1)',
-  },
-  input: {
+  originalPostMetaText: { color: '#6B7E8F', fontSize: 12, fontWeight: '600' },
+  discussionDivider: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  discussionDividerLine: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 10,
-    color: colors.textPrimary,
-    fontSize: 15,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.16)',
   },
-  sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  discussionDividerText: { color: '#7B8794', fontSize: 12, fontWeight: '600' },
+  inputBarWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  replyGestureContainer: { width: '100%', position: 'relative', overflow: 'visible' },
+  replySwipeAction: { position: 'absolute', right: 10, top: '50%', marginTop: -16, zIndex: 2 },
+  replySwipeIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.accent,
-    marginBottom: 0,
-  },
-  sendButtonPressed: {
-    opacity: 0.85,
-  },
-  sendButtonDisabled: {
-    opacity: 0.45,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(77,141,255,0.3)',
   },
 });

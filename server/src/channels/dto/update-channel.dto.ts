@@ -4,9 +4,11 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export class UpdateChannelDto {
@@ -55,4 +57,36 @@ export class UpdateChannelDto {
   @IsOptional()
   @IsBoolean()
   allow_reactions?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disable_comments_new?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disable_comments_all?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disable_voice_comments?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  disable_media_comments?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(15)
+  comment_cooldown_sec?: number;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(64)
+  @Matches(/^[a-z0-9_]+$/, {
+    message: 'slug must contain only latin lowercase letters (a-z), digits (0-9) and underscores',
+  })
+  slug?: string;
 }
+

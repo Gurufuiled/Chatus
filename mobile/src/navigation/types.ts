@@ -15,9 +15,22 @@ export type ChatsStackParamList = {
   ChannelCatalog: undefined;
   ChannelPreview: { channelId: string };
   ChannelFeed: { channelId: string };
+  ChannelProfile: { channelId: string };
+  ChannelEdit: { channelId: string };
+  ChannelMembers: { channelId: string; mode: 'admins' | 'subscribers' | 'banned' };
+  ChannelAdminPermissions: {
+    channelId: string;
+    memberId: string;
+    memberName?: string;
+    memberAvatarUrl?: string | null;
+  };
+  ChannelAddAdmin: { channelId: string; memberId?: string; memberName?: string };
   ChannelDiscussion: { channelId: string; postId: string };
   CreateChannel: undefined;
   ChannelAdmin: { channelId: string };
+  ChannelSettings: { channelId: string };
+  ChannelType: { channelId: string };
+  ChannelDiscussionSettings: { channelId: string };
 };
 
 export type MainTabParamList = {

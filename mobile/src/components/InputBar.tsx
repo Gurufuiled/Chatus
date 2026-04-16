@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Animated as RNAnimated,
+  AppState,
   Easing,
   Image,
   Keyboard,
@@ -58,6 +59,7 @@ export interface InputBarProps {
   replyToMessage?: Message | null;
   replyAuthorName?: string | null;
   onCancelReply?: () => void;
+  isScreenFocused?: boolean;
 }
 
 type AttachmentAction = {
@@ -88,6 +90,7 @@ const VOICE_MAX_LEFT_DRAG = 92;
 const VOICE_HOLD_TO_RECORD_MS = 170;
 const ENTRY_MODE_TAP_SLOP = 10;
 const VIDEO_NOTE_SWIPE_TRIGGER = 34;
+const VOICE_START_WATCHDOG_MS = 5000;
 
 function PaperclipIcon() {
   return <Feather name="paperclip" size={20} color={colors.iconMuted} />;
@@ -147,6 +150,7 @@ export function InputBar({
   replyToMessage = null,
   replyAuthorName = null,
   onCancelReply,
+  isScreenFocused = true,
 }: InputBarProps) {
   const [inputText, setInputText] = useState('');
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
@@ -173,6 +177,7 @@ export function InputBar({
   const entryModeTapEligibleRef = useRef(false);
   const videoSwipeTriggeredRef = useRef(false);
   const voiceHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceStartWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceHoldActivatedRef = useRef(false);
   const voiceDragXAnimated = useRef(new RNAnimated.Value(0)).current;
   const voiceDragYAnimated = useRef(new RNAnimated.Value(0)).current;
@@ -266,6 +271,33 @@ export function InputBar({
     [animateVoiceGestureState, updateVoiceGestureState]
   );
 
+  const clearVoiceStartWatchdog = useCallback(() => {
+    if (!voiceStartWatchdogRef.current) return;
+    clearTimeout(voiceStartWatchdogRef.current);
+    voiceStartWatchdogRef.current = null;
+  }, []);
+
+  const forceResetVoiceState = useCallback(() => {
+    clearVoiceStartWatchdog();
+    if (voiceHoldTimerRef.current) {
+      clearTimeout(voiceHoldTimerRef.current);
+      voiceHoldTimerRef.current = null;
+    }
+    voiceHoldActivatedRef.current = false;
+    voiceGestureActiveRef.current = false;
+    voiceRecordingReadyRef.current = false;
+    voiceStartPendingRef.current = false;
+    voiceFinalizePendingRef.current = false;
+    pendingVoiceOutcomeRef.current = null;
+    setVoiceTouchTracking(false);
+    setVoiceRecordingStartedAtMs(0);
+    setVoiceRecordMode('idle');
+    resetVoiceGestureVisuals(false);
+    if (VoiceRecorderService.isRecording()) {
+      VoiceRecorderService.stopRecording().catch(() => {});
+    }
+  }, [clearVoiceStartWatchdog, resetVoiceGestureVisuals, setVoiceRecordMode]);
+
   const handleSend = useCallback(() => {
     const content = inputText.trim();
     const selectedMedia = pendingMedia;
@@ -332,6 +364,7 @@ export function InputBar({
 
   useEffect(() => {
     return () => {
+      clearVoiceStartWatchdog();
       if (voiceHoldTimerRef.current) {
         clearTimeout(voiceHoldTimerRef.current);
         voiceHoldTimerRef.current = null;
@@ -340,7 +373,27 @@ export function InputBar({
         VoiceRecorderService.stopRecording().catch(() => {});
       }
     };
-  }, []);
+  }, [clearVoiceStartWatchdog]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        forceResetVoiceState();
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [forceResetVoiceState]);
+
+  useEffect(() => {
+    if (!isScreenFocused) {
+      forceResetVoiceState();
+      setShowAttachmentSheet(false);
+      setShowVideoNoteRecorder(false);
+      Keyboard.dismiss();
+    }
+  }, [forceResetVoiceState, isScreenFocused]);
 
   const beginVoiceRecording = useCallback(async () => {
     if (canSend || voiceStartPendingRef.current || voiceFinalizePendingRef.current) return;
@@ -351,12 +404,18 @@ export function InputBar({
     voiceStartPendingRef.current = true;
     voiceRecordingReadyRef.current = false;
     Keyboard.dismiss();
-    setVoiceRecordingStartedAtMs(Date.now());
     setVoiceRecordMode('holding');
     resetVoiceGestureVisuals(false);
+    clearVoiceStartWatchdog();
+    voiceStartWatchdogRef.current = setTimeout(() => {
+      if (!voiceStartPendingRef.current || voiceRecordingReadyRef.current) return;
+      forceResetVoiceState();
+    }, VOICE_START_WATCHDOG_MS);
 
     try {
       await VoiceRecorderService.startRecording();
+      clearVoiceStartWatchdog();
+      setVoiceRecordingStartedAtMs(Date.now());
       voiceRecordingReadyRef.current = true;
 
       const pendingOutcome = pendingVoiceOutcomeRef.current;
@@ -392,6 +451,7 @@ export function InputBar({
         }
       }
     } catch (err) {
+      clearVoiceStartWatchdog();
       voiceRecordingReadyRef.current = false;
       setVoiceTouchTracking(false);
       setVoiceRecordingStartedAtMs(0);
@@ -400,9 +460,10 @@ export function InputBar({
       if (__DEV__) console.warn('[InputBar] start voice recording error:', err);
       Alert.alert('Ошибка', 'Не удалось начать запись. Проверь доступ к микрофону.');
     } finally {
+      clearVoiceStartWatchdog();
       voiceStartPendingRef.current = false;
     }
-  }, [canSend, onSendVoice, resetVoiceGestureVisuals, setVoiceRecordMode]);
+  }, [canSend, clearVoiceStartWatchdog, forceResetVoiceState, onSendVoice, resetVoiceGestureVisuals, setVoiceRecordMode]);
 
   const cancelVoiceRecording = useCallback(async () => {
     if (voiceFinalizePendingRef.current || voiceRecordModeRef.current === 'idle') return;

@@ -1,7 +1,20 @@
-import { apiGet, apiPatch, apiPost } from './apiClient';
+import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
 import type { ChannelDetail } from '../stores/channelStore';
+
+export type ChannelPermissions = {
+  can_post: boolean;
+  can_manage_admins: boolean;
+  can_edit_channel: boolean;
+  can_moderate_subscribers: boolean;
+  can_edit_channel_avatar: boolean;
+  can_edit_channel_name: boolean;
+  can_edit_channel_description: boolean;
+  can_add_admins: boolean;
+  can_remove_admins: boolean;
+  can_edit_admin_permissions: boolean;
+};
 
 type ApiChatMember = {
   user_id: string;
@@ -22,6 +35,30 @@ type ApiChatMember = {
   };
 };
 
+type ApiChannelMemberListItem = {
+  user_id: string;
+  role: 'owner' | 'admin' | 'member' | string;
+  access_status: 'none' | 'pending' | 'active' | 'expired' | 'canceled' | string;
+  subscription_expires_at: number | null;
+  joined_at: number;
+  permissions?: Partial<ChannelPermissions>;
+  is_banned?: boolean;
+  user?: {
+    id: string;
+    username: string | null;
+    handle: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+    is_online: boolean;
+    last_seen: number | null;
+  };
+};
+
+type ApiChannelMemberListResponse = {
+  items: ApiChannelMemberListItem[];
+  next_cursor: string | null;
+};
+
 type ApiChat = {
   id: string;
   chat_type: 'channel' | 'discussion' | 'group' | 'private';
@@ -36,6 +73,12 @@ type ApiChat = {
   invite_token?: string | null;
   allow_comments?: boolean;
   allow_reactions?: boolean;
+  disable_comments_new?: boolean;
+  disable_comments_all?: boolean;
+  disable_voice_comments?: boolean;
+  disable_media_comments?: boolean;
+  comment_cooldown_sec?: number;
+  slug?: string | null;
   preview_post_count?: number;
   subscriber_count?: number;
   active_subscriber_count?: number;
@@ -63,6 +106,7 @@ type ApiChat = {
   can_react?: boolean;
   can_post?: boolean;
   is_subscribed?: boolean;
+  channel_permissions?: Partial<ChannelPermissions>;
 };
 
 type ApiReaction = {
@@ -113,8 +157,52 @@ type ApiDiscussionResponse = {
   discussion_chat_id: string;
   thread_root_message_id: string;
   can_comment: boolean;
+  post: ApiMessage | null;
   messages: ApiMessage[];
 };
+
+export type ChannelMemberItem = {
+  user_id: string;
+  role: string;
+  access_status: string;
+  subscription_expires_at: number | null;
+  joined_at: number;
+  permissions: ChannelPermissions;
+  is_banned: boolean;
+  user?: {
+    id: string;
+    username: string | null;
+    handle: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+    is_online: boolean;
+    last_seen: number | null;
+  };
+};
+
+function mapApiChannelMember(item: ApiChannelMemberListItem): ChannelMemberItem {
+  return {
+    user_id: item.user_id,
+    role: item.role,
+    access_status: item.access_status,
+    subscription_expires_at: item.subscription_expires_at ?? null,
+    joined_at: item.joined_at,
+    permissions: {
+      can_post: item.permissions?.can_post !== false,
+      can_manage_admins: item.permissions?.can_manage_admins !== false,
+      can_edit_channel: item.permissions?.can_edit_channel !== false,
+      can_moderate_subscribers: item.permissions?.can_moderate_subscribers !== false,
+      can_edit_channel_avatar: item.permissions?.can_edit_channel_avatar !== false,
+      can_edit_channel_name: item.permissions?.can_edit_channel_name !== false,
+      can_edit_channel_description: item.permissions?.can_edit_channel_description !== false,
+      can_add_admins: item.permissions?.can_add_admins !== false,
+      can_remove_admins: item.permissions?.can_remove_admins !== false,
+      can_edit_admin_permissions: item.permissions?.can_edit_admin_permissions !== false,
+    },
+    is_banned: item.is_banned === true,
+    user: item.user,
+  };
+}
 
 function mapApiChatToChat(api: ApiChat): Chat {
   return {
@@ -131,6 +219,12 @@ function mapApiChatToChat(api: ApiChat): Chat {
     invite_token: api.invite_token ?? null,
     allow_comments: api.allow_comments === false ? 0 : 1,
     allow_reactions: api.allow_reactions === false ? 0 : 1,
+    disable_comments_new: api.disable_comments_new ? 1 : 0,
+    disable_comments_all: api.disable_comments_all ? 1 : 0,
+    disable_voice_comments: api.disable_voice_comments ? 1 : 0,
+    disable_media_comments: api.disable_media_comments ? 1 : 0,
+    comment_cooldown_sec: api.comment_cooldown_sec ?? 0,
+    slug: api.slug ?? null,
     preview_post_count: api.preview_post_count ?? 3,
     subscriber_count: api.subscriber_count ?? 0,
     active_subscriber_count: api.active_subscriber_count ?? 0,
@@ -152,6 +246,25 @@ function mapApiChatToChat(api: ApiChat): Chat {
     created_at: api.created_at,
     updated_at: api.updated_at,
     peer_display_name: api.peer_display_name ?? null,
+    channel_permissions: api.channel_permissions
+      ? {
+          can_post: api.channel_permissions.can_post !== false,
+          can_manage_admins: api.channel_permissions.can_manage_admins !== false,
+          can_edit_channel: api.channel_permissions.can_edit_channel !== false,
+          can_moderate_subscribers:
+            api.channel_permissions.can_moderate_subscribers !== false,
+          can_edit_channel_avatar:
+            api.channel_permissions.can_edit_channel_avatar !== false,
+          can_edit_channel_name:
+            api.channel_permissions.can_edit_channel_name !== false,
+          can_edit_channel_description:
+            api.channel_permissions.can_edit_channel_description !== false,
+          can_add_admins: api.channel_permissions.can_add_admins !== false,
+          can_remove_admins: api.channel_permissions.can_remove_admins !== false,
+          can_edit_admin_permissions:
+            api.channel_permissions.can_edit_admin_permissions !== false,
+        }
+      : undefined,
     members: api.members,
   };
 }
@@ -270,6 +383,25 @@ export async function fetchChannelDetail(channelId: string): Promise<ChannelDeta
     can_post: data.can_post ?? false,
     is_subscribed: data.is_subscribed ?? false,
     linked_discussion_chat_id: data.linked_discussion_chat_id ?? null,
+    channel_permissions: data.channel_permissions
+      ? {
+          can_post: data.channel_permissions.can_post !== false,
+          can_manage_admins: data.channel_permissions.can_manage_admins !== false,
+          can_edit_channel: data.channel_permissions.can_edit_channel !== false,
+          can_moderate_subscribers:
+            data.channel_permissions.can_moderate_subscribers !== false,
+          can_edit_channel_avatar:
+            data.channel_permissions.can_edit_channel_avatar !== false,
+          can_edit_channel_name:
+            data.channel_permissions.can_edit_channel_name !== false,
+          can_edit_channel_description:
+            data.channel_permissions.can_edit_channel_description !== false,
+          can_add_admins: data.channel_permissions.can_add_admins !== false,
+          can_remove_admins: data.channel_permissions.can_remove_admins !== false,
+          can_edit_admin_permissions:
+            data.channel_permissions.can_edit_admin_permissions !== false,
+        }
+      : undefined,
   };
 }
 
@@ -308,6 +440,7 @@ export async function fetchDiscussionThread(channelId: string, postId: string) {
     discussion_chat_id: data.discussion_chat_id,
     thread_root_message_id: data.thread_root_message_id,
     can_comment: data.can_comment,
+    post: data.post ? mapApiMessageToMessage(data.post) : null,
     messages: data.messages.map(mapApiMessageToMessage),
   };
 }
@@ -341,6 +474,12 @@ export async function updateChannel(
     preview_post_count?: number;
     allow_comments?: boolean;
     allow_reactions?: boolean;
+    disable_comments_new?: boolean;
+    disable_comments_all?: boolean;
+    disable_voice_comments?: boolean;
+    disable_media_comments?: boolean;
+    comment_cooldown_sec?: number;
+    slug?: string;
   }
 ): Promise<Chat> {
   const res = await apiPatch(`/channels/${encodeURIComponent(channelId)}`, payload);
@@ -387,7 +526,23 @@ export async function publishChannelPost(
 export async function sendDiscussionMessage(
   channelId: string,
   postId: string,
-  payload: { content: string; msg_type?: string; reply_to_id?: string | null }
+  payload: {
+    content?: string | null;
+    msg_type?: string;
+    reply_to_id?: string | null;
+    media?: {
+      url?: string;
+      waveform?: number[];
+      duration_ms?: number;
+      thumbnail_url?: string;
+      is_round?: boolean;
+      width?: number;
+      height?: number;
+      file_name?: string;
+      file_size?: number;
+      mime_type?: string;
+    };
+  }
 ): Promise<Message> {
   const res = await apiPost(
     `/channels/${encodeURIComponent(channelId)}/discussion/${encodeURIComponent(postId)}/messages`,
@@ -411,4 +566,87 @@ export async function toggleChannelReaction(
     'Failed to toggle reaction'
   );
   return data.reactions;
+}
+
+export async function fetchChannelMembers(
+  channelId: string,
+  params?: {
+    role?: 'admin' | 'subscriber';
+    query?: string;
+    limit?: number;
+    cursor?: string | null;
+    include_banned?: boolean;
+  }
+): Promise<{ items: ChannelMemberItem[]; next_cursor: string | null }> {
+  const q = new URLSearchParams();
+  if (params?.role) q.set('role', params.role);
+  if (params?.query?.trim()) q.set('q', params.query.trim());
+  if (params?.limit) q.set('limit', String(params.limit));
+  if (params?.cursor) q.set('cursor', params.cursor);
+  if (params?.include_banned) q.set('include_banned', 'true');
+
+  const suffix = q.toString();
+  const res = await apiGet(
+    `/channels/${encodeURIComponent(channelId)}/members${suffix ? `?${suffix}` : ''}`
+  );
+  const data = await parseJsonOrThrow<ApiChannelMemberListResponse>(
+    res,
+    'Failed to load channel members'
+  );
+  return {
+    items: data.items.map(mapApiChannelMember),
+    next_cursor: data.next_cursor ?? null,
+  };
+}
+
+export async function updateChannelMemberRolePermissions(
+  channelId: string,
+  memberId: string,
+  payload: {
+    role?: 'admin' | 'member';
+    can_post?: boolean;
+    can_manage_admins?: boolean;
+    can_edit_channel?: boolean;
+    can_moderate_subscribers?: boolean;
+    can_edit_channel_avatar?: boolean;
+    can_edit_channel_name?: boolean;
+    can_edit_channel_description?: boolean;
+    can_add_admins?: boolean;
+    can_remove_admins?: boolean;
+    can_edit_admin_permissions?: boolean;
+  }
+): Promise<Chat> {
+  const res = await apiPatch(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}`,
+    payload
+  );
+  const data = await parseJsonOrThrow<{ channel: ApiChat }>(
+    res,
+    'Failed to update channel member permissions'
+  );
+  return mapApiChatToChat(data.channel);
+}
+
+export async function removeChannelMember(channelId: string, memberId: string): Promise<Chat> {
+  const res = await apiDelete(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}`
+  );
+  const data = await parseJsonOrThrow<{ channel: ApiChat }>(res, 'Failed to remove channel member');
+  return mapApiChatToChat(data.channel);
+}
+
+export async function banChannelMember(channelId: string, memberId: string): Promise<Chat> {
+  const res = await apiPost(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}/ban`
+  );
+  const data = await parseJsonOrThrow<{ channel: ApiChat }>(res, 'Failed to ban channel member');
+  return mapApiChatToChat(data.channel);
+}
+
+export async function unbanChannelMember(channelId: string, memberId: string): Promise<Chat> {
+  const res = await apiDelete(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}/ban`
+  );
+  const data = await parseJsonOrThrow<{ channel: ApiChat }>(res, 'Failed to unban channel member');
+  return mapApiChatToChat(data.channel);
 }

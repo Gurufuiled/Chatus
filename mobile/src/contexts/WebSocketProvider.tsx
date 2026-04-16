@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { useAuth } from './AuthContext';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { WebSocketService } from '../services/WebSocketService';
@@ -169,6 +170,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   const { isConnected: isNetworkConnected } = useNetworkStatus();
   const handlersSetRef = useRef(false);
   const prevNetworkConnectedRef = useRef<boolean | null>(null);
+  const appStateRef = useRef(AppState.currentState);
 
   // Reconnect WebSocket when network goes from offline to online (not on initial null->true)
   useEffect(() => {
@@ -180,6 +182,23 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       WebSocketService.connect();
     }
   }, [isNetworkConnected, isAuthenticated]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      const cameToForeground =
+        previousState !== 'active' && nextState === 'active';
+      if (!cameToForeground || !isAuthenticated) return;
+
+      WebSocketService.reconnect();
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -385,6 +404,15 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             is_deleted: 1,
             content: null,
           });
+          const discussionState = channelStore.getState().discussionByKey;
+          for (const key of Object.keys(discussionState)) {
+            const thread = discussionState[key];
+            if (!thread || thread.discussion_chat_id !== chat_id) continue;
+            channelStore.getState().updateDiscussionMessage(key, message_id, {
+              is_deleted: 1,
+              content: null,
+            });
+          }
           const chat = chatStore.getState().chats.find((item) => item.id === chat_id);
           if (chat?.pinned_message_id === message_id) {
             chatStore.getState().updateChat({

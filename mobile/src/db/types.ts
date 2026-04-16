@@ -39,6 +39,12 @@ export interface ChatRow {
   invite_token?: string | null;
   allow_comments?: number;
   allow_reactions?: number;
+  disable_comments_new?: number;
+  disable_comments_all?: number;
+  disable_voice_comments?: number;
+  disable_media_comments?: number;
+  comment_cooldown_sec?: number;
+  slug?: string | null;
   preview_post_count?: number;
   subscriber_count?: number;
   active_subscriber_count?: number;
@@ -78,6 +84,18 @@ export interface ChatRow {
   }[];
   /** From API: display name of peer in private chat. */
   peer_display_name?: string | null;
+  channel_permissions?: {
+    can_post: boolean;
+    can_manage_admins: boolean;
+    can_edit_channel: boolean;
+    can_moderate_subscribers: boolean;
+    can_edit_channel_avatar: boolean;
+    can_edit_channel_name: boolean;
+    can_edit_channel_description: boolean;
+    can_add_admins: boolean;
+    can_remove_admins: boolean;
+    can_edit_admin_permissions: boolean;
+  };
 }
 
 export interface ChatMemberRow {

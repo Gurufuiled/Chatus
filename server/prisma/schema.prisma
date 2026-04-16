@@ -127,6 +127,12 @@ model Chat {
   inviteToken         String?   @unique @map("invite_token")
   allowComments       Boolean   @default(true) @map("allow_comments")
   allowReactions      Boolean   @default(true) @map("allow_reactions")
+  disableCommentsNew  Boolean   @default(false) @map("disable_comments_new")
+  disableCommentsAll  Boolean   @default(false) @map("disable_comments_all")
+  disableVoiceComments Boolean  @default(false) @map("disable_voice_comments")
+  disableMediaComments Boolean  @default(false) @map("disable_media_comments")
+  commentCooldownSec  Int       @default(0) @map("comment_cooldown_sec")
+  slug                String?   @unique
   previewPostCount    Int       @default(3) @map("preview_post_count")
   subscriberCount     Int       @default(0) @map("subscriber_count")
   activeSubscriberCount Int     @default(0) @map("active_subscriber_count")

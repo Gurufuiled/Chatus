@@ -2,11 +2,19 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  ChannelAddAdminScreen,
+  ChannelAdminPermissionsScreen,
   ChannelAdminScreen,
   ChannelCatalogScreen,
   ChannelDiscussionScreen,
+  ChannelDiscussionSettingsScreen,
+  ChannelEditScreen,
   ChannelFeedScreen,
+  ChannelMembersScreen,
+  ChannelProfileScreen,
   ChannelPreviewScreen,
+  ChannelSettingsScreen,
+  ChannelTypeScreen,
   ChatListScreen,
   ChatProfileScreen,
   ChatScreen,
@@ -32,9 +40,7 @@ function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
 
 function formatGroupSubtitle(memberCount?: number) {
   if (typeof memberCount === 'number' && memberCount > 0) {
-    if (memberCount % 10 === 1 && memberCount % 100 !== 11) {
-      return `${memberCount} участник`;
-    }
+    if (memberCount % 10 === 1 && memberCount % 100 !== 11) return `${memberCount} участник`;
     if (
       memberCount % 10 >= 2 &&
       memberCount % 10 <= 4 &&
@@ -49,60 +55,45 @@ function formatGroupSubtitle(memberCount?: number) {
 
 function getChatPeerId(
   chat: ReturnType<typeof chatStore.getState>['chats'][number] | null,
-  currentUserId: string | null
+  currentUserId: string | null,
 ): string | null {
   if (!chat || !currentUserId || chat.chat_type !== 'private') return null;
   return chat.members?.find((member) => member.user_id !== currentUserId)?.user_id ?? null;
 }
 
-function ChatHeaderTitle({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <View style={styles.headerTitleWrap}>
-      <Text style={styles.headerTitle} numberOfLines={1}>
-        {title}
-      </Text>
-      {subtitle ? (
-        <Text style={styles.headerSubtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-function ChatHeaderAvatar({
-  avatarUrl,
+function ChatHeaderTitle({
   title,
+  subtitle,
+  avatarUrl,
 }: {
-  avatarUrl: string | null;
   title: string;
+  subtitle?: string;
+  avatarUrl?: string | null;
 }) {
   const initial = (title.trim()[0] || '?').toUpperCase();
-
-  if (avatarUrl) {
-    return <Image source={{ uri: avatarUrl }} style={styles.headerAvatar} />;
-  }
-
   return (
-    <View style={styles.headerAvatarPlaceholder}>
-      <Text style={styles.headerAvatarPlaceholderText}>{initial}</Text>
+    <View style={styles.headerRow}>
+      {avatarUrl ? (
+        <Image source={{ uri: avatarUrl }} style={styles.headerRowAvatar} />
+      ) : (
+        <View style={styles.headerRowAvatarPlaceholder}>
+          <Text style={styles.headerAvatarPlaceholderText}>{initial}</Text>
+        </View>
+      )}
+      <View style={styles.headerTitleWrap}>
+        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text style={styles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 }
 
-function ChatHeaderActions({
-  avatarUrl,
-  title,
-}: {
-  avatarUrl: string | null;
-  title: string;
-}) {
-  return (
-    <View style={styles.headerActions}>
-      <ChatHeaderAvatar avatarUrl={avatarUrl} title={title} />
-    </View>
-  );
-}
 
 export function ChatsStack() {
   const chats = chatStore((state) => state.chats);
@@ -154,7 +145,6 @@ export function ChatsStack() {
               });
               return;
             }
-
             if (!peerId) return;
             navigation.navigate('ChatProfile', {
               chatId: route.params.chatId,
@@ -166,6 +156,7 @@ export function ChatsStack() {
           return {
             title,
             headerBackTitle: 'Назад',
+            headerTitleAlign: 'left',
             headerTitle: () => (
               <Pressable
                 onPress={isGroupChat || peerId ? openProfile : undefined}
@@ -175,19 +166,11 @@ export function ChatsStack() {
                   pressed && (isGroupChat || peerId) && styles.headerPressablePressed,
                 ]}
               >
-                <ChatHeaderTitle title={title} subtitle={subtitle} />
-              </Pressable>
-            ),
-            headerRight: () => (
-              <Pressable
-                onPress={isGroupChat || peerId ? openProfile : undefined}
-                disabled={!isGroupChat && !peerId}
-                style={({ pressed }) => [
-                  styles.headerActionsPressable,
-                  pressed && (isGroupChat || peerId) && styles.headerPressablePressed,
-                ]}
-              >
-                <ChatHeaderActions avatarUrl={avatarUrl} title={title} />
+                <ChatHeaderTitle
+                  title={title}
+                  subtitle={subtitle}
+                  avatarUrl={avatarUrl}
+                />
               </Pressable>
             ),
           };
@@ -197,37 +180,25 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChatProfile"
         component={ChatProfileScreen}
-        options={{
-          title: 'Профиль',
-          headerBackTitle: 'Назад',
-        }}
+        options={{ title: 'Профиль', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen
         name="CreateGroupChat"
         component={CreateGroupChatScreen}
-        options={{
-          title: 'Новая группа',
-          headerBackTitle: 'Назад',
-        }}
+        options={{ title: 'Новая группа', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen
         name="ChannelCatalog"
         component={ChannelCatalogScreen}
-        options={{
-          title: 'Каналы',
-          headerBackTitle: 'Назад',
-        }}
+        options={{ title: 'Каналы', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen
         name="ChannelPreview"
         component={ChannelPreviewScreen}
-        options={{
-          title: 'Превью',
-          headerBackTitle: 'Назад',
-        }}
+        options={{ title: 'Превью', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen
@@ -238,21 +209,24 @@ export function ChatsStack() {
           const title = channel?.name || 'Канал';
           const subtitle = `${channel?.subscriber_count ?? 0} подписчиков`;
           const avatarUrl = resolveAvatarUrl(channel?.avatar_url);
-
           return {
             headerBackTitle: 'Назад',
-            headerTitle: () => <ChatHeaderTitle title={title} subtitle={subtitle} />,
-            headerRight: () => (
+            headerTitleAlign: 'left',
+            headerTitle: () => (
               <Pressable
                 onPress={() =>
-                  navigation.navigate('ChannelAdmin', { channelId: route.params.channelId })
+                  navigation.navigate('ChannelProfile', { channelId: route.params.channelId })
                 }
                 style={({ pressed }) => [
-                  styles.headerActionsPressable,
+                  styles.headerTitlePressable,
                   pressed && styles.headerPressablePressed,
                 ]}
               >
-                <ChatHeaderActions avatarUrl={avatarUrl} title={title} />
+                <ChatHeaderTitle
+                  title={title}
+                  subtitle={subtitle}
+                  avatarUrl={avatarUrl}
+                />
               </Pressable>
             ),
           };
@@ -260,52 +234,109 @@ export function ChatsStack() {
       />
 
       <Stack.Screen
+        name="ChannelProfile"
+        component={ChannelProfileScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen
+        name="ChannelEdit"
+        component={ChannelEditScreen}
+        options={{ title: 'Изменить канал', headerBackTitle: 'Назад' }}
+      />
+
+      <Stack.Screen
+        name="ChannelMembers"
+        component={ChannelMembersScreen}
+        options={{ title: 'Участники', headerBackTitle: 'Назад' }}
+      />
+
+      <Stack.Screen
+        name="ChannelAdminPermissions"
+        component={ChannelAdminPermissionsScreen}
+        options={{ title: 'Права администратора', headerBackTitle: 'Назад' }}
+      />
+
+      <Stack.Screen
+        name="ChannelAddAdmin"
+        component={ChannelAddAdminScreen}
+        options={{ title: 'Добавить администратора', headerBackTitle: 'Назад' }}
+      />
+
+      <Stack.Screen
         name="ChannelDiscussion"
         component={ChannelDiscussionScreen}
-        options={{
-          title: 'Обсуждение',
-          headerBackTitle: 'Назад',
-        }}
+        options={{ title: 'Обсуждение', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen
         name="CreateChannel"
         component={CreateChannelScreen}
-        options={{
-          title: 'Создать канал',
-          headerBackTitle: 'Назад',
-        }}
+        options={{ title: 'Создать канал', headerBackTitle: 'Назад' }}
+      />
+
+      <Stack.Screen
+        name="ChannelSettings"
+        component={ChannelSettingsScreen}
+        options={{ title: 'Настройки канала', headerBackTitle: 'Назад' }}
+      />
+
+      <Stack.Screen
+        name="ChannelType"
+        component={ChannelTypeScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen
+        name="ChannelDiscussionSettings"
+        component={ChannelDiscussionSettingsScreen}
+        options={{ title: 'Обсуждение', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen
         name="ChannelAdmin"
         component={ChannelAdminScreen}
-        options={{
-          title: 'Управление каналом',
-          headerBackTitle: 'Назад',
-        }}
+        options={{ title: 'Управление каналом', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen
         name="GroupProfile"
         component={GroupProfileScreen}
-        options={{
-          headerShown: false,
-        }}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  headerTitleWrap: {
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerRowAvatar: {
+    width: CHAT_HEADER_AVATAR_SIZE,
+    height: CHAT_HEADER_AVATAR_SIZE,
+    borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
+    marginRight: 10,
+  },
+  headerRowAvatarPlaceholder: {
+    width: CHAT_HEADER_AVATAR_SIZE,
+    height: CHAT_HEADER_AVATAR_SIZE,
+    borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
+    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    maxWidth: chatHeaderPresentation.titleMaxWidth,
+    marginRight: 10,
+  },
+  headerTitleWrap: {
+    flexShrink: 1,
+    justifyContent: 'center',
   },
   headerTitlePressable: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1,
   },
   headerTitle: {
     fontSize: chatHeaderPresentation.titleFontSize,
@@ -317,27 +348,8 @@ const styles = StyleSheet.create({
     fontSize: chatHeaderPresentation.subtitleFontSize,
     color: colors[chatHeaderPresentation.subtitleColorKey],
   },
-  headerActions: {
-    alignItems: 'center',
-  },
-  headerActionsPressable: {
-    borderRadius: 20,
-  },
   headerPressablePressed: {
     opacity: 0.7,
-  },
-  headerAvatar: {
-    width: CHAT_HEADER_AVATAR_SIZE,
-    height: CHAT_HEADER_AVATAR_SIZE,
-    borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
-  },
-  headerAvatarPlaceholder: {
-    width: CHAT_HEADER_AVATAR_SIZE,
-    height: CHAT_HEADER_AVATAR_SIZE,
-    borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   headerAvatarPlaceholderText: {
     fontSize: 15,

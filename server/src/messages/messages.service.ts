@@ -133,8 +133,29 @@ export class MessagesService {
     if (!member) {
       throw new ForbiddenException('Not a member of this channel');
     }
+    if (
+      member.accessStatus === SubscriptionStatus.canceled &&
+      member.role === ChatMemberRole.member
+    ) {
+      throw new ForbiddenException('You are banned from this channel');
+    }
     if (member.role !== ChatMemberRole.owner && member.role !== ChatMemberRole.admin) {
       throw new ForbiddenException('Only channel admins can publish posts');
+    }
+    if (member.role === ChatMemberRole.admin) {
+      const raw = (member.tag ?? '').trim();
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as { can_post?: boolean } | null;
+          if (parsed && parsed.can_post === false) {
+            throw new ForbiddenException('Insufficient permissions to publish posts');
+          }
+        } catch (error) {
+          if (error instanceof ForbiddenException) {
+            throw error;
+          }
+        }
+      }
     }
     return member;
   }

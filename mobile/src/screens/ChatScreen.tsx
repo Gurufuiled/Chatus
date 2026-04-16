@@ -418,6 +418,13 @@ export function ChatScreen() {
     sentReadReceiptIdsRef.current.clear();
   }, [chatId]);
 
+  useEffect(() => {
+    if (!isFocused) return;
+    if (!WebSocketService.isConnected()) {
+      WebSocketService.reconnect();
+    }
+  }, [isFocused]);
+
   const scrollToMessageId = useCallback((messageId: string, missingMessageTitle?: string) => {
     const targetIndex = messages.findIndex((message) => message.id === messageId);
     if (targetIndex < 0) {
@@ -1658,6 +1665,7 @@ export function ChatScreen() {
             replyToMessage={replyToMessage}
             replyAuthorName={replyAuthorName}
             onCancelReply={clearReplyState}
+            isScreenFocused={isFocused}
           />
         )}
       </BlurTargetView>

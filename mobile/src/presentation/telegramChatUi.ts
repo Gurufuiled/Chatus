@@ -34,7 +34,6 @@ export const chatHeaderPresentation = {
   subtitleFontSize: 13,
   /** Resolved in `ChatsStack` via `colors[subtitleColorKey]` for chat header subtitle. */
   subtitleColorKey: 'textSecondary' as keyof typeof colors,
-  titleMaxWidth: 200,
 };
 
 export type ChatListMenuAnchor = { left: number; top: number };

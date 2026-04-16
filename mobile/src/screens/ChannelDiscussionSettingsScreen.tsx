@@ -1,0 +1,376 @@
+import React from 'react';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
+import { useRoute, type RouteProp } from '@react-navigation/native';
+import type { ChatsStackParamList } from '../navigation/types';
+import { fetchChannelDetail, updateChannel } from '../services/channelService';
+import { channelStore } from '../stores/channelStore';
+import { chatStore } from '../stores/chatStore';
+import { colors } from '../theme/colors';
+
+type Route = RouteProp<ChatsStackParamList, 'ChannelDiscussionSettings'>;
+
+/* ─── Toggle Row ─── */
+
+function ToggleRow({
+  label,
+  sublabel,
+  value,
+  onValueChange,
+  disabled,
+}: {
+  label: string;
+  sublabel?: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={[styles.toggleRow, disabled && styles.toggleRowDisabled]}>
+      <View style={styles.toggleBody}>
+        <Text style={styles.toggleLabel}>{label}</Text>
+        {sublabel ? <Text style={styles.toggleSublabel}>{sublabel}</Text> : null}
+      </View>
+      <Switch value={value} onValueChange={onValueChange} disabled={disabled} />
+    </View>
+  );
+}
+
+/* ─── Screen ─── */
+
+export function ChannelDiscussionSettingsScreen() {
+  const route = useRoute<Route>();
+  const { channelId } = route.params;
+  const detail = channelStore((state) => state.detailsById[channelId]);
+  const channel = detail?.channel;
+  const canEdit = detail?.channel_permissions?.can_edit_channel === true;
+
+  const [disableNew, setDisableNew] = React.useState(channel?.disable_comments_new === 1);
+  const [disableAll, setDisableAll] = React.useState(channel?.disable_comments_all === 1);
+  const [disableVoice, setDisableVoice] = React.useState(channel?.disable_voice_comments === 1);
+  const [disableMedia, setDisableMedia] = React.useState(channel?.disable_media_comments === 1);
+  const [cooldown, setCooldown] = React.useState(channel?.comment_cooldown_sec ?? 0);
+  const [snackbar, setSnackbar] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (channel) {
+      setDisableNew(channel.disable_comments_new === 1);
+      setDisableAll(channel.disable_comments_all === 1);
+      setDisableVoice(channel.disable_voice_comments === 1);
+      setDisableMedia(channel.disable_media_comments === 1);
+      setCooldown(channel.comment_cooldown_sec ?? 0);
+    }
+  }, [
+    channel?.disable_comments_new,
+    channel?.disable_comments_all,
+    channel?.disable_voice_comments,
+    channel?.disable_media_comments,
+    channel?.comment_cooldown_sec,
+  ]);
+
+  React.useEffect(() => {
+    if (!detail) {
+      void fetchChannelDetail(channelId).then((next) => {
+        channelStore.getState().setDetail(channelId, next);
+        chatStore.getState().addOrUpdateChat(next.channel);
+      });
+    }
+  }, [channelId, detail]);
+
+  React.useEffect(() => {
+    if (!snackbar) return;
+    const timer = setTimeout(() => setSnackbar(null), 1800);
+    return () => clearTimeout(timer);
+  }, [snackbar]);
+
+  /* Auto-save helper */
+  const saveField = React.useCallback(
+    async (payload: Record<string, boolean | number>) => {
+      if (!canEdit) {
+        setSnackbar('Недостаточно прав');
+        return false;
+      }
+      try {
+        const updated = await updateChannel(channelId, payload);
+        channelStore.getState().upsertChannel(updated);
+        chatStore.getState().addOrUpdateChat(updated);
+        return true;
+      } catch (error) {
+        Alert.alert('Ошибка', error instanceof Error ? error.message : 'Попробуйте ещё раз.');
+        return false;
+      }
+    },
+    [canEdit, channelId],
+  );
+
+  const handleDisableNew = React.useCallback(
+    async (v: boolean) => {
+      setDisableNew(v);
+      const ok = await saveField({ disable_comments_new: v });
+      if (!ok) setDisableNew(!v);
+    },
+    [saveField],
+  );
+
+  const handleDisableAll = React.useCallback(
+    async (v: boolean) => {
+      setDisableAll(v);
+      if (v) setDisableNew(true);
+      const ok = await saveField({
+        disable_comments_all: v,
+        ...(v ? { disable_comments_new: true } : {}),
+      });
+      if (!ok) {
+        setDisableAll(!v);
+        if (v) setDisableNew(channel?.disable_comments_new === 1);
+      }
+    },
+    [channel?.disable_comments_new, saveField],
+  );
+
+  const handleDisableVoice = React.useCallback(
+    async (v: boolean) => {
+      setDisableVoice(v);
+      const ok = await saveField({ disable_voice_comments: v });
+      if (!ok) setDisableVoice(!v);
+    },
+    [saveField],
+  );
+
+  const handleDisableMedia = React.useCallback(
+    async (v: boolean) => {
+      setDisableMedia(v);
+      const ok = await saveField({ disable_media_comments: v });
+      if (!ok) setDisableMedia(!v);
+    },
+    [saveField],
+  );
+
+  /* Cooldown stepper */
+  const handleCooldownChange = React.useCallback(
+    (delta: number) => {
+      const next = Math.max(0, Math.min(15, cooldown + delta));
+      if (next === cooldown) return;
+      setCooldown(next);
+      void saveField({ comment_cooldown_sec: next });
+    },
+    [cooldown, saveField],
+  );
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {/* ─── Comments toggles ─── */}
+        <Text style={styles.sectionLabel}>КОММЕНТАРИИ</Text>
+        <View style={styles.sectionCard}>
+          <ToggleRow
+            label="Откл. комментарии к новым постам"
+            sublabel="Новые посты публикуются без комментариев"
+            value={disableNew}
+            onValueChange={(v) => void handleDisableNew(v)}
+            disabled={!canEdit || disableAll}
+          />
+          <View style={styles.divider} />
+          <ToggleRow
+            label="Откл. комментарии для всех постов"
+            sublabel="Комментарии полностью отключены"
+            value={disableAll}
+            onValueChange={(v) => void handleDisableAll(v)}
+            disabled={!canEdit}
+          />
+        </View>
+
+        {disableAll ? (
+          <Text style={styles.hint}>
+            Комментарии отключены для всех постов. Это перекрывает настройку «только для новых».
+          </Text>
+        ) : null}
+
+        {/* ─── Content restrictions ─── */}
+        <Text style={styles.sectionLabel}>ОГРАНИЧЕНИЯ КОНТЕНТА</Text>
+        <View style={styles.sectionCard}>
+          <ToggleRow
+            label="Запретить голосовые"
+            sublabel="Пользователи не смогут отправлять голосовые сообщения"
+            value={disableVoice}
+            onValueChange={(v) => void handleDisableVoice(v)}
+            disabled={!canEdit}
+          />
+          <View style={styles.divider} />
+          <ToggleRow
+            label="Запретить медиа"
+            sublabel="Фото и видео в комментариях запрещены"
+            value={disableMedia}
+            onValueChange={(v) => void handleDisableMedia(v)}
+            disabled={!canEdit}
+          />
+        </View>
+
+        {/* ─── Cooldown stepper ─── */}
+        <Text style={styles.sectionLabel}>АНТИФЛУД</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.stepperRow}>
+            <View style={styles.stepperBody}>
+              <Text style={styles.stepperLabel}>Таймер между сообщениями</Text>
+              <Text style={styles.stepperSublabel}>
+                Мин. интервал между сообщениями в обсуждении
+              </Text>
+            </View>
+          </View>
+          <View style={styles.stepperControls}>
+            <Pressable
+              onPress={() => handleCooldownChange(-1)}
+              disabled={!canEdit || cooldown <= 0}
+              style={({ pressed }) => [
+                styles.stepperBtn,
+                pressed && styles.stepperBtnPressed,
+                (!canEdit || cooldown <= 0) && styles.stepperBtnDisabled,
+              ]}
+            >
+              <Text style={styles.stepperBtnText}>−</Text>
+            </Pressable>
+            <View style={styles.stepperValueWrap}>
+              <Text style={styles.stepperValue}>
+                {cooldown === 0 ? 'Выкл' : `${cooldown} сек`}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => handleCooldownChange(1)}
+              disabled={!canEdit || cooldown >= 15}
+              style={({ pressed }) => [
+                styles.stepperBtn,
+                pressed && styles.stepperBtnPressed,
+                (!canEdit || cooldown >= 15) && styles.stepperBtnDisabled,
+              ]}
+            >
+              <Text style={styles.stepperBtnText}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <Text style={styles.hint}>
+          Минимальный интервал от 1 до 15 секунд между сообщениями одного пользователя (антифлуд).
+          Установите 0 для отключения.
+        </Text>
+      </ScrollView>
+
+      {snackbar ? (
+        <View style={styles.snackbarWrap} pointerEvents="none">
+          <Text style={styles.snackbarText}>{snackbar}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#F0F0F5' },
+  container: { flex: 1 },
+  content: { paddingBottom: 40 },
+
+  /* Section */
+  sectionLabel: {
+    marginTop: 24,
+    marginBottom: 8,
+    marginLeft: 32,
+    fontSize: 13,
+    color: '#6B7280',
+    letterSpacing: 0.5,
+  },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+
+  /* Toggle row */
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  toggleRowDisabled: { opacity: 0.5 },
+  toggleBody: { flex: 1, marginRight: 12 },
+  toggleLabel: { fontSize: 16, color: '#111827', fontWeight: '500' },
+  toggleSublabel: { marginTop: 2, fontSize: 13, color: '#9CA3AF', lineHeight: 17 },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#E3E4E8',
+    marginLeft: 16,
+  },
+
+  /* Stepper */
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  stepperBody: { flex: 1 },
+  stepperLabel: { fontSize: 16, color: '#111827', fontWeight: '500' },
+  stepperSublabel: { marginTop: 2, fontSize: 13, color: '#9CA3AF', lineHeight: 17 },
+  stepperControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 8,
+    gap: 16,
+  },
+  stepperBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F0F0F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperBtnPressed: { backgroundColor: '#E3E4E8' },
+  stepperBtnDisabled: { opacity: 0.35 },
+  stepperBtnText: { fontSize: 22, fontWeight: '600', color: colors.accent },
+  stepperValueWrap: {
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  stepperValue: { fontSize: 18, fontWeight: '600', color: '#111827' },
+
+  /* Hint */
+  hint: {
+    marginTop: 8,
+    marginHorizontal: 32,
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 19,
+  },
+
+  /* Snackbar */
+  snackbarWrap: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 14,
+    backgroundColor: 'rgba(239,246,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.35)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: '#1D4ED8',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  snackbarText: { color: '#1E40AF', textAlign: 'center', fontWeight: '700' },
+});

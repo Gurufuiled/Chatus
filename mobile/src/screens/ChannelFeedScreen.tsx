@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { BlurTargetView } from 'expo-blur';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ChatInputDock,
@@ -37,6 +38,7 @@ import {
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
+import { WebSocketService } from '../services/WebSocketService';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
 import { ChatBackgroundPattern, formatTime } from './chatScreen.shared';
@@ -163,6 +165,7 @@ function buildOptimisticMessage({
 
 export function ChannelFeedScreen() {
   const navigation = useNavigation<Nav>();
+  const isFocused = useIsFocused();
   const route = useRoute<Route>();
   const blurTargetRef = React.useRef<View | null>(null);
   const postContentRefs = React.useRef<Record<string, View | null>>({});
@@ -214,6 +217,7 @@ export function ChannelFeedScreen() {
           can_post: next.can_post,
           is_subscribed: next.is_subscribed,
           linked_discussion_chat_id: next.channel.linked_discussion_chat_id ?? null,
+          channel_permissions: next.channel.channel_permissions,
         }),
         channel: next.channel,
           preview_posts: sortPostsOldestFirst(next.posts),
@@ -223,6 +227,7 @@ export function ChannelFeedScreen() {
         can_post: next.can_post,
         is_subscribed: next.is_subscribed,
         linked_discussion_chat_id: next.channel.linked_discussion_chat_id ?? null,
+        channel_permissions: next.channel.channel_permissions,
       });
     } finally {
       setLoading(false);
@@ -232,6 +237,13 @@ export function ChannelFeedScreen() {
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  React.useEffect(() => {
+    if (!isFocused) return;
+    if (!WebSocketService.isConnected()) {
+      WebSocketService.reconnect();
+    }
+  }, [isFocused]);
 
   const publishWithOptimistic = React.useCallback(
     async ({
@@ -572,12 +584,13 @@ export function ChannelFeedScreen() {
               isMe={false}
               embedded
               centered
+              fixedSize
               width={mediaSize.width}
               height={mediaSize.height}
               time={hasCaption ? undefined : time}
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
-              resizeMode="contain"
+              resizeMode="cover"
             />
             {hasCaption ? (
               <View style={styles.mediaCaptionBlock}>
@@ -605,6 +618,7 @@ export function ChannelFeedScreen() {
               isMe={false}
               embedded
               centered
+              fixedSize
               width={mediaSize.width}
               height={mediaSize.height}
               durationMs={media.duration_ms ?? 0}
@@ -776,7 +790,9 @@ export function ChannelFeedScreen() {
           ]}
         >
             {isVisualMediaPost ? (
-              <View style={styles.mediaContentWrap}>{renderPostContent(item)}</View>
+              <View style={styles.mediaContentWrap}>
+                {renderPostContent(item, { visualMediaWidth: mediaWidth ?? undefined })}
+              </View>
             ) : (
               renderPostContent(item)
             )}
@@ -798,14 +814,11 @@ export function ChannelFeedScreen() {
                   }
                 >
                   <Feather name="message-circle" size={14} color={colors.accent} />
-                  <Text style={styles.discussionLink}>
+                  <Text style={styles.discussionLink} numberOfLines={1}>
                     {(item.comment_count ?? 0) > 0
                       ? `${item.comment_count} комментариев`
                       : 'Прокомментировать'}
                   </Text>
-                  {isVisualMediaPost ? (
-                    <Feather name="chevron-right" size={16} color={colors.accent} style={{ marginLeft: 'auto' }} />
-                  ) : null}
                 </Pressable>
               ) : null}
               {hasReactions ? (
@@ -902,6 +915,7 @@ export function ChannelFeedScreen() {
           replyToMessage={null}
           replyAuthorName={null}
           onCancelReply={() => undefined}
+          isScreenFocused={isFocused}
         />
       ) : null}
       </BlurTargetView>
@@ -1102,6 +1116,7 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 12,
     fontWeight: '700',
+    flexShrink: 1,
   },
   reactionSummaryRow: {
     flexDirection: 'row',

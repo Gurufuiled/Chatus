@@ -53,6 +53,8 @@ export interface VideoBubbleProps {
   outgoingTextColor?: string;
   centered?: boolean;
   viewCount?: number;
+  /** If true, use provided width/height as-is without internal clamping. */
+  fixedSize?: boolean;
 }
 
 function computeDisplaySize(
@@ -401,6 +403,7 @@ export function VideoBubble({
   outgoingTextColor,
   centered = false,
   viewCount,
+  fixedSize = false,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -408,12 +411,18 @@ export function VideoBubble({
     normalizedUri ? getCachedVideoThumbnailUri(normalizedUri) ?? '' : ''
   );
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
-    resolveKnownDisplaySize(propWidth, propHeight)
+    fixedSize && propWidth && propHeight
+      ? { width: propWidth, height: propHeight }
+      : resolveKnownDisplaySize(propWidth, propHeight)
   );
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
+    if (fixedSize && propWidth && propHeight) {
+      setDisplaySize({ width: propWidth, height: propHeight });
+      return;
+    }
     const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight);
     if (knownDisplaySize) {
       setDisplaySize(knownDisplaySize);
@@ -444,7 +453,7 @@ export function VideoBubble({
     return () => {
       cancelled = true;
     };
-  }, [generatedThumbnailUri, normalizedThumbnailUri, propHeight, propWidth]);
+  }, [generatedThumbnailUri, normalizedThumbnailUri, propHeight, propWidth, fixedSize]);
 
   useEffect(() => {
     if (!normalizedUri || normalizedThumbnailUri) {

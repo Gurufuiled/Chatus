@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -17,6 +18,8 @@ import { UpdateChannelDto } from './dto/update-channel.dto';
 import { CreateChannelPostDto } from './dto/create-channel-post.dto';
 import { CreateDiscussionMessageDto } from './dto/create-discussion-message.dto';
 import { ToggleReactionDto } from './dto/toggle-reaction.dto';
+import { GetChannelMembersQueryDto } from './dto/get-channel-members-query.dto';
+import { UpdateChannelMemberDto } from './dto/update-channel-member.dto';
 
 @Controller('channels')
 @UseGuards(JwtAuthGuard)
@@ -125,5 +128,51 @@ export class ChannelsController {
     @CurrentUser() user: User,
   ) {
     return this.channelsService.togglePostReaction(channelId, postId, user.id, dto.emoji);
+  }
+
+  @Get(':id/members')
+  async getMembers(
+    @Param('id') channelId: string,
+    @CurrentUser() user: User,
+    @Query() query: GetChannelMembersQueryDto,
+  ) {
+    return this.channelsService.getChannelMembers(channelId, user.id, query);
+  }
+
+  @Patch(':id/members/:memberId')
+  async updateMember(
+    @Param('id') channelId: string,
+    @Param('memberId') memberId: string,
+    @Body() dto: UpdateChannelMemberDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.channelsService.updateChannelMember(channelId, user.id, memberId, dto);
+  }
+
+  @Post(':id/members/:memberId/ban')
+  async banMember(
+    @Param('id') channelId: string,
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.channelsService.banChannelMember(channelId, user.id, memberId);
+  }
+
+  @Delete(':id/members/:memberId/ban')
+  async unbanMember(
+    @Param('id') channelId: string,
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.channelsService.unbanChannelMember(channelId, user.id, memberId);
+  }
+
+  @Delete(':id/members/:memberId')
+  async removeMember(
+    @Param('id') channelId: string,
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.channelsService.removeChannelMember(channelId, user.id, memberId);
   }
 }

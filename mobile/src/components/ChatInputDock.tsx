@@ -18,6 +18,7 @@ type ChatInputDockProps = {
   replyToMessage: Message | null;
   replyAuthorName: string | null;
   onCancelReply: () => void;
+  isScreenFocused?: boolean;
 };
 
 export function ChatInputDock({
@@ -33,6 +34,7 @@ export function ChatInputDock({
   replyToMessage,
   replyAuthorName,
   onCancelReply,
+  isScreenFocused = true,
 }: ChatInputDockProps) {
   return (
     <Reanimated.View onLayout={onLayout} style={animatedStyle}>
@@ -47,6 +49,7 @@ export function ChatInputDock({
         replyToMessage={replyToMessage}
         replyAuthorName={replyAuthorName}
         onCancelReply={onCancelReply}
+        isScreenFocused={isScreenFocused}
       />
     </Reanimated.View>
   );

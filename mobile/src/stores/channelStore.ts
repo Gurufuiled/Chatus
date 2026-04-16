@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Chat, Message } from './types';
+import type { ChannelMemberItem, ChannelPermissions } from '../services/channelService';
 
 export type ChannelDetail = {
   channel: Chat;
@@ -10,12 +11,14 @@ export type ChannelDetail = {
   can_post: boolean;
   is_subscribed: boolean;
   linked_discussion_chat_id: string | null;
+  channel_permissions?: ChannelPermissions;
 };
 
 type DiscussionThread = {
   discussion_chat_id: string;
   thread_root_message_id: string;
   can_comment: boolean;
+  post: Message | null;
   messages: Message[];
 };
 
@@ -25,6 +28,14 @@ type ChannelState = {
   feedByChannelId: Record<string, Message[]>;
   discussionByKey: Record<string, DiscussionThread>;
   checkoutStateByChannelId: Record<string, 'idle' | 'processing' | 'paid' | 'error'>;
+  membersByKey: Record<
+    string,
+    {
+      items: ChannelMemberItem[];
+      next_cursor: string | null;
+      updated_at: number;
+    }
+  >;
   isLoadingCatalog: boolean;
 };
 
@@ -43,6 +54,10 @@ type ChannelActions = {
     channelId: string,
     state: 'idle' | 'processing' | 'paid' | 'error'
   ) => void;
+  setMembersByKey: (
+    key: string,
+    payload: { items: ChannelMemberItem[]; next_cursor: string | null }
+  ) => void;
   clear: () => void;
 };
 
@@ -52,6 +67,7 @@ const initialState: ChannelState = {
   feedByChannelId: {},
   discussionByKey: {},
   checkoutStateByChannelId: {},
+  membersByKey: {},
   isLoadingCatalog: false,
 };
 
@@ -185,6 +201,18 @@ export const channelStore = create<ChannelState & ChannelActions>((set) => ({
       checkoutStateByChannelId: {
         ...state.checkoutStateByChannelId,
         [channelId]: checkoutState,
+      },
+    })),
+
+  setMembersByKey: (key, payload) =>
+    set((state) => ({
+      membersByKey: {
+        ...state.membersByKey,
+        [key]: {
+          items: payload.items,
+          next_cursor: payload.next_cursor,
+          updated_at: Date.now(),
+        },
       },
     })),
 

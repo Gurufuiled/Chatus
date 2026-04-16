@@ -52,6 +52,26 @@ class WebSocketServiceClass {
     this.doConnect(token);
   }
 
+  reconnect(): void {
+    const token = authStore.getState().accessToken;
+    if (!token) return;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    this.manualDisconnect = true;
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+
+    this.reconnectAttempt = 0;
+    this.manualDisconnect = false;
+    this.doConnect(token);
+  }
+
   private doConnect(token: string): void {
     if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) {
       return;

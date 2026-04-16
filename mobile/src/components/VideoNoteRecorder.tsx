@@ -297,23 +297,30 @@ export function VideoNoteRecorder({
     }
 
     return (
-      <CameraView
-        key={`video-note-camera-${cameraSessionKey}-${facing}`}
-        ref={setCameraNodeRef}
-        style={styles.camera}
-        facing={facing}
-        mode="video"
-        mirror={facing === 'front'}
-        zoom={0}
-        ratio={Platform.OS === 'android' ? '1:1' : undefined}
-        videoQuality="480p"
-        videoBitrate={VIDEO_NOTE_BITRATE}
-        onCameraReady={() => {
-          setCameraReady(true);
-        }}
-      />
+      <View style={styles.cameraMask}>
+        <CameraView
+          key={`video-note-camera-${cameraSessionKey}-${facing}`}
+          ref={setCameraNodeRef}
+          style={styles.camera}
+          facing={facing}
+          mode="video"
+          mirror={facing === 'front'}
+          zoom={0}
+          ratio={Platform.OS === 'android' ? '1:1' : undefined}
+          videoQuality="480p"
+          videoBitrate={VIDEO_NOTE_BITRATE}
+          onCameraReady={() => {
+            setCameraReady(true);
+          }}
+        />
+      </View>
     );
   }, [ensurePermissions, facing, hasAllPermissions, setCameraNodeRef]);
+
+  const blurProps =
+    blurTargetRef && blurTargetRef.current
+      ? { blurTarget: blurTargetRef }
+      : undefined;
 
   return (
     <Modal
@@ -330,7 +337,7 @@ export function VideoNoteRecorder({
           tint="default"
           blurMethod="dimezisBlurView"
           blurReductionFactor={1}
-          blurTarget={blurTargetRef}
+          {...blurProps}
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.backdropWash} />
@@ -386,7 +393,7 @@ export function VideoNoteRecorder({
                 tint="default"
                 blurMethod="dimezisBlurView"
                 blurReductionFactor={1}
-                blurTarget={blurTargetRef}
+                {...blurProps}
                 style={StyleSheet.absoluteFill}
               />
               <View style={styles.controlsBarWash} />
@@ -466,7 +473,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.2)',
   },
   camera: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: CIRCLE_RADIUS,
+  },
+  cameraMask: {
     flex: 1,
+    borderRadius: CIRCLE_RADIUS,
+    overflow: 'hidden',
   },
   circleProgressPill: {
     position: 'absolute',

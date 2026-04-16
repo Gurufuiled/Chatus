@@ -40,6 +40,8 @@ export interface ImageBubbleProps {
   centered?: boolean;
   viewCount?: number;
   resizeMode?: ImageResizeMode;
+  /** If true, use provided width/height as-is without internal clamping. */
+  fixedSize?: boolean;
 }
 
 function computeDisplaySize(
@@ -90,10 +92,13 @@ export function ImageBubble({
   centered = false,
   viewCount,
   resizeMode = 'cover',
+  fixedSize = false,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
-    resolveKnownDisplaySize(propWidth, propHeight)
+    fixedSize && propWidth && propHeight
+      ? { width: propWidth, height: propHeight }
+      : resolveKnownDisplaySize(propWidth, propHeight)
   );
   const [imageLoaded, setImageLoaded] = useState(() =>
     normalizedUri.length > 0 && loadedImageUris.has(normalizedUri)
@@ -104,6 +109,10 @@ export function ImageBubble({
   useEffect(() => {
     setImageLoaded(normalizedUri.length > 0 && loadedImageUris.has(normalizedUri));
 
+    if (fixedSize && propWidth && propHeight) {
+      setDisplaySize({ width: propWidth, height: propHeight });
+      return;
+    }
     const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight);
     if (!normalizedUri) {
       setDisplaySize(DEFAULT_PLACEHOLDER_SIZE);
@@ -131,7 +140,7 @@ export function ImageBubble({
     return () => {
       cancelled = true;
     };
-  }, [normalizedUri, propWidth, propHeight]);
+  }, [normalizedUri, propWidth, propHeight, fixedSize]);
 
   const handlePress = useCallback(() => {
     setFullscreenVisible(true);
