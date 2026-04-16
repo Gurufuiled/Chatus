@@ -154,6 +154,12 @@ export type MappedChat = {
   invite_token: string | null;
   allow_comments: boolean;
   allow_reactions: boolean;
+  disable_comments_new: boolean;
+  disable_comments_all: boolean;
+  disable_voice_comments: boolean;
+  disable_media_comments: boolean;
+  comment_cooldown_sec: number;
+  slug: string | null;
   preview_post_count: number;
   subscriber_count: number;
   active_subscriber_count: number;
@@ -215,6 +221,12 @@ export function mapChat(
     invite_token: chat.inviteToken ?? null,
     allow_comments: chat.allowComments,
     allow_reactions: chat.allowReactions,
+    disable_comments_new: chat.disableCommentsNew,
+    disable_comments_all: chat.disableCommentsAll,
+    disable_voice_comments: chat.disableVoiceComments,
+    disable_media_comments: chat.disableMediaComments,
+    comment_cooldown_sec: chat.commentCooldownSec,
+    slug: chat.slug ?? null,
     preview_post_count: chat.previewPostCount,
     subscriber_count: chat.subscriberCount,
     active_subscriber_count: chat.activeSubscriberCount,
