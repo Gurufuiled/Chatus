@@ -1,0 +1,15 @@
+{
+  "legacyEditor": false,
+  "livePreview": true,
+  "showIndentGuide": true,
+  "strictLineBreaks": false,
+  "readableLineLength": true,
+  "foldHeading": true,
+  "foldIndent": true,
+  "defaultViewMode": "source",
+  "newFileLocation": "folder",
+  "newFileFolderPath": "Inbox",
+  "useTab": false,
+  "tabSize": 2,
+  "vimMode": false
+}
