@@ -34,10 +34,8 @@ target/
 *.key
 *.mobileprovision
 
-# Local notes / milestones (keep on disk, not in repo)
-/docs/*
-!/docs/telegram-ui-branch-validation.md
-!/docs/telegram-icon-source-map.md
-!/docs/telegram-icon-divergences.md
+# Local notes / agent context (не в репозитории)
+/docs/
+/memory-bank/
 /steps/
 /Improvements/
