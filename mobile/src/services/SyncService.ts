@@ -192,6 +192,7 @@ interface ApiMessage {
     file_name?: string;
     file_size?: number;
   }[];
+  reactions?: { emoji: string; count: number; reacted_by_me: boolean }[];
 }
 
 function mapApiMessageToMessage(api: ApiMessage): Message {
@@ -244,6 +245,12 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
     created_at: createdAt,
     updated_at: updatedAt,
     media,
+    reactions:
+      api.reactions?.map((r) => ({
+        emoji: r.emoji,
+        count: r.count,
+        reacted_by_me: r.reacted_by_me,
+      })) ?? undefined,
   };
 }
 

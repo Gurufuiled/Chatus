@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   Dimensions,
@@ -37,6 +37,7 @@ import { VideoBubble } from './VideoBubble';
 import { VideoNoteBubble } from './VideoNoteBubble';
 import { VoiceBubble } from './VoiceBubble';
 import { resolveAvatarUrl } from '../config';
+import { DOUBLE_TAP_REACTION_EMOJI } from './ChatContextMenuOverlay';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
@@ -61,6 +62,8 @@ type ChatMessageListProps = {
   contentPaddingTop: number;
   canSwipeReply: (message: Message) => boolean;
   onSwipeReply: (message: Message) => void;
+  allowReactions: boolean;
+  onToggleReaction: (messageId: string, emoji: string) => void;
   onMessagePress: (messageId: string) => void;
   onMessageLongPress: (message: Message) => void;
   onForwardHeaderPress?: (message: Message) => void;
@@ -176,6 +179,8 @@ type MessageRowProps = {
   isHighlighted: boolean;
   canSwipe: boolean;
   onReply: () => void;
+  allowReactions: boolean;
+  onToggleReaction: (messageId: string, emoji: string) => void;
   onPressMessage: (messageId: string) => void;
   onLongPressMessage: (message: Message) => void;
   onForwardHeaderPress?: (message: Message) => void;
@@ -204,6 +209,8 @@ const MessageRow = React.memo(function MessageRow({
   isHighlighted,
   canSwipe,
   onReply,
+  allowReactions,
+  onToggleReaction,
   onPressMessage,
   onLongPressMessage,
   onForwardHeaderPress,
@@ -216,6 +223,7 @@ const MessageRow = React.memo(function MessageRow({
   repliedVoiceBubbleWidth,
   chatTheme,
 }: MessageRowProps) {
+  const lastTapAtRef = useRef(0);
   const isMe = item.sender_id === currentUserId;
   const ownsInlineReplySwipe = item.msg_type === 'video_note';
   const shouldUseOuterReplySwipe = canSwipe && !ownsInlineReplySwipe;
@@ -633,10 +641,55 @@ const MessageRow = React.memo(function MessageRow({
     return null;
   };
 
+  const renderReactions = () => {
+    if (selectionMode || !(item.reactions?.length ?? 0)) return null;
+    return (
+      <View
+        style={[styles.reactionRow, isMe ? styles.reactionRowMe : styles.reactionRowOther]}
+      >
+        {item.reactions!.map((r) => (
+          <Pressable
+            key={r.emoji}
+            onPress={() => {
+              if (allowReactions) onToggleReaction(item.id, r.emoji);
+            }}
+            disabled={!allowReactions}
+            style={({ pressed }) => [
+              styles.reactionChip,
+              isMe ? styles.reactionChipMine : styles.reactionChipOther,
+              pressed && allowReactions && styles.reactionChipPressed,
+              !allowReactions && styles.reactionChipDisabled,
+            ]}
+          >
+            <Text style={[styles.reactionChipEmoji, isMe && styles.reactionChipEmojiMe]}>
+              {r.emoji}
+            </Text>
+            <Text style={[styles.reactionChipCount, isMe && styles.reactionChipCountMe]}>
+              {r.count}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  };
+
   const card = (
     <Pressable
       delayLongPress={220}
-      onPress={() => onPressMessage(item.id)}
+      onPress={() => {
+        if (selectionMode) {
+          onPressMessage(item.id);
+          return;
+        }
+        if (!allowReactions || item.is_deleted === 1) return;
+        const now = Date.now();
+        if (now - lastTapAtRef.current < 380) {
+          lastTapAtRef.current = 0;
+          onToggleReaction(item.id, DOUBLE_TAP_REACTION_EMOJI);
+          return;
+        }
+        lastTapAtRef.current = now;
+      }}
       onLongPress={selectionMode ? undefined : () => onLongPressMessage(item)}
       style={styles.messagePressable}
     >
@@ -702,6 +755,7 @@ const MessageRow = React.memo(function MessageRow({
               </View>
             )}
           </View>
+          {renderReactions()}
         </View>
       </View>
     </Pressable>
@@ -725,12 +779,14 @@ const MessageRow = React.memo(function MessageRow({
     prev.isSelected === next.isSelected &&
     prev.isHighlighted === next.isHighlighted &&
     prev.canSwipe === next.canSwipe &&
+    prev.allowReactions === next.allowReactions &&
     prev.currentUserId === next.currentUserId &&
     prev.chatId === next.chatId &&
     prev.chatTheme === next.chatTheme &&
     prev.getMessageAuthorPresentation === next.getMessageAuthorPresentation &&
     prev.onForwardHeaderPress === next.onForwardHeaderPress &&
-    prev.onReplyPreviewPress === next.onReplyPreviewPress
+    prev.onReplyPreviewPress === next.onReplyPreviewPress &&
+    prev.onToggleReaction === next.onToggleReaction
   );
 });
 
@@ -748,6 +804,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   contentPaddingTop,
   canSwipeReply,
   onSwipeReply,
+  allowReactions,
+  onToggleReaction,
   onMessagePress,
   onMessageLongPress,
   onForwardHeaderPress,
@@ -774,6 +832,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       isHighlighted={highlightedMessageId === item.id}
       canSwipe={canSwipeReply(item)}
       onReply={() => onSwipeReply(item)}
+      allowReactions={allowReactions}
+      onToggleReaction={onToggleReaction}
       onPressMessage={onMessagePress}
       onLongPressMessage={onMessageLongPress}
       onForwardHeaderPress={onForwardHeaderPress}
@@ -787,6 +847,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       chatTheme={chatTheme}
     />
   ), [
+    allowReactions,
     canSwipeReply,
     chatId,
     chatTheme,
@@ -800,6 +861,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     messageById,
     onMessageLongPress,
     onForwardHeaderPress,
+    onToggleReaction,
     onMessagePress,
     onReplyPreviewPress,
     onSwipeReply,
@@ -843,8 +905,10 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.selectedMessageIdSet === next.selectedMessageIdSet &&
     prev.highlightedMessageId === next.highlightedMessageId &&
     prev.contentPaddingTop === next.contentPaddingTop &&
+    prev.allowReactions === next.allowReactions &&
     prev.canSwipeReply === next.canSwipeReply &&
     prev.onSwipeReply === next.onSwipeReply &&
+    prev.onToggleReaction === next.onToggleReaction &&
     prev.onMessagePress === next.onMessagePress &&
     prev.onMessageLongPress === next.onMessageLongPress &&
     prev.onForwardHeaderPress === next.onForwardHeaderPress &&
@@ -1095,5 +1159,54 @@ const styles = StyleSheet.create({
     elevation: 4,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+    marginBottom: 2,
+    paddingHorizontal: 12,
+  },
+  reactionRowMe: {
+    alignSelf: 'flex-end',
+    justifyContent: 'flex-end',
+  },
+  reactionRowOther: {
+    alignSelf: 'flex-start',
+    justifyContent: 'flex-start',
+  },
+  reactionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  reactionChipMine: {
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  reactionChipOther: {
+    backgroundColor: 'rgba(15,23,42,0.07)',
+  },
+  reactionChipPressed: {
+    opacity: 0.78,
+  },
+  reactionChipDisabled: {
+    opacity: 0.55,
+  },
+  reactionChipEmoji: {
+    fontSize: 15,
+    lineHeight: 18,
+  },
+  reactionChipEmojiMe: {},
+  reactionChipCount: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  reactionChipCountMe: {
+    color: 'rgba(255,255,255,0.92)',
   },
 });

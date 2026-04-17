@@ -331,7 +331,11 @@ function resolvePeerMeta(userId: string) {
 
   return {
     chatId: chat?.id,
-    displayName: chat?.peer_display_name?.trim() || chat?.name?.trim() || 'Пользователь',
+    displayName:
+      chat?.local_contact_name?.trim() ||
+      chat?.peer_display_name?.trim() ||
+      chat?.name?.trim() ||
+      'Пользователь',
     avatarUrl: resolveAvatarUrl(chat?.avatar_url),
   };
 }

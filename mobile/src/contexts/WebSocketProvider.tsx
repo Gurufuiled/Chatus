@@ -50,6 +50,7 @@ interface ServerMessagePayload {
     file_size?: number | null;
     is_round?: boolean;
   }[];
+  reactions?: { emoji: string; count: number; reacted_by_me: boolean }[];
 }
 
 function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
@@ -92,6 +93,13 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
       file_name: m.file_name ?? undefined,
       file_size: m.file_size ?? undefined,
       is_round: m.is_round,
+    }));
+  }
+  if (payload.reactions != null) {
+    msg.reactions = payload.reactions.map((r) => ({
+      emoji: r.emoji,
+      count: r.count,
+      reacted_by_me: r.reacted_by_me,
     }));
   }
   return msg;
@@ -349,12 +357,18 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             return;
           }
 
-          const feedChannelId = raw.channel_id ?? raw.chat_id;
-          if (!feedChannelId) return;
+          if (raw.channel_id && raw.post_id && raw.chat_id === raw.channel_id) {
+            channelStore.getState().updateFeedMessage(raw.channel_id, raw.message_id, {
+              reactions: raw.reactions,
+            });
+            return;
+          }
 
-          channelStore.getState().updateFeedMessage(feedChannelId, raw.message_id, {
-            reactions: raw.reactions,
-          });
+          if (raw.chat_id) {
+            messageStore.getState().updateMessage(raw.chat_id, raw.message_id, {
+              reactions: raw.reactions,
+            });
+          }
         },
 
         onChannelPostCommentCountUpdated: (payload) => {

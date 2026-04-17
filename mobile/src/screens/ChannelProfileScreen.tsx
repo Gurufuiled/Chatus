@@ -5,15 +5,35 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChatsStackParamList } from '../navigation/types';
-import { fetchChannelDetail } from '../services/channelService';
+import { fetchChannelDetail, fetchChannelFeed } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { colors } from '../theme/colors';
 import { resolveAvatarUrl } from '../config';
 import { LoadErrorState } from '../components/LoadErrorState';
+import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
+import { MediaTilePreview, type MediaTile } from '../components/ChatProfileMediaSection';
+import type { Message } from '../stores/types';
+import { formatMediaDuration } from '../utils/mediaDuration';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelProfile'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelProfile'>;
+
+function extractRemoteMediaUri(message: Message): string | null {
+  const media = message.media?.[0];
+  const resolved = resolveAvatarUrl(media?.remote_url ?? null);
+  return resolved ?? null;
+}
+
+function extractPreviewMediaUri(message: Message): string | null {
+  const media = message.media?.[0];
+  const candidates = [media?.thumbnail_url, media?.remote_url];
+  for (const c of candidates) {
+    const resolved = resolveAvatarUrl(c ?? null);
+    if (resolved) return resolved;
+  }
+  return null;
+}
 
 function Row({
   icon,
@@ -49,6 +69,8 @@ export function ChannelProfileScreen() {
   const [loading, setLoading] = React.useState(!detail);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [snackbar, setSnackbar] = React.useState<string | null>(null);
+  const [feedPosts, setFeedPosts] = React.useState<Message[]>([]);
+  const [selectedMediaIndex, setSelectedMediaIndex] = React.useState<number | null>(null);
 
   const showSnackbar = React.useCallback((message: string) => {
     setSnackbar(message);
@@ -58,9 +80,18 @@ export function ChannelProfileScreen() {
     setLoading(true);
     setLoadError(null);
     try {
-      const next = await fetchChannelDetail(channelId);
+      const [next, feedResult] = await Promise.all([
+        fetchChannelDetail(channelId),
+        fetchChannelFeed(channelId).catch(() => null),
+      ]);
       channelStore.getState().setDetail(channelId, next);
       chatStore.getState().addOrUpdateChat(next.channel);
+      if (feedResult) {
+        setFeedPosts(feedResult.posts);
+        channelStore.getState().setFeed(channelId, feedResult.posts);
+      } else {
+        setFeedPosts([]);
+      }
     } catch (error) {
       setLoadError(
         error instanceof Error ? error.message : 'Не удалось загрузить профиль канала.',
@@ -79,6 +110,41 @@ export function ChannelProfileScreen() {
     const timer = setTimeout(() => setSnackbar(null), 1800);
     return () => clearTimeout(timer);
   }, [snackbar]);
+
+  const channelMediaItems = React.useMemo<MediaTile[]>(
+    () =>
+      feedPosts
+        .filter(
+          (m) =>
+            m.is_deleted !== 1 &&
+            (m.msg_type === 'image' || m.msg_type === 'video'),
+        )
+        .map((m) => {
+          const uri = extractRemoteMediaUri(m) ?? '';
+          const thumbnailUri = resolveAvatarUrl(m.media?.[0]?.thumbnail_url ?? null);
+          const caption = typeof m.content === 'string' ? m.content.trim() : '';
+          return {
+            id: m.id,
+            kind: m.msg_type === 'video' ? 'video' : 'image',
+            uri,
+            previewUri:
+              m.msg_type === 'video'
+                ? thumbnailUri ?? undefined
+                : extractPreviewMediaUri(m) ?? uri,
+            durationMs:
+              m.msg_type === 'video' ? m.media?.[0]?.duration_ms ?? 0 : undefined,
+            caption: caption.length > 0 ? caption : undefined,
+          } satisfies MediaTile;
+        })
+        .filter((item) => item.uri.length > 0),
+    [feedPosts],
+  );
+
+  React.useEffect(() => {
+    if (selectedMediaIndex != null && selectedMediaIndex >= channelMediaItems.length) {
+      setSelectedMediaIndex(null);
+    }
+  }, [channelMediaItems.length, selectedMediaIndex]);
 
   if (loading && !detail) {
     return (
@@ -121,6 +187,9 @@ export function ChannelProfileScreen() {
     detail.channel_permissions?.can_edit_channel_description === true ||
     canEditSettings;
 
+  /** Обычный подписчик: без блока админов / подписчиков / настроек */
+  const showManagementMenu = canAdminOps || canModerate || canEditSettings;
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -135,16 +204,15 @@ export function ChannelProfileScreen() {
             <Feather name="chevron-left" size={24} color="#111827" />
           </Pressable>
 
-          <Pressable
-            onPress={() => {
-              if (!canOpenEdit) return showSnackbar('Недостаточно прав для изменения профиля канала');
-              navigation.navigate('ChannelEdit', { channelId });
-            }}
-            style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
-          >
-            <Text style={styles.editPlus}>+</Text>
-            <Text style={styles.editText}>Изм.</Text>
-          </Pressable>
+          {canOpenEdit ? (
+            <Pressable
+              onPress={() => navigation.navigate('ChannelEdit', { channelId })}
+              style={({ pressed }) => [styles.editPill, pressed && styles.editPillPressed]}
+            >
+              <Text style={styles.editPlus}>+</Text>
+              <Text style={styles.editText}>Изм.</Text>
+            </Pressable>
+          ) : null}
 
           {avatarUrl ? (
             <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
@@ -165,50 +233,84 @@ export function ChannelProfileScreen() {
           <Text style={styles.infoText}>{description}</Text>
         </View>
 
-        <View style={styles.menuCard}>
-          <Row
-            icon="shield"
-            title="Администраторы"
-            value={String(
-              (channel.members ?? []).filter((m) => m.role === 'owner' || m.role === 'admin').length,
-            )}
-            onPress={() => {
-              if (!canAdminOps) return showSnackbar('Недостаточно прав для управления администраторами');
-              navigation.navigate('ChannelMembers', { channelId, mode: 'admins' });
-            }}
-          />
-          <View style={styles.divider} />
-          <Row
-            icon="users"
-            title="Подписчики"
-            value={String(channel.subscriber_count ?? 0)}
-            onPress={() => {
-              if (!canModerate && !canAdminOps) {
-                return showSnackbar('Недостаточно прав для просмотра подписчиков');
-              }
-              navigation.navigate('ChannelMembers', { channelId, mode: 'subscribers' });
-            }}
-          />
-          <View style={styles.divider} />
-          <Row
-            icon="sliders"
-            title="Настройки канала"
-            onPress={() => {
-              if (!canEditSettings) return showSnackbar('Недостаточно прав для настроек канала');
-              navigation.navigate('ChannelSettings', { channelId });
-            }}
-          />
-        </View>
-
-        {(!canAdminOps || !canModerate || !canEditSettings || !canOpenEdit) ? (
-          <View style={styles.permissionBanner}>
-            <Feather name="lock" size={14} color="#92400E" />
-            <Text style={styles.permissionHint}>
-              Некоторые разделы доступны в зависимости от ваших прав администратора.
-            </Text>
+        {showManagementMenu ? (
+          <View style={styles.menuCard}>
+            <Row
+              icon="shield"
+              title="Администраторы"
+              value={String(
+                (channel.members ?? []).filter((m) => m.role === 'owner' || m.role === 'admin').length,
+              )}
+              onPress={() => {
+                if (!canAdminOps) return showSnackbar('Недостаточно прав для управления администраторами');
+                navigation.navigate('ChannelMembers', { channelId, mode: 'admins' });
+              }}
+            />
+            <View style={styles.divider} />
+            <Row
+              icon="users"
+              title="Подписчики"
+              value={String(channel.subscriber_count ?? 0)}
+              onPress={() => {
+                if (!canModerate && !canAdminOps) {
+                  return showSnackbar('Недостаточно прав для просмотра подписчиков');
+                }
+                navigation.navigate('ChannelMembers', { channelId, mode: 'subscribers' });
+              }}
+            />
+            <View style={styles.divider} />
+            <Row
+              icon="sliders"
+              title="Настройки канала"
+              onPress={() => {
+                if (!canEditSettings) return showSnackbar('Недостаточно прав для настроек канала');
+                navigation.navigate('ChannelSettings', { channelId });
+              }}
+            />
           </View>
         ) : null}
+
+        <View style={styles.mediaCard}>
+          <Text style={styles.mediaSectionTitle}>Медиа</Text>
+          {channelMediaItems.length === 0 ? (
+            <Text style={styles.mediaEmptyText}>
+              Фото и видео из публикаций канала появятся здесь.
+            </Text>
+          ) : (
+            <View style={styles.mediaGrid}>
+              {channelMediaItems.map((item, index) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => setSelectedMediaIndex(index)}
+                  style={({ pressed }) => [styles.mediaTile, pressed && styles.mediaTilePressed]}
+                >
+                  <MediaTilePreview item={item} />
+                  {item.kind === 'video' ? (
+                    <View style={styles.mediaPlayBadge}>
+                      <Feather name="play" size={15} color="#FFFFFF" style={styles.mediaPlayIcon} />
+                    </View>
+                  ) : null}
+                  {item.durationMs ? (
+                    <View style={styles.mediaDurationBadge}>
+                      <Text style={styles.mediaDurationText}>
+                        {formatMediaDuration(item.durationMs)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
+
+      <ChatProfileMediaViewerModal
+        visible={selectedMediaIndex != null}
+        items={channelMediaItems}
+        selectedIndex={selectedMediaIndex ?? 0}
+        onChangeIndex={setSelectedMediaIndex}
+        onClose={() => setSelectedMediaIndex(null)}
+      />
 
       {snackbar ? (
         <View style={styles.snackbarWrap} pointerEvents="none">
@@ -290,7 +392,7 @@ const styles = StyleSheet.create({
   infoLink: { marginTop: 2, fontSize: 20, color: '#2563EB', fontWeight: '500' },
   infoText: { marginTop: 2, fontSize: 18, lineHeight: 24, color: '#111827' },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#D1D5DB', marginVertical: 10 },
-  menuCard: { backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden' },
+  menuCard: { backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden', marginBottom: 10 },
   row: {
     minHeight: 62,
     flexDirection: 'row',
@@ -303,17 +405,65 @@ const styles = StyleSheet.create({
   rowTitle: { color: '#111827', fontSize: 18 },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   rowValue: { color: '#6B7280', fontSize: 16, fontWeight: '500' },
-  permissionBanner: {
-    marginTop: 10,
-    borderRadius: 12,
-    backgroundColor: '#FEF3C7',
+  mediaCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    paddingTop: 14,
+    paddingBottom: 14,
+    overflow: 'hidden',
   },
-  permissionHint: { color: '#92400E', fontSize: 13, flex: 1 },
+  mediaSectionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  mediaEmptyText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
+  mediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -3,
+  },
+  mediaTile: {
+    width: '33.3333%',
+    aspectRatio: 1,
+    padding: 3,
+  },
+  mediaTilePressed: { opacity: 0.88 },
+  mediaPlayBadge: {
+    position: 'absolute',
+    left: 15,
+    top: 15,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.62)',
+  },
+  mediaPlayIcon: { marginLeft: 2 },
+  mediaDurationBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(16,24,40,0.6)',
+  },
+  mediaDurationText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   snackbarWrap: {
     position: 'absolute',
     left: 12,

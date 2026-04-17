@@ -457,13 +457,14 @@ export function GroupProfileScreen() {
         .map((message): GroupMediaItem | null => {
           const uri = extractRemoteMediaUri(message);
           if (!uri) return null;
+          const thumbnailUri = resolveAvatarUrl(message.media?.[0]?.thumbnail_url ?? null);
           return {
             id: message.id,
             kind: message.msg_type === 'video' ? 'video' : 'image',
             uri,
             previewUri:
               message.msg_type === 'video'
-                ? extractPreviewMediaUri(message) ?? undefined
+                ? thumbnailUri ?? undefined
                 : extractPreviewMediaUri(message) ?? uri,
             durationMs:
               message.msg_type === 'video'

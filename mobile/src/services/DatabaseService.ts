@@ -140,6 +140,11 @@ const SCHEMA_REPAIRS: Array<{ table: string; column: string; sql: string }> = [
     column: 'comment_count',
     sql: 'ALTER TABLE messages ADD COLUMN comment_count INTEGER DEFAULT 0;',
   },
+  {
+    table: 'chats',
+    column: 'local_contact_name',
+    sql: 'ALTER TABLE chats ADD COLUMN local_contact_name TEXT;',
+  },
 ];
 
 async function hasColumn(
@@ -271,6 +276,14 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
         } catch {
           // Column may already exist
         }
+      }
+    }
+    // v9->v10: add local alias for private contacts.
+    if (currentVersion >= 9 && currentVersion < 10) {
+      try {
+        await db.execAsync('ALTER TABLE chats ADD COLUMN local_contact_name TEXT;');
+      } catch {
+        // Column may already exist
       }
     }
     await db.execAsync(SCHEMA_SQL);

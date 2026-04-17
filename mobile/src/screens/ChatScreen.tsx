@@ -1124,15 +1124,24 @@ export function ChatScreen() {
     }
   }, [activeMenuMessage, confirmDeleteMessage]);
 
-  const handlePickReaction = useCallback((emoji: string) => {
-    if (!activeMenuMessage) return;
+  const handleToggleReaction = useCallback((messageId: string, emoji: string) => {
     WebSocketService.sendEvent('toggle_reaction', {
       chat_id: chatId,
-      message_id: activeMenuMessage.id,
+      message_id: messageId,
       emoji,
     });
-    closeMenu();
-  }, [activeMenuMessage, chatId, closeMenu]);
+  }, [chatId]);
+
+  const handlePickReaction = useCallback(
+    (emoji: string) => {
+      if (!activeMenuMessage) return;
+      handleToggleReaction(activeMenuMessage.id, emoji);
+      closeMenu();
+    },
+    [activeMenuMessage, closeMenu, handleToggleReaction],
+  );
+
+  const allowReactions = currentChat?.allow_reactions !== 0;
 
   const handleInputBarLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = Math.ceil(event.nativeEvent.layout.height);
@@ -1549,6 +1558,8 @@ export function ChatScreen() {
           contentPaddingTop={(selectionMode ? selectionActionBarHeight : inputBarHeight) + 8}
           canSwipeReply={canSwipeReply}
           onSwipeReply={handleSwipeReply}
+          allowReactions={allowReactions}
+          onToggleReaction={handleToggleReaction}
           onMessagePress={handleMessagePress}
           onMessageLongPress={openMessageMenu}
           onForwardHeaderPress={selectionMode ? undefined : handleForwardHeaderPress}

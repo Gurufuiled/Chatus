@@ -85,7 +85,11 @@ export const ChatListRow = React.memo(function ChatListRow({
     )
   );
 
-  const title = chat.peer_display_name || chat.name || (chat.chat_type === 'channel' ? 'Канал' : 'Chat');
+  const title =
+    chat.local_contact_name?.trim() ||
+    chat.peer_display_name ||
+    chat.name ||
+    (chat.chat_type === 'channel' ? 'Канал' : 'Chat');
   const preview =
     chat.last_message_preview ||
     (chat.chat_type === 'channel' ? chat.description || 'Канал' : null);

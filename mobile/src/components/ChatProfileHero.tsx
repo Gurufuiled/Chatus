@@ -1,4 +1,5 @@
 import React from 'react';
+import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Animated as RNAnimated,
@@ -10,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, {
   interpolate,
   runOnJS,
@@ -39,6 +41,8 @@ type ChatProfileHeroProps = {
   onMutePress: () => void;
   onSearchPress: () => void;
   onMorePress: () => void;
+  onBackPress: () => void;
+  onEditPress: () => void;
   moreButtonRef?: React.RefObject<View | null>;
 };
 
@@ -166,8 +170,11 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   onMutePress,
   onSearchPress,
   onMorePress,
+  onBackPress,
+  onEditPress,
   moreButtonRef,
 }: ChatProfileHeroProps) {
+  const insets = useSafeAreaInsets();
   const progress = useSharedValue(isExpanded ? 1 : 0);
 
   React.useEffect(() => {
@@ -202,9 +209,9 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   );
 
   const heroCardStyle = useAnimatedStyle(() => ({
-    paddingTop: interpolate(progress.value, [0, 1], [24, 0]),
+    paddingTop: interpolate(progress.value, [0, 1], [Math.max(insets.top + 8, 18), insets.top]),
     paddingBottom: interpolate(progress.value, [0, 1], [18, 16]),
-  }));
+  }), [insets.top]);
 
   const heroFrameStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [HERO_COLLAPSED_SIZE, expandedHeroWidth]),
@@ -225,6 +232,23 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
 
   return (
     <Reanimated.View style={[styles.heroCard, heroCardStyle]}>
+      <View style={styles.topBar}>
+        <Pressable
+          onPress={onBackPress}
+          hitSlop={10}
+          style={({ pressed }) => [styles.navBubble, pressed && styles.bubblePressed]}
+        >
+          <Feather name="chevron-left" size={25} color={colors.textPrimary} />
+        </Pressable>
+        <Pressable
+          onPress={onEditPress}
+          hitSlop={10}
+          style={({ pressed }) => [styles.editBubble, pressed && styles.bubblePressed]}
+        >
+          <Text style={styles.editBubbleText}>Изм.</Text>
+        </Pressable>
+      </View>
+
       <GestureDetector gesture={heroGesture}>
         <Pressable
           onPress={onToggleHeroExpanded}
@@ -308,6 +332,42 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     backgroundColor: colors.chatBackground,
     overflow: 'hidden',
+  },
+  topBar: {
+    width: '100%',
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    marginBottom: 2,
+  },
+  navBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha('#FFFFFF', 0.78),
+  },
+  editBubble: {
+    minWidth: 68,
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha('#FFFFFF', 0.86),
+  },
+  editBubbleText: {
+    fontSize: 17,
+    lineHeight: 20,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  bubblePressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.98 }],
   },
   avatarPressable: {
     width: '100%',

@@ -36,6 +36,7 @@ export function formatPlaybackRate(rate: number): string {
 function getPeerName(chatId: string, currentUserId: string | null): string | null {
   const chat = chatStore.getState().chats.find((item) => item.id === chatId);
   if (!chat) return null;
+  if (chat.local_contact_name?.trim()) return chat.local_contact_name.trim();
   if (chat.peer_display_name?.trim()) return chat.peer_display_name.trim();
   if (chat.name?.trim()) return chat.name.trim();
   if (chat.chat_type === 'private' && currentUserId) {

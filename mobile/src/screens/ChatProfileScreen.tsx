@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   Alert,
@@ -6,14 +6,21 @@ import {
   Dimensions,
   Easing,
   GestureResponderEvent,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatProfileHero } from '../components/ChatProfileHero';
 import type {
   AnchoredMenuState,
@@ -95,6 +102,14 @@ function buildDisplayName(profile: ApiUser | null, fallbackTitle: string) {
     fallbackTitle ||
     'Профиль'
   );
+}
+
+function splitContactName(value: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? '',
+    lastName: parts.slice(1).join(' '),
+  };
 }
 
 function formatMessageDate(timestamp: number) {
@@ -281,6 +296,7 @@ export function ChatProfileScreen() {
   const route = useRoute<ChatProfileRoute>();
   const { chatId, userId, chatTitle } = route.params;
   const { startCall } = useCall();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -292,6 +308,9 @@ export function ChatProfileScreen() {
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
   const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
+  const [isEditContactVisible, setIsEditContactVisible] = useState(false);
+  const [firstNameDraft, setFirstNameDraft] = useState('');
+  const [lastNameDraft, setLastNameDraft] = useState('');
   const actionMenuAnimation = useRef(new Animated.Value(0)).current;
   const moreMenuAnimation = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -315,6 +334,10 @@ export function ChatProfileScreen() {
   const currentThemeId = uiStore(
     (s) => (s.chatThemeIdByChatId[chatId] as ChatThemeId | undefined) ?? DEFAULT_CHAT_THEME_ID
   );
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
   useEffect(() => {
     let isMounted = true;
@@ -361,10 +384,12 @@ export function ChatProfileScreen() {
     };
   }, [isHeroExpanded, scrollY]);
 
-  const displayName = buildDisplayName(
+  const originalDisplayName = buildDisplayName(
     profile,
     chatTitle ?? chat?.peer_display_name ?? chat?.name ?? ''
   );
+  const localContactName = chat?.local_contact_name?.trim() ?? '';
+  const displayName = localContactName || originalDisplayName;
   const handleLabel = profile?.handle?.trim() ? `@${profile.handle.trim()}` : null;
   const avatarUrl = resolveAvatarUrl(profile?.avatar_url ?? chat?.avatar_url);
   const statusLabel = formatPresence(
@@ -472,10 +497,10 @@ export function ChatProfileScreen() {
   const handleSearchPress = useCallback(() => {
     navigation.navigate('Chat', {
       chatId,
-      chatTitle,
+      chatTitle: displayName,
       startSearch: true,
     });
-  }, [chatId, chatTitle, navigation]);
+  }, [chatId, displayName, navigation]);
 
   const handleStartCallPress = useCallback(async () => {
     try {
@@ -544,6 +569,48 @@ export function ChatProfileScreen() {
   const handleMorePress = useCallback(() => {
     openMoreMenu();
   }, [openMoreMenu]);
+
+  const openEditContact = useCallback(() => {
+    const parts = splitContactName(localContactName || displayName);
+    setFirstNameDraft(parts.firstName);
+    setLastNameDraft(parts.lastName);
+    setIsEditContactVisible(true);
+  }, [displayName, localContactName]);
+
+  const closeEditContact = useCallback(() => {
+    setIsEditContactVisible(false);
+  }, []);
+
+  const handleSaveContactName = useCallback(async () => {
+    if (!chat) {
+      setIsEditContactVisible(false);
+      return;
+    }
+
+    const nextName = [firstNameDraft.trim(), lastNameDraft.trim()]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const localName = nextName.length > 0 ? nextName : null;
+    const updatedChat = {
+      ...chat,
+      local_contact_name: localName,
+    };
+
+    chatStore.getState().updateChat(updatedChat);
+    setIsEditContactVisible(false);
+    navigation.setParams({ chatTitle: localName ?? originalDisplayName });
+
+    try {
+      await new ChatDao().update({
+        id: chat.id,
+        local_contact_name: localName,
+      });
+    } catch {
+      chatStore.getState().updateChat(chat);
+      Alert.alert('Не удалось сохранить имя', 'Попробуй еще раз чуть позже.');
+    }
+  }, [chat, firstNameDraft, lastNameDraft, navigation, originalDisplayName]);
 
   const openThemePicker = useCallback(() => {
     closeMoreMenu(() => {
@@ -641,7 +708,7 @@ export function ChatProfileScreen() {
     closeActionMenu(() => {
       navigation.navigate('Chat', {
         chatId,
-        chatTitle,
+        chatTitle: displayName,
         focusMessageId: messageId,
       });
     });
@@ -771,6 +838,8 @@ export function ChatProfileScreen() {
           onMutePress={handleMutePress}
           onSearchPress={handleSearchPress}
           onMorePress={handleMorePress}
+          onBackPress={() => navigation.goBack()}
+          onEditPress={openEditContact}
           moreButtonRef={moreButtonRef}
         />
 
@@ -812,6 +881,69 @@ export function ChatProfileScreen() {
         onApply={handleApplyTheme}
         onClose={() => setIsThemePickerVisible(false)}
       />
+      <Modal
+        visible={isEditContactVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={closeEditContact}
+      >
+        <KeyboardAvoidingView
+          style={styles.editScreen}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <StatusBar barStyle="dark-content" />
+          <View style={[styles.editTopBar, { paddingTop: Math.max(insets.top + 8, 18) }]}>
+            <Pressable
+              onPress={closeEditContact}
+              style={({ pressed }) => [styles.editNavPill, pressed && styles.editNavPillPressed]}
+            >
+              <Text style={styles.editNavText}>Отмена</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void handleSaveContactName();
+              }}
+              style={({ pressed }) => [styles.editNavPill, pressed && styles.editNavPillPressed]}
+            >
+              <Text style={[styles.editNavText, styles.editDoneText]}>Готово</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.editAvatarWrap}>
+            <View style={[styles.editAvatarFrame, !avatarUrl ? { backgroundColor: avatarColor } : null]}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.editAvatarImage} />
+              ) : (
+                <Text style={styles.editAvatarInitial}>{initial}</Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.editFieldsCard}>
+            <TextInput
+              value={firstNameDraft}
+              onChangeText={setFirstNameDraft}
+              placeholder="Имя"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.editInput}
+              returnKeyType="next"
+              autoFocus
+            />
+            <View style={styles.editInputDivider} />
+            <TextInput
+              value={lastNameDraft}
+              onChangeText={setLastNameDraft}
+              placeholder="Фамилия"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.editInput}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                void handleSaveContactName();
+              }}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -865,6 +997,80 @@ const styles = StyleSheet.create({
   },
   infoDivider: {
     height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+  },
+  editScreen: {
+    flex: 1,
+    backgroundColor: colors.chatBackground,
+  },
+  editTopBar: {
+    minHeight: 74,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+  },
+  editNavPill: {
+    minWidth: 76,
+    height: 44,
+    paddingHorizontal: 15,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: withAlpha('#FFFFFF', 0.86),
+  },
+  editNavPillPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.98 }],
+  },
+  editNavText: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  editDoneText: {
+    fontWeight: '700',
+  },
+  editAvatarWrap: {
+    alignItems: 'center',
+    marginTop: -10,
+    marginBottom: 28,
+  },
+  editAvatarFrame: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: withAlpha(colors.accent, 0.14),
+  },
+  editAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  editAvatarInitial: {
+    fontSize: 38,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  editFieldsCard: {
+    marginHorizontal: 28,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: colors.inputBackgroundSolid,
+  },
+  editInput: {
+    minHeight: 58,
+    paddingHorizontal: 18,
+    paddingVertical: 0,
+    fontSize: 18,
+    color: colors.textPrimary,
+  },
+  editInputDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 18,
     backgroundColor: colors.separator,
   },
 });

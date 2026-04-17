@@ -33,6 +33,8 @@ export type MediaTile = {
   uri: string;
   previewUri?: string;
   durationMs?: number;
+  /** Текстовая подпись к медиа (пост канала). При наличии в вьювере появляется кнопка показа текста. */
+  caption?: string;
 };
 
 export type FileItem = {
@@ -199,7 +201,8 @@ const FileRow = React.memo(function FileRow({
   );
 });
 
-const MediaTilePreview = React.memo(function MediaTilePreview({ item }: { item: MediaTile }) {
+/** Сетка превью — переиспользуется в профиле канала */
+export const MediaTilePreview = React.memo(function MediaTilePreview({ item }: { item: MediaTile }) {
   const generatedPreviewUri = useVideoPreviewUri(
     item.kind === 'video' ? item.uri : null,
     item.previewUri

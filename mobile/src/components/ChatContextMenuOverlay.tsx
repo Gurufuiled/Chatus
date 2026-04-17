@@ -25,6 +25,9 @@ const MENU_REACTIONS = [
   '\u{1F44D}',
 ];
 
+/** Как в Telegram: двойной тап по сообщению ставит это эмодзи */
+export const DOUBLE_TAP_REACTION_EMOJI = MENU_REACTIONS[0];
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }

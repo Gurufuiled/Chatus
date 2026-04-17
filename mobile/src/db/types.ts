@@ -85,6 +85,8 @@ export interface ChatRow {
   }[];
   /** From API: display name of peer in private chat. */
   peer_display_name?: string | null;
+  /** Local alias for private contact, never overwritten by server sync. */
+  local_contact_name?: string | null;
   channel_permissions?: {
     can_post: boolean;
     can_manage_admins: boolean;

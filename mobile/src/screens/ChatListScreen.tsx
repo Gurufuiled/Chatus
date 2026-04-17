@@ -46,7 +46,12 @@ function ChatSeparator() {
 }
 
 function getChatTitle(chat: Chat) {
-  return chat.peer_display_name || chat.name || (chat.chat_type === 'channel' ? 'Канал' : 'Chat');
+  return (
+    chat.local_contact_name?.trim() ||
+    chat.peer_display_name ||
+    chat.name ||
+    (chat.chat_type === 'channel' ? 'Канал' : 'Chat')
+  );
 }
 
 function isChannelPreviewRequired(channel: Chat, currentUserId: string | null) {
@@ -279,7 +284,7 @@ export function ChatListScreen() {
         chatStore.getState().addOrUpdateChat(chat);
         navigation.navigate('Chat', {
           chatId: chat.id,
-          chatTitle: chat.peer_display_name || chat.name || 'Chat',
+          chatTitle: getChatTitle(chat),
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

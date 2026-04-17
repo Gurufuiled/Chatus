@@ -10,6 +10,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -25,6 +26,8 @@ import {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CLOSE_SWIPE_DISTANCE = 84;
+/** Сдвиг панели подписи при открытии (без затемнения фото сверху) */
+const CAPTION_PANEL_SLIDE = Math.min(SCREEN_HEIGHT * 0.55, 520);
 
 function useViewerVideoPreviewUri(videoUri: string, preferredUri?: string) {
   const normalizedVideoUri = videoUri.trim();
@@ -70,14 +73,21 @@ function useViewerVideoPreviewUri(videoUri: string, preferredUri?: string) {
 const ImageViewerSlide = React.memo(function ImageViewerSlide({
   item,
   panHandlers,
+  onTap,
 }: {
   item: MediaTile;
   panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
+  onTap?: () => void;
 }) {
   return (
-    <View style={styles.slide} {...panHandlers}>
+    <Pressable
+      onPress={onTap}
+      style={styles.slide}
+      android_disableSound
+      {...panHandlers}
+    >
       <Image source={{ uri: item.uri }} style={styles.media} resizeMode="contain" />
-    </View>
+    </Pressable>
   );
 });
 
@@ -184,6 +194,12 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
 }: ChatProfileMediaViewerModalProps) {
   const listRef = useRef<FlatList<MediaTile> | null>(null);
   const translateY = useRef(new Animated.Value(0)).current;
+  const [captionOpen, setCaptionOpen] = useState(false);
+  const captionOpenRef = useRef(false);
+  useEffect(() => {
+    captionOpenRef.current = captionOpen;
+  }, [captionOpen]);
+  const captionAnim = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useMemo(
     () =>
       translateY.interpolate({
@@ -195,6 +211,29 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
   );
 
   const safeIndex = Math.max(0, Math.min(selectedIndex, Math.max(items.length - 1, 0)));
+  const currentCaption = items[safeIndex]?.caption?.trim() ?? '';
+  const hasCaption = currentCaption.length > 0;
+
+  useEffect(() => {
+    Animated.timing(captionAnim, {
+      toValue: captionOpen ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [captionAnim, captionOpen]);
+
+  useEffect(() => {
+    setCaptionOpen(false);
+  }, [safeIndex]);
+
+  useEffect(() => {
+    if (!visible) setCaptionOpen(false);
+  }, [visible]);
+
+  const toggleCaption = useCallback(() => {
+    if (!hasCaption) return;
+    setCaptionOpen((prev) => !prev);
+  }, [hasCaption]);
 
   const resetPosition = useCallback(() => {
     Animated.spring(translateY, {
@@ -218,9 +257,13 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
+          !captionOpenRef.current &&
+          Math.abs(gesture.dy) > 6 &&
+          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
+          !captionOpenRef.current &&
+          Math.abs(gesture.dy) > 6 &&
+          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
         onPanResponderMove: (_, gesture) => {
           translateY.setValue(gesture.dy);
         },
@@ -265,9 +308,13 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
           panHandlers={panResponder.panHandlers}
         />
       ) : (
-        <ImageViewerSlide item={item} panHandlers={panResponder.panHandlers} />
+        <ImageViewerSlide
+          item={item}
+          panHandlers={panResponder.panHandlers}
+          onTap={toggleCaption}
+        />
       ),
-    [panResponder.panHandlers, safeIndex]
+    [panResponder.panHandlers, safeIndex, toggleCaption]
   );
 
   if (items.length === 0) return null;
@@ -312,6 +359,63 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
             <Feather name="x" size={22} color="#FFFFFF" />
           </Pressable>
         </View>
+
+        {hasCaption && !captionOpen ? (
+          <Pressable
+            onPress={toggleCaption}
+            style={styles.captionHint}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Feather name="align-left" size={15} color="#FFFFFF" />
+            <Text style={styles.captionHintText}>Показать текст</Text>
+          </Pressable>
+        ) : null}
+
+        {hasCaption ? (
+          <View
+            style={styles.captionLayer}
+            pointerEvents={captionOpen ? 'box-none' : 'none'}
+          >
+            <Pressable
+              style={styles.captionDismissHit}
+              onPress={() => setCaptionOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Скрыть текст поста"
+            />
+            <Animated.View
+              style={[
+                styles.captionPanelWrap,
+                {
+                  opacity: captionAnim,
+                  transform: [
+                    {
+                      translateY: captionAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [CAPTION_PANEL_SLIDE, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.captionPanel}>
+                <View style={styles.captionHandle} />
+                <ScrollView
+                  style={styles.captionScroll}
+                  contentContainerStyle={styles.captionScrollContent}
+                  showsVerticalScrollIndicator
+                  bounces
+                >
+                  <Text style={styles.captionText}>{currentCaption}</Text>
+                </ScrollView>
+                <Pressable style={styles.captionClose} onPress={() => setCaptionOpen(false)}>
+                  <Feather name="chevron-down" size={20} color="#FFFFFF" />
+                  <Text style={styles.captionCloseText}>Скрыть</Text>
+                </Pressable>
+              </View>
+            </Animated.View>
+          </View>
+        ) : null}
       </Animated.View>
     </Modal>
   );
@@ -378,5 +482,80 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  captionHint: {
+    position: 'absolute',
+    bottom: 34,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  captionHintText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  captionLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  captionDismissHit: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  captionPanelWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  captionPanel: {
+    maxHeight: SCREEN_HEIGHT * 0.62,
+    backgroundColor: 'rgba(15,17,22,0.96)',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingTop: 10,
+    paddingBottom: 26,
+    paddingHorizontal: 18,
+  },
+  captionHandle: {
+    alignSelf: 'center',
+    width: 48,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    marginBottom: 10,
+  },
+  captionScroll: {
+    maxHeight: SCREEN_HEIGHT * 0.45,
+  },
+  captionScrollContent: {
+    paddingBottom: 12,
+  },
+  captionText: {
+    color: '#F3F4F6',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  captionClose: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  captionCloseText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

@@ -83,10 +83,15 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
     <Pressable
       onLongPress={(event) => onOpenActionMenu(item.id, event)}
       delayLongPress={220}
+      android_disableSound
       style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}
       {...panHandlers}
     >
-      <Image source={{ uri: item.uri }} style={styles.media} resizeMode="contain" />
+      <Image
+        source={{ uri: item.uri }}
+        style={[styles.media, { width: viewportWidth, height: viewportHeight }]}
+        resizeMode="contain"
+      />
     </Pressable>
   );
 });
@@ -163,16 +168,21 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
       onPress={handlePress}
       onLongPress={(event) => onOpenActionMenu(item.id, event)}
       delayLongPress={220}
+      android_disableSound
       style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}
       {...panHandlers}
     >
       {previewUri && (!isPlayerMounted || !hasRenderedFrame) ? (
-        <Image source={{ uri: previewUri }} style={styles.media} resizeMode="contain" />
+        <Image
+          source={{ uri: previewUri }}
+          style={[styles.media, { width: viewportWidth, height: viewportHeight }]}
+          resizeMode="contain"
+        />
       ) : null}
       {isPlayerMounted ? (
         <VideoView
           player={player}
-          style={styles.media}
+          style={[styles.media, { width: viewportWidth, height: viewportHeight }]}
           nativeControls={false}
           contentFit="contain"
           surfaceType="textureView"
@@ -311,9 +321,20 @@ export function GroupProfileMediaViewerModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-        <Animated.View style={[styles.viewerRoot, { transform: [{ translateY }] }]}>
+        <Animated.View
+          style={[
+            styles.viewerRoot,
+            {
+              width: viewportWidth,
+              height: viewportHeight,
+              transform: [{ translateY }],
+            },
+          ]}
+          {...panResponder.panHandlers}
+        >
           <FlatList
             ref={listRef}
+            style={{ width: viewportWidth, height: viewportHeight }}
             data={mediaItems}
             keyExtractor={(item) => item.id}
             horizontal
@@ -356,7 +377,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   viewerRoot: {
-    flex: 1,
+    overflow: 'hidden',
   },
   topBar: {
     position: 'absolute',
@@ -391,8 +412,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   media: {
-    width: '100%',
-    height: '100%',
+    alignSelf: 'center',
   },
   videoBadge: {
     position: 'absolute',

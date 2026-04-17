@@ -26,10 +26,28 @@ const initialState: ChatState = {
   isLoading: false,
 };
 
+function preserveLocalContactName(incoming: Chat, existing?: Chat): Chat {
+  return {
+    ...incoming,
+    local_contact_name:
+      incoming.local_contact_name !== undefined
+        ? incoming.local_contact_name
+        : existing?.local_contact_name ?? null,
+  };
+}
+
 export const chatStore = create<ChatState & ChatActions>((set) => ({
   ...initialState,
 
-  setChats: (chats) => set({ chats }),
+  setChats: (chats) =>
+    set((state) => ({
+      chats: chats.map((chat) =>
+        preserveLocalContactName(
+          chat,
+          state.chats.find((existing) => existing.id === chat.id)
+        )
+      ),
+    })),
 
   addChat: (chat) =>
     set((state) => ({
@@ -43,7 +61,7 @@ export const chatStore = create<ChatState & ChatActions>((set) => ({
       const idx = state.chats.findIndex((c) => c.id === chat.id);
       if (idx >= 0) {
         const next = [...state.chats];
-        next[idx] = chat;
+        next[idx] = preserveLocalContactName(chat, state.chats[idx]);
         return { chats: next };
       }
       return { chats: [chat, ...state.chats] };

@@ -852,7 +852,8 @@ export function ChannelFeedScreen() {
                   }
                 >
                   <Feather name="message-circle" size={14} color={colors.accent} />
-                  <Text style={styles.discussionLink} numberOfLines={1}>
+                  {/* Без numberOfLines + flexShrink: иначе после возврата с профиля RN даёт тексту чуть меньшую ширину и режет хвост / «…» */}
+                  <Text style={styles.discussionLink}>
                     {(item.comment_count ?? 0) > 0
                       ? `${item.comment_count} комментариев`
                       : 'Прокомментировать'}
@@ -924,6 +925,7 @@ export function ChannelFeedScreen() {
           data={sortedFeed}
             keyExtractor={(item) => item.id}
             renderItem={renderPost}
+            removeClippedSubviews={false}
             refreshing={loading}
             onRefresh={() => void load()}
             contentContainerStyle={[
@@ -1156,7 +1158,7 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 12,
     fontWeight: '700',
-    flexShrink: 1,
+    flexShrink: 0,
   },
   reactionSummaryRow: {
     flexDirection: 'row',
