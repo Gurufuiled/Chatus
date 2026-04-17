@@ -23,7 +23,10 @@ import { resolveAvatarUrl } from '../config';
 type Route = RouteProp<ChatsStackParamList, 'ChannelSettings'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelSettings'>;
 
-/* ─── Row Component ─── */
+/* ─── Row Component ───
+ * Non-interactive rows must use <View style={[...]}> — never pass a style *function* to View
+ * (Pressable accepts it; View ignores it and breaks flexDirection: 'row').
+ */
 
 function SettingsRow({
   icon,

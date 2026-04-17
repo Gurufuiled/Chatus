@@ -15,6 +15,8 @@ export type ChannelDetail = {
 };
 
 type DiscussionThread = {
+  /** Метаданные канала (настройки комментариев и т.д.) — нужны для UI в обсуждении */
+  channel?: Chat;
   discussion_chat_id: string;
   thread_root_message_id: string;
   can_comment: boolean;

@@ -155,6 +155,7 @@ export type MappedChat = {
   allow_comments: boolean;
   allow_reactions: boolean;
   disable_comments_new: boolean;
+  disable_comments_new_since: number | null;
   disable_comments_all: boolean;
   disable_voice_comments: boolean;
   disable_media_comments: boolean;
@@ -222,6 +223,7 @@ export function mapChat(
     allow_comments: chat.allowComments,
     allow_reactions: chat.allowReactions,
     disable_comments_new: chat.disableCommentsNew,
+    disable_comments_new_since: dateToUnixMs(chat.disableCommentsNewSince),
     disable_comments_all: chat.disableCommentsAll,
     disable_voice_comments: chat.disableVoiceComments,
     disable_media_comments: chat.disableMediaComments,

@@ -60,6 +60,20 @@ export interface InputBarProps {
   replyAuthorName?: string | null;
   onCancelReply?: () => void;
   isScreenFocused?: boolean;
+  /**
+   * Если задано — голосовые/видео-кружки отключены, а при попытке записи
+   * показывается telegram-style всплывающая подсказка с этим текстом.
+   */
+  voiceRestriction?: string | null;
+  /**
+   * Если задано — скрепка/галерея/файлы отключены, при нажатии показывается
+   * такая же подсказка с этим текстом.
+   */
+  mediaRestriction?: string | null;
+  /** Момент времени (ms), когда истечёт антифлуд; плашка с таймером до этого момента */
+  commentCooldownEndsAt?: number | null;
+  /** Вызывается, когда таймер дошёл до нуля (скрыть состояние в родителе) */
+  onCommentCooldownClear?: () => void;
 }
 
 type AttachmentAction = {
@@ -151,6 +165,10 @@ export function InputBar({
   replyAuthorName = null,
   onCancelReply,
   isScreenFocused = true,
+  voiceRestriction = null,
+  mediaRestriction = null,
+  commentCooldownEndsAt = null,
+  onCommentCooldownClear,
 }: InputBarProps) {
   const [inputText, setInputText] = useState('');
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
@@ -659,10 +677,73 @@ export function InputBar({
 
   const showAttachmentButton = onSendMedia != null || attachmentActions.length > 0;
 
+  // Telegram-style всплывающий хинт над инпутом: показываем, когда функция
+  // отключена настройками чата/канала (запрет голосовых/медиа и т.д.).
+  const [restrictionHint, setRestrictionHint] = useState<string | null>(null);
+  const restrictionHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restrictionHintOpacity = useRef(new RNAnimated.Value(0)).current;
+  const showRestrictionHint = useCallback(
+    (text: string) => {
+      if (restrictionHintTimerRef.current) {
+        clearTimeout(restrictionHintTimerRef.current);
+      }
+      setRestrictionHint(text);
+      RNAnimated.timing(restrictionHintOpacity, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+      restrictionHintTimerRef.current = setTimeout(() => {
+        RNAnimated.timing(restrictionHintOpacity, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (finished) setRestrictionHint(null);
+        });
+      }, 2600);
+    },
+    [restrictionHintOpacity]
+  );
+  useEffect(() => {
+    return () => {
+      if (restrictionHintTimerRef.current) {
+        clearTimeout(restrictionHintTimerRef.current);
+      }
+    };
+  }, []);
+
+  /** Антифлуд (канал): плашка с секундами до разрешённой следующей отправки */
+  const [commentCooldownRemainSec, setCommentCooldownRemainSec] = useState(0);
+  const onCommentCooldownClearRef = useRef(onCommentCooldownClear);
+  onCommentCooldownClearRef.current = onCommentCooldownClear;
+  useEffect(() => {
+    if (commentCooldownEndsAt == null) {
+      setCommentCooldownRemainSec(0);
+      return;
+    }
+    const tick = () => {
+      const r = Math.ceil((commentCooldownEndsAt - Date.now()) / 1000);
+      if (r <= 0) {
+        setCommentCooldownRemainSec(0);
+        onCommentCooldownClearRef.current?.();
+        return;
+      }
+      setCommentCooldownRemainSec(r);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [commentCooldownEndsAt]);
+
   const openAttachmentSheet = useCallback(() => {
+    if (mediaRestriction) {
+      showRestrictionHint(mediaRestriction);
+      return;
+    }
     if (!showAttachmentButton) return;
     setShowAttachmentSheet(true);
-  }, [showAttachmentButton]);
+  }, [mediaRestriction, showAttachmentButton, showRestrictionHint]);
 
   const updateVoiceDrag = useCallback(
     (dx: number, dy: number) => {
@@ -1023,7 +1104,32 @@ export function InputBar({
 
   return (
     <>
-      <View style={styles.inputRow}>
+      <View style={styles.inputBarRoot}>
+        {commentCooldownRemainSec > 0 ? (
+          <View
+            style={styles.restrictionHint}
+            accessibilityRole="text"
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={`Подождите ${commentCooldownRemainSec} секунд`}
+          >
+            <Feather name="lock" size={14} color="#FFFFFF" style={styles.restrictionHintIcon} />
+            <Text style={styles.restrictionHintText}>
+              Подождите {commentCooldownRemainSec} сек.
+            </Text>
+          </View>
+        ) : null}
+
+        {restrictionHint ? (
+          <RNAnimated.View
+            pointerEvents="none"
+            style={[styles.restrictionHint, { opacity: restrictionHintOpacity }]}
+          >
+            <Feather name="lock" size={14} color="#FFFFFF" style={styles.restrictionHintIcon} />
+            <Text style={styles.restrictionHintText}>{restrictionHint}</Text>
+          </RNAnimated.View>
+        ) : null}
+
+        <View style={styles.inputRow}>
         {pendingMedia ? (
           <View style={styles.previewCard}>
             <View style={styles.previewMediaWrap}>
@@ -1151,16 +1257,25 @@ export function InputBar({
           )}
 
         {!canSend ? (
-          <View
-            pointerEvents={isVoiceLocked && !voiceTouchTracking ? 'none' : 'auto'}
-            style={[
-              styles.voiceTouchAnchor,
-              isVoiceRecording && styles.voiceTouchAnchorActive,
-              isVoiceLocked && !voiceTouchTracking && styles.voiceTouchAnchorHidden,
-            ]}
-            {...voicePanResponder.panHandlers}
-          />
+          voiceRestriction ? (
+            // Вместо pan-жеста запуска записи показываем telegram-style хинт.
+            <Pressable
+              onPress={() => showRestrictionHint(voiceRestriction)}
+              style={styles.voiceTouchAnchor}
+            />
+          ) : (
+            <View
+              pointerEvents={isVoiceLocked && !voiceTouchTracking ? 'none' : 'auto'}
+              style={[
+                styles.voiceTouchAnchor,
+                isVoiceRecording && styles.voiceTouchAnchorActive,
+                isVoiceLocked && !voiceTouchTracking && styles.voiceTouchAnchorHidden,
+              ]}
+              {...voicePanResponder.panHandlers}
+            />
+          )
         ) : null}
+        </View>
       </View>
 
       <InputAttachmentSheet
@@ -1188,6 +1303,11 @@ export function InputBar({
 }
 
 const styles = StyleSheet.create({
+  /** Обёртка: подсказка в потоке над полем — иначе absolute уезжает за clip родителей */
+  inputBarRoot: {
+    width: '100%',
+    overflow: 'visible',
+  },
   inputRow: {
     position: 'relative',
     paddingHorizontal: 10,
@@ -1399,6 +1519,34 @@ const styles = StyleSheet.create({
   },
   voiceTouchAnchorHidden: {
     opacity: 0,
+  },
+  restrictionHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    marginHorizontal: 8,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: '#2B3540',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  restrictionHintIcon: {
+    marginRight: 8,
+    flexShrink: 0,
+  },
+  restrictionHintText: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
 

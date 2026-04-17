@@ -128,6 +128,7 @@ model Chat {
   allowComments       Boolean   @default(true) @map("allow_comments")
   allowReactions      Boolean   @default(true) @map("allow_reactions")
   disableCommentsNew  Boolean   @default(false) @map("disable_comments_new")
+  disableCommentsNewSince DateTime? @map("disable_comments_new_since")
   disableCommentsAll  Boolean   @default(false) @map("disable_comments_all")
   disableVoiceComments Boolean  @default(false) @map("disable_voice_comments")
   disableMediaComments Boolean  @default(false) @map("disable_media_comments")

@@ -19,6 +19,10 @@ type ChatInputDockProps = {
   replyAuthorName: string | null;
   onCancelReply: () => void;
   isScreenFocused?: boolean;
+  voiceRestriction?: string | null;
+  mediaRestriction?: string | null;
+  commentCooldownEndsAt?: number | null;
+  onCommentCooldownClear?: () => void;
 };
 
 export function ChatInputDock({
@@ -35,9 +39,13 @@ export function ChatInputDock({
   replyAuthorName,
   onCancelReply,
   isScreenFocused = true,
+  voiceRestriction = null,
+  mediaRestriction = null,
+  commentCooldownEndsAt = null,
+  onCommentCooldownClear,
 }: ChatInputDockProps) {
   return (
-    <Reanimated.View onLayout={onLayout} style={animatedStyle}>
+    <Reanimated.View onLayout={onLayout} style={[animatedStyle, { overflow: 'visible' }]}>
       <InputBar
         placeholder={placeholder}
         onSendText={onSendText}
@@ -50,6 +58,10 @@ export function ChatInputDock({
         replyAuthorName={replyAuthorName}
         onCancelReply={onCancelReply}
         isScreenFocused={isScreenFocused}
+        voiceRestriction={voiceRestriction}
+        mediaRestriction={mediaRestriction}
+        commentCooldownEndsAt={commentCooldownEndsAt}
+        onCommentCooldownClear={onCommentCooldownClear}
       />
     </Reanimated.View>
   );

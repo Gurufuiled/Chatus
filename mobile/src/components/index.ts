@@ -26,3 +26,4 @@ export {
 export { VideoBubble } from './VideoBubble';
 export { VideoNoteBubble } from './VideoNoteBubble';
 export { VoiceBubble } from './VoiceBubble';
+export { LoadErrorState } from './LoadErrorState';

@@ -16,6 +16,7 @@ import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import type { Chat } from '../stores/types';
 import { colors } from '../theme/colors';
+import { LoadErrorState } from '../components/LoadErrorState';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelCatalog'>;
 
@@ -35,9 +36,11 @@ export function ChannelCatalogScreen() {
   const navigation = useNavigation<Nav>();
   const catalog = channelStore((state) => state.catalog);
   const isLoading = channelStore((state) => state.isLoadingCatalog);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     channelStore.getState().setLoadingCatalog(true);
+    setLoadError(null);
     try {
       const channels = await fetchChannelCatalog();
       const onlyChannels = channels.filter((channel) => channel.chat_type === 'channel');
@@ -45,6 +48,10 @@ export function ChannelCatalogScreen() {
       onlyChannels
         .filter((channel) => channel.access_status === 'active')
         .forEach((channel) => chatStore.getState().addOrUpdateChat(channel));
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : 'Не удалось загрузить список каналов.',
+      );
     } finally {
       channelStore.getState().setLoadingCatalog(false);
     }
@@ -87,6 +94,10 @@ export function ChannelCatalogScreen() {
     [navigation]
   );
 
+  if (loadError && catalog.length === 0 && !isLoading) {
+    return <LoadErrorState message={loadError} onRetry={() => void load()} />;
+  }
+
   if (isLoading && catalog.length === 0) {
     return (
       <View style={styles.loadingState}>
@@ -104,6 +115,16 @@ export function ChannelCatalogScreen() {
       onRefresh={() => void load()}
       ItemSeparatorComponent={RowSeparator}
       contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
+      ListHeaderComponent={
+        loadError && catalog.length > 0 ? (
+          <View style={styles.refreshErrorBanner}>
+            <Text style={styles.refreshErrorText}>{loadError}</Text>
+            <Pressable onPress={() => void load()}>
+              <Text style={styles.refreshErrorRetry}>Обновить</Text>
+            </Pressable>
+          </View>
+        ) : null
+      }
       ListEmptyComponent={
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Пока нет каналов</Text>
@@ -188,5 +209,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     color: colors.textSecondary,
+  },
+  refreshErrorBanner: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(239,68,68,0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  refreshErrorText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#B91C1C',
+  },
+  refreshErrorRetry: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.accent,
   },
 });

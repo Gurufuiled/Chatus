@@ -10,6 +10,7 @@ import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { colors } from '../theme/colors';
 import { resolveAvatarUrl } from '../config';
+import { LoadErrorState } from '../components/LoadErrorState';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelProfile'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelProfile'>;
@@ -46,6 +47,7 @@ export function ChannelProfileScreen() {
   const { channelId } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
   const [loading, setLoading] = React.useState(!detail);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [snackbar, setSnackbar] = React.useState<string | null>(null);
 
   const showSnackbar = React.useCallback((message: string) => {
@@ -54,10 +56,15 @@ export function ChannelProfileScreen() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const next = await fetchChannelDetail(channelId);
       channelStore.getState().setDetail(channelId, next);
       chatStore.getState().addOrUpdateChat(next.channel);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : 'Не удалось загрузить профиль канала.',
+      );
     } finally {
       setLoading(false);
     }
@@ -79,6 +86,10 @@ export function ChannelProfileScreen() {
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
+  }
+
+  if (loadError && !detail) {
+    return <LoadErrorState message={loadError} onRetry={() => void load()} />;
   }
 
   if (!detail) {

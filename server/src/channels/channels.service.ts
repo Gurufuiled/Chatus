@@ -299,7 +299,9 @@ export class ChannelsService {
       permissions,
       canPreview,
       canViewFullFeed,
-      canComment: canViewFullFeed && channel.allowComments,
+      canComment:
+        (canViewFullFeed && channel.allowComments && !channel.disableCommentsAll) ||
+        (isAdminRole && !isBanned),
       canReact: canViewFullFeed && channel.allowReactions,
       canPost,
       canManageAdmins,
@@ -643,6 +645,81 @@ export class ChannelsService {
     };
   }
 
+  /**
+   * Вычисляет, можно ли писать комментарий под КОНКРЕТНЫМ постом с учётом
+   * всех настроек канала: disableCommentsAll / disableCommentsNew+Since.
+   * Админы и владельцы не ограничиваются (они модерируют).
+   */
+  private resolveCommentAccessForPost(
+    channel: ChannelWithRelations,
+    post: { createdAt: Date },
+    isAdminOrOwner: boolean,
+  ): { allowed: boolean; reason?: string } {
+    if (isAdminOrOwner) return { allowed: true };
+    if (!channel.allowComments) {
+      return { allowed: false, reason: 'Comments are disabled in this channel' };
+    }
+    if (channel.disableCommentsAll) {
+      return { allowed: false, reason: 'Comments are disabled in this channel' };
+    }
+    if (
+      channel.disableCommentsNew &&
+      channel.disableCommentsNewSince &&
+      post.createdAt >= channel.disableCommentsNewSince
+    ) {
+      return { allowed: false, reason: 'Comments are disabled for new posts' };
+    }
+    return { allowed: true };
+  }
+
+  /**
+   * Проверка запрета типа сообщения в обсуждении (голос/медиа)
+   * и cooldown между сообщениями пользователя в треде.
+   */
+  private async enforceDiscussionPolicy(
+    channel: ChannelWithRelations,
+    postId: string,
+    userId: string,
+    msgType: string,
+    isAdminOrOwner: boolean,
+  ) {
+    if (isAdminOrOwner) return;
+
+    if (msgType === 'voice' && channel.disableVoiceComments) {
+      throw new ForbiddenException('Voice comments are disabled in this channel');
+    }
+    const isMedia =
+      msgType === 'image' ||
+      msgType === 'video' ||
+      msgType === 'video_note' ||
+      msgType === 'file';
+    if (isMedia && channel.disableMediaComments) {
+      throw new ForbiddenException('Media comments are disabled in this channel');
+    }
+
+    const cooldown = channel.commentCooldownSec ?? 0;
+    if (cooldown > 0 && channel.linkedDiscussionChatId) {
+      const last = await this.prisma.message.findFirst({
+        where: {
+          chatId: channel.linkedDiscussionChatId,
+          threadRootMessageId: postId,
+          senderId: userId,
+          isDeleted: false,
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      if (last) {
+        const diffSec = Math.floor((Date.now() - last.createdAt.getTime()) / 1000);
+        if (diffSec < cooldown) {
+          throw new ForbiddenException(
+            `Please wait ${cooldown - diffSec}s before sending another comment`,
+          );
+        }
+      }
+    }
+  }
+
   async getDiscussion(
     channelId: string,
     postId: string,
@@ -694,6 +771,12 @@ export class ChannelsService {
       take: limit,
     });
 
+    const perPostComment = this.resolveCommentAccessForPost(
+      channel,
+      post,
+      access.isAdmin,
+    );
+
     return {
       channel: {
         ...this.mapChannelForUser(channel, userId),
@@ -701,7 +784,7 @@ export class ChannelsService {
       },
       discussion_chat_id: discussionChatId,
       thread_root_message_id: postId,
-      can_comment: access.canComment,
+      can_comment: access.canComment && perPostComment.allowed,
       post: mapMessage(post, {
         includeMedia: true,
         includeReactions: true,
@@ -874,6 +957,9 @@ export class ChannelsService {
     }
     if (dto.disable_comments_new !== undefined) {
       data.disableCommentsNew = dto.disable_comments_new;
+      // «Только для новых постов»: фиксируем момент включения, чтобы отличать
+      // посты «до» (разрешены) от «после» (запрещены). Выключение — сбрасываем.
+      data.disableCommentsNewSince = dto.disable_comments_new ? new Date() : null;
     }
     if (dto.disable_comments_all !== undefined) {
       data.disableCommentsAll = dto.disable_comments_all;
@@ -1021,17 +1107,25 @@ export class ChannelsService {
         isChannelPost: true,
         isDeleted: false,
       },
-      select: { id: true },
+      select: { id: true, createdAt: true },
     });
     if (!post) {
       throw new NotFoundException('Channel post not found');
     }
 
+    const perPostComment = this.resolveCommentAccessForPost(channel, post, access.isAdmin);
+    if (!perPostComment.allowed) {
+      throw new ForbiddenException(perPostComment.reason ?? 'Comments are disabled');
+    }
+
+    const msgType = dto.msg_type ?? 'text';
+    await this.enforceDiscussionPolicy(channel, postId, userId, msgType, access.isAdmin);
+
     const discussionChatId = channel.linkedDiscussionChatId!;
     const message = await this.messagesService.createMessage(
       discussionChatId,
       userId,
-      dto.msg_type ?? 'text',
+      msgType,
       dto.content ?? null,
       this.sanitizeMedia(dto.media),
       dto.reply_to_id ?? null,

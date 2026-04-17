@@ -33,6 +33,7 @@ import {
   sendDiscussionMessage,
 } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
+import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
@@ -41,6 +42,7 @@ import {
   ChatInputDock,
   FileBubble,
   ImageBubble,
+  LoadErrorState,
   MessageTimeStatus,
   ReplyPreview,
   VideoBubble,
@@ -458,6 +460,16 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
     </View>
   );
 }
+
+/** Секунды ожидания из текста ошибки API (антифлуд на сервере) */
+function parseCooldownSecondsFromApiError(message: string): number | null {
+  const ru = message.match(/Подождите (\d+)/);
+  if (ru) return Math.max(0, parseInt(ru[1], 10));
+  const en = message.match(/Please wait (\d+)s/i);
+  if (en) return Math.max(0, parseInt(en[1], 10));
+  return null;
+}
+
 export function ChannelDiscussionScreen() {
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
@@ -470,6 +482,9 @@ export function ChannelDiscussionScreen() {
   const { channelId, postId } = route.params;
   const key = `${channelId}:${postId}`;
   const thread = channelStore((state) => state.discussionByKey[key]);
+  const detailChannel = channelStore((state) => state.detailsById[channelId]?.channel);
+  const catalogChannel = channelStore((state) => state.catalog.find((c) => c.id === channelId));
+  const chatListChannel = chatStore((state) => state.chats.find((c) => c.id === channelId));
   const currentUser = authStore((state) => state.user);
   const currentUserId = currentUser?.id ?? null;
 
@@ -477,6 +492,9 @@ export function ChannelDiscussionScreen() {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [inputBarHeight, setInputBarHeight] = React.useState(88);
   const [replyToMessageId, setReplyToMessageId] = React.useState<string | null>(null);
+  const lastDiscussionSendOkAtRef = React.useRef(0);
+  const [commentCooldownEndsAt, setCommentCooldownEndsAt] = React.useState<number | null>(null);
+  const clearCommentCooldown = React.useCallback(() => setCommentCooldownEndsAt(null), []);
   const [menuState, setMenuState] = React.useState<MenuState>(null);
   const [menuMode, setMenuMode] = React.useState<DiscussionMenuMode>('actions');
 
@@ -489,6 +507,10 @@ export function ChannelDiscussionScreen() {
     }
     return map;
   }, [sortedMessages]);
+
+  /** Настройки канала: из треда (после load), из профиля, каталога или списка чатов */
+  const channelForSettings =
+    thread?.channel ?? detailChannel ?? catalogChannel ?? chatListChannel ?? null;
 
   const replyToMessage = replyToMessageId ? messageById.get(replyToMessageId) ?? null : null;
   const replyAuthorName = replyToMessage ? replyToMessage.sender_name || replyToMessage.sender_id : null;
@@ -509,6 +531,7 @@ export function ChannelDiscussionScreen() {
     try {
       const next = await fetchDiscussionThread(channelId, postId);
       channelStore.getState().setDiscussion(key, {
+        channel: next.channel,
         discussion_chat_id: next.discussion_chat_id,
         thread_root_message_id: next.thread_root_message_id,
         can_comment: next.can_comment,
@@ -683,6 +706,32 @@ export function ChannelDiscussionScreen() {
       optimisticMedia?: Message['media'];
     }) => {
       if (!currentUserId || !thread) return;
+
+      // Мягкий pre-check запретов из настроек канала — чтобы не делать
+      // лишний сетевой запрос и показать понятное сообщение.
+      const channel =
+        thread.channel ?? detailChannel ?? catalogChannel ?? chatListChannel ?? null;
+      if (type === 'voice' && channel?.disable_voice_comments) {
+        Alert.alert('Голосовые отключены', 'В этом канале запрещены голосовые комментарии.');
+        return;
+      }
+      if (
+        (type === 'image' || type === 'video' || type === 'video_note' || type === 'file') &&
+        channel?.disable_media_comments
+      ) {
+        Alert.alert('Медиа отключены', 'В этом канале запрещены медиа-комментарии.');
+        return;
+      }
+
+      const cooldownSec = Math.min(15, Math.max(0, Number(channel?.comment_cooldown_sec) || 0));
+      if (cooldownSec > 0 && lastDiscussionSendOkAtRef.current > 0) {
+        const unblockAt = lastDiscussionSendOkAtRef.current + cooldownSec * 1000;
+        if (Date.now() < unblockAt) {
+          setCommentCooldownEndsAt(unblockAt);
+          return;
+        }
+      }
+
       const now = Date.now();
       const tempId = `temp-discussion-${now}-${Math.round(Math.random() * 1000)}`;
       const optimistic: Message = {
@@ -723,13 +772,31 @@ export function ChannelDiscussionScreen() {
           ...current,
           messages: [...current.messages.filter((item) => item.id !== tempId && item.id !== saved.id), saved],
         }));
+        lastDiscussionSendOkAtRef.current = Date.now();
         setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
       } catch (error) {
         updateThread((current) => ({ ...current, messages: current.messages.filter((item) => item.id !== tempId) }));
-        Alert.alert('Не удалось отправить комментарий', error instanceof Error ? error.message : 'Попробуйте ещё раз.');
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const coolWait = parseCooldownSecondsFromApiError(errMsg);
+        if (coolWait != null && coolWait > 0) {
+          setCommentCooldownEndsAt(Date.now() + coolWait * 1000);
+        } else {
+          Alert.alert('Не удалось отправить комментарий', errMsg || 'Попробуйте ещё раз.');
+        }
       }
     },
-    [channelId, currentUser, currentUserId, postId, replyToMessageId, thread, updateThread],
+    [
+      catalogChannel,
+      channelId,
+      chatListChannel,
+      currentUser,
+      currentUserId,
+      detailChannel,
+      postId,
+      replyToMessageId,
+      thread,
+      updateThread,
+    ],
   );
 
   const handleSendText = React.useCallback((text: string) => {
@@ -865,10 +932,7 @@ export function ChannelDiscussionScreen() {
         {loading && !thread && !loadError ? (
           <View style={styles.loading}><ActivityIndicator size="large" color={colors.accent} /></View>
         ) : loadError && !thread ? (
-          <View style={styles.loading}>
-            <Text style={styles.errorText}>{loadError}</Text>
-            <Pressable style={styles.retryButton} onPress={() => void load()}><Text style={styles.retryButtonText}>Повторить</Text></Pressable>
-          </View>
+          <LoadErrorState message={loadError} onRetry={() => void load()} />
         ) : (
           <Reanimated.View style={[styles.listWrap, listWrapAnimatedStyle]}>
             <FlatList
@@ -900,6 +964,18 @@ export function ChannelDiscussionScreen() {
             replyToMessage={replyToMessage}
             replyAuthorName={replyAuthorName}
             onCancelReply={() => setReplyToMessageId(null)}
+            voiceRestriction={
+              channelForSettings?.disable_voice_comments
+                ? 'В этом канале разрешены только текстовые и медиа-комментарии.'
+                : null
+            }
+            mediaRestriction={
+              channelForSettings?.disable_media_comments
+                ? 'В этом канале запрещены медиа-комментарии.'
+                : null
+            }
+            commentCooldownEndsAt={commentCooldownEndsAt}
+            onCommentCooldownClear={clearCommentCooldown}
           />
         ) : null}
       </BlurTargetView>
@@ -930,19 +1006,6 @@ export function ChannelDiscussionScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#E8F4D6' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  errorText: {
-    color: colors.textSecondary,
-    textAlign: 'center',
-    fontWeight: '600',
-    paddingHorizontal: 20,
-  },
-  retryButton: {
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    backgroundColor: colors.accent,
-  },
-  retryButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
   listWrap: { flex: 1 },
   listContent: { paddingHorizontal: 8, paddingTop: 8 },
   row: {
@@ -1038,7 +1101,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.16)',
   },
   discussionDividerText: { color: '#7B8794', fontSize: 12, fontWeight: '600' },
-  inputBarWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  inputBarWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'visible' },
   replyGestureContainer: { width: '100%', position: 'relative', overflow: 'visible' },
   replySwipeAction: { position: 'absolute', right: 10, top: '50%', marginTop: -16, zIndex: 2 },
   replySwipeIconWrap: {

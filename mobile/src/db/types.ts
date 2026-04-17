@@ -40,6 +40,7 @@ export interface ChatRow {
   allow_comments?: number;
   allow_reactions?: number;
   disable_comments_new?: number;
+  disable_comments_new_since?: number | null;
   disable_comments_all?: number;
   disable_voice_comments?: number;
   disable_media_comments?: number;

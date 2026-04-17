@@ -24,6 +24,7 @@ import {
   ChatContextMenuOverlay,
   FileBubble,
   ImageBubble,
+  LoadErrorState,
   VideoBubble,
   VideoNoteBubble,
   VoiceBubble,
@@ -56,6 +57,29 @@ const CHANNEL_MEDIA_MIN_PORTRAIT_WIDTH = 154;
 const MENU_EDGE_GAP = 12;
 const MENU_HEIGHT = 272;
 const OVERLAY_BOTTOM_INSET = 18;
+
+/**
+ * Разрешено ли комментировать КОНКРЕТНЫЙ пост с учётом настроек канала.
+ * Дублирует серверный `resolveCommentAccessForPost`, чтобы UI сразу прятал
+ * кнопку без лишнего запроса и без рассинхрона с 403 от сервера.
+ */
+function canCommentOnPost(
+  post: Message,
+  channel: { disable_comments_all?: number; disable_comments_new?: number; disable_comments_new_since?: number | null } | undefined,
+  globalCanComment: boolean,
+): boolean {
+  if (!globalCanComment) return false;
+  if (!channel) return true;
+  if (channel.disable_comments_all) return false;
+  if (
+    channel.disable_comments_new &&
+    channel.disable_comments_new_since &&
+    post.created_at >= channel.disable_comments_new_since
+  ) {
+    return false;
+  }
+  return true;
+}
 
 function sortPostsOldestFirst(messages: Message[]) {
   return [...messages].sort((a, b) => {
@@ -177,6 +201,7 @@ export function ChannelFeedScreen() {
   const feed = channelStore((state) => state.feedByChannelId[channelId] ?? EMPTY_FEED);
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const [loading, setLoading] = React.useState(feed.length === 0);
+  const [feedError, setFeedError] = React.useState<string | null>(null);
   const [inputBarHeight, setInputBarHeight] = React.useState(88);
   const [menuState, setMenuState] = React.useState<{
     messageId: string;
@@ -199,6 +224,7 @@ export function ChannelFeedScreen() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
+    setFeedError(null);
     try {
       const next = await fetchChannelFeed(channelId);
       const store = channelStore.getState();
@@ -229,6 +255,15 @@ export function ChannelFeedScreen() {
         linked_discussion_chat_id: next.channel.linked_discussion_chat_id ?? null,
         channel_permissions: next.channel.channel_permissions,
       });
+    } catch (error) {
+      const msg =
+        error instanceof Error ? error.message : 'Не удалось загрузить ленту канала.';
+      const hasCached = (channelStore.getState().feedByChannelId[channelId]?.length ?? 0) > 0;
+      if (hasCached) {
+        Alert.alert('Не удалось обновить ленту', msg);
+      } else {
+        setFeedError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -673,12 +708,13 @@ export function ChannelFeedScreen() {
   const renderPostExtras = React.useCallback(
     (item: Message) => {
       const hasReactions = (item.reactions?.length ?? 0) > 0;
-      if (!canComment && !hasReactions) return null;
+      const itemCanComment = canCommentOnPost(item, detail?.channel, canComment);
+      if (!itemCanComment && !hasReactions) return null;
       const isVisual = item.msg_type === 'image' || item.msg_type === 'video';
 
       return (
         <View style={[styles.postActionsRow, isVisual && styles.postActionsRowMedia]}>
-          {canComment ? (
+          {itemCanComment ? (
             <Pressable
               style={({ pressed }) => [styles.discussionPill, pressed && styles.discussionPillPressed]}
               onPress={() =>
@@ -704,13 +740,14 @@ export function ChannelFeedScreen() {
         </View>
       );
     },
-    [canComment, channelId, navigation],
+    [canComment, detail?.channel, channelId, navigation],
   );
 
   const renderPostExtrasPreview = React.useCallback(
     (item: Message) => {
       const hasReactions = (item.reactions?.length ?? 0) > 0;
-      if (!canComment && !hasReactions) return null;
+      const itemCanComment = canCommentOnPost(item, detail?.channel, canComment);
+      if (!itemCanComment && !hasReactions) return null;
       const isVisual = item.msg_type === 'image' || item.msg_type === 'video';
 
       return (
@@ -721,7 +758,7 @@ export function ChannelFeedScreen() {
             isVisual && styles.postActionsRowPreviewMedia,
           ]}
         >
-          {canComment ? (
+          {itemCanComment ? (
             <Pressable
               style={({ pressed }) => [
                 styles.discussionPill,
@@ -763,7 +800,7 @@ export function ChannelFeedScreen() {
         </View>
       );
     },
-    [canComment, channelId, navigation],
+    [canComment, detail?.channel, channelId, navigation],
   );
 
   const renderPost = React.useCallback(
@@ -773,6 +810,7 @@ export function ChannelFeedScreen() {
       const isVoicePost = item.msg_type === 'voice';
       const mediaWidth = isVisualMediaPost ? (computeChannelMediaWidth(media) ?? 240) : null;
       const hasReactions = (item.reactions?.length ?? 0) > 0;
+      const itemCanComment = canCommentOnPost(item, detail?.channel, canComment);
 
       return (
       <Pressable
@@ -797,9 +835,9 @@ export function ChannelFeedScreen() {
               renderPostContent(item)
             )}
 
-          {canComment || hasReactions ? (
+          {itemCanComment || hasReactions ? (
             <View style={[styles.postActionsRow, isVisualMediaPost && styles.postActionsRowMedia]}>
-              {canComment ? (
+              {itemCanComment ? (
                 <Pressable
                   style={({ pressed }) => [
                     styles.discussionPill,
@@ -836,7 +874,7 @@ export function ChannelFeedScreen() {
       </Pressable>
       );
     },
-    [canComment, channelId, navigation, openReactionMenu, renderPostContent, setPostContentRef]
+    [canComment, detail?.channel, channelId, navigation, openReactionMenu, renderPostContent, setPostContentRef]
   );
 
   const renderMenuPreviewBody = React.useCallback(
@@ -874,7 +912,9 @@ export function ChannelFeedScreen() {
     <View style={styles.container}>
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
       <ChatBackgroundPattern />
-      {loading && feed.length === 0 ? (
+      {feedError && sortedFeed.length === 0 ? (
+        <LoadErrorState message={feedError} onRetry={() => void load()} />
+      ) : loading && feed.length === 0 ? (
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={colors.accent} />
         </View>

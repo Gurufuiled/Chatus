@@ -74,6 +74,7 @@ type ApiChat = {
   allow_comments?: boolean;
   allow_reactions?: boolean;
   disable_comments_new?: boolean;
+  disable_comments_new_since?: number | null;
   disable_comments_all?: boolean;
   disable_voice_comments?: boolean;
   disable_media_comments?: boolean;
@@ -220,6 +221,7 @@ function mapApiChatToChat(api: ApiChat): Chat {
     allow_comments: api.allow_comments === false ? 0 : 1,
     allow_reactions: api.allow_reactions === false ? 0 : 1,
     disable_comments_new: api.disable_comments_new ? 1 : 0,
+    disable_comments_new_since: api.disable_comments_new_since ?? null,
     disable_comments_all: api.disable_comments_all ? 1 : 0,
     disable_voice_comments: api.disable_voice_comments ? 1 : 0,
     disable_media_comments: api.disable_media_comments ? 1 : 0,
@@ -328,7 +330,20 @@ function localizeChannelApiMessage(message: string): string {
       return 'Канал не найден.';
     case 'Channel post not found':
       return 'Публикация канала не найдена.';
+    case 'Comments are disabled in this channel':
+      return 'Комментарии отключены в этом канале.';
+    case 'Comments are disabled for new posts':
+      return 'Автор отключил комментарии для новых публикаций.';
+    case 'Voice comments are disabled in this channel':
+      return 'В этом канале запрещены голосовые комментарии.';
+    case 'Media comments are disabled in this channel':
+      return 'В этом канале запрещены медиа-комментарии.';
     default:
+      // Cooldown сообщения вида "Please wait 5s before sending another comment"
+      if (/^Please wait \d+s before sending another comment$/.test(message)) {
+        const sec = message.match(/\d+/)?.[0] ?? '…';
+        return `Подождите ${sec} сек. перед отправкой следующего комментария.`;
+      }
       return message;
   }
 }
