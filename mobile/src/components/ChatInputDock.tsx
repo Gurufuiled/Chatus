@@ -3,7 +3,12 @@ import Reanimated from 'react-native-reanimated';
 import type { LayoutChangeEvent, StyleProp, ViewStyle, View } from 'react-native';
 import type { Message } from '../stores/types';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
-import { InputBar, type FilePickResult, type MediaPickResult } from './InputBar';
+import {
+  InputBar,
+  type FilePickResult,
+  type MediaAlbumPickResult,
+  type MediaPickResult,
+} from './InputBar';
 
 type ChatInputDockProps = {
   onLayout: (event: LayoutChangeEvent) => void;
@@ -13,6 +18,7 @@ type ChatInputDockProps = {
   onSendVoice: (result: { uri: string; waveform: number[]; durationMs: number }) => void | Promise<void>;
   onSendVideoNote?: (result: VideoNoteRecordingResult) => void | Promise<void>;
   onSendMedia: (result: MediaPickResult) => void | Promise<void>;
+  onSendMediaAlbum?: (result: MediaAlbumPickResult) => void | Promise<void>;
   onSendFile: (result: FilePickResult) => void | Promise<void>;
   blurTargetRef?: React.RefObject<View | null>;
   replyToMessage: Message | null;
@@ -33,6 +39,7 @@ export function ChatInputDock({
   onSendVoice,
   onSendVideoNote,
   onSendMedia,
+  onSendMediaAlbum,
   onSendFile,
   blurTargetRef,
   replyToMessage,
@@ -52,6 +59,7 @@ export function ChatInputDock({
         onSendVoice={onSendVoice}
         onSendVideoNote={onSendVideoNote}
         onSendMedia={onSendMedia}
+        onSendMediaAlbum={onSendMediaAlbum}
         onSendFile={onSendFile}
         blurTargetRef={blurTargetRef}
         replyToMessage={replyToMessage}

@@ -55,6 +55,8 @@ export interface VideoBubbleProps {
   viewCount?: number;
   /** If true, use provided width/height as-is without internal clamping. */
   fixedSize?: boolean;
+  /** Parent handles fullscreen (e.g. swipe-to-dismiss profile viewer). */
+  onOpenFullscreen?: () => void;
 }
 
 function computeDisplaySize(
@@ -404,6 +406,7 @@ export function VideoBubble({
   centered = false,
   viewCount,
   fixedSize = false,
+  onOpenFullscreen,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -487,8 +490,12 @@ export function VideoBubble({
 
   const handlePress = useCallback(() => {
     if (!normalizedUri) return;
+    if (onOpenFullscreen) {
+      onOpenFullscreen();
+      return;
+    }
     setFullscreenVisible(true);
-  }, [normalizedUri]);
+  }, [normalizedUri, onOpenFullscreen]);
 
   const handleClose = useCallback(() => {
     setFullscreenVisible(false);
@@ -571,7 +578,7 @@ export function VideoBubble({
         ) : null}
       </View>
 
-      {fullscreenVisible && normalizedUri ? (
+      {!onOpenFullscreen && fullscreenVisible && normalizedUri ? (
         <FullscreenVideoModal
           uri={normalizedUri}
           topInset={insets.top}

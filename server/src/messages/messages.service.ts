@@ -40,11 +40,12 @@ const VALID_MSG_TYPES: MessageType[] = [
 ];
 
 const MESSAGE_INCLUDE = {
-  media: true,
+  media: { orderBy: { createdAt: 'asc' } },
   reactions: true,
 } satisfies Prisma.MessageInclude;
 
 export interface CreateMessageMedia {
+  media_type?: string;
   url?: string;
   duration_ms?: number;
   waveform?: number[];
@@ -57,6 +58,8 @@ export interface CreateMessageMedia {
   file_size?: number;
   mime_type?: string;
 }
+
+export type CreateMessageMediaInput = CreateMessageMedia | CreateMessageMedia[];
 
 export interface CreateForwardMetadata {
   forwarded_from_message_id?: string | null;
@@ -90,7 +93,7 @@ export class MessagesService {
     }
   }
 
-  private serializeWaveform(waveform?: number[]): Uint8Array | null {
+  private serializeWaveform(waveform?: number[]): Uint8Array<ArrayBuffer> | null {
     if (!Array.isArray(waveform) || waveform.length === 0) {
       return null;
     }
@@ -107,7 +110,7 @@ export class MessagesService {
       encoded.byteOffset,
       encoded.byteOffset + encoded.byteLength,
     );
-    return new Uint8Array(buffer);
+    return new Uint8Array(buffer as ArrayBuffer);
   }
 
   private async ensureChatMember(
@@ -189,7 +192,7 @@ export class MessagesService {
     senderId: string,
     msgType: string,
     content: string | null,
-    media?: CreateMessageMedia,
+    media?: CreateMessageMediaInput,
     replyToId?: string | null,
     forwardedFrom?: CreateForwardMetadata,
     options?: CreateMessageOptions,
@@ -197,6 +200,7 @@ export class MessagesService {
     await this.ensureChatMember(chatId, senderId);
 
     const prismaMsgType = this.toMessageType(msgType);
+    const mediaItems = this.normalizeMediaItems(media);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const message = await tx.message.create({
@@ -218,35 +222,32 @@ export class MessagesService {
         },
       });
 
-      if (media && prismaMsgType !== MessageType.text) {
-        const mediaType =
-          MSG_TYPE_TO_MEDIA_TYPE[prismaMsgType] ?? MediaType.file;
-        const waveformBytes =
-          this.serializeWaveform(media.waveform) as Parameters<
-            typeof tx.media.create
-          >[0]['data']['waveform'];
-        const mediaData: Parameters<typeof tx.media.create>[0]['data'] = {
-          id: randomUUID(),
-          messageId: message.id,
-          mediaType,
-          remoteUrl: media.url ?? null,
-          fileName: media.file_name ?? null,
-          mimeType: media.mime_type ?? null,
-          fileSize: media.file_size ?? null,
-          width: media.width ?? null,
-          height: media.height ?? null,
-          durationMs: media.duration_ms ?? null,
-          thumbnailUrl: media.thumbnail_url ?? media.thumbnail_path ?? null,
-          waveform: waveformBytes,
-          isRound: media.is_round ?? false,
-        };
-        await tx.media.create({ data: mediaData });
+      if (mediaItems.length > 0 && prismaMsgType !== MessageType.text) {
+        const mediaData: Prisma.MediaCreateManyInput[] = mediaItems.map((item) => {
+          const waveformBytes = this.serializeWaveform(item.waveform);
+          return {
+            id: randomUUID(),
+            messageId: message.id,
+            mediaType: this.toMediaType(item.media_type, prismaMsgType),
+            remoteUrl: item.url ?? null,
+            fileName: item.file_name ?? null,
+            mimeType: item.mime_type ?? null,
+            fileSize: item.file_size ?? null,
+            width: item.width ?? null,
+            height: item.height ?? null,
+            durationMs: item.duration_ms ?? null,
+            thumbnailUrl: item.thumbnail_url ?? item.thumbnail_path ?? null,
+            waveform: waveformBytes,
+            isRound: item.is_round ?? false,
+          };
+        });
+        await tx.media.createMany({ data: mediaData });
       }
 
       const preview = this.buildLastMessagePreview(
         prismaMsgType,
         content,
-        media,
+        mediaItems,
       );
       await tx.chat.update({
         where: { id: chatId },
@@ -272,7 +273,7 @@ export class MessagesService {
     senderId: string,
     msgType: string,
     content: string | null,
-    media?: CreateMessageMedia,
+    media?: CreateMessageMediaInput,
   ): Promise<MappedMessage> {
     const channel = await this.prisma.chat.findUnique({
       where: { id: channelId },
@@ -513,10 +514,23 @@ export class MessagesService {
     return MessageType.text;
   }
 
+  private normalizeMediaItems(media?: CreateMessageMediaInput): CreateMessageMedia[] {
+    if (!media) return [];
+    return (Array.isArray(media) ? media : [media]).slice(0, 10);
+  }
+
+  private toMediaType(mediaType: string | undefined, fallbackMsgType: MessageType): MediaType {
+    const normalized = mediaType?.toLowerCase();
+    if (normalized && Object.values(MediaType).includes(normalized as MediaType)) {
+      return normalized as MediaType;
+    }
+    return MSG_TYPE_TO_MEDIA_TYPE[fallbackMsgType] ?? MediaType.file;
+  }
+
   private buildLastMessagePreview(
     msgType: MessageType,
     content: string | null,
-    media?: CreateMessageMedia,
+    media?: CreateMessageMediaInput,
   ): string {
     const maxLen = 100;
     if (msgType === MessageType.text && content) {
@@ -524,13 +538,19 @@ export class MessagesService {
         ? content
         : content.slice(0, maxLen) + '…';
     }
+    const mediaCount = Array.isArray(media) ? media.length : media ? 1 : 0;
+    if ((msgType === MessageType.image || msgType === MessageType.video) && mediaCount > 1) {
+      return `${mediaCount} media`;
+    }
     const placeholders: Record<MessageType, string> = {
       [MessageType.text]: '',
       [MessageType.image]: 'Photo',
       [MessageType.voice]: 'Voice message',
       [MessageType.video_note]: 'Video note',
       [MessageType.video]: 'Video',
-      [MessageType.file]: media?.file_name ?? 'File',
+      [MessageType.file]: Array.isArray(media)
+        ? media[0]?.file_name ?? 'File'
+        : media?.file_name ?? 'File',
       [MessageType.system]: '',
     };
     return placeholders[msgType] ?? 'Message';

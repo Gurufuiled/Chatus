@@ -136,6 +136,7 @@ type ApiMessage = {
   created_at: number;
   updated_at: number;
   media?: {
+    media_type?: string | null;
     duration_ms?: number | null;
     waveform?: string | null;
     remote_url?: string | null;
@@ -205,7 +206,7 @@ function mapApiChannelMember(item: ApiChannelMemberListItem): ChannelMemberItem 
   };
 }
 
-function mapApiChatToChat(api: ApiChat): Chat {
+export function mapApiChatToChat(api: ApiChat): Chat {
   return {
     id: api.id,
     chat_type: api.chat_type,
@@ -294,6 +295,7 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
     updated_at: api.updated_at,
     media:
       api.media?.map((item) => ({
+        media_type: item.media_type ?? undefined,
         duration_ms: item.duration_ms ?? undefined,
         waveform: decodeServerWaveform(item.waveform),
         remote_url: item.remote_url ?? undefined,
@@ -495,6 +497,7 @@ export async function updateChannel(
     disable_media_comments?: boolean;
     comment_cooldown_sec?: number;
     slug?: string;
+    clear_slug?: boolean;
   }
 ): Promise<Chat> {
   const res = await apiPatch(`/channels/${encodeURIComponent(channelId)}`, payload);
@@ -502,10 +505,74 @@ export async function updateChannel(
   return mapApiChatToChat(data);
 }
 
-export async function subscribeToChannel(channelId: string): Promise<Chat> {
-  const res = await apiPost(`/channels/${encodeURIComponent(channelId)}/subscribe`);
+export type ChannelResolveResult = {
+  link_kind: 'slug' | 'invite';
+  channel_id: string;
+  visibility: 'public' | 'private';
+  channel: Chat;
+  is_subscribed: boolean;
+  can_subscribe: boolean;
+  subscribe_requires_invite: boolean;
+};
+
+type ApiChannelResolve = {
+  link_kind: 'slug' | 'invite';
+  channel_id: string;
+  visibility: 'public' | 'private';
+  channel: ApiChat;
+  is_subscribed: boolean;
+  can_subscribe: boolean;
+  subscribe_requires_invite: boolean;
+};
+
+export async function resolveChannelBySlug(slug: string): Promise<ChannelResolveResult> {
+  const res = await apiGet(`/channels/link/slug/${encodeURIComponent(slug.trim())}`);
+  const data = await parseJsonOrThrow<ApiChannelResolve>(res, 'Failed to resolve channel');
+  return {
+    link_kind: data.link_kind,
+    channel_id: data.channel_id,
+    visibility: data.visibility,
+    channel: mapApiChatToChat(data.channel),
+    is_subscribed: data.is_subscribed,
+    can_subscribe: data.can_subscribe,
+    subscribe_requires_invite: data.subscribe_requires_invite,
+  };
+}
+
+export async function resolveChannelByInvite(inviteToken: string): Promise<ChannelResolveResult> {
+  const res = await apiGet(
+    `/channels/link/invite/${encodeURIComponent(inviteToken.trim())}`,
+  );
+  const data = await parseJsonOrThrow<ApiChannelResolve>(res, 'Failed to resolve invite');
+  return {
+    link_kind: data.link_kind,
+    channel_id: data.channel_id,
+    visibility: data.visibility,
+    channel: mapApiChatToChat(data.channel),
+    is_subscribed: data.is_subscribed,
+    can_subscribe: data.can_subscribe,
+    subscribe_requires_invite: data.subscribe_requires_invite,
+  };
+}
+
+export async function subscribeToChannel(
+  channelId: string,
+  options?: { inviteToken?: string },
+): Promise<Chat> {
+  const body = options?.inviteToken
+    ? { invite_token: options.inviteToken }
+    : {};
+  const res = await apiPost(`/channels/${encodeURIComponent(channelId)}/subscribe`, body);
   const data = await parseJsonOrThrow<ApiChat>(res, 'Failed to subscribe');
   return mapApiChatToChat(data);
+}
+
+export async function unsubscribeFromChannel(channelId: string): Promise<void> {
+  const res = await apiPost(`/channels/${encodeURIComponent(channelId)}/unsubscribe`, {});
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Не удалось покинуть канал');
+  }
 }
 
 export async function mockCheckoutChannel(channelId: string): Promise<Chat> {
@@ -520,6 +587,7 @@ export async function publishChannelPost(
     content?: string | null;
     msg_type?: string;
     media?: {
+      media_type?: string;
       url?: string;
       duration_ms?: number;
       waveform?: number[];
@@ -530,7 +598,19 @@ export async function publishChannelPost(
       file_name?: string;
       file_size?: number;
       mime_type?: string;
-    };
+    } | {
+      media_type?: string;
+      url?: string;
+      duration_ms?: number;
+      waveform?: number[];
+      thumbnail_url?: string;
+      is_round?: boolean;
+      width?: number;
+      height?: number;
+      file_name?: string;
+      file_size?: number;
+      mime_type?: string;
+    }[];
   }
 ): Promise<Message> {
   const res = await apiPost(`/channels/${encodeURIComponent(channelId)}/posts`, payload);

@@ -130,6 +130,7 @@ export class WebsocketGateway
       forwarded_from_chat_id?: string | null;
       forwarded_from_sender_id?: string | null;
       media?: {
+        media_type?: string;
         url?: string;
         duration_ms?: number;
         waveform?: number[];
@@ -140,7 +141,19 @@ export class WebsocketGateway
         file_name?: string;
         file_size?: number;
         mime_type?: string;
-      };
+      } | {
+        media_type?: string;
+        url?: string;
+        duration_ms?: number;
+        waveform?: number[];
+        thumbnail_url?: string;
+        is_round?: boolean;
+        width?: number;
+        height?: number;
+        file_name?: string;
+        file_size?: number;
+        mime_type?: string;
+      }[];
     },
   ) {
     if (!client.userId) return;

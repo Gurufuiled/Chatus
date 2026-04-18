@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { appLinking } from './src/navigation/linking';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -66,7 +67,7 @@ export default function App() {
             <WebSocketProvider>
               <VoicePlayerProvider>
                 <CallProvider>
-                  <NavigationContainer>
+                  <NavigationContainer linking={appLinking as never}>
                     <RootNavigator />
                     <StatusBar style="auto" />
                   </NavigationContainer>

@@ -5,6 +5,7 @@ import {
   FlatList,
   FlatListProps,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -38,10 +39,19 @@ import { VideoNoteBubble } from './VideoNoteBubble';
 import { VoiceBubble } from './VoiceBubble';
 import { resolveAvatarUrl } from '../config';
 import { DOUBLE_TAP_REACTION_EMOJI } from './ChatContextMenuOverlay';
+import { formatMediaDuration } from '../utils/mediaDuration';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { ChatsStackParamList } from '../navigation/types';
+import { ChannelLinkRichMessage } from './ChannelLinkRichMessage';
+import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
+const SCREEN_WIDTH = Dimensions.get('window').width;
 const FILE_ROW_WIDTH = Math.min(Dimensions.get('window').width * 0.76, 320);
+const ALBUM_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);
 
 function clampReplySwipe(value: number) {
   'worklet';
@@ -88,6 +98,260 @@ type ReplySwipeWrapperProps = {
   onReply: () => void;
   children: React.ReactNode;
 };
+
+type VisualMediaItem = NonNullable<Message['media']>[number];
+type AlbumViewerState = {
+  media: VisualMediaItem[];
+  initialIndex: number;
+} | null;
+
+function getVisualMediaKind(message: Message, media: VisualMediaItem): 'image' | 'video' {
+  const mediaType = media.media_type?.toLowerCase();
+  if (mediaType === 'video') return 'video';
+  if (mediaType === 'image') return 'image';
+  return message.msg_type === 'video' ? 'video' : 'image';
+}
+
+function MediaAlbumBubble({
+  message,
+  isMe,
+  time,
+  status,
+  chatTheme,
+  onOpenMedia,
+}: {
+  message: Message;
+  isMe: boolean;
+  time: string;
+  status: string;
+  chatTheme: ChatTheme;
+  onOpenMedia?: (media: VisualMediaItem[], index: number) => void;
+}) {
+  const media = (message.media ?? [])
+    .filter((item) => item.remote_url?.trim())
+    .slice(0, 10);
+  if (media.length === 0) return null;
+
+  const visibleMedia = media.slice(0, 9);
+  const gap = 1.5;
+  const caption = message.content?.trim();
+
+  const renderTile = (item: VisualMediaItem, index: number, style: object) => {
+    const kind = getVisualMediaKind(message, item);
+    const uri = kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
+    const extraCount = media.length - visibleMedia.length;
+    const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
+
+    return (
+      <Pressable
+        key={`${item.remote_url}-${index}`}
+        accessibilityRole="button"
+        accessibilityLabel="Открыть медиа"
+        onPress={() => onOpenMedia?.(media, index)}
+        style={[styles.albumTile, style]}
+      >
+        <Image source={{ uri }} style={styles.albumImage} resizeMode="cover" />
+        {kind === 'video' ? (
+          <View style={styles.albumVideoBadge}>
+            <Feather name="play" size={10} color="#FFFFFF" />
+            <Text style={styles.albumVideoDuration}>
+              {formatMediaDuration(item.duration_ms ?? 0)}
+            </Text>
+          </View>
+        ) : null}
+        {showExtra ? (
+          <View style={styles.albumExtraOverlay}>
+            <Text style={styles.albumExtraText}>+{extraCount}</Text>
+          </View>
+        ) : null}
+      </Pressable>
+    );
+  };
+
+  const grid = (() => {
+    if (visibleMedia.length === 1) {
+      return renderTile(visibleMedia[0], 0, {
+        width: ALBUM_BUBBLE_WIDTH,
+        height: ALBUM_BUBBLE_WIDTH,
+      });
+    }
+
+    if (visibleMedia.length === 2) {
+      const tileWidth = (ALBUM_BUBBLE_WIDTH - gap) / 2;
+      return (
+        <View style={styles.albumRow}>
+          {visibleMedia.map((item, index) =>
+            renderTile(item, index, { width: tileWidth, height: ALBUM_BUBBLE_WIDTH })
+          )}
+        </View>
+      );
+    }
+
+    if (visibleMedia.length === 3) {
+      const sideWidth = (ALBUM_BUBBLE_WIDTH - gap) * 0.58;
+      const rightWidth = ALBUM_BUBBLE_WIDTH - sideWidth - gap;
+      const halfHeight = (ALBUM_BUBBLE_WIDTH - gap) / 2;
+      return (
+        <View style={styles.albumRow}>
+          {renderTile(visibleMedia[0], 0, { width: sideWidth, height: ALBUM_BUBBLE_WIDTH })}
+          <View style={[styles.albumColumn, { width: rightWidth }]}>
+            {renderTile(visibleMedia[1], 1, { width: rightWidth, height: halfHeight })}
+            {renderTile(visibleMedia[2], 2, { width: rightWidth, height: halfHeight })}
+          </View>
+        </View>
+      );
+    }
+
+    const columns = 3;
+    const tileWidth = (ALBUM_BUBBLE_WIDTH - gap * (columns - 1)) / columns;
+    return (
+      <View style={styles.albumGrid}>
+        {visibleMedia.map((item, index) =>
+          renderTile(item, index, { width: tileWidth, height: tileWidth })
+        )}
+      </View>
+    );
+  })();
+
+  return (
+    <View style={[styles.albumBubble, isMe ? styles.albumBubbleMe : styles.albumBubbleOther]}>
+      <View style={[styles.albumGridClip, { width: ALBUM_BUBBLE_WIDTH }]}>
+        {grid}
+        {!caption ? (
+          <View style={styles.albumTimeOverlay}>
+            <MessageTimeStatus
+              time={time}
+              status={status}
+              isMe={isMe}
+              compact
+              timeColor="#FFFFFF"
+              iconColor="#FFFFFF"
+            />
+          </View>
+        ) : null}
+      </View>
+      {caption ? (
+        <View
+          style={[
+            styles.albumCaptionWrap,
+            isMe
+              ? [styles.albumCaptionMe, { backgroundColor: chatTheme.bubbleMe }]
+              : styles.albumCaptionOther,
+          ]}
+        >
+          <Text
+            style={[
+              styles.albumCaptionText,
+              isMe ? { color: chatTheme.bubbleMeText } : null,
+            ]}
+          >
+            {caption}
+          </Text>
+          <MessageTimeStatus
+            time={time}
+            status={status}
+            isMe={isMe}
+            compact
+            timeColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+            iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function AlbumMediaViewerModal({
+  state,
+  onClose,
+}: {
+  state: AlbumViewerState;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [activeIndex, setActiveIndex] = React.useState(state?.initialIndex ?? 0);
+  const listRef = React.useRef<FlatList<VisualMediaItem> | null>(null);
+  const media = state?.media ?? [];
+
+  React.useEffect(() => {
+    setActiveIndex(state?.initialIndex ?? 0);
+    if (!state) return;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({
+        index: state.initialIndex,
+        animated: false,
+      });
+    });
+  }, [state]);
+
+  return (
+    <Modal
+      visible={state != null}
+      transparent={false}
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.viewerRoot}>
+        <View style={[styles.viewerTopBar, { paddingTop: insets.top + 10 }]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть просмотр"
+            onPress={onClose}
+            hitSlop={12}
+            style={styles.viewerCloseButton}
+          >
+            <Feather name="x" size={24} color="#FFFFFF" />
+          </Pressable>
+          {media.length > 1 ? (
+            <Text style={styles.viewerCounter}>
+              {activeIndex + 1} / {media.length}
+            </Text>
+          ) : null}
+          <View style={styles.viewerTopSpacer} />
+        </View>
+
+        <FlatList
+          ref={listRef}
+          data={media}
+          keyExtractor={(item, index) => `${item.remote_url ?? item.thumbnail_url ?? 'media'}-${index}`}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={state?.initialIndex ?? 0}
+          getItemLayout={(_, index) => ({
+            length: SCREEN_WIDTH,
+            offset: SCREEN_WIDTH * index,
+            index,
+          })}
+          onMomentumScrollEnd={(event) => {
+            const nextIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+            setActiveIndex(Math.max(0, Math.min(media.length - 1, nextIndex)));
+          }}
+          onScrollToIndexFailed={({ index }) => {
+            requestAnimationFrame(() => {
+              listRef.current?.scrollToOffset({
+                offset: SCREEN_WIDTH * index,
+                animated: false,
+              });
+            });
+          }}
+          renderItem={({ item }) => {
+            const uri = item.remote_url?.trim() || item.thumbnail_url?.trim() || '';
+            return (
+              <View style={styles.viewerSlide}>
+                {uri ? (
+                  <Image source={{ uri }} style={styles.viewerImage} resizeMode="contain" />
+                ) : null}
+              </View>
+            );
+          }}
+        />
+
+        <View style={[styles.viewerBottomBar, { paddingBottom: insets.bottom + 18 }]} />
+      </View>
+    </Modal>
+  );
+}
 
 const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({
   enabled,
@@ -183,6 +447,7 @@ type MessageRowProps = {
   onToggleReaction: (messageId: string, emoji: string) => void;
   onPressMessage: (messageId: string) => void;
   onLongPressMessage: (message: Message) => void;
+  onOpenAlbumMedia: (media: VisualMediaItem[], index: number) => void;
   onForwardHeaderPress?: (message: Message) => void;
   onReplyPreviewPress?: (messageId: string) => void;
   setContentRef: (messageId: string, node: View | null) => void;
@@ -213,6 +478,7 @@ const MessageRow = React.memo(function MessageRow({
   onToggleReaction,
   onPressMessage,
   onLongPressMessage,
+  onOpenAlbumMedia,
   onForwardHeaderPress,
   onReplyPreviewPress,
   setContentRef,
@@ -223,6 +489,7 @@ const MessageRow = React.memo(function MessageRow({
   repliedVoiceBubbleWidth,
   chatTheme,
 }: MessageRowProps) {
+  const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
   const lastTapAtRef = useRef(0);
   const isMe = item.sender_id === currentUserId;
   const ownsInlineReplySwipe = item.msg_type === 'video_note';
@@ -361,6 +628,29 @@ const MessageRow = React.memo(function MessageRow({
     if (item.msg_type === 'text') {
       const rawContent = item.content ?? '';
       const displayContent = rawContent.trim() || ' ';
+      const channelLink = parseChannelDeepLinkFromMessage(rawContent);
+
+      if (channelLink) {
+        return (
+          <View
+            style={[
+              styles.channelLinkOuter,
+              showAuthorAvatar && styles.groupMessageSurface,
+            ]}
+          >
+            {renderIncomingHeader()}
+            {renderReplySnippet()}
+            <ChannelLinkRichMessage
+              parsed={channelLink}
+              rawUrlLine={displayContent}
+              isMe={isMe}
+              time={formatTime(item.created_at)}
+              status={item.status}
+              navigation={navigation}
+            />
+          </View>
+        );
+      }
 
       return (
         <View
@@ -498,6 +788,54 @@ const MessageRow = React.memo(function MessageRow({
           ]}
         >
           {videoContent}
+        </View>
+      );
+    }
+
+    const visualMediaCount =
+      item.msg_type === 'image' || item.msg_type === 'video'
+        ? item.media?.filter((media) => media.remote_url?.trim()).length ?? 0
+        : 0;
+
+    if (visualMediaCount > 1) {
+      const replySnippet = renderReplySnippet();
+      const albumContent = (
+        <MediaAlbumBubble
+          message={item}
+          isMe={isMe}
+          time={formatTime(item.created_at)}
+          status={item.status}
+          chatTheme={chatTheme}
+          onOpenMedia={onOpenAlbumMedia}
+        />
+      );
+
+      if (replySnippet) {
+        return (
+          <View
+            style={[
+              styles.repliedMediaBubble,
+              showAuthorAvatar && styles.groupMessageSurface,
+              showAuthorAvatar && styles.groupRepliedMediaBubble,
+              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+            ]}
+          >
+            {renderIncomingHeader()}
+            {replySnippet}
+            {albumContent}
+          </View>
+        );
+      }
+
+      return (
+        <View
+          style={[
+            styles.mediaStack,
+            showAuthorAvatar && styles.groupMessageSurface,
+          ]}
+        >
+          {albumContent}
         </View>
       );
     }
@@ -786,6 +1124,7 @@ const MessageRow = React.memo(function MessageRow({
     prev.getMessageAuthorPresentation === next.getMessageAuthorPresentation &&
     prev.onForwardHeaderPress === next.onForwardHeaderPress &&
     prev.onReplyPreviewPress === next.onReplyPreviewPress &&
+    prev.onOpenAlbumMedia === next.onOpenAlbumMedia &&
     prev.onToggleReaction === next.onToggleReaction
   );
 });
@@ -820,6 +1159,17 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   chatTheme,
   activeVideoNoteVisible,
 }: ChatMessageListProps) {
+  const [albumViewerState, setAlbumViewerState] = React.useState<AlbumViewerState>(null);
+  const handleOpenAlbumMedia = React.useCallback((media: VisualMediaItem[], index: number) => {
+    setAlbumViewerState({
+      media,
+      initialIndex: Math.max(0, Math.min(media.length - 1, index)),
+    });
+  }, []);
+  const handleCloseAlbumViewer = React.useCallback(() => {
+    setAlbumViewerState(null);
+  }, []);
+
   const renderMessageRow = React.useCallback(({ item }: { item: Message }) => (
     <MessageRow
       item={item}
@@ -836,6 +1186,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       onToggleReaction={onToggleReaction}
       onPressMessage={onMessagePress}
       onLongPressMessage={onMessageLongPress}
+      onOpenAlbumMedia={handleOpenAlbumMedia}
       onForwardHeaderPress={onForwardHeaderPress}
       onReplyPreviewPress={onReplyPreviewPress}
       setContentRef={setContentRef}
@@ -856,6 +1207,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     getMessageAuthorPresentation,
     getDeletedPlaceholder,
     getMessageAuthorName,
+    handleOpenAlbumMedia,
     highlightedMessageId,
     isGroupChat,
     messageById,
@@ -892,6 +1244,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         ]}
         renderItem={renderMessageRow}
       />
+      <AlbumMediaViewerModal state={albumViewerState} onClose={handleCloseAlbumViewer} />
     </Reanimated.View>
   );
 }, (prev, next) => {
@@ -1061,6 +1414,10 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     alignSelf: 'flex-start',
   },
+  /** Ограничение как у текстового бабла — короткий `chatus://c/x` не должен сжимать превью. */
+  channelLinkOuter: {
+    maxWidth: '82%',
+  },
   bubbleMe: {
     backgroundColor: colors.bubbleMe,
   },
@@ -1085,6 +1442,144 @@ const styles = StyleSheet.create({
   },
   mediaStack: {
     maxWidth: '82%',
+  },
+  albumBubble: {
+    maxWidth: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  albumBubbleMe: {
+    alignSelf: 'flex-end',
+  },
+  albumBubbleOther: {
+    alignSelf: 'flex-start',
+  },
+  albumGridClip: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#D8DEE7',
+  },
+  albumRow: {
+    flexDirection: 'row',
+    gap: 1.5,
+  },
+  albumColumn: {
+    gap: 1.5,
+  },
+  albumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 1.5,
+  },
+  albumTile: {
+    overflow: 'hidden',
+    backgroundColor: '#C8D0DC',
+  },
+  albumImage: {
+    width: '100%',
+    height: '100%',
+  },
+  albumVideoBadge: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    minHeight: 20,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15,23,42,0.68)',
+  },
+  albumVideoDuration: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  albumTimeOverlay: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.62)',
+  },
+  albumExtraOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.42)',
+  },
+  albumExtraText: {
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  albumCaptionWrap: {
+    paddingHorizontal: 10,
+    paddingTop: 7,
+    paddingBottom: 6,
+  },
+  albumCaptionMe: {
+    backgroundColor: colors.bubbleMe,
+  },
+  albumCaptionOther: {
+    backgroundColor: colors.bubbleOther,
+  },
+  albumCaptionText: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.textPrimary,
+  },
+  viewerRoot: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  viewerTopBar: {
+    minHeight: 86,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#000000',
+  },
+  viewerCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  viewerCounter: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  viewerTopSpacer: {
+    width: 44,
+    height: 44,
+  },
+  viewerSlide: {
+    width: SCREEN_WIDTH,
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  viewerBottomBar: {
+    minHeight: 82,
+    backgroundColor: '#000000',
   },
   groupRepliedMediaBubble: {
     maxWidth: '100%',

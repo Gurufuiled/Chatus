@@ -222,6 +222,18 @@ export function ChannelSettingsScreen() {
           />
           <RowDivider />
           <SettingsRow
+            icon="link"
+            iconColor="#FF9500"
+            title="Пригласительные ссылки"
+            value="1"
+            disabled={!canEdit}
+            onPress={() => {
+              if (!canEdit) return showSnackbar('Недостаточно прав для настроек канала');
+              navigation.navigate('ChannelInviteLinks', { channelId });
+            }}
+          />
+          <RowDivider />
+          <SettingsRow
             icon="message-circle"
             iconColor="#34C759"
             title="Обсуждение"

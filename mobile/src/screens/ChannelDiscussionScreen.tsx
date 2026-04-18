@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -32,6 +32,10 @@ import {
   fetchDiscussionThread,
   sendDiscussionMessage,
 } from '../services/channelService';
+import { ensureDiscussionMediaUploaded } from '../services/discussionMediaUpload';
+import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
+import type { MediaTile } from '../components/ChatProfileMediaSection';
+import { buildChannelPostMediaTiles } from '../utils/channelPostMediaTiles';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
@@ -370,6 +374,22 @@ function scaleMedia(media: Message['media'][number] | undefined, maxWidth: numbe
 }
 
 function OriginalPostHeader({ post }: { post: Message | null }) {
+  const [originalMediaViewer, setOriginalMediaViewer] = React.useState<{
+    items: MediaTile[];
+    index: number;
+  } | null>(null);
+
+  React.useEffect(() => {
+    setOriginalMediaViewer(null);
+  }, [post?.id]);
+
+  const openOriginalPostMediaViewer = React.useCallback(() => {
+    if (!post) return;
+    const items = buildChannelPostMediaTiles(post);
+    if (items.length === 0) return;
+    setOriginalMediaViewer({ items, index: 0 });
+  }, [post]);
+
   if (!post) return null;
   const time = formatTime(post.created_at);
   const media = post.media?.[0];
@@ -378,6 +398,7 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
   const captionText = isVisualMedia ? text : '';
 
   return (
+    <>
     <View style={styles.originalPostWrap}>
       <View style={styles.originalPostAlign}>
         {post.msg_type === 'image' && media?.remote_url ? (
@@ -391,6 +412,7 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
             status={post.status}
             viewCount={post.view_count ?? 0}
             resizeMode="cover"
+            onOpenFullscreen={openOriginalPostMediaViewer}
           />
         ) : null}
         {post.msg_type === 'video' && media?.remote_url ? (
@@ -405,6 +427,7 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
             time={time}
             status={post.status}
             viewCount={post.view_count ?? 0}
+            onOpenFullscreen={openOriginalPostMediaViewer}
           />
         ) : null}
         {post.msg_type === 'voice' && media ? (
@@ -458,6 +481,17 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
         <View style={styles.discussionDividerLine} />
       </View>
     </View>
+
+    <ChatProfileMediaViewerModal
+      visible={originalMediaViewer != null}
+      items={originalMediaViewer?.items ?? []}
+      selectedIndex={originalMediaViewer?.index ?? 0}
+      onChangeIndex={(idx) =>
+        setOriginalMediaViewer((prev) => (prev ? { ...prev, index: idx } : null))
+      }
+      onClose={() => setOriginalMediaViewer(null)}
+    />
+    </>
   );
 }
 
@@ -508,9 +542,9 @@ export function ChannelDiscussionScreen() {
     return map;
   }, [sortedMessages]);
 
-  /** Настройки канала: из треда (после load), из профиля, каталога или списка чатов */
-  const channelForSettings =
-    thread?.channel ?? detailChannel ?? catalogChannel ?? chatListChannel ?? null;
+  /** Детали канала (после настроек/рефреша) важнее снапшота из треда — иначе залипают disable_* */
+  const channelForDiscussion =
+    detailChannel ?? thread?.channel ?? catalogChannel ?? chatListChannel ?? null;
 
   const replyToMessage = replyToMessageId ? messageById.get(replyToMessageId) ?? null : null;
   const replyAuthorName = replyToMessage ? replyToMessage.sender_name || replyToMessage.sender_id : null;
@@ -710,14 +744,14 @@ export function ChannelDiscussionScreen() {
       // Мягкий pre-check запретов из настроек канала — чтобы не делать
       // лишний сетевой запрос и показать понятное сообщение.
       const channel =
-        thread.channel ?? detailChannel ?? catalogChannel ?? chatListChannel ?? null;
-      if (type === 'voice' && channel?.disable_voice_comments) {
+        detailChannel ?? thread.channel ?? catalogChannel ?? chatListChannel ?? null;
+      if (type === 'voice' && channel?.disable_voice_comments === 1) {
         Alert.alert('Голосовые отключены', 'В этом канале запрещены голосовые комментарии.');
         return;
       }
       if (
         (type === 'image' || type === 'video' || type === 'video_note' || type === 'file') &&
-        channel?.disable_media_comments
+        channel?.disable_media_comments === 1
       ) {
         Alert.alert('Медиа отключены', 'В этом канале запрещены медиа-комментарии.');
         return;
@@ -762,12 +796,35 @@ export function ChannelDiscussionScreen() {
       setReplyToMessageId(null);
 
       try {
+        if (__DEV__) {
+          console.log('[Discussion] send start', {
+            type,
+            channelId,
+            postId,
+            hasMediaPayload: !!mediaPayload,
+            mediaUrl: mediaPayload?.url,
+          });
+        }
+        const mediaToSend =
+          mediaPayload && type !== 'text'
+            ? await ensureDiscussionMediaUploaded(type, mediaPayload)
+            : mediaPayload;
+        if (__DEV__) {
+          console.log('[Discussion] upload done', {
+            type,
+            mediaUrl: mediaToSend?.url,
+            durationMs: mediaToSend?.duration_ms,
+          });
+        }
         const saved = await sendDiscussionMessage(channelId, postId, {
           msg_type: type,
           content,
           reply_to_id: optimistic.reply_to_id,
-          media: mediaPayload,
+          media: mediaToSend,
         });
+        if (__DEV__) {
+          console.log('[Discussion] send ok', { savedId: saved.id });
+        }
         updateThread((current) => ({
           ...current,
           messages: [...current.messages.filter((item) => item.id !== tempId && item.id !== saved.id), saved],
@@ -777,6 +834,13 @@ export function ChannelDiscussionScreen() {
       } catch (error) {
         updateThread((current) => ({ ...current, messages: current.messages.filter((item) => item.id !== tempId) }));
         const errMsg = error instanceof Error ? error.message : String(error);
+        if (__DEV__) {
+          console.warn('[Discussion] send FAILED', {
+            type,
+            errMsg,
+            stack: error instanceof Error ? error.stack : undefined,
+          });
+        }
         const coolWait = parseCooldownSecondsFromApiError(errMsg);
         if (coolWait != null && coolWait > 0) {
           setCommentCooldownEndsAt(Date.now() + coolWait * 1000);
@@ -965,12 +1029,12 @@ export function ChannelDiscussionScreen() {
             replyAuthorName={replyAuthorName}
             onCancelReply={() => setReplyToMessageId(null)}
             voiceRestriction={
-              channelForSettings?.disable_voice_comments
+              channelForDiscussion?.disable_voice_comments === 1
                 ? 'В этом канале разрешены только текстовые и медиа-комментарии.'
                 : null
             }
             mediaRestriction={
-              channelForSettings?.disable_media_comments
+              channelForDiscussion?.disable_media_comments === 1
                 ? 'В этом канале запрещены медиа-комментарии.'
                 : null
             }

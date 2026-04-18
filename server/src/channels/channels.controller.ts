@@ -20,11 +20,24 @@ import { CreateDiscussionMessageDto } from './dto/create-discussion-message.dto'
 import { ToggleReactionDto } from './dto/toggle-reaction.dto';
 import { GetChannelMembersQueryDto } from './dto/get-channel-members-query.dto';
 import { UpdateChannelMemberDto } from './dto/update-channel-member.dto';
+import { SubscribeChannelDto } from './dto/subscribe-channel.dto';
 
 @Controller('channels')
 @UseGuards(JwtAuthGuard)
 export class ChannelsController {
   constructor(private readonly channelsService: ChannelsService) {}
+
+  /** Public channel vanity URL — must stay above @Get(':id'). */
+  @Get('link/slug/:slug')
+  async resolveBySlug(@Param('slug') slug: string, @CurrentUser() user: User) {
+    return this.channelsService.resolveChannelBySlug(slug, user.id);
+  }
+
+  /** Invite link (private or share token) — must stay above @Get(':id'). */
+  @Get('link/invite/:token')
+  async resolveByInvite(@Param('token') token: string, @CurrentUser() user: User) {
+    return this.channelsService.resolveChannelByInvite(token, user.id);
+  }
 
   @Get()
   async getCatalog(@CurrentUser() user: User) {
@@ -92,8 +105,20 @@ export class ChannelsController {
   }
 
   @Post(':id/subscribe')
-  async subscribe(@Param('id') channelId: string, @CurrentUser() user: User) {
-    return this.channelsService.subscribe(channelId, user.id);
+  async subscribe(
+    @Param('id') channelId: string,
+    @Body() dto: SubscribeChannelDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.channelsService.subscribe(channelId, user.id, dto);
+  }
+
+  @Post(':id/unsubscribe')
+  async unsubscribe(
+    @Param('id') channelId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.channelsService.unsubscribeFromChannel(channelId, user.id);
   }
 
   @Post(':id/checkout/mock')

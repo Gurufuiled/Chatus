@@ -20,6 +20,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import {
   MessagesService,
   type CreateMessageMedia,
+  type CreateMessageMediaInput,
 } from '../messages/messages.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -27,6 +28,7 @@ import { CreateChannelPostDto } from './dto/create-channel-post.dto';
 import { CreateDiscussionMessageDto } from './dto/create-discussion-message.dto';
 import { GetChannelMembersQueryDto } from './dto/get-channel-members-query.dto';
 import { UpdateChannelMemberDto } from './dto/update-channel-member.dto';
+import { SubscribeChannelDto } from './dto/subscribe-channel.dto';
 
 const CHANNEL_INCLUDE = {
   lastMessage: true,
@@ -94,11 +96,17 @@ export class ChannelsService {
     });
   }
 
-  private sanitizeMedia(media?: Record<string, unknown>): CreateMessageMedia | undefined {
-    if (!media || typeof media !== 'object') {
+  private sanitizeMedia(media?: unknown): CreateMessageMediaInput | undefined {
+    if (!media) {
       return undefined;
     }
-    return media as CreateMessageMedia;
+    if (Array.isArray(media)) {
+      return media as CreateMessageMedia[];
+    }
+    if (typeof media === 'object') {
+      return media as CreateMessageMedia;
+    }
+    return undefined;
   }
 
   private async refreshChannelCounts(channelId: string, tx: PrismaLike) {
@@ -262,6 +270,95 @@ export class ChannelsService {
     }
 
     return channel;
+  }
+
+  private buildChannelResolvePayload(
+    channel: ChannelWithRelations,
+    userId: string,
+    linkKind: 'slug' | 'invite',
+  ) {
+    const access = this.getAccessState(channel, userId);
+    const mapped = this.mapChannelForUser(channel, userId);
+    const channelPayload =
+      linkKind === 'slug' ? { ...mapped, invite_token: null } : mapped;
+
+    const member = access.member;
+    const isSubscribed =
+      !!member &&
+      !access.isBanned &&
+      (member.role === ChatMemberRole.owner ||
+        member.role === ChatMemberRole.admin ||
+        member.accessStatus === SubscriptionStatus.active);
+
+    let canSubscribe = false;
+    if (!access.isBanned && !isSubscribed) {
+      canSubscribe = channel.accessType === ChatAccessType.free;
+    }
+
+    const subscribeRequiresInvite =
+      channel.visibility === ChatVisibility.private &&
+      !member &&
+      channel.accessType === ChatAccessType.free;
+
+    return {
+      link_kind: linkKind,
+      channel_id: channel.id,
+      visibility:
+        channel.visibility === ChatVisibility.public ? 'public' : 'private',
+      channel: channelPayload,
+      is_subscribed: isSubscribed,
+      can_subscribe: canSubscribe,
+      subscribe_requires_invite: subscribeRequiresInvite,
+    };
+  }
+
+  async resolveChannelBySlug(slug: string, userId: string) {
+    const normalized = slug.trim().toLowerCase();
+    if (!/^[a-z0-9_]+$/.test(normalized)) {
+      throw new BadRequestException('Invalid slug');
+    }
+
+    const channel = await this.prisma.chat.findFirst({
+      where: {
+        chatType: ChatType.channel,
+        slug: normalized,
+        visibility: ChatVisibility.public,
+      },
+      include: CHANNEL_INCLUDE,
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    return this.buildChannelResolvePayload(channel, userId, 'slug');
+  }
+
+  async resolveChannelByInvite(rawToken: string, userId: string) {
+    let normalized = rawToken.trim();
+    try {
+      normalized = decodeURIComponent(normalized);
+    } catch {
+      // keep trimmed raw
+    }
+    normalized = normalized.trim();
+    if (!normalized || normalized.length > 128) {
+      throw new BadRequestException('Invalid invite token');
+    }
+
+    const channel = await this.prisma.chat.findFirst({
+      where: {
+        chatType: ChatType.channel,
+        inviteToken: normalized,
+      },
+      include: CHANNEL_INCLUDE,
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Invite link is invalid or expired');
+    }
+
+    return this.buildChannelResolvePayload(channel, userId, 'invite');
   }
 
   private getAccessState(channel: ChannelWithRelations, userId: string) {
@@ -908,7 +1005,8 @@ export class ChannelsService {
       dto.disable_voice_comments !== undefined ||
       dto.disable_media_comments !== undefined ||
       dto.comment_cooldown_sec !== undefined ||
-      dto.slug !== undefined;
+      dto.slug !== undefined ||
+      dto.clear_slug === true;
     if (hasGeneralSettingsUpdate && !access.canEditChannel) {
       throw new ForbiddenException('Insufficient permissions to update channel settings');
     }
@@ -931,6 +1029,9 @@ export class ChannelsService {
     if (dto.visibility !== undefined) {
       data.visibility =
         dto.visibility === 'private' ? ChatVisibility.private : ChatVisibility.public;
+      if (dto.visibility === 'private') {
+        data.slug = null;
+      }
     }
     if (dto.access_type !== undefined) {
       data.accessType =
@@ -973,7 +1074,14 @@ export class ChannelsService {
     if (dto.comment_cooldown_sec !== undefined) {
       data.commentCooldownSec = Math.max(0, Math.min(15, dto.comment_cooldown_sec));
     }
-    if (dto.slug !== undefined) {
+    const effectivePublic =
+      dto.visibility !== undefined
+        ? dto.visibility === 'public'
+        : channel.visibility === ChatVisibility.public;
+
+    if (dto.clear_slug === true) {
+      data.slug = null;
+    } else if (dto.slug !== undefined && effectivePublic) {
       const slugLower = dto.slug.toLowerCase();
       const existing = await this.prisma.chat.findUnique({
         where: { slug: slugLower },
@@ -994,7 +1102,11 @@ export class ChannelsService {
     return this.mapChannelForUser(updated, userId);
   }
 
-  async subscribe(channelId: string, userId: string) {
+  async subscribe(
+    channelId: string,
+    userId: string,
+    dto: SubscribeChannelDto = {},
+  ) {
     const channel = await this.getChannelOrThrow(channelId);
     const existingMember = channel.members.find((item) => item.userId === userId) ?? null;
 
@@ -1003,6 +1115,22 @@ export class ChannelsService {
     }
     if (existingMember?.accessStatus === SubscriptionStatus.canceled) {
       throw new ForbiddenException('You are banned from this channel');
+    }
+
+    const hasActiveMembership =
+      !!existingMember &&
+      (existingMember.role === ChatMemberRole.owner ||
+        existingMember.role === ChatMemberRole.admin ||
+        existingMember.accessStatus === SubscriptionStatus.active);
+
+    if (
+      channel.visibility === ChatVisibility.private &&
+      !hasActiveMembership
+    ) {
+      const token = dto.invite_token?.trim();
+      if (!token || token !== channel.inviteToken) {
+        throw new ForbiddenException('Valid invite link required to join this channel');
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -1024,6 +1152,29 @@ export class ChannelsService {
 
     const updated = await this.getChannelOrThrow(channelId);
     return this.mapChannelForUser(updated, userId);
+  }
+
+  /**
+   * Обычный подписчик или админ выходит из канала (не владелец).
+   */
+  async unsubscribeFromChannel(channelId: string, userId: string) {
+    const channel = await this.getChannelOrThrow(channelId);
+    const member = channel.members.find((item) => item.userId === userId) ?? null;
+    if (!member) {
+      throw new NotFoundException('You are not a member of this channel');
+    }
+    if (member.role === ChatMemberRole.owner) {
+      throw new ForbiddenException('Channel owner cannot leave via unsubscribe');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.chatMember.delete({
+        where: { chatId_userId: { chatId: channelId, userId } },
+      });
+      await this.refreshChannelCounts(channelId, tx);
+    });
+
+    return { ok: true as const };
   }
 
   async mockCheckout(channelId: string, userId: string) {

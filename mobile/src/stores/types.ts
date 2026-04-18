@@ -18,6 +18,7 @@ export type Message = MessageRow & {
   forwarded_from_sender_id?: string | null;
   /** Optional media for display (e.g. voice waveform, duration, video_note, image, file). */
   media?: {
+    media_type?: string;
     waveform?: number[];
     duration_ms?: number;
     thumbnail_url?: string;
@@ -30,6 +31,7 @@ export type Message = MessageRow & {
     /** File: display name and size. */
     file_name?: string;
     file_size?: number;
+    mime_type?: string;
     remote_url?: string;
   }[];
   reactions?: {

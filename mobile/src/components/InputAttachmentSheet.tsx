@@ -1,15 +1,20 @@
 import React from 'react';
 import {
+  Dimensions,
   FlatList,
   Image,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import {
   ensureVideoThumbnailUri,
@@ -39,25 +44,31 @@ type InputAttachmentSheetProps = {
   galleryLoading: boolean;
   galleryDenied: boolean;
   attachmentActions: AttachmentAction[];
+  selectedItems: GalleryItem[];
+  captionValue: string;
   onClose: () => void;
-  onPickGalleryItem: (item: GalleryItem) => void;
+  onToggleGalleryItem: (item: GalleryItem) => void;
+  onCaptionChange: (text: string) => void;
+  onSendSelected: () => void;
   onRunAttachmentAction: (action: () => Promise<void>) => void;
 };
 
 function SheetActionIcon({ tone }: { tone: AttachmentAction['tone'] }) {
   if (tone === 'video') {
-    return <MaterialCommunityIcons name="play-circle-outline" size={19} color="#6B7280" />;
+    return <MaterialCommunityIcons name="play-circle-outline" size={21} color="#5F6875" />;
   }
 
-  return <Feather name="file-text" size={16} color="#6B7280" />;
+  return <Feather name="file-text" size={19} color="#5F6875" />;
 }
 
 const GalleryCell = React.memo(function GalleryCell({
   item,
-  onPick,
+  selectedIndex,
+  onToggle,
 }: {
   item: GalleryItem;
-  onPick: (item: GalleryItem) => void;
+  selectedIndex: number | null;
+  onToggle: (item: GalleryItem) => void;
 }) {
   const [thumbnailUri, setThumbnailUri] = React.useState(() =>
     item.kind === 'video' ? getCachedVideoThumbnailUri(item.uri) ?? '' : ''
@@ -78,14 +89,10 @@ const GalleryCell = React.memo(function GalleryCell({
     let cancelled = false;
     void ensureVideoThumbnailUri(item.uri)
       .then((nextUri) => {
-        if (!cancelled) {
-          setThumbnailUri(nextUri);
-        }
+        if (!cancelled) setThumbnailUri(nextUri);
       })
       .catch(() => {
-        if (!cancelled) {
-          setThumbnailUri('');
-        }
+        if (!cancelled) setThumbnailUri('');
       });
 
     return () => {
@@ -94,15 +101,16 @@ const GalleryCell = React.memo(function GalleryCell({
   }, [item.kind, item.uri]);
 
   const previewUri = item.kind === 'video' ? thumbnailUri : item.uri;
+  const isSelected = selectedIndex != null;
 
   return (
     <View style={styles.galleryCellOuter}>
-      <Pressable style={styles.galleryCell} onPress={() => onPick(item)}>
+      <Pressable style={styles.galleryCell} onPress={() => onToggle(item)}>
         {previewUri ? (
           <Image source={{ uri: previewUri }} style={styles.galleryImage} />
         ) : (
           <View style={styles.galleryVideoFallback}>
-            <MaterialCommunityIcons name="movie-open-play-outline" size={26} color="#FFFFFF" />
+            <MaterialCommunityIcons name="movie-open-play-outline" size={28} color="#FFFFFF" />
           </View>
         )}
 
@@ -117,6 +125,10 @@ const GalleryCell = React.memo(function GalleryCell({
             </View>
           </>
         ) : null}
+
+        <View style={[styles.selectCircle, isSelected && styles.selectCircleSelected]}>
+          {isSelected ? <Text style={styles.selectCircleText}>{selectedIndex}</Text> : null}
+        </View>
       </Pressable>
     </View>
   );
@@ -129,31 +141,90 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   galleryLoading,
   galleryDenied,
   attachmentActions,
+  selectedItems,
+  captionValue,
   onClose,
-  onPickGalleryItem,
+  onToggleGalleryItem,
+  onCaptionChange,
+  onSendSelected,
   onRunAttachmentAction,
 }: InputAttachmentSheetProps) {
+  const insets = useSafeAreaInsets();
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!visible) setExpanded(false);
+  }, [visible]);
+
+  const selectedById = React.useMemo(() => {
+    const map = new Map<string, number>();
+    selectedItems.forEach((item, index) => map.set(item.id, index + 1));
+    return map;
+  }, [selectedItems]);
+
   const renderGalleryItem = React.useCallback(
-    ({ item }: { item: GalleryItem }) => <GalleryCell item={item} onPick={onPickGalleryItem} />,
-    [onPickGalleryItem]
+    ({ item }: { item: GalleryItem }) => (
+      <GalleryCell
+        item={item}
+        selectedIndex={selectedById.get(item.id) ?? null}
+        onToggle={onToggleGalleryItem}
+      />
+    ),
+    [onToggleGalleryItem, selectedById]
   );
 
   const keyExtractor = React.useCallback((item: GalleryItem) => item.id, []);
+  const hasSelection = selectedItems.length > 0;
+  const sheetHeight = expanded
+    ? Math.round(Dimensions.get('window').height * 0.94)
+    : Math.round(Dimensions.get('window').height * 0.66);
+
+  const handleGalleryScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!expanded && event.nativeEvent.contentOffset.y > 12) {
+        setExpanded(true);
+      }
+    },
+    [expanded]
+  );
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.sheetRoot}>
         <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-        <View style={styles.sheetCard}>
-          <View style={styles.sheetHandle} />
-
+        <View
+          style={[
+            styles.sheetCard,
+            {
+              height: sheetHeight,
+              paddingBottom: Math.max(insets.bottom, 8) + 10,
+            },
+          ]}
+        >
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Недавние</Text>
-            {galleryItems.length > 0 ? (
-              <Text style={styles.sheetSubtitle}>
-                Нажми на фото или видео, чтобы добавить в сообщение
-              </Text>
+            <Pressable style={styles.headerCircle} onPress={onClose} hitSlop={8}>
+              <Feather name="x" size={24} color="#111827" />
+            </Pressable>
+
+            {hasSelection ? (
+              <View style={styles.selectedPill}>
+                <Feather name="check" size={16} color="#FFFFFF" />
+                <Text style={styles.selectedPillText}>{selectedItems.length}</Text>
+              </View>
             ) : null}
+
+            <Pressable style={styles.titlePill} onPress={() => setExpanded((value) => !value)}>
+              <Text style={styles.sheetTitle}>Недавние</Text>
+              <Feather
+                name={expanded ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color="#6B7280"
+              />
+            </Pressable>
+
+            <Pressable style={styles.headerCircle} hitSlop={8}>
+              <Feather name="more-horizontal" size={24} color="#111827" />
+            </Pressable>
           </View>
 
           {galleryEnabled ? (
@@ -175,7 +246,10 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                   renderItem={renderGalleryItem}
                   numColumns={3}
                   style={styles.galleryList}
-                  contentContainerStyle={styles.galleryGrid}
+                  contentContainerStyle={[
+                    styles.galleryGrid,
+                    { paddingBottom: hasSelection ? 74 : 78 },
+                  ]}
                   columnWrapperStyle={styles.galleryRow}
                   showsVerticalScrollIndicator={false}
                   removeClippedSubviews
@@ -184,6 +258,8 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                   windowSize={5}
                   updateCellsBatchingPeriod={40}
                   keyboardShouldPersistTaps="handled"
+                  onScroll={handleGalleryScroll}
+                  scrollEventThrottle={16}
                 />
               </View>
             ) : (
@@ -193,25 +269,45 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
             )
           ) : null}
 
-          {attachmentActions.length > 0 ? (
-            <>
-              <Text style={styles.sheetSectionTitle}>Еще</Text>
-              <View style={styles.sheetActionsRow}>
+          <View
+            pointerEvents="box-none"
+            style={[styles.bottomAccessory, { bottom: Math.max(insets.bottom, 8) + 8 }]}
+          >
+            {hasSelection ? (
+              <View style={styles.captionBar}>
+                <TextInput
+                  value={captionValue}
+                  onChangeText={onCaptionChange}
+                  placeholder="Добавить подпись..."
+                  placeholderTextColor="#8B95A1"
+                  style={styles.captionInput}
+                  multiline
+                />
+                <Pressable style={styles.sendSelectedButton} onPress={onSendSelected}>
+                  <Feather name="send" size={20} color="#FFFFFF" />
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.modeDock}>
+                <View style={[styles.modeAction, styles.modeActionActive]}>
+                  <MaterialCommunityIcons name="image-multiple" size={22} color="#4B8FEA" />
+                  <Text style={[styles.modeActionLabel, styles.modeActionLabelActive]}>
+                    Галерея
+                  </Text>
+                </View>
                 {attachmentActions.map((action) => (
                   <Pressable
                     key={action.key}
-                    style={styles.sheetAction}
+                    style={styles.modeAction}
                     onPress={() => onRunAttachmentAction(action.onPress)}
                   >
-                    <View style={styles.sheetIconWrap}>
-                      <SheetActionIcon tone={action.tone} />
-                    </View>
-                    <Text style={styles.sheetActionLabel}>{action.title}</Text>
+                    <SheetActionIcon tone={action.tone} />
+                    <Text style={styles.modeActionLabel}>{action.title}</Text>
                   </Pressable>
                 ))}
               </View>
-            </>
-          ) : null}
+            )}
+          </View>
         </View>
       </View>
     </Modal>
@@ -229,65 +325,83 @@ const styles = StyleSheet.create({
   },
   sheetCard: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     paddingTop: 10,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    maxHeight: '80%',
+    overflow: 'hidden',
     shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -6 },
-    elevation: 8,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 38,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: '#D6DCE5',
-    marginBottom: 14,
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 10,
   },
   sheetHeader: {
-    marginBottom: 10,
-    paddingHorizontal: 4,
+    height: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  headerCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(248,250,252,0.96)',
+  },
+  selectedPill: {
+    height: 42,
+    minWidth: 58,
+    paddingHorizontal: 12,
+    borderRadius: 21,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#5A86DF',
+  },
+  selectedPillText: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  titlePill: {
+    flex: 1,
+    height: 42,
+    borderRadius: 21,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
   },
   sheetTitle: {
     fontSize: 17,
-    fontWeight: '700',
+    lineHeight: 20,
+    fontWeight: '800',
     color: '#111827',
   },
-  sheetSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#6B7280',
-  },
   galleryPanel: {
-    borderRadius: 22,
-    backgroundColor: '#F8FAFD',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
-    padding: 7,
+    flex: 1,
   },
   galleryList: {
-    maxHeight: 338,
+    flex: 1,
   },
   galleryGrid: {
-    paddingBottom: 4,
+    paddingBottom: 78,
   },
   galleryRow: {
-    gap: 6,
-    marginBottom: 6,
+    gap: 1,
+    marginBottom: 1,
   },
   galleryCellOuter: {
     flex: 1,
   },
   galleryCell: {
     aspectRatio: 1,
-    borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#EEF2F7',
+    backgroundColor: '#D8DEE7',
   },
   galleryImage: {
     width: '100%',
@@ -301,7 +415,7 @@ const styles = StyleSheet.create({
   },
   galleryVideoOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.16)',
+    backgroundColor: 'rgba(15, 23, 42, 0.12)',
   },
   galleryVideoBadge: {
     position: 'absolute',
@@ -313,62 +427,125 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
   },
   galleryVideoPlayIcon: {
     marginLeft: 1,
   },
   galleryVideoBadgeText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  selectCircle: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.7,
+    borderColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: 'rgba(15,23,42,0.08)',
+  },
+  selectCircleSelected: {
+    borderColor: '#5A86DF',
+    backgroundColor: '#5A86DF',
+  },
+  selectCircleText: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '800',
     color: '#FFFFFF',
   },
   galleryPlaceholder: {
-    minHeight: 132,
-    borderRadius: 22,
-    backgroundColor: '#F8FAFD',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 26,
   },
   galleryHint: {
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 21,
     color: '#6B7280',
     textAlign: 'center',
   },
-  sheetSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#374151',
-    marginTop: 9,
-    marginBottom: 5,
-    paddingHorizontal: 4,
+  bottomAccessory: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
   },
-  sheetActionsRow: {
+  modeDock: {
+    minHeight: 58,
+    borderRadius: 22,
     flexDirection: 'row',
-    gap: 8,
-  },
-  sheetAction: {
-    alignItems: 'center',
-    width: 56,
-  },
-  sheetIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: '#F8FAFD',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 7,
   },
-  sheetActionLabel: {
-    fontSize: 11,
+  modeAction: {
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+  },
+  modeActionActive: {
+    backgroundColor: 'rgba(75,143,234,0.1)',
+  },
+  modeActionLabel: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '700',
     color: '#4B5563',
-    fontWeight: '600',
-    textAlign: 'center',
+  },
+  modeActionLabelActive: {
+    color: '#4B8FEA',
+  },
+  captionBar: {
+    minHeight: 56,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingLeft: 15,
+    paddingRight: 7,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  captionInput: {
+    flex: 1,
+    maxHeight: 92,
+    minHeight: 42,
+    paddingTop: 11,
+    paddingBottom: 9,
+    paddingHorizontal: 0,
+    fontSize: 16,
+    lineHeight: 20,
+    color: '#111827',
+  },
+  sendSelectedButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5A86DF',
   },
 });

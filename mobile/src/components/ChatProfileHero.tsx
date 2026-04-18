@@ -49,7 +49,12 @@ type ChatProfileHeroProps = {
 type QuickActionButtonProps = {
   icon: ProfileActionIconName;
   label: string;
+  /** Состояние иконки (например, без звука). */
   active?: boolean;
+  /**
+   * Если true, `active` меняет только глиф (колокол/без звука), без синей заливки кнопки.
+   */
+  iconOnlyActive?: boolean;
   onPress: () => void;
   buttonRef?: React.RefObject<View | null>;
   waveOnPress?: boolean;
@@ -61,10 +66,12 @@ const QuickActionButton = React.memo(function QuickActionButton({
   icon,
   label,
   active = false,
+  iconOnlyActive = false,
   onPress,
   buttonRef,
   waveOnPress = false,
 }: QuickActionButtonProps) {
+  const filledAccent = Boolean(active && !iconOnlyActive);
   const waveAnimation = React.useRef(new RNAnimated.Value(0)).current;
   const iconScale = React.useRef(new RNAnimated.Value(1)).current;
 
@@ -127,7 +134,7 @@ const QuickActionButton = React.memo(function QuickActionButton({
       onPress={handlePress}
       style={({ pressed }) => [
         styles.quickAction,
-        active && styles.quickActionActive,
+        filledAccent && styles.quickActionActive,
         pressed && styles.quickActionPressed,
       ]}
     >
@@ -139,12 +146,12 @@ const QuickActionButton = React.memo(function QuickActionButton({
           <ProfileActionIcon
             name={icon}
             size={20.5}
-            color={active ? '#FFFFFF' : colors.accent}
+            color={filledAccent ? '#FFFFFF' : colors.accent}
             active={active}
           />
         </RNAnimated.View>
       </View>
-      <Text style={[styles.quickActionLabel, active && styles.quickActionLabelActive]}>
+      <Text style={[styles.quickActionLabel, filledAccent && styles.quickActionLabelActive]}>
         {label}
       </Text>
     </Pressable>
@@ -300,6 +307,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
             icon="sound"
             label="Звук"
             active={isMuted}
+            iconOnlyActive
             onPress={onMutePress}
           />
           <QuickActionButton icon="search" label="Поиск" onPress={onSearchPress} />

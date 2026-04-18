@@ -60,6 +60,7 @@ const mockChannels = [
     subscription_period_days: null,
     linked_discussion_chat_id: 'mock-discussion-free',
     invite_token: 'telegram-design-notes',
+    slug: 'telegram_design',
     allow_comments: true,
     allow_reactions: true,
     preview_post_count: 3,
@@ -429,6 +430,60 @@ export async function mockApiGet(path: string): Promise<Response> {
     );
   }
 
+  const linkSlugMatch = path.match(/^\/channels\/link\/slug\/([^/?]+)$/);
+  if (linkSlugMatch) {
+    const slug = decodeURIComponent(linkSlugMatch[1]).trim().toLowerCase();
+    const channel = dynamicChannels.find(
+      (c) =>
+        (c as { slug?: string }).slug === slug &&
+        (c as { visibility?: string }).visibility === 'public',
+    ) as (typeof dynamicChannels)[number] | undefined;
+    if (!channel) {
+      return new Response(JSON.stringify({ message: 'Channel not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const isSub =
+      channel.access_type === 'free' || channel.access_status === 'active';
+    const ch = { ...channel, invite_token: null };
+    return createMockResponse({
+      link_kind: 'slug',
+      channel_id: channel.id,
+      visibility: 'public',
+      channel: ch,
+      is_subscribed: isSub,
+      can_subscribe: channel.access_type === 'free',
+      subscribe_requires_invite: false,
+    });
+  }
+
+  const linkInviteMatch = path.match(/^\/channels\/link\/invite\/(.+)$/);
+  if (linkInviteMatch) {
+    const token = decodeURIComponent(linkInviteMatch[1]).trim();
+    const channel = dynamicChannels.find(
+      (c) => (c as { invite_token?: string }).invite_token === token,
+    ) as (typeof dynamicChannels)[number] | undefined;
+    if (!channel) {
+      return new Response(JSON.stringify({ message: 'Invite link is invalid or expired' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const isSub =
+      channel.access_type === 'free' || channel.access_status === 'active';
+    const vis = (channel as { visibility?: string }).visibility ?? 'public';
+    return createMockResponse({
+      link_kind: 'invite',
+      channel_id: channel.id,
+      visibility: vis,
+      channel,
+      is_subscribed: isSub,
+      can_subscribe: channel.access_type === 'free',
+      subscribe_requires_invite: vis === 'private',
+    });
+  }
+
   const channelMatch = path.match(/^\/channels\/([^/?]+)$/);
   if (channelMatch) {
     const channelId = channelMatch[1];
@@ -704,6 +759,22 @@ export async function mockApiPost(
       ];
       dynamicChats = [channel, ...dynamicChats.filter((item) => item.id !== channel.id)];
       return createMockResponse(channel);
+    }
+  }
+
+  const unsubscribeMatch = path.match(/^\/channels\/([^/]+)\/unsubscribe$/);
+  if (unsubscribeMatch) {
+    const channelId = unsubscribeMatch[1];
+    const channel = dynamicChannels.find((item) => item.id === channelId);
+    if (channel) {
+      channel.members = (channel.members ?? []).filter((m) => m.user_id !== MOCK_USER_ID);
+      channel.subscriber_count = Math.max(0, (channel.subscriber_count ?? 1) - 1);
+      channel.active_subscriber_count = Math.max(0, (channel.active_subscriber_count ?? 1) - 1);
+      dynamicChats = dynamicChats.filter((c) => c.id !== channelId);
+      dynamicChannels = dynamicChannels.map((c) =>
+        c.id === channelId ? { ...c, members: channel.members, subscriber_count: channel.subscriber_count } : c,
+      );
+      return createMockResponse({ ok: true });
     }
   }
 

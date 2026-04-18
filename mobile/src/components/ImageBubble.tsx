@@ -42,6 +42,8 @@ export interface ImageBubbleProps {
   resizeMode?: ImageResizeMode;
   /** If true, use provided width/height as-is without internal clamping. */
   fixedSize?: boolean;
+  /** Parent handles fullscreen (e.g. swipe-to-dismiss profile viewer). */
+  onOpenFullscreen?: () => void;
 }
 
 function computeDisplaySize(
@@ -93,6 +95,7 @@ export function ImageBubble({
   viewCount,
   resizeMode = 'cover',
   fixedSize = false,
+  onOpenFullscreen,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
@@ -143,8 +146,12 @@ export function ImageBubble({
   }, [normalizedUri, propWidth, propHeight, fixedSize]);
 
   const handlePress = useCallback(() => {
+    if (onOpenFullscreen) {
+      onOpenFullscreen();
+      return;
+    }
     setFullscreenVisible(true);
-  }, []);
+  }, [onOpenFullscreen]);
 
   const handleClose = useCallback(() => {
     setFullscreenVisible(false);
@@ -239,31 +246,33 @@ export function ImageBubble({
         ) : null}
       </View>
 
-      <Modal
-        visible={fullscreenVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={handleClose}
-      >
-        <Pressable style={styles.fullscreenBackdrop} onPress={handleClose}>
-          <View style={styles.fullscreenContent}>
-            <Image
-              source={{ uri }}
-              style={styles.fullscreenImage}
-              resizeMode="contain"
-            />
-            <Pressable
-              style={[styles.closeButton, { top: insets.top + 12 }]}
-              onPress={handleClose}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Close fullscreen"
-            >
-              <Text style={styles.closeButtonText}>x</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
+      {!onOpenFullscreen ? (
+        <Modal
+          visible={fullscreenVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={handleClose}
+        >
+          <Pressable style={styles.fullscreenBackdrop} onPress={handleClose}>
+            <View style={styles.fullscreenContent}>
+              <Image
+                source={{ uri }}
+                style={styles.fullscreenImage}
+                resizeMode="contain"
+              />
+              <Pressable
+                style={[styles.closeButton, { top: insets.top + 12 }]}
+                onPress={handleClose}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Close fullscreen"
+              >
+                <Text style={styles.closeButtonText}>x</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
     </>
   );
 }

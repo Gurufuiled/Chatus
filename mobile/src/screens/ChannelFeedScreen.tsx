@@ -5,6 +5,7 @@ import {
   Alert,
   Dimensions,
   FlatList,
+  Image,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -29,11 +30,13 @@ import {
   VideoNoteBubble,
   VoiceBubble,
 } from '../components';
-import type { FilePickResult, MediaPickResult } from '../components/InputBar';
+import type { FilePickResult, MediaAlbumPickResult, MediaPickResult } from '../components/InputBar';
 import type { ChatsStackParamList } from '../navigation/types';
 import {
+  fetchChannelDetail,
   fetchChannelFeed,
   publishChannelPost,
+  subscribeToChannel,
   toggleChannelReaction,
 } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
@@ -42,7 +45,12 @@ import { authStore } from '../stores/authStore';
 import { WebSocketService } from '../services/WebSocketService';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
+import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
+import type { MediaTile } from '../components/ChatProfileMediaSection';
+import { buildChannelPostMediaTiles, getVisualMediaKind } from '../utils/channelPostMediaTiles';
 import { ChatBackgroundPattern, formatTime } from './chatScreen.shared';
+import { formatMediaDuration } from '../utils/mediaDuration';
+import { resolveAvatarUrl } from '../config';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelFeed'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelFeed'>;
@@ -117,6 +125,7 @@ function computeChannelMediaWidth(media?: Message['media'][number]): number | nu
 }
 
 type ChannelPostMedia = {
+  media_type?: string;
   url?: string;
   duration_ms?: number;
   waveform?: number[];
@@ -128,6 +137,8 @@ type ChannelPostMedia = {
   file_size?: number;
   mime_type?: string;
 };
+
+type VisualMediaItem = NonNullable<Message['media']>[number];
 
 type RenderPostContentOptions = {
   visualMediaWidth?: number;
@@ -148,6 +159,145 @@ function resolveVisualMediaSize(
     width: targetWidth,
     height: Math.round((media.height / media.width) * targetWidth),
   };
+}
+
+type ChannelAlbumOptions = {
+  visualMediaWidth?: number;
+  onTilePress?: (index: number) => void;
+};
+
+function renderChannelMediaAlbum(
+  item: Message,
+  time: string,
+  options?: ChannelAlbumOptions,
+) {
+  const media = (item.media ?? []).filter((entry) => entry.remote_url?.trim()).slice(0, 10);
+  if (media.length <= 1) return null;
+
+  const visibleMedia = media.slice(0, 9);
+  const albumWidth = Math.max(
+    120,
+    Math.min(options?.visualMediaWidth ?? CHANNEL_MEDIA_MAX_WIDTH, CHANNEL_MEDIA_MAX_WIDTH),
+  );
+  const onTilePress = options?.onTilePress;
+  const gap = 1.5;
+  const caption = item.content?.trim() ?? '';
+  const hasCaption = caption.length > 0;
+
+  const renderTile = (mediaItem: VisualMediaItem, index: number, style: object) => {
+    const kind = getVisualMediaKind(item, mediaItem);
+    const uri = kind === 'video'
+      ? mediaItem.thumbnail_url || mediaItem.remote_url
+      : mediaItem.remote_url;
+    const extraCount = media.length - visibleMedia.length;
+    const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
+
+    const tileContent = (
+      <>
+        <Image source={{ uri }} style={styles.channelAlbumImage} resizeMode="cover" />
+        {kind === 'video' ? (
+          <View style={styles.channelAlbumVideoBadge}>
+            <Feather name="play" size={10} color="#FFFFFF" />
+            <Text style={styles.channelAlbumVideoDuration}>
+              {formatMediaDuration(mediaItem.duration_ms ?? 0)}
+            </Text>
+          </View>
+        ) : null}
+        {showExtra ? (
+          <View style={styles.channelAlbumExtraOverlay}>
+            <Text style={styles.channelAlbumExtraText}>+{extraCount}</Text>
+          </View>
+        ) : null}
+      </>
+    );
+
+    if (onTilePress) {
+      return (
+        <Pressable
+          key={`${mediaItem.remote_url}-${index}`}
+          onPress={() => onTilePress(index)}
+          style={({ pressed }) => [
+            styles.channelAlbumTile,
+            style,
+            pressed && styles.channelAlbumTilePressed,
+          ]}
+        >
+          {tileContent}
+        </Pressable>
+      );
+    }
+
+    return (
+      <View key={`${mediaItem.remote_url}-${index}`} style={[styles.channelAlbumTile, style]}>
+        {tileContent}
+      </View>
+    );
+  };
+
+  const grid = (() => {
+    if (visibleMedia.length === 2) {
+      const tileWidth = (albumWidth - gap) / 2;
+      return (
+        <View style={styles.channelAlbumRow}>
+          {visibleMedia.map((mediaItem, index) =>
+            renderTile(mediaItem, index, { width: tileWidth, height: albumWidth })
+          )}
+        </View>
+      );
+    }
+
+    if (visibleMedia.length === 3) {
+      const sideWidth = (albumWidth - gap) * 0.58;
+      const rightWidth = albumWidth - sideWidth - gap;
+      const halfHeight = (albumWidth - gap) / 2;
+      return (
+        <View style={styles.channelAlbumRow}>
+          {renderTile(visibleMedia[0], 0, { width: sideWidth, height: albumWidth })}
+          <View style={[styles.channelAlbumColumn, { width: rightWidth }]}>
+            {renderTile(visibleMedia[1], 1, { width: rightWidth, height: halfHeight })}
+            {renderTile(visibleMedia[2], 2, { width: rightWidth, height: halfHeight })}
+          </View>
+        </View>
+      );
+    }
+
+    const columns = 3;
+    const tileWidth = (albumWidth - gap * (columns - 1)) / columns;
+    return (
+      <View style={styles.channelAlbumGrid}>
+        {visibleMedia.map((mediaItem, index) =>
+          renderTile(mediaItem, index, { width: tileWidth, height: tileWidth })
+        )}
+      </View>
+    );
+  })();
+
+  return (
+    <>
+      <View style={[styles.channelAlbumClip, { width: albumWidth }]}>
+        {grid}
+        {!hasCaption ? (
+          <View style={styles.channelAlbumMetaOverlay}>
+            <View style={styles.footerMetric}>
+              <Feather name="eye" size={13} color="#FFFFFF" />
+              <Text style={styles.channelAlbumMetaText}>{item.view_count ?? 0}</Text>
+            </View>
+            <Text style={styles.channelAlbumMetaText}>{time}</Text>
+          </View>
+        ) : null}
+      </View>
+      {hasCaption ? (
+        <View style={styles.mediaCaptionBlock}>
+          <Text style={styles.mediaCaptionText}>{caption}</Text>
+          <View style={styles.mediaCaptionMetaRight}>
+            <Feather name="eye" size={13} color="#68849A" />
+            <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
+            <Text style={styles.metaText}>{time}</Text>
+          </View>
+        </View>
+      ) : null}
+    </>
+  );
 }
 
 function buildOptimisticMessage({
@@ -196,12 +346,15 @@ export function ChannelFeedScreen() {
   const menuAnim = React.useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
   const animatedKeyboard = useAnimatedKeyboard();
-  const { channelId } = route.params;
+  const { channelId, inviteToken: routeInviteToken } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
+  const linkResolve = channelStore((state) => state.linkResolveByChannelId[channelId]);
   const feed = channelStore((state) => state.feedByChannelId[channelId] ?? EMPTY_FEED);
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const [loading, setLoading] = React.useState(feed.length === 0);
   const [feedError, setFeedError] = React.useState<string | null>(null);
+  const [privateInviteGate, setPrivateInviteGate] = React.useState(false);
+  const [subscribeBusy, setSubscribeBusy] = React.useState(false);
   const [inputBarHeight, setInputBarHeight] = React.useState(88);
   const [menuState, setMenuState] = React.useState<{
     messageId: string;
@@ -214,6 +367,10 @@ export function ChannelFeedScreen() {
     menuLeft: number;
     placement: 'above' | 'below';
   } | null>(null);
+  const [feedMediaViewer, setFeedMediaViewer] = React.useState<{
+    items: MediaTile[];
+    index: number;
+  } | null>(null);
   const sortedFeed = React.useMemo(() => sortPostsOldestFirst(feed), [feed]);
   const canComment = detail?.can_comment ?? false;
   const canReact = detail?.can_react ?? false;
@@ -221,6 +378,17 @@ export function ChannelFeedScreen() {
     () => (menuState ? sortedFeed.find((item) => item.id === menuState.messageId) ?? null : null),
     [menuState, sortedFeed],
   );
+
+  const openChannelFeedMediaViewer = React.useCallback((message: Message, initialIndex: number) => {
+    const items = buildChannelPostMediaTiles(message);
+    if (items.length === 0) return;
+    const idx = Math.max(0, Math.min(initialIndex, items.length - 1));
+    setFeedMediaViewer({ items, index: idx });
+  }, []);
+
+  const closeChannelFeedMediaViewer = React.useCallback(() => {
+    setFeedMediaViewer(null);
+  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -255,11 +423,22 @@ export function ChannelFeedScreen() {
         linked_discussion_chat_id: next.channel.linked_discussion_chat_id ?? null,
         channel_permissions: next.channel.channel_permissions,
       });
+      channelStore.getState().setLinkResolve(channelId, null);
+      setPrivateInviteGate(false);
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : 'Не удалось загрузить ленту канала.';
+      const lr = channelStore.getState().linkResolveByChannelId[channelId];
       const hasCached = (channelStore.getState().feedByChannelId[channelId]?.length ?? 0) > 0;
-      if (hasCached) {
+      if (
+        lr &&
+        lr.visibility === 'private' &&
+        !lr.is_subscribed &&
+        !hasCached
+      ) {
+        setPrivateInviteGate(true);
+        setFeedError(null);
+      } else if (hasCached) {
         Alert.alert('Не удалось обновить ленту', msg);
       } else {
         setFeedError(msg);
@@ -272,6 +451,69 @@ export function ChannelFeedScreen() {
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  const handleSubscribePublic = React.useCallback(async () => {
+    setSubscribeBusy(true);
+    try {
+      await subscribeToChannel(channelId);
+      const fresh = await fetchChannelDetail(channelId);
+      channelStore.getState().setDetail(channelId, fresh);
+      chatStore.getState().addOrUpdateChat(fresh.channel);
+      await load();
+    } catch (e) {
+      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось подписаться.');
+    } finally {
+      setSubscribeBusy(false);
+    }
+  }, [channelId, load]);
+
+  const handleSubscribePrivateInvite = React.useCallback(async () => {
+    const ch = linkResolve?.channel;
+    if (ch?.access_type === 'paid') {
+      navigation.navigate('ChannelPreview', { channelId });
+      return;
+    }
+
+    const token =
+      routeInviteToken?.trim() ||
+      linkResolve?.channel.invite_token?.trim() ||
+      undefined;
+    if (!token && linkResolve?.subscribe_requires_invite) {
+      Alert.alert(
+        'Нужна ссылка',
+        'Откройте канал по полной пригласительной ссылке.',
+      );
+      return;
+    }
+    setSubscribeBusy(true);
+    try {
+      await subscribeToChannel(channelId, token ? { inviteToken: token } : {});
+      const fresh = await fetchChannelDetail(channelId);
+      channelStore.getState().setDetail(channelId, fresh);
+      chatStore.getState().addOrUpdateChat(fresh.channel);
+      channelStore.getState().setLinkResolve(channelId, null);
+      setPrivateInviteGate(false);
+      await load();
+    } catch (e) {
+      Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось подписаться.');
+    } finally {
+      setSubscribeBusy(false);
+    }
+  }, [
+    channelId,
+    linkResolve?.channel,
+    linkResolve?.subscribe_requires_invite,
+    load,
+    navigation,
+    routeInviteToken,
+  ]);
+
+  const showPublicSubscribePill =
+    !!detail &&
+    !privateInviteGate &&
+    !detail.is_subscribed &&
+    (detail.channel.visibility ?? 'public') === 'public' &&
+    !detail.can_view_full_feed;
 
   React.useEffect(() => {
     if (!isFocused) return;
@@ -289,7 +531,7 @@ export function ChannelFeedScreen() {
     }: {
       type: Message['msg_type'];
       content: string | null;
-      mediaPayload?: ChannelPostMedia;
+      mediaPayload?: ChannelPostMedia | ChannelPostMedia[];
       optimisticMedia?: Message['media'];
     }) => {
       if (!currentUserId) return;
@@ -425,6 +667,43 @@ export function ChannelFeedScreen() {
       });
     },
     [publishWithOptimistic]
+  );
+
+  const handleSendMediaAlbum = React.useCallback(
+    async (result: MediaAlbumPickResult) => {
+      const items = result.items.slice(0, 10);
+      if (items.length === 0) return;
+
+      const firstKind = items[0]?.kind ?? 'image';
+      const type: Message['msg_type'] = firstKind === 'video' ? 'video' : 'image';
+      const caption = result.caption?.trim() || null;
+
+      await publishWithOptimistic({
+        type,
+        content: caption,
+        mediaPayload: items.map((item) => ({
+          media_type: item.kind,
+          url: item.uri,
+          thumbnail_url: item.previewUri,
+          width: item.width,
+          height: item.height,
+          duration_ms: item.durationMs,
+          file_name: item.fileName,
+          mime_type: item.mimeType,
+        })),
+        optimisticMedia: items.map((item) => ({
+          media_type: item.kind,
+          remote_url: item.uri,
+          thumbnail_url: item.previewUri,
+          width: item.width,
+          height: item.height,
+          duration_ms: item.durationMs,
+          file_name: item.fileName,
+          mime_type: item.mimeType,
+        })),
+      });
+    },
+    [publishWithOptimistic],
   );
 
   const handleSendFile = React.useCallback(
@@ -575,7 +854,18 @@ export function ChannelFeedScreen() {
   const renderPostContent = React.useCallback(
     (item: Message, options?: RenderPostContentOptions) => {
       const media = item.media?.[0];
+      const visualMediaCount =
+        item.msg_type === 'image' || item.msg_type === 'video'
+          ? item.media?.filter((entry) => entry.remote_url?.trim()).length ?? 0
+          : 0;
       const time = formatTime(item.created_at);
+
+      if (visualMediaCount > 1) {
+        return renderChannelMediaAlbum(item, time, {
+          visualMediaWidth: options?.visualMediaWidth,
+          onTilePress: (idx) => openChannelFeedMediaViewer(item, idx),
+        });
+      }
 
       if (item.msg_type === 'voice' && media?.remote_url) {
         return (
@@ -626,6 +916,7 @@ export function ChannelFeedScreen() {
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
               resizeMode="cover"
+              onOpenFullscreen={() => openChannelFeedMediaViewer(item, 0)}
             />
             {hasCaption ? (
               <View style={styles.mediaCaptionBlock}>
@@ -660,6 +951,7 @@ export function ChannelFeedScreen() {
               time={hasCaption ? undefined : time}
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
+              onOpenFullscreen={() => openChannelFeedMediaViewer(item, 0)}
             />
             {hasCaption ? (
               <View style={styles.mediaCaptionBlock}>
@@ -702,7 +994,7 @@ export function ChannelFeedScreen() {
         </>
       );
     },
-    []
+    [openChannelFeedMediaViewer]
   );
 
   const renderPostExtras = React.useCallback(
@@ -909,6 +1201,48 @@ export function ChannelFeedScreen() {
     [renderPostContent, renderPostExtrasPreview],
   );
 
+  const lockedChannel = linkResolve?.channel;
+  const lockedAvatar = resolveAvatarUrl(lockedChannel?.avatar_url ?? null);
+  const lockedTitle = lockedChannel?.name?.trim() || 'Канал';
+  const lockedDesc = lockedChannel?.description?.trim() || '';
+
+  if (privateInviteGate && linkResolve && sortedFeed.length === 0) {
+    return (
+      <View style={styles.container}>
+        <ChatBackgroundPattern />
+        <View style={[styles.privateGateWrap, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          {lockedAvatar ? (
+            <Image source={{ uri: lockedAvatar }} style={styles.privateGateAvatar} />
+          ) : (
+            <View style={styles.privateGateAvatarPlaceholder}>
+              <Text style={styles.privateGateAvatarLetter}>{(lockedTitle[0] || '?').toUpperCase()}</Text>
+            </View>
+          )}
+          <Text style={styles.privateGateTitle}>{lockedTitle}</Text>
+          {lockedDesc ? <Text style={styles.privateGateDesc}>{lockedDesc}</Text> : null}
+          <Text style={styles.privateGateHint}>
+            Частный канал. Подпишитесь, чтобы видеть публикации.
+          </Text>
+          <Pressable
+            onPress={() => void handleSubscribePrivateInvite()}
+            disabled={subscribeBusy}
+            style={({ pressed }) => [
+              styles.privateGateButton,
+              pressed && styles.privateGateButtonPressed,
+              subscribeBusy && styles.privateGateButtonDisabled,
+            ]}
+          >
+            {subscribeBusy ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.privateGateButtonText}>Подписаться</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
@@ -922,7 +1256,7 @@ export function ChannelFeedScreen() {
       ) : (
         <Reanimated.View style={[styles.listWrap, listWrapAnimatedStyle]}>
           <FlatList
-          data={sortedFeed}
+            data={sortedFeed}
             keyExtractor={(item) => item.id}
             renderItem={renderPost}
             removeClippedSubviews={false}
@@ -931,13 +1265,49 @@ export function ChannelFeedScreen() {
             contentContainerStyle={[
               styles.list,
               detail?.can_post
-                ? { paddingBottom: inputBarHeight + Math.max(insets.bottom, 8) + 12 }
-                : styles.listWithoutComposer,
+                ? {
+                    paddingBottom:
+                      inputBarHeight +
+                      Math.max(insets.bottom, 8) +
+                      12 +
+                      (showPublicSubscribePill ? 56 : 0),
+                  }
+                : {
+                    ...styles.listWithoutComposer,
+                    paddingBottom:
+                      24 + (showPublicSubscribePill ? 56 + Math.max(insets.bottom, 8) : 0),
+                  },
             ]}
             ListEmptyComponent={<Text style={styles.emptyText}>Пока нет публикаций</Text>}
           />
         </Reanimated.View>
       )}
+
+      {showPublicSubscribePill ? (
+        <View
+          style={[
+            styles.subscribePillWrap,
+            { bottom: Math.max(insets.bottom, 10) + (detail?.can_post ? inputBarHeight : 0) },
+          ]}
+          pointerEvents="box-none"
+        >
+          <Pressable
+            onPress={() => void handleSubscribePublic()}
+            disabled={subscribeBusy}
+            style={({ pressed }) => [
+              styles.subscribePill,
+              pressed && styles.subscribePillPressed,
+              subscribeBusy && styles.subscribePillDisabled,
+            ]}
+          >
+            {subscribeBusy ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.subscribePillText}>Подписаться</Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       {detail?.can_post ? (
         <ChatInputDock
@@ -952,6 +1322,7 @@ export function ChannelFeedScreen() {
           onSendVoice={handleSendVoice}
           onSendVideoNote={handleSendVideoNote}
           onSendMedia={handleSendMedia}
+          onSendMediaAlbum={handleSendMediaAlbum}
           onSendFile={handleSendFile}
           blurTargetRef={blurTargetRef}
           replyToMessage={null}
@@ -977,6 +1348,16 @@ export function ChannelFeedScreen() {
           void handlePickReactionFromMenu(emoji);
         }}
         renderMenuPreviewBody={renderMenuPreviewBody}
+      />
+
+      <ChatProfileMediaViewerModal
+        visible={feedMediaViewer != null}
+        items={feedMediaViewer?.items ?? []}
+        selectedIndex={feedMediaViewer?.index ?? 0}
+        onChangeIndex={(idx) =>
+          setFeedMediaViewer((prev) => (prev ? { ...prev, index: idx } : null))
+        }
+        onClose={closeChannelFeedMediaViewer}
       />
     </View>
   );
@@ -1054,6 +1435,81 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     alignItems: 'center',
+  },
+  channelAlbumClip: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#D8DEE7',
+  },
+  channelAlbumRow: {
+    flexDirection: 'row',
+    gap: 1.5,
+  },
+  channelAlbumColumn: {
+    gap: 1.5,
+  },
+  channelAlbumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 1.5,
+  },
+  channelAlbumTile: {
+    overflow: 'hidden',
+    backgroundColor: '#C8D0DC',
+  },
+  channelAlbumTilePressed: {
+    opacity: 0.92,
+  },
+  channelAlbumImage: {
+    width: '100%',
+    height: '100%',
+  },
+  channelAlbumVideoBadge: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    minHeight: 20,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(15,23,42,0.68)',
+  },
+  channelAlbumVideoDuration: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  channelAlbumExtraOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.42)',
+  },
+  channelAlbumExtraText: {
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  channelAlbumMetaOverlay: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.52)',
+  },
+  channelAlbumMetaText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   postActionsRowMedia: {
     alignSelf: 'stretch',
@@ -1201,5 +1657,94 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: colors.textSecondary,
     fontWeight: '600',
+  },
+  privateGateWrap: {
+    flex: 1,
+    paddingHorizontal: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  privateGateAvatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    marginBottom: 14,
+  },
+  privateGateAvatarPlaceholder: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  privateGateAvatarLetter: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  privateGateTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  privateGateDesc: {
+    marginTop: 8,
+    fontSize: 16,
+    color: '#4B5563',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  privateGateHint: {
+    marginTop: 16,
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  privateGateButton: {
+    marginTop: 22,
+    minWidth: 200,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privateGateButtonPressed: { opacity: 0.88 },
+  privateGateButtonDisabled: { opacity: 0.65 },
+  privateGateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  subscribePillWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  subscribePill: {
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+    minWidth: 160,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  subscribePillPressed: { opacity: 0.9 },
+  subscribePillDisabled: { opacity: 0.65 },
+  subscribePillText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

@@ -9,7 +9,9 @@ import {
   ChannelDiscussionScreen,
   ChannelDiscussionSettingsScreen,
   ChannelEditScreen,
+  ChannelInviteLinksScreen,
   ChannelFeedScreen,
+  ChannelLinkGateScreen,
   ChannelMembersScreen,
   ChannelProfileScreen,
   ChannelPreviewScreen,
@@ -196,6 +198,18 @@ export function ChatsStack() {
       />
 
       <Stack.Screen
+        name="ChannelLinkSlug"
+        component={ChannelLinkGateScreen}
+        options={{ headerShown: false, title: 'Канал' }}
+      />
+
+      <Stack.Screen
+        name="ChannelLinkInvite"
+        component={ChannelLinkGateScreen}
+        options={{ headerShown: false, title: 'Канал' }}
+      />
+
+      <Stack.Screen
         name="ChannelPreview"
         component={ChannelPreviewScreen}
         options={{ title: 'Превью', headerBackTitle: 'Назад' }}
@@ -284,6 +298,12 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChannelType"
         component={ChannelTypeScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen
+        name="ChannelInviteLinks"
+        component={ChannelInviteLinksScreen}
         options={{ headerShown: false }}
       />
 

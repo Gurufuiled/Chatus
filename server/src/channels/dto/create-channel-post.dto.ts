@@ -1,4 +1,4 @@
-import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsObject, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export class CreateChannelPostDto {
   @IsOptional()
@@ -11,6 +11,9 @@ export class CreateChannelPostDto {
   msg_type?: string;
 
   @IsOptional()
+  @ValidateIf((_, value) => !Array.isArray(value))
   @IsObject()
-  media?: Record<string, unknown>;
+  @ValidateIf((_, value) => Array.isArray(value))
+  @IsArray()
+  media?: Record<string, unknown> | Record<string, unknown>[];
 }

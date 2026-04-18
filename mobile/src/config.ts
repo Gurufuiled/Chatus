@@ -87,6 +87,22 @@ export const LOGINUS_CLIENT_ID = readExpoPublic('EXPO_PUBLIC_LOGINUS_CLIENT_ID')
 
 export const OAUTH_REDIRECT_URI = 'messenger://auth/callback';
 
+/** Схема ссылок на каналы (slug / invite). OAuth остаётся на `messenger://`. */
+export const CHANNEL_LINK_SCHEME = 'chatus';
+
+/**
+ * Публичная ссылка: chatus://c/{slug}
+ * Приглашение: chatus://join/{invite_token}
+ */
+export function buildChannelSlugDeepLink(slug: string): string {
+  const s = slug.trim().toLowerCase();
+  return `${CHANNEL_LINK_SCHEME}://c/${encodeURIComponent(s)}`;
+}
+
+export function buildChannelInviteDeepLink(inviteToken: string): string {
+  return `${CHANNEL_LINK_SCHEME}://join/${encodeURIComponent(inviteToken.trim())}`;
+}
+
 /** Resolve relative avatar URL (/uploads/xxx) to full URL using API host. */
 export function resolveAvatarUrl(avatarUrl: string | null | undefined): string | null {
   if (!avatarUrl || typeof avatarUrl !== 'string') return null;

@@ -40,6 +40,7 @@ interface ServerMessagePayload {
   forwarded_from_sender_id?: string | null;
   created_at: number | string;
   media?: {
+    media_type?: string | null;
     duration_ms?: number | null;
     waveform?: string | null;
     remote_url?: string | null;
@@ -84,6 +85,7 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
   };
   if (payload.media?.length) {
     msg.media = payload.media.map((m) => ({
+      media_type: m.media_type ?? undefined,
       waveform: decodeServerWaveform(m.waveform),
       duration_ms: m.duration_ms ?? undefined,
       remote_url: m.remote_url ?? undefined,
@@ -200,7 +202,11 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         previousState !== 'active' && nextState === 'active';
       if (!cameToForeground || !isAuthenticated) return;
 
-      WebSocketService.reconnect();
+      // Image/media picker often triggers inactive → active; reconnect() would close
+      // the socket (code 1000) and reconnect unnecessarily. Only connect if down.
+      if (!WebSocketService.isConnected()) {
+        WebSocketService.connect();
+      }
     });
 
     return () => {

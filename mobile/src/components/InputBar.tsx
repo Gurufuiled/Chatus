@@ -40,6 +40,11 @@ export interface MediaPickResult {
   caption?: string;
 }
 
+export interface MediaAlbumPickResult {
+  items: MediaPickResult[];
+  caption?: string;
+}
+
 export interface FilePickResult {
   uri: string;
   name: string;
@@ -52,6 +57,7 @@ export interface InputBarProps {
   onSendVoice: (result: VoiceRecordingResult) => void | Promise<void>;
   onSendVideoNote?: (result: VideoNoteRecordingResult) => void | Promise<void>;
   onSendMedia?: (result: MediaPickResult) => void | Promise<void>;
+  onSendMediaAlbum?: (result: MediaAlbumPickResult) => void | Promise<void>;
   onSendFile?: (result: FilePickResult) => void | Promise<void>;
   blurTargetRef?: React.RefObject<View | null>;
   placeholder?: string;
@@ -157,6 +163,7 @@ export function InputBar({
   onSendVoice,
   onSendVideoNote,
   onSendMedia,
+  onSendMediaAlbum,
   onSendFile,
   blurTargetRef,
   placeholder = 'Сообщение',
@@ -177,6 +184,8 @@ export function InputBar({
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryDenied, setGalleryDenied] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<MediaPickResult | null>(null);
+  const [selectedGalleryItems, setSelectedGalleryItems] = useState<GalleryItem[]>([]);
+  const [galleryCaption, setGalleryCaption] = useState('');
   const [voiceRecordModeState, setVoiceRecordModeState] = useState<VoiceRecordMode>('idle');
   const [recordingEntryModeState, setRecordingEntryModeState] =
     useState<RecordingEntryMode>('voice');
@@ -296,6 +305,17 @@ export function InputBar({
   }, []);
 
   const forceResetVoiceState = useCallback(() => {
+    if (__DEV__) {
+      console.log('[VoiceInput] forceResetVoiceState', {
+        mode: voiceRecordModeRef.current,
+        holdActivated: voiceHoldActivatedRef.current,
+        gestureActive: voiceGestureActiveRef.current,
+        recordingReady: voiceRecordingReadyRef.current,
+        startPending: voiceStartPendingRef.current,
+        isRecordingSvc: VoiceRecorderService.isRecording(),
+        stack: new Error().stack?.split('\n').slice(1, 6).join(' | '),
+      });
+    }
     clearVoiceStartWatchdog();
     if (voiceHoldTimerRef.current) {
       clearTimeout(voiceHoldTimerRef.current);
@@ -394,26 +414,47 @@ export function InputBar({
   }, [clearVoiceStartWatchdog]);
 
   useEffect(() => {
+    let pendingBackgroundTimer: ReturnType<typeof setTimeout> | null = null;
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active') {
-        forceResetVoiceState();
+      if (__DEV__) console.log('[VoiceInput] AppState change ->', nextState);
+      if (nextState === 'background') {
+        if (pendingBackgroundTimer) clearTimeout(pendingBackgroundTimer);
+        pendingBackgroundTimer = setTimeout(() => {
+          pendingBackgroundTimer = null;
+          if (AppState.currentState === 'background') {
+            forceResetVoiceState();
+          }
+        }, 600);
+      } else if (pendingBackgroundTimer) {
+        clearTimeout(pendingBackgroundTimer);
+        pendingBackgroundTimer = null;
       }
     });
     return () => {
+      if (pendingBackgroundTimer) clearTimeout(pendingBackgroundTimer);
       subscription.remove();
     };
   }, [forceResetVoiceState]);
 
   useEffect(() => {
+    if (__DEV__) console.log('[VoiceInput] isScreenFocused ->', isScreenFocused);
     if (!isScreenFocused) {
-      forceResetVoiceState();
       setShowAttachmentSheet(false);
       setShowVideoNoteRecorder(false);
       Keyboard.dismiss();
     }
-  }, [forceResetVoiceState, isScreenFocused]);
+  }, [isScreenFocused]);
 
   const beginVoiceRecording = useCallback(async () => {
+    if (__DEV__) {
+      console.log('[VoiceInput] beginVoiceRecording called', {
+        canSend,
+        startPending: voiceStartPendingRef.current,
+        finalizePending: voiceFinalizePendingRef.current,
+        mode: voiceRecordModeRef.current,
+        isRecordingSvc: VoiceRecorderService.isRecording(),
+      });
+    }
     if (canSend || voiceStartPendingRef.current || voiceFinalizePendingRef.current) return;
     if (voiceRecordModeRef.current !== 'idle' || VoiceRecorderService.isRecording()) return;
 
@@ -435,6 +476,7 @@ export function InputBar({
       clearVoiceStartWatchdog();
       setVoiceRecordingStartedAtMs(Date.now());
       voiceRecordingReadyRef.current = true;
+      if (__DEV__) console.log('[VoiceInput] startRecording resolved, ready=true');
 
       const pendingOutcome = pendingVoiceOutcomeRef.current;
       pendingVoiceOutcomeRef.current = null;
@@ -484,6 +526,13 @@ export function InputBar({
   }, [canSend, clearVoiceStartWatchdog, forceResetVoiceState, onSendVoice, resetVoiceGestureVisuals, setVoiceRecordMode]);
 
   const cancelVoiceRecording = useCallback(async () => {
+    if (__DEV__) {
+      console.log('[VoiceInput] cancelVoiceRecording', {
+        mode: voiceRecordModeRef.current,
+        recordingReady: voiceRecordingReadyRef.current,
+        finalizePending: voiceFinalizePendingRef.current,
+      });
+    }
     if (voiceFinalizePendingRef.current || voiceRecordModeRef.current === 'idle') return;
     if (voiceHoldTimerRef.current) {
       clearTimeout(voiceHoldTimerRef.current);
@@ -517,6 +566,13 @@ export function InputBar({
   }, [resetVoiceGestureVisuals, setVoiceRecordMode]);
 
   const finishVoiceRecording = useCallback(async () => {
+    if (__DEV__) {
+      console.log('[VoiceInput] finishVoiceRecording', {
+        mode: voiceRecordModeRef.current,
+        recordingReady: voiceRecordingReadyRef.current,
+        finalizePending: voiceFinalizePendingRef.current,
+      });
+    }
     if (voiceFinalizePendingRef.current || voiceRecordModeRef.current === 'idle') return;
     if (voiceHoldTimerRef.current) {
       clearTimeout(voiceHoldTimerRef.current);
@@ -565,6 +621,8 @@ export function InputBar({
 
   const runAttachmentAction = useCallback(async (action: () => Promise<void>) => {
     setShowAttachmentSheet(false);
+    setSelectedGalleryItems([]);
+    setGalleryCaption('');
     try {
       await action();
     } catch (err) {
@@ -640,10 +698,22 @@ export function InputBar({
     }
   }, [showAttachmentSheet, onSendMedia, loadGallery]);
 
-  const handlePickGalleryItem = useCallback(
-    async (item: GalleryItem) => {
-      if (!onSendMedia) return;
+  const handleToggleGalleryItem = useCallback((item: GalleryItem) => {
+    setSelectedGalleryItems((current) => {
+      const existingIndex = current.findIndex((selected) => selected.id === item.id);
+      if (existingIndex >= 0) {
+        return current.filter((selected) => selected.id !== item.id);
+      }
+      if (current.length >= 10) {
+        Alert.alert('Лимит медиа', 'Можно выбрать не больше 10 фото или видео.');
+        return current;
+      }
+      return [...current, item];
+    });
+  }, []);
 
+  const resolveGalleryItemForSend = useCallback(
+    async (item: GalleryItem) => {
       const assetInfo = await MediaLibrary.getAssetInfoAsync(item.id).catch(() => null);
       const kind =
         assetInfo?.mediaType != null ? resolveGalleryItemKind(assetInfo.mediaType) : item.kind;
@@ -660,7 +730,7 @@ export function InputBar({
           ? (await ensureVideoThumbnailUri(resolvedUri).catch(() => '')) || undefined
           : undefined;
 
-      setPendingMedia({
+      return {
         kind,
         uri: resolvedUri,
         previewUri,
@@ -669,11 +739,46 @@ export function InputBar({
         durationMs,
         fileName: resolvedFileName,
         mimeType: inferMimeTypeFromFileName(resolvedFileName, kind),
-      });
-      setShowAttachmentSheet(false);
+      } satisfies MediaPickResult;
     },
-    [onSendMedia]
+    []
   );
+
+  const handleSendSelectedGalleryItems = useCallback(async () => {
+    if (!onSendMedia || selectedGalleryItems.length === 0) return;
+
+    const items = selectedGalleryItems;
+    const caption = galleryCaption.trim();
+    setSelectedGalleryItems([]);
+    setGalleryCaption('');
+    setShowAttachmentSheet(false);
+
+    try {
+      const resolvedItems = await Promise.all(items.map(resolveGalleryItemForSend));
+      if (onSendMediaAlbum) {
+        await onSendMediaAlbum({
+          items: resolvedItems,
+          caption: caption.length > 0 ? caption : undefined,
+        });
+      } else {
+        for (let index = 0; index < resolvedItems.length; index += 1) {
+          await onSendMedia({
+            ...resolvedItems[index],
+            caption: index === 0 && caption.length > 0 ? caption : undefined,
+          });
+        }
+      }
+    } catch (err) {
+      if (__DEV__) console.warn('[InputBar] send selected gallery error:', err);
+      Alert.alert('Ошибка', 'Не удалось отправить выбранные медиа. Попробуй еще раз.');
+    }
+  }, [galleryCaption, onSendMedia, onSendMediaAlbum, resolveGalleryItemForSend, selectedGalleryItems]);
+
+  const closeAttachmentSheet = useCallback(() => {
+    setShowAttachmentSheet(false);
+    setSelectedGalleryItems([]);
+    setGalleryCaption('');
+  }, []);
 
   const showAttachmentButton = onSendMedia != null || attachmentActions.length > 0;
 
@@ -835,6 +940,7 @@ export function InputBar({
         onMoveShouldSetPanResponder: () =>
           voiceTouchTracking && voiceRecordModeRef.current === 'holding',
         onPanResponderGrant: () => {
+          if (__DEV__) console.log('[VoiceInput] pan GRANT, entryMode=', recordingEntryModeRef.current);
           voiceGestureActiveRef.current = true;
           setVoiceTouchTracking(true);
           entryModeTapEligibleRef.current = true;
@@ -850,6 +956,10 @@ export function InputBar({
           }
           voiceHoldTimerRef.current = setTimeout(() => {
             voiceHoldTimerRef.current = null;
+            if (__DEV__) console.log('[VoiceInput] hold timer fired', {
+              gestureActive: voiceGestureActiveRef.current,
+              mode: voiceRecordModeRef.current,
+            });
             if (!voiceGestureActiveRef.current || voiceRecordModeRef.current !== 'idle') return;
             void beginVoiceRecording();
           }, VOICE_HOLD_TO_RECORD_MS);
@@ -884,9 +994,11 @@ export function InputBar({
           updateVoiceDrag(gestureState.dx, gestureState.dy);
         },
         onPanResponderRelease: () => {
+          if (__DEV__) console.log('[VoiceInput] pan RELEASE', { mode: voiceRecordModeRef.current });
           handleVoicePanRelease();
         },
         onPanResponderTerminate: () => {
+          if (__DEV__) console.log('[VoiceInput] pan TERMINATE', { mode: voiceRecordModeRef.current });
           handleVoicePanRelease();
         },
         onPanResponderTerminationRequest: () => false,
@@ -1285,8 +1397,14 @@ export function InputBar({
         galleryLoading={galleryLoading}
         galleryDenied={galleryDenied}
         attachmentActions={attachmentActions}
-        onClose={() => setShowAttachmentSheet(false)}
-        onPickGalleryItem={handlePickGalleryItem}
+        selectedItems={selectedGalleryItems}
+        captionValue={galleryCaption}
+        onClose={closeAttachmentSheet}
+        onToggleGalleryItem={handleToggleGalleryItem}
+        onCaptionChange={setGalleryCaption}
+        onSendSelected={() => {
+          void handleSendSelectedGalleryItems();
+        }}
         onRunAttachmentAction={runAttachmentAction}
       />
 

@@ -229,18 +229,15 @@ export function GroupProfileHeaderSection({
                   style={({ pressed }) => [
                     styles.actionButton,
                     pressed && styles.cardPressed,
-                    isMuted && styles.actionButtonActive,
                   ]}
                 >
                   <ProfileActionIcon
                     name="sound"
                     size={20}
-                    color={isMuted ? colors.inputBackgroundSolid : colors.accent}
+                    color={colors.accent}
                     active={isMuted}
                   />
-                  <Text style={[styles.actionButtonLabel, isMuted && styles.actionButtonLabelActive]}>
-                    Звук
-                  </Text>
+                  <Text style={styles.actionButtonLabel}>Звук</Text>
                 </Pressable>
 
                 <Pressable
@@ -432,18 +429,11 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     backgroundColor: withAlpha(colors.accent, 0.82),
   },
-  actionButtonActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
   actionButtonLabel: {
     marginTop: 8,
     fontSize: 13,
     fontWeight: '600',
     color: colors.accent,
-  },
-  actionButtonLabelActive: {
-    color: colors.inputBackgroundSolid,
   },
   descriptionCard: {
     marginTop: 16,

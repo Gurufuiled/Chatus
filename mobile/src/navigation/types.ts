@@ -13,8 +13,13 @@ export type ChatsStackParamList = {
   GroupProfile: { chatId: string; chatTitle?: string };
   CreateGroupChat: undefined;
   ChannelCatalog: undefined;
+  /** Deep link: chatus://c/:slug — public channel by slug */
+  ChannelLinkSlug: { slug: string };
+  /** Deep link: chatus://join/:inviteToken — invite (private or share) */
+  ChannelLinkInvite: { inviteToken: string };
   ChannelPreview: { channelId: string };
-  ChannelFeed: { channelId: string };
+  ChannelFeed: { channelId: string; inviteToken?: string };
+  ChannelInviteLinks: { channelId: string };
   ChannelProfile: { channelId: string };
   ChannelEdit: { channelId: string };
   ChannelMembers: { channelId: string; mode: 'admins' | 'subscribers' | 'banned' };

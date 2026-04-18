@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { BlurTargetView } from 'expo-blur';
 import Feather from '@expo/vector-icons/Feather';
@@ -7,6 +7,7 @@ import {
   Animated,
   AppState,
   FlatList,
+  Image,
   InteractionManager,
   Keyboard,
   LayoutChangeEvent,
@@ -40,6 +41,7 @@ import {
   ChatInputDock,
   ChatMessageList,
   ChatTopBanners,
+  ChannelLinkRichMessage,
   FileBubble,
   ForwardHeader,
   ImageBubble,
@@ -79,7 +81,8 @@ import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
 } from './chatScreen.shared';
-import { formatPlaybackElapsedDuration } from '../utils/mediaDuration';
+import { formatMediaDuration, formatPlaybackElapsedDuration } from '../utils/mediaDuration';
+import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
 
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
 type ChatNavigation = NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
@@ -107,6 +110,135 @@ type MenuAction = {
   disabled: boolean;
   textOnly?: boolean;
 };
+
+type VisualMediaItem = NonNullable<Message['media']>[number];
+
+function getVisualMediaKind(message: Message, media: VisualMediaItem): 'image' | 'video' {
+  const mediaType = media.media_type?.toLowerCase();
+  if (mediaType === 'video') return 'video';
+  if (mediaType === 'image') return 'image';
+  return message.msg_type === 'video' ? 'video' : 'image';
+}
+
+function MediaAlbumBubble({
+  message,
+  isMe,
+  time,
+  status,
+}: {
+  message: Message;
+  isMe: boolean;
+  time: string;
+  status: string;
+}) {
+  const media = (message.media ?? [])
+    .filter((item) => item.remote_url?.trim())
+    .slice(0, 10);
+  if (media.length === 0) return null;
+
+  const visibleMedia = media.slice(0, 9);
+  const albumWidth = Math.min(SCREEN_WIDTH * 0.72, 280);
+  const gap = 1.5;
+  const caption = message.content?.trim();
+
+  const renderTile = (item: VisualMediaItem, index: number, style: object) => {
+    const kind = getVisualMediaKind(message, item);
+    const uri = kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
+    const extraCount = media.length - visibleMedia.length;
+    const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
+    return (
+      <View key={`${item.remote_url}-${index}`} style={[styles.albumTile, style]}>
+        <Image source={{ uri }} style={styles.albumImage} resizeMode="cover" />
+        {kind === 'video' ? (
+          <View style={styles.albumVideoBadge}>
+            <Feather name="play" size={10} color="#FFFFFF" />
+            <Text style={styles.albumVideoDuration}>
+              {formatMediaDuration(item.duration_ms ?? 0)}
+            </Text>
+          </View>
+        ) : null}
+        {showExtra ? (
+          <View style={styles.albumExtraOverlay}>
+            <Text style={styles.albumExtraText}>+{extraCount}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  const grid = (() => {
+    if (visibleMedia.length === 1) {
+      return renderTile(visibleMedia[0], 0, { width: albumWidth, height: albumWidth });
+    }
+
+    if (visibleMedia.length === 2) {
+      const tileWidth = (albumWidth - gap) / 2;
+      return (
+        <View style={styles.albumRow}>
+          {visibleMedia.map((item, index) =>
+            renderTile(item, index, { width: tileWidth, height: albumWidth })
+          )}
+        </View>
+      );
+    }
+
+    if (visibleMedia.length === 3) {
+      const sideWidth = (albumWidth - gap) * 0.58;
+      const rightWidth = albumWidth - sideWidth - gap;
+      const halfHeight = (albumWidth - gap) / 2;
+      return (
+        <View style={styles.albumRow}>
+          {renderTile(visibleMedia[0], 0, { width: sideWidth, height: albumWidth })}
+          <View style={[styles.albumColumn, { width: rightWidth }]}>
+            {renderTile(visibleMedia[1], 1, { width: rightWidth, height: halfHeight })}
+            {renderTile(visibleMedia[2], 2, { width: rightWidth, height: halfHeight })}
+          </View>
+        </View>
+      );
+    }
+
+    const columns = 3;
+    const tileWidth = (albumWidth - gap * (columns - 1)) / columns;
+    return (
+      <View style={styles.albumGrid}>
+        {visibleMedia.map((item, index) =>
+          renderTile(item, index, { width: tileWidth, height: tileWidth })
+        )}
+      </View>
+    );
+  })();
+
+  return (
+    <View style={[styles.albumBubble, isMe ? styles.albumBubbleMe : styles.albumBubbleOther]}>
+      <View style={[styles.albumGridClip, { width: albumWidth }]}>
+        {grid}
+        {!caption ? (
+          <View style={styles.albumTimeOverlay}>
+            <MessageTimeStatus
+              time={time}
+              status={status}
+              isMe={isMe}
+              compact
+              timeColor="#FFFFFF"
+              iconColor="#FFFFFF"
+            />
+          </View>
+        ) : null}
+      </View>
+      {caption ? (
+        <View
+          style={[
+            styles.albumCaptionWrap,
+            isMe ? styles.albumCaptionMe : styles.albumCaptionOther,
+          ]}
+        >
+          <Text style={styles.albumCaptionText}>{caption}</Text>
+          <MessageTimeStatus time={time} status={status} isMe={isMe} compact />
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 function buildForwardPreview(message: Message): string {
   switch (message.msg_type) {
@@ -798,6 +930,76 @@ export function ChatScreen() {
     [chatId, currentUserId, replyToMessageId]
   );
 
+  const handleSendMediaAlbum = useCallback(
+    async (result: {
+      items: {
+        kind: 'image' | 'video';
+        uri: string;
+        previewUri?: string;
+        width?: number;
+        height?: number;
+        durationMs?: number;
+        fileName?: string;
+        mimeType?: string;
+      }[];
+      caption?: string;
+    }) => {
+      if (!currentUserId) return;
+      const items = result.items.slice(0, 10);
+      if (items.length === 0) return;
+
+      const tempId = `temp-${Date.now()}`;
+      const activeReplyId = replyToMessageId;
+      const now = Date.now();
+      const msg: Message = {
+        id: tempId,
+        chat_id: chatId,
+        sender_id: currentUserId,
+        msg_type: items[0]?.kind === 'video' ? 'video' : 'image',
+        content: result.caption ?? null,
+        reply_to_id: activeReplyId,
+        is_edited: 0,
+        is_deleted: 0,
+        status: 'sending',
+        transport: 'ws',
+        server_id: null,
+        created_at: now,
+        updated_at: now,
+        media: items.map((item) => ({
+          media_type: item.kind,
+          remote_url: item.uri,
+          thumbnail_url: item.previewUri,
+          width: item.width,
+          height: item.height,
+          duration_ms: item.durationMs,
+          file_name: item.fileName,
+          mime_type: item.mimeType,
+        })),
+      };
+      messageStore.getState().prependMessage(chatId, msg);
+      setReplyToMessageId(null);
+      await TransportService.sendMediaAlbumMessage(
+        chatId,
+        {
+          items: items.map((item) => ({
+            kind: item.kind,
+            uri: item.uri,
+            width: item.width,
+            height: item.height,
+            durationMs: item.durationMs,
+            thumbnailUri: item.previewUri,
+            fileName: item.fileName,
+            mimeType: item.mimeType,
+          })),
+          caption: result.caption,
+        },
+        tempId,
+        activeReplyId
+      );
+    },
+    [chatId, currentUserId, replyToMessageId]
+  );
+
   const handleSendFile = useCallback(
     async (result: { uri: string; name: string; size: number; mimeType?: string }) => {
       if (!currentUserId) return;
@@ -1247,6 +1449,24 @@ export function ChatScreen() {
     if (item.msg_type === 'text') {
       const rawContent = item.content ?? '';
       const displayContent = rawContent.trim() || ' ';
+      const channelLink = parseChannelDeepLinkFromMessage(rawContent);
+
+      if (channelLink) {
+        return (
+          <View style={fixedWidthStyle}>
+            {renderForwardHeader()}
+            {renderReplySnippet()}
+            <ChannelLinkRichMessage
+              parsed={channelLink}
+              rawUrlLine={displayContent}
+              isMe={isMe}
+              time={formatTime(item.created_at)}
+              status={item.status}
+              navigation={navigation}
+            />
+          </View>
+        );
+      }
 
       return (
         <View style={[styles.bubble, fixedWidthStyle, isMe ? styles.bubbleMe : styles.bubbleOther]}>
@@ -1348,6 +1568,45 @@ export function ChatScreen() {
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
           {videoContent}
+        </View>
+      );
+    }
+
+    const visualMediaCount =
+      item.msg_type === 'image' || item.msg_type === 'video'
+        ? item.media?.filter((media) => media.remote_url?.trim()).length ?? 0
+        : 0;
+
+    if (visualMediaCount > 1) {
+      const replySnippet = renderReplySnippet();
+      const albumContent = (
+        <MediaAlbumBubble
+          message={item}
+          isMe={isMe}
+          time={formatTime(item.created_at)}
+          status={item.status}
+        />
+      );
+
+      if (replySnippet) {
+        return (
+          <View
+            style={[
+              styles.repliedMediaBubble,
+              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              fixedWidthStyle,
+            ]}
+          >
+            {renderForwardHeader()}
+            {replySnippet}
+            {albumContent}
+          </View>
+        );
+      }
+
+      return (
+        <View style={[styles.mediaStack, fixedWidthStyle]}>
+          {albumContent}
         </View>
       );
     }
@@ -1462,7 +1721,7 @@ export function ChatScreen() {
     }
 
     return null;
-  }, [chatId, currentUserId, handleForwardHeaderPress, messageById]);
+  }, [chatId, currentUserId, handleForwardHeaderPress, messageById, navigation]);
 
   const menuActions = useMemo<MenuAction[]>(() => {
     if (!activeMenuMessage) return [];
@@ -1671,6 +1930,7 @@ export function ChatScreen() {
             onSendVoice={handleSendVoice}
             onSendVideoNote={handleSendVideoNote}
             onSendMedia={handleSendMedia}
+            onSendMediaAlbum={handleSendMediaAlbum}
             onSendFile={handleSendFile}
             blurTargetRef={blurTargetRef}
             replyToMessage={replyToMessage}
@@ -1714,6 +1974,98 @@ export function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#E8F4D6' },
+  albumBubble: {
+    maxWidth: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  albumBubbleMe: {
+    alignSelf: 'flex-end',
+  },
+  albumBubbleOther: {
+    alignSelf: 'flex-start',
+  },
+  albumGridClip: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#D8DEE7',
+  },
+  albumRow: {
+    flexDirection: 'row',
+    gap: 1.5,
+  },
+  albumColumn: {
+    gap: 1.5,
+  },
+  albumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 1.5,
+  },
+  albumTile: {
+    overflow: 'hidden',
+    backgroundColor: '#C8D0DC',
+  },
+  albumImage: {
+    width: '100%',
+    height: '100%',
+  },
+  albumVideoBadge: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.68)',
+  },
+  albumVideoDuration: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  albumTimeOverlay: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15,23,42,0.62)',
+  },
+  albumExtraOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.42)',
+  },
+  albumExtraText: {
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  albumCaptionWrap: {
+    paddingHorizontal: 10,
+    paddingTop: 7,
+    paddingBottom: 6,
+  },
+  albumCaptionMe: {
+    backgroundColor: colors.bubbleMe,
+  },
+  albumCaptionOther: {
+    backgroundColor: colors.bubbleOther,
+  },
+  albumCaptionText: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.textPrimary,
+  },
   chatContentLayer: {
     flex: 1,
   },

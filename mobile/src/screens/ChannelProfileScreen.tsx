@@ -1,19 +1,31 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChatsStackParamList } from '../navigation/types';
-import { fetchChannelDetail, fetchChannelFeed } from '../services/channelService';
+import { fetchChannelDetail, fetchChannelFeed, unsubscribeFromChannel } from '../services/channelService';
+import { ChatDao } from '../db';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
+import { authStore } from '../stores/authStore';
 import { colors } from '../theme/colors';
-import { resolveAvatarUrl } from '../config';
+import { buildChannelInviteDeepLink, buildChannelSlugDeepLink, resolveAvatarUrl } from '../config';
 import { LoadErrorState } from '../components/LoadErrorState';
+import { ChannelUnsubscribeConfirmModal } from '../components/ChannelUnsubscribeConfirmModal';
 import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
 import { MediaTilePreview, type MediaTile } from '../components/ChatProfileMediaSection';
-import type { Message } from '../stores/types';
+import type { Chat, Message } from '../stores/types';
 import { formatMediaDuration } from '../utils/mediaDuration';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelProfile'>;
@@ -66,11 +78,15 @@ export function ChannelProfileScreen() {
   const insets = useSafeAreaInsets();
   const { channelId } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
+  const currentUserId = authStore((state) => state.user?.id ?? null);
+  const channelChat = chatStore((state) => state.chats.find((c) => c.id === channelId) ?? null);
   const [loading, setLoading] = React.useState(!detail);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [snackbar, setSnackbar] = React.useState<string | null>(null);
   const [feedPosts, setFeedPosts] = React.useState<Message[]>([]);
   const [selectedMediaIndex, setSelectedMediaIndex] = React.useState<number | null>(null);
+  const [leaveBusy, setLeaveBusy] = React.useState(false);
+  const [leaveConfirmVisible, setLeaveConfirmVisible] = React.useState(false);
 
   const showSnackbar = React.useCallback((message: string) => {
     setSnackbar(message);
@@ -146,6 +162,69 @@ export function ChannelProfileScreen() {
     }
   }, [channelMediaItems.length, selectedMediaIndex]);
 
+  const showSubscriberToolbar = React.useMemo(() => {
+    if (!detail?.is_subscribed) return false;
+    if (detail.channel_permissions?.can_edit_channel) return false;
+    if (detail.can_post) return false;
+    const me = detail.channel.members?.find((m) => m.user_id === currentUserId);
+    if (me?.role === 'owner' || me?.role === 'admin') return false;
+    return true;
+  }, [detail, currentUserId]);
+
+  const isChannelNotificationsMuted = React.useMemo(() => {
+    const muted = channelChat?.is_muted ?? detail?.channel?.is_muted ?? 0;
+    return muted === 1;
+  }, [channelChat?.is_muted, detail?.channel?.is_muted]);
+
+  const handleToggleChannelMute = React.useCallback(() => {
+    const base = channelChat ?? detail?.channel;
+    if (!base) return;
+    const next: Chat = {
+      ...base,
+      is_muted: isChannelNotificationsMuted ? 0 : 1,
+      updated_at: Date.now(),
+    };
+    chatStore.getState().addOrUpdateChat(next);
+    void new ChatDao()
+      .update({
+        id: next.id,
+        is_muted: next.is_muted,
+        updated_at: next.updated_at,
+      })
+      .catch(() => {
+        /* чат мог ещё не попасть в локальную БД */
+      });
+  }, [channelChat, detail?.channel, isChannelNotificationsMuted]);
+
+  const handleLeaveChannelPress = React.useCallback(() => {
+    setLeaveConfirmVisible(true);
+  }, []);
+
+  const handleConfirmLeaveChannel = React.useCallback(() => {
+    void (async () => {
+      setLeaveBusy(true);
+      try {
+        await unsubscribeFromChannel(channelId);
+        chatStore.getState().removeChat(channelId);
+        channelStore.setState((state) => {
+          const detailsById = { ...state.detailsById };
+          delete detailsById[channelId];
+          const feedByChannelId = { ...state.feedByChannelId };
+          delete feedByChannelId[channelId];
+          const catalog = state.catalog.filter((c) => c.id !== channelId);
+          return { detailsById, feedByChannelId, catalog };
+        });
+        setLeaveConfirmVisible(false);
+        navigation.goBack();
+      } catch (e) {
+        setLeaveConfirmVisible(false);
+        Alert.alert('Ошибка', e instanceof Error ? e.message : 'Не удалось покинуть канал');
+      } finally {
+        setLeaveBusy(false);
+      }
+    })();
+  }, [channelId, navigation]);
+
   if (loading && !detail) {
     return (
       <View style={styles.loading}>
@@ -169,7 +248,13 @@ export function ChannelProfileScreen() {
   const channel = detail.channel;
   const title = channel.name?.trim() || 'Канал';
   const initial = (title[0] || 'К').toUpperCase();
-  const inviteLink = channel.invite_token ? `https://t.me/${channel.invite_token}` : 'Ссылка недоступна';
+  const inviteDeepLink = channel.invite_token
+    ? buildChannelInviteDeepLink(channel.invite_token)
+    : null;
+  const publicDeepLink =
+    channel.visibility === 'public' && channel.slug?.trim()
+      ? buildChannelSlugDeepLink(channel.slug.trim())
+      : null;
   const description = channel.description?.trim() || 'Описание не указано';
   const avatarUrl = resolveAvatarUrl(channel.avatar_url ?? null);
 
@@ -225,10 +310,62 @@ export function ChannelProfileScreen() {
           <Text style={styles.subtitle}>{channel.subscriber_count ?? 0} подписчиков</Text>
         </View>
 
+        {showSubscriberToolbar ? (
+          <View style={styles.subscriberToolbar}>
+            <Pressable
+              onPress={() => handleToggleChannelMute()}
+              style={({ pressed }) => [
+                styles.subscriberToolbarPill,
+                pressed && styles.subscriberToolbarPillPressed,
+              ]}
+            >
+              <Feather
+                name={isChannelNotificationsMuted ? 'bell' : 'bell-off'}
+                size={22}
+                color={colors.accent}
+              />
+              <Text style={styles.subscriberToolbarLabel}>
+                {isChannelNotificationsMuted ? 'Звук' : 'Без звука'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleLeaveChannelPress()}
+              disabled={leaveBusy}
+              style={({ pressed }) => [
+                styles.subscriberToolbarPill,
+                pressed && styles.subscriberToolbarPillPressed,
+                leaveBusy && styles.subscriberToolbarPillDisabled,
+              ]}
+            >
+              {leaveBusy ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Feather name="log-out" size={22} color={colors.accent} />
+              )}
+              <Text style={styles.subscriberToolbarLabel}>Покинуть</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>ссылка</Text>
-          <Text style={styles.infoLink}>{inviteLink}</Text>
-          <View style={styles.divider} />
+          {publicDeepLink ? (
+            <>
+              <Text style={styles.infoLabel}>ссылка</Text>
+              <Text style={styles.infoLink} selectable>
+                {publicDeepLink}
+              </Text>
+              <View style={styles.divider} />
+            </>
+          ) : null}
+          {channel.visibility === 'private' && inviteDeepLink ? (
+            <>
+              <Text style={styles.infoLabel}>приглашение</Text>
+              <Text style={styles.infoLink} selectable>
+                {inviteDeepLink}
+              </Text>
+              <View style={styles.divider} />
+            </>
+          ) : null}
           <Text style={styles.infoLabel}>описание</Text>
           <Text style={styles.infoText}>{description}</Text>
         </View>
@@ -312,6 +449,16 @@ export function ChannelProfileScreen() {
         onClose={() => setSelectedMediaIndex(null)}
       />
 
+      <ChannelUnsubscribeConfirmModal
+        visible={leaveConfirmVisible}
+        channelName={title}
+        busy={leaveBusy}
+        onCancel={() => {
+          if (!leaveBusy) setLeaveConfirmVisible(false);
+        }}
+        onConfirmLeave={handleConfirmLeaveChannel}
+      />
+
       {snackbar ? (
         <View style={styles.snackbarWrap} pointerEvents="none">
           <Text style={styles.snackbarText}>{snackbar}</Text>
@@ -381,6 +528,40 @@ const styles = StyleSheet.create({
   avatarText: { color: '#FFFFFF', fontSize: 42, fontWeight: '700' },
   title: { marginTop: 10, fontSize: 34, lineHeight: 40, color: '#111827', fontWeight: '500' },
   subtitle: { marginTop: 2, color: '#6B7280', fontSize: 16 },
+  subscriberToolbar: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    marginBottom: 10,
+  },
+  subscriberToolbarPill: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  subscriberToolbarPillPressed: {
+    opacity: 0.88,
+  },
+  subscriberToolbarPillDisabled: {
+    opacity: 0.55,
+  },
+  subscriberToolbarLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accent,
+    textAlign: 'center',
+  },
   infoCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,

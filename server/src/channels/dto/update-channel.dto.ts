@@ -80,6 +80,11 @@ export class UpdateChannelDto {
   @Max(15)
   comment_cooldown_sec?: number;
 
+  /** When true, clears public slug (e.g. user removed custom link while staying public). */
+  @IsOptional()
+  @IsBoolean()
+  clear_slug?: boolean;
+
   @IsOptional()
   @IsString()
   @MinLength(5)

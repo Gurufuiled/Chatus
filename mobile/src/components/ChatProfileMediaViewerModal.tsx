@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { BlurView } from 'expo-blur';
 import {
   Animated,
   Dimensions,
@@ -9,6 +10,7 @@ import {
   Image,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -398,21 +400,29 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
                 },
               ]}
             >
-              <View style={styles.captionPanel}>
-                <View style={styles.captionHandle} />
-                <ScrollView
-                  style={styles.captionScroll}
-                  contentContainerStyle={styles.captionScrollContent}
-                  showsVerticalScrollIndicator
-                  bounces
-                >
-                  <Text style={styles.captionText}>{currentCaption}</Text>
-                </ScrollView>
-                <Pressable style={styles.captionClose} onPress={() => setCaptionOpen(false)}>
-                  <Feather name="chevron-down" size={20} color="#FFFFFF" />
-                  <Text style={styles.captionCloseText}>Скрыть</Text>
-                </Pressable>
-              </View>
+              <BlurView
+                intensity={Platform.OS === 'ios' ? 55 : 70}
+                tint="dark"
+                blurMethod="dimezisBlurView"
+                style={styles.captionBlur}
+              >
+                <View style={styles.captionBlurTint} />
+                <View style={styles.captionPanelInner}>
+                  <View style={styles.captionHandle} />
+                  <ScrollView
+                    style={styles.captionScroll}
+                    contentContainerStyle={styles.captionScrollContent}
+                    showsVerticalScrollIndicator
+                    bounces
+                  >
+                    <Text style={styles.captionText}>{currentCaption}</Text>
+                  </ScrollView>
+                  <Pressable style={styles.captionClose} onPress={() => setCaptionOpen(false)}>
+                    <Feather name="chevron-down" size={20} color="rgba(255,255,255,0.92)" />
+                    <Text style={styles.captionCloseText}>Скрыть</Text>
+                  </Pressable>
+                </View>
+              </BlurView>
             </Animated.View>
           </View>
         ) : null}
@@ -493,9 +503,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.28)',
   },
   captionHintText: {
     color: '#FFFFFF',
@@ -514,11 +524,18 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
-  captionPanel: {
+  /** Размытие фото под текстом (как в Telegram), без плотной чёрной плашки */
+  captionBlur: {
     maxHeight: SCREEN_HEIGHT * 0.62,
-    backgroundColor: 'rgba(15,17,22,0.96)',
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
+    overflow: 'hidden',
+  },
+  captionBlurTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  captionPanelInner: {
     paddingTop: 10,
     paddingBottom: 26,
     paddingHorizontal: 18,
@@ -528,7 +545,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.38)',
     marginBottom: 10,
   },
   captionScroll: {
@@ -538,9 +555,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   captionText: {
-    color: '#F3F4F6',
+    color: '#FFFFFF',
     fontSize: 16,
     lineHeight: 24,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   captionClose: {
     alignSelf: 'center',
@@ -548,13 +568,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     marginTop: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   captionCloseText: {
-    color: '#FFFFFF',
+    color: 'rgba(255,255,255,0.88)',
     fontSize: 13,
     fontWeight: '600',
   },

@@ -14,6 +14,7 @@ export { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 export { ChatInputDock } from './ChatInputDock';
 export { ChatMessageList } from './ChatMessageList';
 export { ChatTopBanners } from './ChatTopBanners';
+export { ChannelLinkRichMessage } from './ChannelLinkRichMessage';
 export { FileBubble } from './FileBubble';
 export { ForwardHeader } from './ForwardHeader';
 export { MessageTimeStatus } from './MessageTimeStatus';

@@ -80,19 +80,25 @@ class WebSocketServiceClass {
     const baseUrl = getWebSocketUrl();
     const sep = baseUrl.includes('?') ? '&' : '?';
     const url = baseUrl + sep + 'token=' + encodeURIComponent(token);
-    this.ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
       this.reconnectAttempt = 0;
       if (__DEV__) console.log('[WebSocket] connected', baseUrl);
       this.handlers.onConnected?.();
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
       this.handleMessage(event.data);
     };
 
-    this.ws.onclose = (e) => {
+    socket.onclose = (e) => {
+      const target = e.target as WebSocket;
+      // Ignore close events from a socket we already replaced (reconnect / new connection).
+      if (target !== this.ws) {
+        return;
+      }
       if (__DEV__) console.log('[WebSocket] closed', e.code, e.reason);
       this.ws = null;
       this.handlers.onDisconnected?.();
@@ -101,7 +107,7 @@ class WebSocketServiceClass {
       }
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
       // Error details come via onclose; avoid duplicate handling
     };
   }
@@ -201,7 +207,6 @@ class WebSocketServiceClass {
 
     if (this.ws) {
       this.ws.close();
-      this.ws = null;
     }
 
     this.reconnectAttempt = 0;

@@ -78,6 +78,29 @@ type ForwardMetadata = {
   senderId?: string | null;
 };
 
+type MediaAlbumPayloadItem = {
+  kind: 'image' | 'video';
+  uri: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  thumbnailUri?: string;
+  fileName?: string;
+  mimeType?: string;
+};
+
+type UploadedMediaPayload = {
+  media_type: 'image' | 'video';
+  url: string;
+  thumbnail_url?: string;
+  width?: number;
+  height?: number;
+  duration_ms?: number;
+  mime_type?: string;
+  file_name?: string;
+  file_size?: number;
+};
+
 function buildForwardPayload(message: Message, forwardedFrom?: ForwardMetadata): {
   content: string | null;
   msg_type: string;
@@ -214,6 +237,48 @@ class TransportServiceClass {
     if (!WebSocketService.isConnected()) {
       throw new Error(`[TransportService] WebSocket disconnected before ${context}`);
     }
+  }
+
+  private async uploadAlbumMediaItem(item: MediaAlbumPayloadItem): Promise<UploadedMediaPayload> {
+    const fallbackMime =
+      item.kind === 'video'
+        ? item.mimeType ?? 'video/mp4'
+        : item.mimeType ?? ((item.fileName?.toLowerCase() ?? '').endsWith('.png') ? 'image/png' : 'image/jpeg');
+    const fallbackName =
+      item.fileName ??
+      (item.kind === 'video'
+        ? fallbackMime === 'video/quicktime'
+          ? 'video.mov'
+          : fallbackMime === 'video/webm'
+            ? 'video.webm'
+            : 'video.mp4'
+        : fallbackMime === 'image/png'
+          ? 'image.png'
+          : 'image.jpg');
+    const result = await apiUpload({
+      uri: item.uri,
+      name: fallbackName,
+      type: fallbackMime,
+    });
+    const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
+    const thumbnailUrl = result.thumbnail_path
+      ? `${getUploadBaseUrl()}${result.thumbnail_path.startsWith('/') ? '' : '/'}${result.thumbnail_path}`
+      : item.thumbnailUri;
+
+    return {
+      media_type: item.kind,
+      url: fullUrl,
+      thumbnail_url: thumbnailUrl,
+      width: item.width ?? result.width ?? undefined,
+      height: item.height ?? result.height ?? undefined,
+      duration_ms:
+        item.kind === 'video'
+          ? result.duration_ms ?? item.durationMs ?? undefined
+          : undefined,
+      mime_type: result.mime_type,
+      file_name: result.file_name,
+      file_size: result.file_size,
+    };
   }
 
   private markOptimisticVideoNoteDispatched(
@@ -733,6 +798,70 @@ class TransportServiceClass {
         thumbnailUri: payload.thumbnailUri,
         fileName: payload.fileName,
         mimeType: payload.mimeType,
+        caption: payload.caption,
+        tempId,
+        replyToId,
+      },
+      tempId
+    );
+  }
+
+  async sendMediaAlbumMessage(
+    chatId: string,
+    payload: { items: MediaAlbumPayloadItem[]; caption?: string },
+    tempId: string,
+    replyToId: string | null = null
+  ): Promise<void> {
+    const items = payload.items.slice(0, 10);
+    if (items.length === 0) return;
+
+    if (WebSocketService.isConnected()) {
+      try {
+        const media = await Promise.all(items.map((item) => this.uploadAlbumMediaItem(item)));
+        this.ensureWebSocketConnectedForDispatch('media album dispatch');
+        WebSocketService.sendEvent('send_message', {
+          chat_id: chatId,
+          content: payload.caption ?? null,
+          msg_type: media[0]?.media_type === 'video' ? 'video' : 'image',
+          client_temp_id: tempId,
+          reply_to_id: replyToId,
+          media,
+        });
+      } catch (err) {
+        if (isUploadTooLargeError(err)) {
+          this.markOptimisticMessageFailed(chatId, tempId);
+          return;
+        }
+        if (__DEV__) {
+          console.warn('[TransportService] media album upload/send failed, queueing for retry:', {
+            chatId,
+            tempId,
+            count: items.length,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        queueToSyncQueue(
+          this.syncQueueDao,
+          'send_message_media_album',
+          {
+            chatId,
+            items,
+            caption: payload.caption,
+            tempId,
+            replyToId,
+          },
+          tempId
+        );
+      }
+      return;
+    }
+
+    queueToSyncQueue(
+      this.syncQueueDao,
+      'send_message_media_album',
+      {
+        chatId,
+        items,
         caption: payload.caption,
         tempId,
         replyToId,

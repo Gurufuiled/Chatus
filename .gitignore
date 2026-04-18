@@ -36,6 +36,5 @@ target/
 
 # Local notes / agent context (не в репозитории)
 /docs/
-/memory-bank/
 /steps/
 /Improvements/

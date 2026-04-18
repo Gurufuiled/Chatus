@@ -286,6 +286,8 @@ export function MainTabs() {
               focusedRoute === 'CreateGroupChat' ||
               focusedRoute === 'GroupProfile' ||
               focusedRoute === 'ChannelCatalog' ||
+              focusedRoute === 'ChannelLinkSlug' ||
+              focusedRoute === 'ChannelLinkInvite' ||
               focusedRoute === 'ChannelPreview' ||
               focusedRoute === 'ChannelFeed' ||
               focusedRoute === 'ChannelDiscussion' ||

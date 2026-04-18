@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import type { Chat, Message } from './types';
-import type { ChannelMemberItem, ChannelPermissions } from '../services/channelService';
+import type {
+  ChannelMemberItem,
+  ChannelPermissions,
+  ChannelResolveResult,
+} from '../services/channelService';
 
 export type ChannelDetail = {
   channel: Chat;
@@ -39,6 +43,8 @@ type ChannelState = {
     }
   >;
   isLoadingCatalog: boolean;
+  /** Last deep-link resolve (invite/slug) before opening feed — used when feed API is forbidden for private. */
+  linkResolveByChannelId: Record<string, ChannelResolveResult>;
 };
 
 type ChannelActions = {
@@ -60,6 +66,7 @@ type ChannelActions = {
     key: string,
     payload: { items: ChannelMemberItem[]; next_cursor: string | null }
   ) => void;
+  setLinkResolve: (channelId: string, payload: ChannelResolveResult | null) => void;
   clear: () => void;
 };
 
@@ -71,6 +78,7 @@ const initialState: ChannelState = {
   checkoutStateByChannelId: {},
   membersByKey: {},
   isLoadingCatalog: false,
+  linkResolveByChannelId: {},
 };
 
 export const channelStore = create<ChannelState & ChannelActions>((set) => ({
@@ -217,6 +225,21 @@ export const channelStore = create<ChannelState & ChannelActions>((set) => ({
         },
       },
     })),
+
+  setLinkResolve: (channelId, payload) =>
+    set((state) => {
+      if (!payload) {
+        const next = { ...state.linkResolveByChannelId };
+        delete next[channelId];
+        return { linkResolveByChannelId: next };
+      }
+      return {
+        linkResolveByChannelId: {
+          ...state.linkResolveByChannelId,
+          [channelId]: payload,
+        },
+      };
+    }),
 
   clear: () => set(initialState),
 }));

@@ -180,6 +180,7 @@ interface ApiMessage {
   created_at: number | string;
   updated_at?: number | string;
   media?: {
+    media_type?: string;
     remote_url?: string;
     duration_ms?: number;
     waveform?: string | null;
@@ -209,6 +210,7 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
 
   const media =
     api.media?.map((m) => ({
+      media_type: m.media_type,
       duration_ms: m.duration_ms ?? 0,
       waveform: decodeServerWaveform(m.waveform),
       thumbnail_url: m.thumbnail_url,
@@ -259,6 +261,8 @@ type PayloadVoice = { chatId: string; uri: string; durationMs: number; waveform?
 type PayloadVideoNote = { chatId: string; uri: string; durationMs: number; thumbnailUri?: string; tempId: string; replyToId?: string | null };
 type PayloadImage = { chatId: string; uri: string; width?: number; height?: number; fileName?: string; mimeType?: string; caption?: string; tempId: string; replyToId?: string | null };
 type PayloadVideo = { chatId: string; uri: string; width?: number; height?: number; durationMs?: number; thumbnailUri?: string; fileName?: string; mimeType?: string; caption?: string; tempId: string; replyToId?: string | null };
+type PayloadMediaAlbumItem = { kind: 'image' | 'video'; uri: string; width?: number; height?: number; durationMs?: number; thumbnailUri?: string; fileName?: string; mimeType?: string };
+type PayloadMediaAlbum = { chatId: string; items: PayloadMediaAlbumItem[]; caption?: string; tempId: string; replyToId?: string | null };
 type PayloadFile = { chatId: string; uri: string; name: string; size: number; mimeType?: string; tempId: string; replyToId?: string | null };
 type PayloadDelete = { chatId: string; messageId: string };
 type PayloadPin = { chatId: string; messageId: string | null };
@@ -478,6 +482,61 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           file_name: result.file_name,
           file_size: result.file_size,
         },
+      });
+      return;
+    }
+
+    case 'send_message_media_album': {
+      const p = payload as PayloadMediaAlbum;
+      const items = p.items.slice(0, 10);
+      const media = await Promise.all(
+        items.map(async (item) => {
+          const mimeType =
+            item.kind === 'video'
+              ? item.mimeType ?? 'video/mp4'
+              : item.mimeType ?? ((item.fileName?.toLowerCase() ?? '').endsWith('.png') ? 'image/png' : 'image/jpeg');
+          const name =
+            item.fileName ??
+            (item.kind === 'video'
+              ? mimeType === 'video/quicktime'
+                ? 'video.mov'
+                : mimeType === 'video/webm'
+                  ? 'video.webm'
+                  : 'video.mp4'
+              : mimeType === 'image/png'
+                ? 'image.png'
+                : 'image.jpg');
+          const result = await apiUpload({
+            uri: item.uri,
+            name,
+            type: mimeType,
+          });
+          return {
+            media_type: item.kind,
+            url: toFullUrl(baseUrl, result.url),
+            thumbnail_url: result.thumbnail_path
+              ? toFullUrl(baseUrl, result.thumbnail_path)
+              : item.thumbnailUri,
+            width: item.width ?? result.width ?? undefined,
+            height: item.height ?? result.height ?? undefined,
+            duration_ms:
+              item.kind === 'video'
+                ? result.duration_ms ?? item.durationMs ?? undefined
+                : undefined,
+            mime_type: result.mime_type,
+            file_name: result.file_name,
+            file_size: result.file_size,
+          };
+        })
+      );
+      ensureWebSocketConnectedForDispatch('media album dispatch');
+      WebSocketService.sendEvent('send_message', {
+        chat_id: p.chatId,
+        content: p.caption ?? null,
+        msg_type: media[0]?.media_type === 'video' ? 'video' : 'image',
+        client_temp_id: p.tempId,
+        reply_to_id: p.replyToId ?? null,
+        media,
       });
       return;
     }

@@ -30,9 +30,29 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
   ...initialState,
 
   setMessages: (chatId, messages) =>
-    set((state) => ({
-      messagesByChatId: { ...state.messagesByChatId, [chatId]: messages },
-    })),
+    set((state) => {
+      const existing = state.messagesByChatId[chatId] ?? [];
+      const now = Date.now();
+      const OPTIMISTIC_TTL_MS = 2 * 60 * 1000;
+      const serverIds = new Set(messages.map((m) => m.id));
+      const pendingLocalOnly = existing.filter((m) => {
+        if (!(m.status === 'sending' || m.status === 'failed')) return false;
+        if (!m.id.startsWith('temp-')) return false;
+        if (serverIds.has(m.id)) return false;
+        if (now - m.created_at > OPTIMISTIC_TTL_MS) return false;
+        const likelyServerTwin = messages.some(
+          (srv) =>
+            srv.sender_id === m.sender_id &&
+            srv.msg_type === m.msg_type &&
+            Math.abs(srv.created_at - m.created_at) < 60_000,
+        );
+        return !likelyServerTwin;
+      });
+      const merged = pendingLocalOnly.length > 0 ? [...pendingLocalOnly, ...messages] : messages;
+      return {
+        messagesByChatId: { ...state.messagesByChatId, [chatId]: merged },
+      };
+    }),
 
   addMessage: (chatId, message) =>
     set((state) => {
