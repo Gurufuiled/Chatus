@@ -36,6 +36,7 @@ export type ChatsStackParamList = {
   ChannelSettings: { channelId: string };
   ChannelType: { channelId: string };
   ChannelDiscussionSettings: { channelId: string };
+  ChannelMonetization: { channelId: string };
 };
 
 export type MainTabParamList = {

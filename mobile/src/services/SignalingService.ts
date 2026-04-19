@@ -1,7 +1,6 @@
 /**
- * Signaling service for P2P WebRTC.
- * WebSocket to signaling server (port 4002), auths with JWT, auto-reconnects.
- * Relays offer/answer/ice_candidate between peers.
+ * WebRTC signaling (звонки): WebSocket на порт 4002, JWT, авто-переподключение.
+ * Ретрансляция offer/answer/ice между абонентами.
  */
 
 import { getSignalingUrl } from '../config';

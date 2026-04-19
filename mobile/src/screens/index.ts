@@ -20,5 +20,6 @@ export { ChannelSettingsScreen } from './ChannelSettingsScreen';
 export { ChannelTypeScreen } from './ChannelTypeScreen';
 export { ChannelInviteLinksScreen } from './ChannelInviteLinksScreen';
 export { ChannelDiscussionSettingsScreen } from './ChannelDiscussionSettingsScreen';
+export { ChannelMonetizationScreen } from './ChannelMonetizationScreen';
 export { ContactsScreen } from './ContactsScreen';
 export { SettingsScreen } from './SettingsScreen';

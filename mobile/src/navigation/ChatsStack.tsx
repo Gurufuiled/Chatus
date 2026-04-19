@@ -8,6 +8,7 @@ import {
   ChannelCatalogScreen,
   ChannelDiscussionScreen,
   ChannelDiscussionSettingsScreen,
+  ChannelMonetizationScreen,
   ChannelEditScreen,
   ChannelInviteLinksScreen,
   ChannelFeedScreen,
@@ -317,6 +318,12 @@ export function ChatsStack() {
         name="ChannelAdmin"
         component={ChannelAdminScreen}
         options={{ title: 'Управление каналом', headerBackTitle: 'Назад' }}
+      />
+
+      <Stack.Screen
+        name="ChannelMonetization"
+        component={ChannelMonetizationScreen}
+        options={{ title: 'Монетизация', headerBackTitle: 'Назад' }}
       />
 
       <Stack.Screen

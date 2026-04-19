@@ -11,7 +11,6 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_API_URL'
   | 'EXPO_PUBLIC_USE_EMULATOR'
   | 'EXPO_PUBLIC_USE_MOCKS'
-  | 'EXPO_PUBLIC_USE_P2P'
   | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID';
 
 function readExpoPublic(key: PublicEnvKey): string | undefined {
@@ -58,9 +57,6 @@ export const API_BASE_URL = resolveApiUrl();
 
 export const USE_MOCKS = readExpoPublic('EXPO_PUBLIC_USE_MOCKS') === 'true';
 
-/** P2P disabled for MVP (server storage). Set true when switching to decentralized. */
-export const USE_P2P = readExpoPublic('EXPO_PUBLIC_USE_P2P') === 'true';
-
 /** WebSocket URL derived from API: http://host:4000/api -> ws://host:4001 */
 export function getWebSocketUrl(): string {
   try {
@@ -72,7 +68,7 @@ export function getWebSocketUrl(): string {
   }
 }
 
-/** Signaling WebSocket URL for P2P: http://host:4000/api -> ws://host:4002 */
+/** WebSocket URL сигналинга WebRTC (звонки): http://host:4000/api -> ws://host:4002 */
 export function getSignalingUrl(): string {
   try {
     const url = new URL(API_BASE_URL);

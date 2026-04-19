@@ -1,23 +1,16 @@
 /**
- * TransportService: Routes message sending P2P first, else WebSocket, else SyncQueueDao.
- * Integrates P2PManager.onData for incoming P2P messages (TextMessage, Ack).
- * When offline, persists to sync_queue via SyncQueueDao; SyncService processes on connect.
- * P2PManager is loaded dynamically when USE_P2P=true to avoid bundling react-native-webrtc.
+ * TransportService: отправка сообщений через WebSocket сервера; офлайн — очередь SyncQueueDao.
  */
 
 import { WebSocketService } from './WebSocketService';
 import { SyncService } from './SyncService';
 import { SyncQueueDao } from '../db';
 import { apiUpload, apiUploadVoice } from './apiClient';
-import { API_BASE_URL, USE_P2P } from '../config';
-import { encode, decode, MessageType } from './p2pProtocol';
-import { messageStore } from '../stores/messageStore';
+import { API_BASE_URL } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
-import { uiStore } from '../stores/uiStore';
+import { messageStore } from '../stores/messageStore';
 import type { Message } from '../stores/types';
-
-const textDecoder = new TextDecoder('utf-8');
 
 function queueToSyncQueue(
   dao: SyncQueueDao,
@@ -222,16 +215,8 @@ export function canForwardMessage(message: Message): boolean {
   return buildForwardPayload(message) != null;
 }
 
-type P2PManagerRef = {
-  setHandlers: (h: { onPeerConnected?: (id: string) => void; onPeerDisconnected?: (id: string) => void; onData?: (id: string, data: ArrayBuffer) => void }) => void;
-  isConnectedToPeer: (id: string) => boolean;
-  sendData: (id: string, buf: ArrayBuffer) => boolean;
-};
-
 class TransportServiceClass {
   private syncQueueDao = new SyncQueueDao();
-  private p2pHandlersSet = false;
-  private p2pManager: P2PManagerRef | null = null;
 
   private ensureWebSocketConnectedForDispatch(context: string): void {
     if (!WebSocketService.isConnected()) {
@@ -331,47 +316,14 @@ class TransportServiceClass {
     });
   }
 
-  /** Get peer user id for a private chat (the other member). Returns null for group or if unknown. */
-  getPeerUserIdForChat(chatId: string): string | null {
-    const chats = chatStore.getState().chats;
-    const chat = chats.find((c) => c.id === chatId);
-    if (!chat || chat.chat_type !== 'private' || !chat.members?.length) {
-      return null;
-    }
-    const currentUserId = authStore.getState().user?.id ?? null;
-    if (!currentUserId) return null;
-    const others = chat.members.filter((m) => m.user_id !== currentUserId);
-    return others.length === 1 ? others[0].user_id : null;
-  }
-
-  /** Get chat id for a peer (private chat between current user and peer). */
-  private getChatIdForPeer(peerUserId: string): string | null {
-    const chats = chatStore.getState().chats;
-    const currentUserId = authStore.getState().user?.id ?? null;
-    if (!currentUserId) return null;
-    const chat = chats.find(
-      (c) =>
-        c.chat_type === 'private' &&
-        c.members?.some((m) => m.user_id === peerUserId) &&
-        c.members?.some((m) => m.user_id === currentUserId)
-    );
-    return chat?.id ?? null;
-  }
-
-  /** Connection status for a chat: P2P if connected to peer (when USE_P2P), else Server if WebSocket, else Offline. */
-  getConnectionStatus(chatId?: string): 'p2p' | 'server' | 'offline' {
-    if (USE_P2P && chatId && this.p2pManager) {
-      const peerUserId = this.getPeerUserIdForChat(chatId);
-      if (peerUserId && this.p2pManager.isConnectedToPeer(peerUserId)) {
-        return 'p2p';
-      }
-    }
+  /** Доставка сообщений: WebSocket сервера, иначе офлайн-очередь. */
+  getConnectionStatus(_chatId?: string): 'server' | 'offline' {
     if (WebSocketService.isConnected()) return 'server';
     return 'offline';
   }
 
   /**
-   * Send message: P2P first (private chat + connected to peer), else WebSocket, else SyncQueueDao.
+   * Send message: WebSocket when connected, else SyncQueueDao.
    */
   sendMessage(
     chatId: string,
@@ -380,16 +332,6 @@ class TransportServiceClass {
     tempId: string,
     replyToId: string | null = null
   ): void {
-    const peerUserId = this.getPeerUserIdForChat(chatId);
-
-    // Private chat: try P2P first (when USE_P2P enabled)
-    if (USE_P2P && peerUserId && this.p2pManager?.isConnectedToPeer(peerUserId)) {
-      const buf = encode(MessageType.TextMessage, tempId, content);
-      if (this.p2pManager.sendData(peerUserId, buf)) {
-        return;
-      }
-    }
-
     // WebSocket
     if (WebSocketService.isConnected()) {
       if (__DEV__) {
@@ -1010,64 +952,9 @@ class TransportServiceClass {
     await SyncService.processSyncQueue();
   }
 
-  /** Wire P2PManager.onData to decode and handle TextMessage, Ack. Call once at init. Skipped when USE_P2P is false. */
+  /** Вызывается при старте сессии (разрешён no-op для будущей инициализации транспорта). */
   init(): Promise<void> {
-    if (!USE_P2P || this.p2pHandlersSet) return Promise.resolve();
-    this.p2pHandlersSet = true;
-
-    return import('./P2PManager').then((m) => {
-      this.p2pManager = m.P2PManager;
-      this.p2pManager.setHandlers({
-        onPeerConnected: () => uiStore.getState().bumpTransportStatus(),
-        onPeerDisconnected: () => uiStore.getState().bumpTransportStatus(),
-        onData: (peerUserId: string, data: ArrayBuffer) => {
-          const decoded = decode(data);
-          if (!decoded) return;
-
-          const currentUserId = authStore.getState().user?.id ?? null;
-          if (!currentUserId) return;
-
-          if (decoded.type === MessageType.TextMessage) {
-            const chatId = this.getChatIdForPeer(peerUserId);
-            if (!chatId) return;
-
-            const content = textDecoder.decode(decoded.payload);
-            const msg: Message = {
-              id: decoded.messageId,
-              chat_id: chatId,
-              sender_id: peerUserId,
-              msg_type: 'text',
-              content,
-              reply_to_id: null,
-              is_edited: 0,
-              is_deleted: 0,
-              status: 'sent',
-              transport: 'p2p',
-              server_id: null,
-              created_at: Date.now(),
-              updated_at: Date.now(),
-            };
-            messageStore.getState().prependMessage(chatId, msg);
-            const ackBuf = encode(MessageType.Ack, decoded.messageId);
-            this.p2pManager!.sendData(peerUserId, ackBuf);
-          } else if (decoded.type === MessageType.Ack) {
-            const chatId = this.getChatIdForPeer(peerUserId);
-            if (!chatId) return;
-
-            const messages = messageStore.getState().messagesByChatId[chatId] ?? [];
-            const sendingList = messages.filter(
-              (m) => m.status === 'sending' && m.sender_id === currentUserId
-            );
-            const sending = sendingList.find((m) => m.id === decoded.messageId);
-            if (sending) {
-              messageStore.getState().updateMessage(chatId, sending.id, {
-                status: 'sent',
-              });
-            }
-          }
-        },
-      });
-    });
+    return Promise.resolve();
   }
 }
 

@@ -40,6 +40,7 @@ import {
   ChatForwardSheet,
   ChatInputDock,
   ChatMessageList,
+  ChatMessagesSkeleton,
   ChatTopBanners,
   ChannelLinkRichMessage,
   FileBubble,
@@ -76,7 +77,7 @@ import {
   MENU_EDGE_GAP,
   MENU_HEIGHT,
   MENU_WIDTH,
-  OVERLAY_BOTTOM_INSET,
+  estimateMenuCardHeight,
   REPLIED_VOICE_BUBBLE_WIDTH,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
@@ -304,6 +305,19 @@ export function ChatScreen() {
   const chats = chatStore((state) => state.chats);
   const chatThemeId = uiStore((state) => state.chatThemeIdByChatId[chatId] ?? DEFAULT_CHAT_THEME_ID);
   const chatTheme = React.useMemo(() => getChatTheme(chatThemeId), [chatThemeId]);
+
+  const [initialLoadElapsed, setInitialLoadElapsed] = React.useState(
+    () => messages.length > 0,
+  );
+  React.useEffect(() => {
+    if (messages.length > 0) {
+      setInitialLoadElapsed(true);
+      return;
+    }
+    const timer = setTimeout(() => setInitialLoadElapsed(true), 1400);
+    return () => clearTimeout(timer);
+  }, [chatId, messages.length]);
+  const showMessagesSkeleton = messages.length === 0 && !initialLoadElapsed;
 
   const messageById = useMemo(() => {
     const map = new Map<string, Message>();
@@ -665,38 +679,48 @@ export function ChatScreen() {
       const reactionBarHeight = 42;
       const reactionGap = 4;
       const menuGap = 4;
-      const bottomReserved = Math.max(
-        OVERLAY_BOTTOM_INSET,
-        inputBarHeight + insets.bottom + 22
-      );
-      const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
+      /** Основное меню (6 пунктов) и экран удаления — берём запас по большей высоте. */
+      const menuCardHeight =
+        Math.max(MENU_HEIGHT, estimateMenuCardHeight(2)) + 10;
+
+      const bottomSafety = 28;
+      const composerOffset = inputBarHeight + Math.max(insets.bottom, 12);
+      const effectiveBottom = SCREEN_HEIGHT - (composerOffset + bottomSafety);
+
+      const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
       const previewLeft = Math.max(
         MENU_EDGE_GAP,
-        Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP)
-      );
-      const minPreviewTop = Math.max(
-        insets.top + 12,
-        MENU_EDGE_GAP + reactionBarHeight + reactionGap
-      );
-      const maxPreviewTop = bottomLimit - MENU_HEIGHT - menuGap - height;
-      const anchoredTop = Math.max(
-        minPreviewTop,
-        Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop))
-      );
-      const menuLeftBase = message.sender_id === currentUserId
-        ? previewLeft + width - MENU_WIDTH
-        : previewLeft;
-      const menuLeft = Math.max(
-        MENU_EDGE_GAP,
-        Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP)
+        Math.min(pageX, SCREEN_WIDTH - previewWidth - MENU_EDGE_GAP),
       );
 
-      let previewTop = anchoredTop;
-      previewTop = Math.max(
-        minPreviewTop,
-        Math.min(previewTop, bottomLimit - MENU_HEIGHT - menuGap - height)
+      const minPreviewTop = Math.max(
+        insets.top + 12,
+        MENU_EDGE_GAP + reactionBarHeight + reactionGap,
       );
-      const menuTop = previewTop + height + menuGap;
+
+      const spaceForPreview =
+        effectiveBottom - minPreviewTop - menuGap - menuCardHeight;
+      const previewDisplayHeight = Math.min(height, Math.max(0, spaceForPreview));
+
+      const columnBelowPreview = previewDisplayHeight + menuGap + menuCardHeight;
+      let previewTop = Math.min(pageY, effectiveBottom - columnBelowPreview);
+      previewTop = Math.max(minPreviewTop, previewTop);
+
+      if (previewTop + columnBelowPreview > effectiveBottom) {
+        previewTop = Math.max(MENU_EDGE_GAP, effectiveBottom - columnBelowPreview);
+      }
+
+      const menuTop = previewTop + previewDisplayHeight + menuGap;
+
+      const menuLeftBase =
+        message.sender_id === currentUserId
+          ? previewLeft + previewWidth - MENU_WIDTH
+          : previewLeft;
+      const menuLeft = Math.max(
+        MENU_EDGE_GAP,
+        Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP),
+      );
+
       const placement: 'above' | 'below' = 'below';
 
       setMenuState({
@@ -704,8 +728,8 @@ export function ChatScreen() {
         isMe: message.sender_id === currentUserId,
         previewTop,
         previewLeft,
-        previewWidth: width,
-        previewHeight: height,
+        previewWidth,
+        previewHeight: previewDisplayHeight,
         menuTop,
         menuLeft,
         placement,
@@ -1463,6 +1487,7 @@ export function ChatScreen() {
               time={formatTime(item.created_at)}
               status={item.status}
               navigation={navigation}
+              chatTheme={chatTheme}
             />
           </View>
         );
@@ -1721,7 +1746,7 @@ export function ChatScreen() {
     }
 
     return null;
-  }, [chatId, currentUserId, handleForwardHeaderPress, messageById, navigation]);
+  }, [chatId, chatTheme, currentUserId, handleForwardHeaderPress, messageById, navigation]);
 
   const menuActions = useMemo<MenuAction[]>(() => {
     if (!activeMenuMessage) return [];
@@ -1802,6 +1827,13 @@ export function ChatScreen() {
           onCancelSearch={handleCancelSearch}
           searchInputRef={searchInputRef}
         />
+
+        {showMessagesSkeleton ? (
+          <ChatMessagesSkeleton
+            style={styles.messagesSkeletonOverlay}
+            topPadding={inputBarHeight + 24}
+          />
+        ) : null}
 
         <ChatMessageList
           chatId={chatId}
@@ -2068,6 +2100,9 @@ const styles = StyleSheet.create({
   },
   chatContentLayer: {
     flex: 1,
+  },
+  messagesSkeletonOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   inputBarWrap: {
     position: 'absolute',

@@ -10,7 +10,6 @@ import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { WebSocketService } from '../services/WebSocketService';
 import { TransportService } from '../services/TransportService';
 import { SignalingService } from '../services/SignalingService';
-import { USE_P2P } from '../config';
 import { SyncService } from '../services/SyncService';
 import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
@@ -225,7 +224,6 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
     SyncService.refreshChats().catch(() => {});
 
     TransportService.init().catch(() => {});
-    if (USE_P2P) SignalingService.connect();
 
     if (!handlersSetRef.current) {
       WebSocketService.setHandlers({

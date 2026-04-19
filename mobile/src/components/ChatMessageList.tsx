@@ -647,6 +647,7 @@ const MessageRow = React.memo(function MessageRow({
               time={formatTime(item.created_at)}
               status={item.status}
               navigation={navigation}
+              chatTheme={chatTheme}
             />
           </View>
         );

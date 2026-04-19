@@ -17,7 +17,8 @@ import {
 } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { resolveAvatarUrl } from '../config';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
+import type { ChatTheme } from '../theme/chatThemes';
 import type { ParsedChannelDeepLink } from '../utils/channelDeepLink';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
@@ -30,6 +31,7 @@ type Props = {
   time: string;
   status: string;
   navigation: Nav;
+  chatTheme: ChatTheme;
 };
 
 export function ChannelLinkRichMessage({
@@ -39,6 +41,7 @@ export function ChannelLinkRichMessage({
   time,
   status,
   navigation,
+  chatTheme,
 }: Props) {
   const { width: windowWidth } = useWindowDimensions();
   const bubbleLayout = React.useMemo(() => {
@@ -93,8 +96,15 @@ export function ChannelLinkRichMessage({
     }
   }, [navigation, parsed, resolved]);
 
-  const accent = isMe ? '#3D6E1F' : '#6B7C3A';
-  const border = isMe ? 'rgba(61,110,31,0.35)' : 'rgba(107,124,58,0.45)';
+  const accent = isMe ? chatTheme.bubbleMeAccent : colors.accent;
+  const bubbleBorder = isMe
+    ? withAlpha(chatTheme.bubbleMeAccent, 0.32)
+    : colors.bubbleOtherBorder;
+  const bubbleBg = isMe ? chatTheme.bubbleMe : colors.bubbleOther;
+  const urlColor = isMe ? chatTheme.bubbleMeText : colors.link;
+  const titleColor = isMe ? chatTheme.bubbleMeText : colors.textPrimary;
+  const descColor = isMe ? chatTheme.bubbleMeMeta : '#4B5563';
+  const ctaDivider = isMe ? withAlpha(chatTheme.bubbleMeAccent, 0.38) : 'rgba(148,163,184,0.55)';
 
   const title =
     resolved?.channel.name?.trim() ||
@@ -107,12 +117,16 @@ export function ChannelLinkRichMessage({
       style={[
         styles.bubble,
         bubbleLayout,
-        isMe ? styles.bubbleMe : styles.bubbleOther,
         isMe ? styles.bubbleAlignMe : styles.bubbleAlignOther,
+        {
+          backgroundColor: bubbleBg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: bubbleBorder,
+        },
       ]}
     >
       <Pressable onPress={openChannel}>
-        <Text style={[styles.urlLine, { color: accent }]} numberOfLines={2}>
+        <Text style={[styles.urlLine, { color: urlColor }]} numberOfLines={2}>
           {rawUrlLine}
         </Text>
       </Pressable>
@@ -128,10 +142,10 @@ export function ChannelLinkRichMessage({
           <View style={styles.previewRow}>
             <View style={styles.previewTextCol}>
               <Text style={[styles.previewSource, { color: accent }]}>Messenger</Text>
-              <Text style={styles.previewTitle} numberOfLines={2}>
+              <Text style={[styles.previewTitle, { color: titleColor }]} numberOfLines={2}>
                 {title}
               </Text>
-              <Text style={styles.previewDesc} numberOfLines={3}>
+              <Text style={[styles.previewDesc, { color: descColor }]} numberOfLines={3}>
                 {description}
               </Text>
             </View>
@@ -151,7 +165,7 @@ export function ChannelLinkRichMessage({
           onPress={openChannel}
           style={({ pressed }) => [
             styles.ctaRow,
-            { borderTopColor: border },
+            { borderTopColor: ctaDivider },
             pressed && styles.ctaPressed,
           ]}
         >
@@ -162,7 +176,14 @@ export function ChannelLinkRichMessage({
       </View>
 
       <View style={styles.timeRow}>
-        <MessageTimeStatus time={time} status={status} isMe={isMe} compact />
+        <MessageTimeStatus
+          time={time}
+          status={status}
+          isMe={isMe}
+          compact
+          timeColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+          iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+        />
       </View>
     </View>
   );
@@ -180,16 +201,6 @@ const styles = StyleSheet.create({
   },
   bubbleAlignOther: {
     alignSelf: 'flex-start',
-  },
-  bubbleMe: {
-    backgroundColor: '#E8F7C9',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(61,110,31,0.25)',
-  },
-  bubbleOther: {
-    backgroundColor: '#F5F6D6',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(107,124,58,0.28)',
   },
   urlLine: {
     fontSize: 15,
@@ -228,12 +239,10 @@ const styles = StyleSheet.create({
   previewTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
   },
   previewDesc: {
     marginTop: 4,
     fontSize: 15,
-    color: '#1F2937',
     lineHeight: 20,
   },
   previewThumb: {

@@ -16,6 +16,7 @@ import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatMediaDuration } from '../utils/mediaDuration';
+import { GallerySkeletonGrid } from './GallerySkeletonGrid';
 import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
@@ -229,8 +230,8 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
 
           {galleryEnabled ? (
             galleryLoading ? (
-              <View style={styles.galleryPlaceholder}>
-                <Text style={styles.galleryHint}>Загружаем медиа...</Text>
+              <View style={styles.gallerySkeletonWrap}>
+                <GallerySkeletonGrid rows={4} />
               </View>
             ) : galleryDenied ? (
               <View style={styles.galleryPlaceholder}>
@@ -465,6 +466,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 26,
+  },
+  gallerySkeletonWrap: {
+    flex: 1,
+    paddingTop: 4,
   },
   galleryHint: {
     fontSize: 15,

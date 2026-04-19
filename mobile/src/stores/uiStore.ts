@@ -2,14 +2,12 @@ import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online';
-export type P2PState = 'disconnected' | 'connecting' | 'connected';
 
 export type TypingEntry = { userId: string; at: number };
 export type PresenceEntry = { is_online: boolean; last_seen?: number };
 
 type UIState = {
   connectionStatus: ConnectionStatus;
-  p2pStates: Record<string, P2PState>;
   transportStatusVersion: number;
   activeModal: string | null;
   typingUsersByChatId: Record<string, TypingEntry[]>;
@@ -24,7 +22,6 @@ type UIState = {
 
 type UIActions = {
   setConnectionStatus: (status: ConnectionStatus) => void;
-  setP2PState: (peerId: string, state: P2PState) => void;
   bumpTransportStatus: () => void;
   setActiveModal: (modalId: string | null) => void;
   clearActiveModal: () => void;
@@ -46,7 +43,6 @@ const BLOCKED_USERS_KEY = 'ui.blockedUserIds';
 
 const initialState: UIState = {
   connectionStatus: 'offline',
-  p2pStates: {},
   transportStatusVersion: 0,
   activeModal: null,
   typingUsersByChatId: {},
@@ -63,11 +59,6 @@ export const uiStore = create<UIState & UIActions>((set) => ({
   ...initialState,
 
   setConnectionStatus: (status) => set({ connectionStatus: status }),
-
-  setP2PState: (peerId, state) =>
-    set((s) => ({
-      p2pStates: { ...s.p2pStates, [peerId]: state },
-    })),
 
   bumpTransportStatus: () =>
     set((s) => ({ transportStatusVersion: s.transportStatusVersion + 1 })),

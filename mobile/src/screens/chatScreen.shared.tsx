@@ -16,6 +16,15 @@ export const MENU_ITEM_BORDER_WIDTH = 1;
 export const MENU_HEIGHT =
   MENU_ITEM_HEIGHT * MENU_ACTION_COUNT +
   MENU_ITEM_BORDER_WIDTH * (MENU_ACTION_COUNT - 1);
+
+/** Высота карточки меню по числу строк (как в `MENU_HEIGHT` для полного меню чата). */
+export function estimateMenuCardHeight(actionCount: number): number {
+  return (
+    MENU_ITEM_HEIGHT * actionCount +
+    MENU_ITEM_BORDER_WIDTH * Math.max(0, actionCount - 1)
+  );
+}
+
 export const MENU_EDGE_GAP = 12;
 export const MENU_TO_MESSAGE_GAP = 6;
 export const OVERLAY_TOP_INSET = 86;

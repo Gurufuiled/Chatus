@@ -14,15 +14,19 @@ import {
   View,
 } from 'react-native';
 import Reanimated, {
+  cancelAnimation,
   Easing,
   interpolate,
   runOnJS,
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle } from 'react-native-svg';
+
+const AnimatedCircle = Reanimated.createAnimatedComponent(Circle);
 import { VoicePlayerService } from '../services/VoicePlayerService';
 import { colors, typography } from '../theme/colors';
 import {
@@ -43,8 +47,9 @@ const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
 const GENERATED_THUMBNAIL_TIME_MS = 0;
 const SCRUB_RING_TRACK_STROKE_WIDTH = 2.5;
-const SCRUB_RING_PROGRESS_STROKE_WIDTH = 5;
-const SCRUB_RING_PROGRESS_SHADOW_WIDTH = 7;
+const SCRUB_RING_PROGRESS_STROKE_WIDTH = 4;
+const SCRUB_RING_PROGRESS_SHADOW_WIDTH = 5.5;
+const PLAYBACK_PROGRESS_SMOOTH_MS = 140;
 const SCRUB_RING_INSET = 8;
 const SCRUB_THUMB_SIZE = 18;
 const SCRUB_THUMB_CAPTURE_PADDING = 10;
@@ -336,6 +341,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const [isThumbScrubbing, setIsThumbScrubbing] = React.useState(false);
   const [isThumbScrubPending, setIsThumbScrubPending] = React.useState(false);
   const progress = useSharedValue(0);
+  const playbackProgress = useSharedValue(0);
   const badgeOpacity = useSharedValue(0);
   const replyTranslateX = useSharedValue(0);
   const replyHasTriggered = useSharedValue(false);
@@ -349,7 +355,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
   const player = useVideoPlayer(normalizedUri, (instance) => {
     instance.loop = false;
-    instance.timeUpdateEventInterval = 0.25;
+    instance.timeUpdateEventInterval = 0.1;
   });
   const { isPlaying } = useEvent(player, 'playingChange', {
     isPlaying: player.playing,
@@ -842,13 +848,46 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const scrubRingPadding = SCRUB_RING_INSET + SCRUB_RING_PROGRESS_SHADOW_WIDTH / 2;
   const scrubRingRadius = scrubRingSize / 2 - scrubRingPadding;
   const scrubRingCircumference = 2 * Math.PI * scrubRingRadius;
-  const scrubRingOffset = scrubRingCircumference * (1 - effectiveProgress);
   const scrubRingCenter = scrubRingSize / 2;
   const scrubAngleRadians = effectiveProgress * Math.PI * 2 - Math.PI / 2;
   const scrubThumbOffset = SCRUB_THUMB_SIZE / 2;
   const scrubThumbCenterX = scrubRingCenter + Math.cos(scrubAngleRadians) * scrubRingRadius;
   const scrubThumbCenterY = scrubRingCenter + Math.sin(scrubAngleRadians) * scrubRingRadius;
   const scrubThumbCaptureRadius = scrubThumbOffset + SCRUB_THUMB_CAPTURE_PADDING;
+
+  /**
+   * Шкала прогресса + позиция ползунка рендерятся через один `playbackProgress`
+   * на UI-тред: это убирает «рваные» прыжки между эвентами `timeUpdate`
+   * и гарантирует, что ползунок всегда сидит точно на кольце.
+   */
+  React.useEffect(() => {
+    if (!isExpanded) {
+      cancelAnimation(playbackProgress);
+      playbackProgress.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+      return;
+    }
+    if (scrubProgress != null) {
+      cancelAnimation(playbackProgress);
+      playbackProgress.value = clampUnit(scrubProgress);
+      return;
+    }
+    playbackProgress.value = withTiming(effectiveProgress, {
+      duration: PLAYBACK_PROGRESS_SMOOTH_MS,
+      easing: Easing.linear,
+    });
+  }, [effectiveProgress, isExpanded, playbackProgress, scrubProgress]);
+
+  const progressArcAnimatedProps = useAnimatedProps(() => ({
+    strokeDashoffset: scrubRingCircumference * (1 - clampUnit(playbackProgress.value)),
+  }));
+
+  const scrubThumbAnimatedStyle = useAnimatedStyle(() => {
+    const angle = clampUnit(playbackProgress.value) * Math.PI * 2 - Math.PI / 2;
+    return {
+      left: scrubRingCenter + Math.cos(angle) * scrubRingRadius,
+      top: scrubRingCenter + Math.sin(angle) * scrubRingRadius,
+    };
+  });
 
   const commitScrubProgress = React.useCallback(async () => {
     if (scrubProgressRef.current == null || effectiveDurationMs <= 0) {
@@ -995,33 +1034,33 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
                 cx={scrubRingSize / 2}
                 cy={scrubRingSize / 2}
                 r={scrubRingRadius}
-                stroke="rgba(255,255,255,0.34)"
+                stroke="rgba(255,255,255,0.28)"
                 strokeWidth={SCRUB_RING_TRACK_STROKE_WIDTH}
                 fill="none"
               />
-              <Circle
+              <AnimatedCircle
                 cx={scrubRingSize / 2}
                 cy={scrubRingSize / 2}
                 r={scrubRingRadius}
-                stroke="rgba(0,0,0,0.34)"
+                stroke="rgba(0,0,0,0.18)"
                 strokeWidth={SCRUB_RING_PROGRESS_SHADOW_WIDTH}
                 strokeLinecap="round"
                 strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
-                strokeDashoffset={scrubRingOffset}
+                animatedProps={progressArcAnimatedProps}
                 fill="none"
                 rotation={-90}
                 originX={scrubRingSize / 2}
                 originY={scrubRingSize / 2}
               />
-              <Circle
+              <AnimatedCircle
                 cx={scrubRingSize / 2}
                 cy={scrubRingSize / 2}
                 r={scrubRingRadius}
-                stroke="#FFFFFF"
+                stroke="rgba(255,255,255,0.82)"
                 strokeWidth={SCRUB_RING_PROGRESS_STROKE_WIDTH}
                 strokeLinecap="round"
                 strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
-                strokeDashoffset={scrubRingOffset}
+                animatedProps={progressArcAnimatedProps}
                 fill="none"
                 rotation={-90}
                 originX={scrubRingSize / 2}
@@ -1029,17 +1068,9 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
               />
             </Svg>
             {showPausedPlayOverlay ? (
-              <View
-                style={[
-                  styles.scrubThumb,
-                  {
-                    left: scrubThumbCenterX,
-                    top: scrubThumbCenterY,
-                  },
-                ]}
-              >
+              <Reanimated.View style={[styles.scrubThumb, scrubThumbAnimatedStyle]}>
                 <View style={styles.scrubThumbDot} />
-              </View>
+              </Reanimated.View>
             ) : null}
           </View>
         ) : null}

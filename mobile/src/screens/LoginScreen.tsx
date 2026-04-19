@@ -5,7 +5,6 @@ import {
   Animated,
   Easing,
   ImageBackground,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -13,6 +12,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { API_BASE_URL } from '../config';
 import { authService } from '../services/AuthService';
+import { PressScale } from '../components/PressScale';
 
 type Props = {
   onLogin: () => void;
@@ -329,17 +329,20 @@ export function LoginScreen({ onLogin }: Props) {
       <BrandHeader />
       <View style={styles.content}>
         <View style={styles.buttonWrap}>
-          <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          <PressScale
+            style={[styles.button, loading && styles.buttonPressed]}
+            pressedScale={0.96}
             onPress={handleLoginPress}
             disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="Войти с помощью Loginus"
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.buttonText}>Войти с помощью Loginus</Text>
             )}
-          </Pressable>
+          </PressScale>
         </View>
       </View>
     </ImageBackground>

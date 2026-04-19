@@ -1,4 +1,5 @@
 import React from 'react';
+import * as Clipboard from 'expo-clipboard';
 import {
   ActivityIndicator,
   Animated,
@@ -23,6 +24,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ChatInputDock,
   ChatContextMenuOverlay,
+  ChatForwardSheet,
   FileBubble,
   ImageBubble,
   LoadErrorState,
@@ -42,13 +44,22 @@ import {
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
+import { messageStore } from '../stores/messageStore';
+import { canForwardMessage, TransportService } from '../services/TransportService';
 import { WebSocketService } from '../services/WebSocketService';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
 import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
 import type { MediaTile } from '../components/ChatProfileMediaSection';
 import { buildChannelPostMediaTiles, getVisualMediaKind } from '../utils/channelPostMediaTiles';
-import { ChatBackgroundPattern, formatTime } from './chatScreen.shared';
+import {
+  ChatBackgroundPattern,
+  formatTime,
+  getCopyableContent,
+  MENU_EDGE_GAP,
+  MENU_WIDTH,
+  estimateMenuCardHeight,
+} from './chatScreen.shared';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { resolveAvatarUrl } from '../config';
 
@@ -62,9 +73,33 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CHANNEL_MEDIA_MAX_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 320);
 const CHANNEL_MEDIA_MAX_HEIGHT = Math.min(SCREEN_HEIGHT * 0.5, 380);
 const CHANNEL_MEDIA_MIN_PORTRAIT_WIDTH = 154;
-const MENU_EDGE_GAP = 12;
-const MENU_HEIGHT = 272;
-const OVERLAY_BOTTOM_INSET = 18;
+
+function cloneForwardMedia(message: Message): Message['media'] | undefined {
+  if (!message.media?.length) return undefined;
+  return message.media.map((item) => ({ ...item }));
+}
+
+function buildChannelForwardPreview(message: Message): string {
+  switch (message.msg_type) {
+    case 'text':
+      return message.content?.trim() || 'Сообщение';
+    case 'image':
+      return message.content?.trim() || 'Фото';
+    case 'video':
+      return message.content?.trim() || 'Видео';
+    case 'voice':
+      return 'Голосовое сообщение';
+    case 'video_note':
+      return 'Видеосообщение';
+    case 'file':
+      return message.media?.[0]?.file_name?.trim() || 'Файл';
+    default:
+      return 'Сообщение';
+  }
+}
+
+type MenuMode = 'actions' | 'deleteConfirm';
+type PostMenuActionKey = 'reply' | 'copy' | 'pin' | 'forward' | 'delete' | 'delete_confirm' | 'delete_cancel';
 
 /**
  * Разрешено ли комментировать КОНКРЕТНЫЙ пост с учётом настроек канала.
@@ -350,6 +385,7 @@ export function ChannelFeedScreen() {
   const detail = channelStore((state) => state.detailsById[channelId]);
   const linkResolve = channelStore((state) => state.linkResolveByChannelId[channelId]);
   const feed = channelStore((state) => state.feedByChannelId[channelId] ?? EMPTY_FEED);
+  const chats = chatStore((state) => state.chats);
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const [loading, setLoading] = React.useState(feed.length === 0);
   const [feedError, setFeedError] = React.useState<string | null>(null);
@@ -366,7 +402,10 @@ export function ChannelFeedScreen() {
     menuTop: number;
     menuLeft: number;
     placement: 'above' | 'below';
+    previewVerticalAlign?: 'top' | 'bottom';
   } | null>(null);
+  const [menuMode, setMenuMode] = React.useState<MenuMode>('actions');
+  const [forwardSourceMessageIds, setForwardSourceMessageIds] = React.useState<string[]>([]);
   const [feedMediaViewer, setFeedMediaViewer] = React.useState<{
     items: MediaTile[];
     index: number;
@@ -377,6 +416,27 @@ export function ChannelFeedScreen() {
   const activeMenuMessage = React.useMemo(
     () => (menuState ? sortedFeed.find((item) => item.id === menuState.messageId) ?? null : null),
     [menuState, sortedFeed],
+  );
+
+  const showStaffPostActions = React.useMemo(() => {
+    if (!detail || !currentUserId) return false;
+    const p = detail.channel_permissions;
+    const m = detail.channel.members?.find((x) => x.user_id === currentUserId);
+    if (m?.role === 'owner' || m?.role === 'admin') return true;
+    if (detail.can_post) return true;
+    if (p?.can_edit_channel) return true;
+    if (p?.can_moderate_subscribers) return true;
+    return false;
+  }, [detail, currentUserId]);
+
+  const pinnedMessageId = detail?.channel.pinned_message_id ?? null;
+  const channelChat = React.useMemo(
+    () => chats.find((c) => c.id === channelId) ?? null,
+    [chats, channelId],
+  );
+  const forwardTargets = React.useMemo(
+    () => chats.filter((c) => c.id !== channelId),
+    [chats, channelId],
   );
 
   const openChannelFeedMediaViewer = React.useCallback((message: Message, initialIndex: number) => {
@@ -759,61 +819,358 @@ export function ChannelFeedScreen() {
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) {
+        setMenuMode('actions');
         setMenuState(null);
       }
     });
   }, [menuAnim]);
 
-  const openReactionMenu = React.useCallback((message: Message) => {
-    if (!canReact) return;
-    const target = postContentRefs.current[message.id];
-    if (!target) return;
+  const menuActions = React.useMemo(() => {
+    if (!activeMenuMessage) return [];
 
-    Keyboard.dismiss();
-    target.measureInWindow((pageX, pageY, width, height) => {
-      const reactionBarHeight = 42;
-      const reactionGap = 4;
-      const menuGap = 4;
-      const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
-      const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
-      const previewLeft = Math.max(
-        MENU_EDGE_GAP,
-        Math.min(pageX, SCREEN_WIDTH - previewWidth - MENU_EDGE_GAP),
-      );
-      const minPreviewTop = Math.max(
-        insets.top + 12,
-        MENU_EDGE_GAP + reactionBarHeight + reactionGap,
-      );
-      const maxPreviewTop = bottomLimit - height;
-      const anchoredTop = Math.max(
-        minPreviewTop,
-        Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop)),
-      );
+    if (menuMode === 'deleteConfirm') {
+      return [
+        {
+          key: 'delete_confirm',
+          label: 'Удалить для всех',
+          icon: null,
+          color: '#E53935',
+          disabled: false,
+          textOnly: true,
+        },
+        {
+          key: 'delete_cancel',
+          label: 'Отмена',
+          icon: null,
+          color: '#111827',
+          disabled: false,
+          textOnly: true,
+        },
+      ];
+    }
 
-      let previewTop = anchoredTop;
-      previewTop = Math.max(
-        minPreviewTop,
-        Math.min(previewTop, bottomLimit - height),
-      );
-      const menuTop = previewTop + height + menuGap;
-      const menuLeft = Math.max(
-        MENU_EDGE_GAP,
-        Math.min(previewLeft, SCREEN_WIDTH - 202 - MENU_EDGE_GAP),
-      );
+    const canFwd = canForwardMessage(activeMenuMessage);
+    const isPinned = pinnedMessageId === activeMenuMessage.id;
 
-      setMenuState({
-        messageId: message.id,
-        isMe: false,
-        previewTop,
-        previewLeft,
-        previewWidth,
-        previewHeight: height,
-        menuTop,
-        menuLeft,
-        placement: 'below',
+    const replyCopy = [
+      {
+        key: 'reply',
+        label: 'Ответить',
+        icon: 'corner-left-up' as const,
+        color: '#111827',
+        disabled: false,
+      },
+      { key: 'copy', label: 'Скопировать', icon: 'copy' as const, color: '#111827', disabled: false },
+    ];
+
+    if (showStaffPostActions) {
+      return [
+        ...replyCopy,
+        {
+          key: 'pin',
+          label: isPinned ? 'Открепить' : 'Закрепить',
+          icon: 'bookmark' as const,
+          color: '#111827',
+          disabled: false,
+        },
+        {
+          key: 'forward',
+          label: 'Переслать',
+          icon: 'corner-up-right' as const,
+          color: canFwd ? '#111827' : '#9CA3AF',
+          disabled: !canFwd,
+        },
+        {
+          key: 'delete',
+          label: 'Удалить',
+          icon: 'trash-2' as const,
+          color: '#E53935',
+          disabled: false,
+        },
+      ];
+    }
+
+    return [
+      ...replyCopy,
+      {
+        key: 'forward',
+        label: 'Переслать',
+        icon: 'corner-up-right' as const,
+        color: canFwd ? '#111827' : '#9CA3AF',
+        disabled: !canFwd,
+      },
+    ];
+  }, [activeMenuMessage, menuMode, pinnedMessageId, showStaffPostActions]);
+
+  const handlePinToggle = React.useCallback(
+    (message: Message) => {
+      const nextPinnedId = pinnedMessageId === message.id ? null : message.id;
+      if (channelChat) {
+        chatStore.getState().updateChat({
+          ...channelChat,
+          pinned_message_id: nextPinnedId,
+        });
+      }
+      TransportService.pinMessage(channelId, nextPinnedId);
+      closeMenu();
+    },
+    [channelChat, channelId, closeMenu, pinnedMessageId],
+  );
+
+  const confirmDeletePost = React.useCallback(
+    (message: Message) => {
+      channelStore.getState().updateFeedMessage(channelId, message.id, {
+        is_deleted: 1,
+        content: null,
       });
-    });
-  }, [canReact, insets.bottom, insets.top]);
+      if (pinnedMessageId === message.id && channelChat) {
+        chatStore.getState().updateChat({
+          ...channelChat,
+          pinned_message_id: null,
+        });
+        TransportService.pinMessage(channelId, null);
+      }
+      TransportService.deleteMessage(channelId, message.id);
+      closeMenu();
+    },
+    [channelChat, channelId, closeMenu, pinnedMessageId],
+  );
+
+  const handleForwardFromMenu = React.useCallback(
+    (message: Message) => {
+      closeMenu();
+      setTimeout(() => setForwardSourceMessageIds([message.id]), 150);
+    },
+    [closeMenu],
+  );
+
+  const handleForwardToChat = React.useCallback(
+    (targetChatId: string) => {
+      if (!currentUserId) {
+        Alert.alert('Не удалось переслать', 'Сначала нужно заново авторизоваться.');
+        setForwardSourceMessageIds([]);
+        return;
+      }
+
+      const sourceMessages = forwardSourceMessageIds
+        .map((id) => sortedFeed.find((m) => m.id === id) ?? null)
+        .filter((m): m is Message => m != null)
+        .sort((a, b) => a.created_at - b.created_at);
+
+      if (sourceMessages.length === 0) {
+        setForwardSourceMessageIds([]);
+        return;
+      }
+
+      const channelTitle = detail?.channel?.name?.trim() || 'Канал';
+      let sentCount = 0;
+
+      for (const [index, message] of sourceMessages.entries()) {
+        const forwardedFromName = channelTitle;
+        const forwardedFromMessageId = message.forwarded_from_message_id ?? message.id;
+        const forwardedFromChatId = message.forwarded_from_chat_id ?? message.chat_id;
+        const forwardedFromSenderId = message.forwarded_from_sender_id ?? message.sender_id;
+        const tempId = `temp-forward-${Date.now()}-${index}-${message.id}`;
+        const now = Date.now();
+
+        const optimisticMessage: Message = {
+          id: tempId,
+          chat_id: targetChatId,
+          sender_id: currentUserId,
+          msg_type: message.msg_type,
+          content: message.content ?? null,
+          reply_to_id: null,
+          forwarded_from_message_id: forwardedFromMessageId,
+          forwarded_from_name: forwardedFromName,
+          forwarded_from_chat_id: forwardedFromChatId,
+          forwarded_from_sender_id: forwardedFromSenderId,
+          is_edited: 0,
+          is_deleted: 0,
+          status: 'sending',
+          transport: 'ws',
+          server_id: null,
+          created_at: now,
+          updated_at: now,
+          media: cloneForwardMedia(message),
+        };
+
+        if (
+          TransportService.forwardMessage(
+            targetChatId,
+            message,
+            {
+              messageId: forwardedFromMessageId,
+              name: forwardedFromName,
+              chatId: forwardedFromChatId,
+              senderId: forwardedFromSenderId,
+            },
+            tempId,
+          )
+        ) {
+          messageStore.getState().prependMessage(targetChatId, optimisticMessage);
+          const targetChat = chats.find((chat) => chat.id === targetChatId);
+          if (targetChat) {
+            chatStore.getState().updateChat({
+              ...targetChat,
+              last_message_id: tempId,
+              last_message_at: now,
+              last_message_preview: buildChannelForwardPreview(message),
+            });
+          }
+          sentCount += 1;
+        }
+      }
+
+      setForwardSourceMessageIds([]);
+      if (sentCount === 0) {
+        Alert.alert('Не удалось переслать', 'Проверьте соединение.');
+      }
+    },
+    [chats, currentUserId, detail?.channel?.name, forwardSourceMessageIds, sortedFeed],
+  );
+
+  const handlePostMenuAction = React.useCallback(
+    async (key: string) => {
+      if (!activeMenuMessage) return;
+
+      if (menuMode === 'deleteConfirm') {
+        if (key === 'delete_confirm') {
+          confirmDeletePost(activeMenuMessage);
+        } else if (key === 'delete_cancel') {
+          setMenuMode('actions');
+        }
+        return;
+      }
+
+      switch (key as PostMenuActionKey) {
+        case 'reply':
+          closeMenu();
+          navigation.navigate('ChannelDiscussion', {
+            channelId,
+            postId: activeMenuMessage.id,
+          });
+          return;
+        case 'copy': {
+          const value = getCopyableContent(activeMenuMessage);
+          closeMenu();
+          if (!value) {
+            Alert.alert('Нечего копировать', 'В этой публикации нет текста для копирования.');
+            return;
+          }
+          await Clipboard.setStringAsync(value);
+          return;
+        }
+        case 'pin':
+          handlePinToggle(activeMenuMessage);
+          return;
+        case 'forward':
+          handleForwardFromMenu(activeMenuMessage);
+          return;
+        case 'delete':
+          setMenuMode('deleteConfirm');
+          return;
+        default:
+          return;
+      }
+    },
+    [
+      activeMenuMessage,
+      channelId,
+      closeMenu,
+      confirmDeletePost,
+      handleForwardFromMenu,
+      handlePinToggle,
+      menuMode,
+      navigation,
+    ],
+  );
+
+  const openPostInteractionMenu = React.useCallback(
+    (message: Message) => {
+      const target = postContentRefs.current[message.id];
+      if (!target) return;
+
+      Keyboard.dismiss();
+      setMenuMode('actions');
+
+      const staff = showStaffPostActions;
+      const actionCount = staff ? 5 : 3;
+      /** Запас по высоте меню (основное + экран подтверждения удаления, скругления). */
+      const menuHeight =
+        Math.max(
+          estimateMenuCardHeight(actionCount),
+          estimateMenuCardHeight(2),
+        ) + 10;
+
+      const REACTION_BAR_HEIGHT = 42;
+      const REACTION_ABOVE_GAP = 6;
+      const menuGap = 4;
+
+      const subscribePillOffset = showPublicSubscribePill && !detail?.can_post ? 58 : 0;
+      const composerOffset = (detail?.can_post ? inputBarHeight : 0) + subscribePillOffset;
+      const bottomSafety = 28;
+      const bottomChrome =
+        composerOffset + Math.max(insets.bottom, 12) + bottomSafety;
+      const effectiveBottom = SCREEN_HEIGHT - bottomChrome;
+
+      target.measureInWindow((pageX, pageY, width, height) => {
+        const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
+        const previewLeft = Math.max(
+          MENU_EDGE_GAP,
+          Math.min(pageX, SCREEN_WIDTH - previewWidth - MENU_EDGE_GAP),
+        );
+
+        const minPreviewTopForReactions = canReact
+          ? Math.max(insets.top + 6, MENU_EDGE_GAP + REACTION_BAR_HEIGHT + REACTION_ABOVE_GAP)
+          : Math.max(insets.top + 6, MENU_EDGE_GAP);
+
+        /** Длинный текст: полная высота поста + меню не помещается на экран — ограничиваем срез превью. */
+        const spaceForPreview =
+          effectiveBottom - minPreviewTopForReactions - menuGap - menuHeight;
+        const previewDisplayHeight = Math.min(height, Math.max(0, spaceForPreview));
+
+        const columnBelowPreview = previewDisplayHeight + menuGap + menuHeight;
+        const maxPreviewTopSoMenuFits = effectiveBottom - columnBelowPreview;
+
+        let previewTop = Math.min(pageY, maxPreviewTopSoMenuFits);
+        previewTop = Math.max(minPreviewTopForReactions, previewTop);
+
+        if (previewTop + columnBelowPreview > effectiveBottom) {
+          previewTop = Math.max(MENU_EDGE_GAP, effectiveBottom - columnBelowPreview);
+        }
+
+        const menuTop = previewTop + previewDisplayHeight + menuGap;
+
+        const menuLeft = Math.max(
+          MENU_EDGE_GAP,
+          Math.min(previewLeft, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP),
+        );
+
+        setMenuState({
+          messageId: message.id,
+          isMe: false,
+          previewTop,
+          previewLeft,
+          previewWidth,
+          previewHeight: previewDisplayHeight,
+          menuTop,
+          menuLeft,
+          placement: 'below',
+          previewVerticalAlign:
+            previewDisplayHeight < height ? 'top' : undefined,
+        });
+      });
+    },
+    [
+      canReact,
+      detail?.can_post,
+      insets.bottom,
+      insets.top,
+      inputBarHeight,
+      showPublicSubscribePill,
+      showStaffPostActions,
+    ],
+  );
 
   React.useEffect(() => {
     if (!menuState) {
@@ -1107,7 +1464,7 @@ export function ChannelFeedScreen() {
       return (
       <Pressable
         style={styles.postWrap}
-        onLongPress={() => openReactionMenu(item)}
+        onLongPress={() => openPostInteractionMenu(item)}
         delayLongPress={220}
       >
         <View
@@ -1167,7 +1524,7 @@ export function ChannelFeedScreen() {
       </Pressable>
       );
     },
-    [canComment, detail?.channel, channelId, navigation, openReactionMenu, renderPostContent, setPostContentRef]
+    [canComment, detail?.channel, channelId, navigation, openPostInteractionMenu, renderPostContent, setPostContentRef]
   );
 
   const renderMenuPreviewBody = React.useCallback(
@@ -1336,18 +1693,28 @@ export function ChannelFeedScreen() {
       <ChatContextMenuOverlay
         menuState={menuState}
         activeMenuMessage={activeMenuMessage}
-        menuActions={[]}
+        menuActions={menuActions}
         menuAnim={menuAnim}
         blurTargetRef={blurTargetRef}
         screenWidth={SCREEN_WIDTH}
-        showReactions={canReact}
-        showMenuCard={false}
+        showReactions={canReact && menuMode === 'actions'}
+        showMenuCard={menuActions.length > 0}
+        menuCardWidth={menuMode === 'deleteConfirm' ? 224 : undefined}
         onClose={closeMenu}
-        onMenuAction={() => undefined}
+        onMenuAction={(key) => {
+          void handlePostMenuAction(key);
+        }}
         onPickReaction={(emoji) => {
           void handlePickReactionFromMenu(emoji);
         }}
         renderMenuPreviewBody={renderMenuPreviewBody}
+      />
+
+      <ChatForwardSheet
+        visible={forwardSourceMessageIds.length > 0}
+        chats={forwardTargets}
+        onClose={() => setForwardSourceMessageIds([])}
+        onSelectChat={(targetChatId) => handleForwardToChat(targetChatId)}
       />
 
       <ChatProfileMediaViewerModal

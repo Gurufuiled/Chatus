@@ -1,5 +1,5 @@
-# Project brief — P2P Messenger (Telegram-like)
+# Project brief — Messenger (Telegram-like)
 
-- **Product:** Mobile messenger (Expo RN UI + Rust core via uniffi), offline-first SQLite in Rust, server fallback WebSocket when P2P unavailable.
-- **Scope:** Chats, groups, channels (feed, discussion, reactions), auth via Loginus OAuth (`messenger://auth/callback`).
-- **Repos:** `origin` — user fork; `corporate` — `Startupus-Team/chatus`. Active branch: `Ui-expirience`.
+- **Product:** Mobile messenger (Expo React Native): чаты, группы, каналы (лента, обсуждения, реакции), авторизация через Loginus OAuth (`messenger://auth/callback`).
+- **Delivery:** сообщения через **сервер** (HTTP + WebSocket); локальный SQLite для offline-first и очереди.
+- **Calls:** WebRTC + signaling WebSocket на том же хосте, что API (отдельный порт).

@@ -1,14 +1,14 @@
 # PROJECT_BRIEF
 
-**Продукт:** мессенджер уровня Telegram с упором на P2P (WebRTC DataChannel), fallback WebSocket, offline-first (SQLite).
+**Продукт:** мессенджер уровня Telegram: доставка через **сервер** (HTTP + WebSocket), offline-first (локальный SQLite и очередь).
 
-**Клиент:** React Native (Expo), TypeScript, Zustand, React Navigation. UI «тонкий»; тяжёлая логика планируется/частично в **Rust** (uniffi), в репозитории есть `mobile/`.
+**Клиент:** React Native (Expo), TypeScript, Zustand, React Navigation. UI и сервисы в `mobile/`.
 
 **Сервер:** NestJS, Prisma, PostgreSQL — `server/`.
 
-**Транспорт сообщений:** 1) P2P → 2) WebSocket → 3) офлайн-очередь.
+**Транспорт сообщений:** WebSocket к серверу; без сети — офлайн-очередь. **Звонки:** WebRTC + отдельный signaling WS (:4002).
 
-Подробнее см. правило Cursor `.cursor/rules/project.mdc` (не дублировать сюда весь текст — обновляй выжимку здесь при смене архитектуры).
+Подробнее см. правило Cursor `.cursor/rules/project.mdc`.
 
 ## Ключевые папки
 

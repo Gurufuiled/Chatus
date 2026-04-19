@@ -17,6 +17,7 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
+import { authStore } from '../stores/authStore';
 import { colors } from '../theme/colors';
 import { resolveAvatarUrl } from '../config';
 
@@ -125,6 +126,12 @@ export function ChannelSettingsScreen() {
     void load();
   }, [load]);
 
+  const currentUserId = authStore((state) => state.user?.id ?? null);
+  const isOwner = React.useMemo(() => {
+    if (!detail || !currentUserId) return false;
+    const me = detail.channel.members?.find((m) => m.user_id === currentUserId);
+    return me?.role === 'owner';
+  }, [detail, currentUserId]);
   const canEdit = detail?.channel_permissions?.can_edit_channel === true;
   const canAdminOps =
     detail?.channel_permissions?.can_add_admins === true ||
@@ -258,6 +265,24 @@ export function ChannelSettingsScreen() {
             }
           />
         </View>
+
+        {isOwner ? (
+          <>
+            <SectionSeparator />
+            <View style={styles.sectionCard}>
+              <SettingsRow
+                icon="trending-up"
+                iconColor="#16A34A"
+                title="Монетизация"
+                value="Демо"
+                onPress={() => navigation.navigate('ChannelMonetization', { channelId })}
+              />
+            </View>
+            <Text style={styles.sectionCaption}>
+              Платные подписки, статистика и выплаты. Доступно только владельцу канала.
+            </Text>
+          </>
+        ) : null}
 
         <SectionSeparator />
 
@@ -405,6 +430,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   permissionHint: { color: '#92400E', fontSize: 13, flex: 1 },
+
+  sectionCaption: {
+    marginTop: 6,
+    marginHorizontal: 20,
+    fontSize: 12,
+    color: '#8E8E93',
+    lineHeight: 16,
+  },
 
   /* Snackbar */
   snackbarWrap: {

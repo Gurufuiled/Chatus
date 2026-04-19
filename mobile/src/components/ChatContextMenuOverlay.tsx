@@ -43,6 +43,8 @@ type ChatContextMenuOverlayProps = {
     menuTop: number;
     menuLeft: number;
     placement: 'above' | 'below';
+    /** При обрезке высокого превью — с какого края показывать контент (по умолчанию низ, как в чате). */
+    previewVerticalAlign?: 'top' | 'bottom';
   } | null;
   activeMenuMessage: Message | null;
   menuActions: {
@@ -195,6 +197,7 @@ export function ChatContextMenuOverlay({
           <View
             style={[
               styles.menuPreviewWrap,
+              menuState.previewVerticalAlign === 'top' && styles.menuPreviewWrapAlignTop,
               {
                 width: menuState.previewWidth,
                 height: menuState.previewHeight,
@@ -273,6 +276,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     overflow: 'hidden',
     justifyContent: 'flex-end',
+  },
+  menuPreviewWrapAlignTop: {
+    justifyContent: 'flex-start',
   },
   menuPreviewWrapMe: {
     alignItems: 'flex-end',

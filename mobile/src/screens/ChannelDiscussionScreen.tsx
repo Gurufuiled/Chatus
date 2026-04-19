@@ -59,10 +59,10 @@ import type { FilePickResult, MediaPickResult } from '../components/InputBar';
 import {
   ChatBackgroundPattern,
   MENU_EDGE_GAP,
-  MENU_HEIGHT,
   MENU_WIDTH,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
+  estimateMenuCardHeight,
   formatTime,
 } from './chatScreen.shared';
 import { resolveAvatarUrl } from '../config';
@@ -624,29 +624,64 @@ export function ChannelDiscussionScreen() {
       const reactionBarHeight = 42;
       const reactionGap = 4;
       const menuGap = 4;
-      const bottomLimit = SCREEN_HEIGHT - Math.max(MENU_EDGE_GAP + 8, insets.bottom + 18);
-      const previewLeft = Math.max(MENU_EDGE_GAP, Math.min(pageX, SCREEN_WIDTH - width - MENU_EDGE_GAP));
-      const minPreviewTop = Math.max(insets.top + 12, MENU_EDGE_GAP + reactionBarHeight + reactionGap);
-      const maxPreviewTop = bottomLimit - MENU_HEIGHT - menuGap - height;
-      const anchoredTop = Math.max(minPreviewTop, Math.min(pageY, Math.max(minPreviewTop, maxPreviewTop)));
-      const menuLeftBase = message.sender_id === currentUserId ? previewLeft + width - MENU_WIDTH : previewLeft;
-      const menuLeft = Math.max(MENU_EDGE_GAP, Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP));
-      const previewTop = Math.max(minPreviewTop, Math.min(anchoredTop, bottomLimit - MENU_HEIGHT - menuGap - height));
-      const menuTop = previewTop + height + menuGap;
+      const DISCUSSION_ACTION_COUNT = 3;
+      const menuCardHeight =
+        Math.max(
+          estimateMenuCardHeight(DISCUSSION_ACTION_COUNT),
+          estimateMenuCardHeight(2),
+        ) + 10;
+
+      const bottomSafety = 28;
+      const composerOffset =
+        (thread?.can_comment ? inputBarHeight : 0) + Math.max(insets.bottom, 12);
+      const effectiveBottom = SCREEN_HEIGHT - (composerOffset + bottomSafety);
+
+      const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
+      const previewLeft = Math.max(
+        MENU_EDGE_GAP,
+        Math.min(pageX, SCREEN_WIDTH - previewWidth - MENU_EDGE_GAP),
+      );
+      const minPreviewTop = Math.max(
+        insets.top + 12,
+        MENU_EDGE_GAP + reactionBarHeight + reactionGap,
+      );
+
+      const spaceForPreview =
+        effectiveBottom - minPreviewTop - menuGap - menuCardHeight;
+      const previewDisplayHeight = Math.min(height, Math.max(0, spaceForPreview));
+
+      const columnBelowPreview = previewDisplayHeight + menuGap + menuCardHeight;
+      let previewTop = Math.min(pageY, effectiveBottom - columnBelowPreview);
+      previewTop = Math.max(minPreviewTop, previewTop);
+
+      if (previewTop + columnBelowPreview > effectiveBottom) {
+        previewTop = Math.max(MENU_EDGE_GAP, effectiveBottom - columnBelowPreview);
+      }
+
+      const menuTop = previewTop + previewDisplayHeight + menuGap;
+
+      const menuLeftBase =
+        message.sender_id === currentUserId
+          ? previewLeft + previewWidth - MENU_WIDTH
+          : previewLeft;
+      const menuLeft = Math.max(
+        MENU_EDGE_GAP,
+        Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP),
+      );
 
       setMenuState({
         messageId: message.id,
         isMe: message.sender_id === currentUserId,
         previewTop,
         previewLeft,
-        previewWidth: width,
-        previewHeight: height,
+        previewWidth,
+        previewHeight: previewDisplayHeight,
         menuTop,
         menuLeft,
         placement: 'below',
       });
     });
-  }, [currentUserId, insets.bottom, insets.top]);
+  }, [currentUserId, insets.bottom, insets.top, inputBarHeight, thread?.can_comment]);
 
   const menuActions = React.useMemo<MenuAction[]>(() => {
     if (!activeMenuMessage) return [];

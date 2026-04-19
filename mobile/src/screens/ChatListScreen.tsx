@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChatListActionsMenu, ChatListRow, type ChatListMenuState } from '../components';
+import { ChatListActionsMenu, ChatListRow, ChatListSkeleton, type ChatListMenuState } from '../components';
 import { resolveAvatarUrl } from '../config';
 import { ChatDao } from '../db/dao/ChatDao';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -171,6 +171,22 @@ export function ChatListScreen() {
   );
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const isSearchActive = normalizedQuery.length > 0;
+
+  const [hasAttemptedInitialLoad, setHasAttemptedInitialLoad] = React.useState(
+    () => chats.length > 0,
+  );
+
+  React.useEffect(() => {
+    if (chats.length > 0) {
+      setHasAttemptedInitialLoad(true);
+      return;
+    }
+    const timeout = setTimeout(() => setHasAttemptedInitialLoad(true), 1500);
+    return () => clearTimeout(timeout);
+  }, [chats.length]);
+
+  const showInitialSkeleton =
+    !hasAttemptedInitialLoad && sortedChats.length === 0 && !isSearchActive;
 
   React.useEffect(() => {
     const rawQuery = deferredQuery.trim();
@@ -439,11 +455,15 @@ export function ChatListScreen() {
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>
-              {isSearchActive ? 'Ничего не найдено' : 'Нет чатов'}
-            </Text>
-          </View>
+          showInitialSkeleton ? (
+            <ChatListSkeleton count={8} />
+          ) : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                {isSearchActive ? 'Ничего не найдено' : 'Нет чатов'}
+              </Text>
+            </View>
+          )
         }
       />
       <ChatListActionsMenu
