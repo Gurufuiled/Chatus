@@ -10,6 +10,7 @@ import { UploadModule } from './upload/upload.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { SignalingModule } from './signaling/signaling.module';
 import { ChannelsModule } from './channels/channels.module';
+import { MiniAppsModule } from './mini-apps/mini-apps.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ChannelsModule } from './channels/channels.module';
     ChatsModule,
     MessagesModule,
     ChannelsModule,
+    MiniAppsModule,
     UploadModule,
     WebsocketModule,
     SignalingModule,

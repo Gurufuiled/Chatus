@@ -5,6 +5,7 @@ import { MessagesModule } from '../messages/messages.module';
 import { ChatsModule } from '../chats/chats.module';
 import { ChannelsModule } from '../channels/channels.module';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { MiniAppsModule } from '../mini-apps/mini-apps.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
     MessagesModule,
     ChannelsModule,
     RealtimeModule,
+    MiniAppsModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET!,
       signOptions: {

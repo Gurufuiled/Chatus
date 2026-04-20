@@ -11,7 +11,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ChatsStack } from './ChatsStack';
-import { ContactsScreen, SettingsScreen } from '../screens';
+import { SettingsStack } from './SettingsStack';
+import { ContactsScreen } from '../screens';
 import type { MainTabParamList } from './types';
 import { colors } from '../theme/colors';
 import { TelegramGlyph } from '../icons/telegram';
@@ -311,8 +312,16 @@ export function MainTabs() {
         />
         <Tab.Screen
           name="Settings"
-          component={SettingsScreen}
-          options={{ title: 'Настройки' }}
+          component={SettingsStack}
+          options={({ route }) => {
+            const focused = getFocusedRouteNameFromRoute(route) ?? 'SettingsMain';
+            const hide = focused === 'MiniApp' || focused === 'Services';
+            return {
+              title: 'Настройки',
+              headerShown: false,
+              tabBarStyle: hide ? styles.hiddenTabBar : tabBarStyle,
+            };
+          }}
         />
       </Tab.Navigator>
 

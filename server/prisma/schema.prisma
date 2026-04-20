@@ -95,8 +95,42 @@ model User {
   messages      Message[]
   messageReactions MessageReaction[]
   channelPostViews ChannelPostView[]
+  developerProfile DeveloperProfile?
 
   @@map("users")
+}
+
+model DeveloperProfile {
+  userId              String    @id @map("user_id")
+  agreementAcceptedAt DateTime  @map("agreement_accepted_at")
+  agreementVersion    String    @default("1.0") @map("agreement_version")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apps MiniApp[]
+
+  @@map("developer_profiles")
+}
+
+model MiniApp {
+  id           String   @id @default(uuid())
+  shortId      String   @unique @map("short_id")
+  ownerId      String   @map("owner_id")
+  title        String
+  description  String?
+  iconUrl      String?  @map("icon_url")
+  baseUrl      String   @map("base_url")
+  allowedHosts String[] @default([]) @map("allowed_hosts")
+  secret       String
+  isPublished  Boolean  @default(false) @map("is_published")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  owner DeveloperProfile @relation(fields: [ownerId], references: [userId], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([isPublished])
+  @@map("mini_apps")
 }
 
 model RefreshToken {

@@ -20,14 +20,17 @@ import { authService, apiUserToUserRow } from '../services/AuthService';
 import { getProfile, updateProfile } from '../services/profileService';
 import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
+import { useNavigation } from '@react-navigation/native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SettingsIconRow } from '../components/settings/SettingsIconRow';
 import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 
 const HANDLE_REGEX = /^[a-zA-Z0-9_]{5,32}$/;
 
 export function SettingsScreen() {
   const { user, logout } = useAuth();
+  const navigation = useNavigation();
   const [profile, setProfile] = useState<{
     display_name: string | null;
     avatar_url: string | null;
@@ -339,6 +342,29 @@ export function SettingsScreen() {
           />
         </View>
 
+        <Text style={styles.sectionTitle}>Сервисы</Text>
+        <View style={styles.settingsCard}>
+          <Pressable
+            onPress={() => navigation.navigate('Services' as never)}
+            style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
+          >
+            <View style={styles.servicesIconBubble}>
+              <MaterialCommunityIcons
+                name="apps"
+                size={22}
+                color={colors.accent}
+              />
+            </View>
+            <View style={styles.servicesText}>
+              <Text style={styles.servicesTitle}>Сервисы</Text>
+              <Text style={styles.servicesSubtitle}>
+                Мини-приложения и ChatusFather
+              </Text>
+            </View>
+            <Text style={styles.servicesChevron}>›</Text>
+          </Pressable>
+        </View>
+
         <View style={[styles.settingsCard, styles.logoutCard]}>
           <SettingsIconRow
             title="Выйти из аккаунта"
@@ -492,4 +518,33 @@ const styles = StyleSheet.create({
   copyBtnText: { color: colors.accent, fontSize: 14 },
   copyBtnTextDisabled: { color: colors.placeholder },
   buttonPressed: { opacity: 0.8 },
+  servicesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    minHeight: 52,
+    backgroundColor: colors.inputBackgroundSolid,
+  },
+  servicesRowPressed: {
+    backgroundColor: colors.inputBackground,
+  },
+  servicesIconBubble: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: withAlpha(colors.accent, 0.12),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  servicesText: { flex: 1, minWidth: 0 },
+  servicesTitle: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  servicesSubtitle: { marginTop: 2, fontSize: 13, color: colors.textSecondary },
+  servicesChevron: {
+    fontSize: 22,
+    color: colors.textSecondary,
+    marginLeft: 4,
+    fontWeight: '300',
+  },
 });

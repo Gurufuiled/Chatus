@@ -23,3 +23,5 @@ export { ChannelDiscussionSettingsScreen } from './ChannelDiscussionSettingsScre
 export { ChannelMonetizationScreen } from './ChannelMonetizationScreen';
 export { ContactsScreen } from './ContactsScreen';
 export { SettingsScreen } from './SettingsScreen';
+export { ServicesScreen } from './ServicesScreen';
+export { MiniAppScreen } from './MiniAppScreen';

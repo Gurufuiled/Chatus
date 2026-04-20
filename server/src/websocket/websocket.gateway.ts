@@ -13,6 +13,7 @@ import { MessagesService } from '../messages/messages.service';
 import { ChatsService } from '../chats/chats.service';
 import { ChannelsService } from '../channels/channels.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { ChatusFatherService } from '../mini-apps/chatus-father.service';
 
 const WS_PORT = parseInt(process.env.WS_PORT ?? '4001', 10);
 
@@ -37,6 +38,7 @@ export class WebsocketGateway
     private readonly chatsService: ChatsService,
     private readonly channelsService: ChannelsService,
     private readonly realtimeService: RealtimeService,
+    private readonly chatusFatherService: ChatusFatherService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -214,6 +216,26 @@ export class WebsocketGateway
         },
       });
       members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
+
+      if (effectiveMsgType === 'text' && typeof content === 'string' && content.trim()) {
+        const fatherChatId = await this.chatusFatherService.getChatIdIfChatusFather(
+          chatId,
+          client.userId,
+        );
+        if (fatherChatId) {
+          const replies = await this.chatusFatherService.handleUserMessage(
+            fatherChatId,
+            client.userId,
+            content,
+          );
+          for (const reply of replies) {
+            const payload = JSON.stringify({ type: 'message', message: reply });
+            members.forEach(({ userId }) =>
+              this.realtimeService.sendToUser(userId, payload),
+            );
+          }
+        }
+      }
     } catch (err) {
       this.logger.warn(`send_message failed: ${err}`);
     }

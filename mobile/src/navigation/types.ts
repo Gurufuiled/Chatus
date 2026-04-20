@@ -39,11 +39,26 @@ export type ChatsStackParamList = {
   ChannelMonetization: { channelId: string };
 };
 
+export type SettingsStackParamList = {
+  SettingsMain: undefined;
+  Services: undefined;
+  MiniApp: { appId: string; title?: string };
+};
+
 export type MainTabParamList = {
   Chats: NavigatorScreenParams<ChatsStackParamList>;
   Contacts: undefined;
-  Settings: undefined;
+  Settings: NavigatorScreenParams<SettingsStackParamList>;
 };
+
+/**
+ * Union of all routes reachable via any stack. Used by screens that don't know
+ * which stack parent hosts them (e.g. MiniApp is reachable from SettingsStack).
+ */
+export type RootStackParamList = ChatsStackParamList &
+  SettingsStackParamList & {
+    ChatusFatherChat: { chatId: string; chatTitle?: string };
+  };
 
 export type AuthStackScreenProps<T extends keyof AuthStackParamList> =
   NativeStackScreenProps<AuthStackParamList, T>;
@@ -56,6 +71,7 @@ declare global {
     interface RootParamList
       extends AuthStackParamList,
         MainTabParamList,
-        ChatsStackParamList {}
+        ChatsStackParamList,
+        SettingsStackParamList {}
   }
 }
