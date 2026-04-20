@@ -178,6 +178,11 @@ export class MiniAppsService {
     return this.toOwnerDto(updated);
   }
 
+  async deleteApp(ownerId: string, appId: string): Promise<void> {
+    const app = await this.getOwnedAppOrThrow(ownerId, appId);
+    await this.prisma.miniApp.delete({ where: { id: app.id } });
+  }
+
   async listOwnedApps(ownerId: string): Promise<MiniAppOwnerDto[]> {
     const apps = await this.prisma.miniApp.findMany({
       where: { ownerId },

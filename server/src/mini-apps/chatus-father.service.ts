@@ -14,7 +14,11 @@ type ChatusFatherState =
   | { kind: 'newapp_title' }
   | { kind: 'newapp_url'; title: string }
   | { kind: 'newapp_description'; title: string; baseUrl: string }
-  | { kind: 'newapp_icon'; title: string; baseUrl: string; description?: string };
+  | { kind: 'newapp_icon'; title: string; baseUrl: string; description?: string }
+  | { kind: 'myapps_pick' }
+  | { kind: 'myapp_menu'; appId: string }
+  | { kind: 'myapp_set_icon'; appId: string }
+  | { kind: 'myapp_delete_confirm'; appId: string; title: string };
 
 export interface ChatusFatherReply {
   text: string;
@@ -87,6 +91,52 @@ export class ChatusFatherService {
     return this.states.get(userId) ?? { kind: 'idle' };
   }
 
+  /** Список приложений с выбором по номеру строки */
+  private async repliesMyappsPickList(userId: string): Promise<ChatusFatherReply[]> {
+    const apps = await this.miniApps.listOwnedApps(userId);
+    if (apps.length === 0) {
+      this.setState(userId, { kind: 'idle' });
+      return [{ text: 'У вас пока нет приложений. Создайте первое: /newapp' }];
+    }
+    this.setState(userId, { kind: 'myapps_pick' });
+    const lines = apps.map(
+      (a, i) => `${i + 1}. ${a.title}\n   ${a.short_id}\n   ${a.base_url}`,
+    );
+    return [
+      {
+        text:
+          `Ваши приложения — отправьте номер строки (1–${apps.length}), чтобы открыть меню действий.\n\n` +
+          lines.join('\n\n') +
+          '\n\n/cancel — выход из меню.',
+      },
+    ];
+  }
+
+  /** Карточка приложения с пунктами 1 / 2 / 0 */
+  private async repliesAppMenu(userId: string, appId: string): Promise<ChatusFatherReply[]> {
+    const apps = await this.miniApps.listOwnedApps(userId);
+    const app = apps.find((a) => a.id === appId);
+    if (!app) {
+      this.setState(userId, { kind: 'idle' });
+      return [{ text: 'Приложение не найдено. Откройте /myapps снова.' }];
+    }
+    this.setState(userId, { kind: 'myapp_menu', appId });
+    const iconLine = app.icon_url ? app.icon_url : 'нет';
+    return [
+      {
+        text:
+          `«${app.title}» (${app.short_id})\n` +
+          `URL: ${app.base_url}\n` +
+          `secret: ${app.secret}\n` +
+          `иконка: ${iconLine}\n\n` +
+          `Выберите действие:\n` +
+          `1 — изменить иконку\n` +
+          `2 — удалить приложение\n` +
+          `0 — назад к списку`,
+      },
+    ];
+  }
+
   private async computeReplies(
     userId: string,
     rawText: string,
@@ -100,6 +150,111 @@ export class ChatusFatherService {
       return [{ text: 'Отменил. Напишите /help, чтобы увидеть команды.' }];
     }
 
+    if (lower === '/myapps' || lower === 'myapp') {
+      const apps = await this.miniApps.listOwnedApps(userId);
+      if (apps.length === 0) {
+        this.setState(userId, { kind: 'idle' });
+        return [{ text: 'У вас пока нет приложений. Создайте первое: /newapp' }];
+      }
+      return this.repliesMyappsPickList(userId);
+    }
+
+    if (state.kind === 'myapp_delete_confirm') {
+      if (lower === '0' || lower === 'отмена') {
+        return this.repliesAppMenu(userId, state.appId);
+      }
+      if (lower === 'удалить') {
+        try {
+          await this.miniApps.deleteApp(userId, state.appId);
+          this.setState(userId, { kind: 'idle' });
+          return [{ text: 'Приложение удалено из каталога «Сервисы».' }];
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Ошибка';
+          return [{ text: `Не удалось удалить: ${msg}` }];
+        }
+      }
+      return [{ text: 'Отправьте УДАЛИТЬ для подтверждения или 0 для отмены.' }];
+    }
+
+    if (state.kind === 'myapp_set_icon') {
+      let iconUrl: string | undefined;
+      if (text === '-') {
+        iconUrl = '';
+      } else {
+        try {
+          const url = new URL(text.trim());
+          if (url.protocol !== 'https:') {
+            return [{ text: 'Иконка только по HTTPS. Пришлите другой URL или «-».' }];
+          }
+          iconUrl = text.trim();
+        } catch {
+          return [{ text: 'Нужна корректная HTTPS-ссылка или «-» чтобы убрать иконку.' }];
+        }
+      }
+      try {
+        await this.miniApps.updateApp(userId, state.appId, {
+          icon_url: iconUrl === '' ? '' : iconUrl,
+        });
+        const out: ChatusFatherReply[] = [{ text: 'Иконка обновлена.' }];
+        out.push(...(await this.repliesAppMenu(userId, state.appId)));
+        return out;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Ошибка';
+        return [{ text: `Не удалось сохранить: ${msg}` }];
+      }
+    }
+
+    if (state.kind === 'myapp_menu') {
+      const t = text.trim();
+      const l = t.toLowerCase();
+      if (t === '0' || l === 'назад') {
+        return this.repliesMyappsPickList(userId);
+      }
+      if (t === '1') {
+        this.setState(userId, { kind: 'myapp_set_icon', appId: state.appId });
+        return [
+          {
+            text:
+              'Пришлите HTTPS-ссылку на новую иконку или «-» чтобы убрать иконку из каталога.',
+          },
+        ];
+      }
+      if (t === '2') {
+        const apps = await this.miniApps.listOwnedApps(userId);
+        const app = apps.find((a) => a.id === state.appId);
+        const title = app?.title ?? 'приложение';
+        this.setState(userId, {
+          kind: 'myapp_delete_confirm',
+          appId: state.appId,
+          title,
+        });
+        return [
+          {
+            text:
+              `Удалить «${title}» безвозвратно из «Сервисов»? Отправьте УДАЛИТЬ или 0 для отмены.`,
+          },
+        ];
+      }
+      return [{ text: 'Нажмите 1 (иконка), 2 (удалить) или 0 (назад к списку).' }];
+    }
+
+    if (state.kind === 'myapps_pick') {
+      const apps = await this.miniApps.listOwnedApps(userId);
+      if (apps.length === 0) {
+        this.setState(userId, { kind: 'idle' });
+        return [{ text: 'Список пуст. Создайте приложение: /newapp' }];
+      }
+      const n = parseInt(text.trim(), 10);
+      if (Number.isNaN(n) || n < 1 || n > apps.length) {
+        return [
+          {
+            text: `Отправьте номер от 1 до ${apps.length}, или /cancel.`,
+          },
+        ];
+      }
+      return this.repliesAppMenu(userId, apps[n - 1].id);
+    }
+
     if (lower === '/start' || lower === '/help') {
       this.setState(userId, { kind: 'idle' });
       return [
@@ -108,7 +263,7 @@ export class ChatusFatherService {
             'Привет! Я ChatusFather — помогаю публиковать мини-приложения.\n\n' +
             'Команды:\n' +
             '/newapp — зарегистрировать новое мини-приложение (в конце можно указать URL иконки)\n' +
-            '/myapps — список ваших приложений\n' +
+            '/myapps или myapp — список: номер строки → меню (иконка, удаление)\n' +
             '/agreement — правила разработчика\n' +
             '/cancel — отменить текущий шаг',
         },
@@ -151,25 +306,6 @@ export class ChatusFatherService {
       return [
         {
           text: 'Как назовём приложение? Пришлите название (2–64 символа).',
-        },
-      ];
-    }
-
-    if (lower === '/myapps') {
-      const apps = await this.miniApps.listOwnedApps(userId);
-      if (apps.length === 0) {
-        return [{ text: 'У вас пока нет приложений. Создайте первое: /newapp' }];
-      }
-      const lines = apps.map((a, i) => {
-        var iconLn = a.icon_url ? `\n   icon: ${a.icon_url}` : '';
-        return `${i + 1}. ${a.title}\n   id: ${a.short_id}\n   URL: ${a.base_url}${iconLn}\n   secret: ${a.secret}`;
-      });
-      return [
-        {
-          text:
-            'Ваши приложения:\n\n' +
-            lines.join('\n\n') +
-            '\n\nБерегите secret — им подписывается init_data для вашего backend.',
         },
       ];
     }
