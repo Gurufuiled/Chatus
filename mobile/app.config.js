@@ -36,7 +36,12 @@ const envPath = path.join(__dirname, '.env');
 const envProductionPath = path.join(__dirname, '.env.production');
 
 let envFile = loadDotEnv(envPath);
-if (process.env.MOBILE_ENV === 'production' && fs.existsSync(envProductionPath)) {
+// Release APK для прода: MOBILE_ENV=production (см. npm run android:release:prod).
+// Иначе в билд попадает только .env — часто там LAN IP, а не VPS.
+const mergeProdEnv =
+  process.env.MOBILE_ENV === 'production' ||
+  process.env.NODE_ENV === 'production';
+if (mergeProdEnv && fs.existsSync(envProductionPath)) {
   envFile = { ...envFile, ...loadDotEnv(envProductionPath) };
 }
 
