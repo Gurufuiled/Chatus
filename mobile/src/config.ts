@@ -113,3 +113,8 @@ export function resolveAvatarUrl(avatarUrl: string | null | undefined): string |
   }
   return avatarUrl;
 }
+
+/** Same rules as {@link resolveAvatarUrl}: post/video thumbnails and files under `/uploads/` need the API origin. */
+export function resolveMediaUrl(url: string | null | undefined): string | null {
+  return resolveAvatarUrl(url);
+}

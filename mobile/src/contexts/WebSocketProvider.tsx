@@ -17,6 +17,7 @@ import { chatStore } from '../stores/chatStore';
 import { channelStore } from '../stores/channelStore';
 import { uiStore } from '../stores/uiStore';
 import type { Message } from '../stores/types';
+import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
 
 /** Server message payload shape (MappedMessage from backend) */
@@ -25,6 +26,7 @@ interface ServerMessagePayload {
   client_temp_id?: string | null;
   chat_id: string;
   sender_id: string;
+  sender_avatar_url?: string | null;
   content: string | null;
   msg_type: string;
   status: string;
@@ -63,6 +65,8 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
     id: payload.id,
     chat_id: payload.chat_id,
     sender_id: payload.sender_id,
+    sender_avatar_url:
+      resolveMediaUrl(payload.sender_avatar_url) ?? payload.sender_avatar_url ?? undefined,
     msg_type: payload.msg_type,
     content: payload.content,
     reply_to_id: payload.reply_to_id ?? null,
@@ -87,8 +91,8 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
       media_type: m.media_type ?? undefined,
       waveform: decodeServerWaveform(m.waveform),
       duration_ms: m.duration_ms ?? undefined,
-      remote_url: m.remote_url ?? undefined,
-      thumbnail_url: m.thumbnail_url ?? undefined,
+      remote_url: resolveMediaUrl(m.remote_url) ?? m.remote_url ?? undefined,
+      thumbnail_url: resolveMediaUrl(m.thumbnail_url) ?? m.thumbnail_url ?? undefined,
       width: m.width ?? undefined,
       height: m.height ?? undefined,
       file_name: m.file_name ?? undefined,

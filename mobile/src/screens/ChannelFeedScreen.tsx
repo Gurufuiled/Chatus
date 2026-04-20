@@ -61,7 +61,7 @@ import {
   estimateMenuCardHeight,
 } from './chatScreen.shared';
 import { formatMediaDuration } from '../utils/mediaDuration';
-import { resolveAvatarUrl } from '../config';
+import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelFeed'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelFeed'>;
@@ -221,9 +221,11 @@ function renderChannelMediaAlbum(
 
   const renderTile = (mediaItem: VisualMediaItem, index: number, style: object) => {
     const kind = getVisualMediaKind(item, mediaItem);
-    const uri = kind === 'video'
-      ? mediaItem.thumbnail_url || mediaItem.remote_url
-      : mediaItem.remote_url;
+    const rawUri =
+      kind === 'video'
+        ? mediaItem.thumbnail_url || mediaItem.remote_url
+        : mediaItem.remote_url;
+    const uri = resolveMediaUrl(rawUri ?? null) ?? rawUri ?? '';
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
 
@@ -1211,6 +1213,14 @@ export function ChannelFeedScreen() {
   const renderPostContent = React.useCallback(
     (item: Message, options?: RenderPostContentOptions) => {
       const media = item.media?.[0];
+      const remoteUri =
+        media?.remote_url != null && media.remote_url.trim() !== ''
+          ? resolveMediaUrl(media.remote_url) ?? media.remote_url
+          : undefined;
+      const thumbUri =
+        media?.thumbnail_url != null && media.thumbnail_url.trim() !== ''
+          ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+          : undefined;
       const visualMediaCount =
         item.msg_type === 'image' || item.msg_type === 'video'
           ? item.media?.filter((entry) => entry.remote_url?.trim()).length ?? 0
@@ -1224,10 +1234,10 @@ export function ChannelFeedScreen() {
         });
       }
 
-      if (item.msg_type === 'voice' && media?.remote_url) {
+      if (item.msg_type === 'voice' && remoteUri) {
         return (
           <VoiceBubble
-            uri={media.remote_url}
+            uri={remoteUri}
             waveform={media.waveform ?? []}
             durationMs={media.duration_ms ?? 0}
             isMe={false}
@@ -1239,12 +1249,12 @@ export function ChannelFeedScreen() {
         );
       }
 
-      if (item.msg_type === 'video_note' && media?.remote_url) {
+      if (item.msg_type === 'video_note' && remoteUri) {
         return (
           <VideoNoteBubble
             messageId={item.id}
-            uri={media.remote_url}
-            thumbnailUri={media.thumbnail_url ?? undefined}
+            uri={remoteUri}
+            thumbnailUri={thumbUri ?? undefined}
             durationMs={media.duration_ms ?? 0}
             isMe={false}
             embedded
@@ -1255,14 +1265,14 @@ export function ChannelFeedScreen() {
         );
       }
 
-      if (item.msg_type === 'image' && media?.remote_url) {
+      if (item.msg_type === 'image' && remoteUri) {
         const caption = item.content?.trim() ?? '';
         const hasCaption = caption.length > 0;
         const mediaSize = resolveVisualMediaSize(media, options?.visualMediaWidth);
         return (
           <>
             <ImageBubble
-              uri={media.remote_url}
+              uri={remoteUri}
               isMe={false}
               embedded
               centered
@@ -1289,15 +1299,15 @@ export function ChannelFeedScreen() {
         );
       }
 
-      if (item.msg_type === 'video' && media?.remote_url) {
+      if (item.msg_type === 'video' && remoteUri) {
         const caption = item.content?.trim() ?? '';
         const hasCaption = caption.length > 0;
         const mediaSize = resolveVisualMediaSize(media, options?.visualMediaWidth);
         return (
           <>
             <VideoBubble
-              uri={media.remote_url}
-              thumbnailUri={media.thumbnail_url ?? undefined}
+              uri={remoteUri}
+              thumbnailUri={thumbUri ?? undefined}
               isMe={false}
               embedded
               centered
@@ -1324,12 +1334,12 @@ export function ChannelFeedScreen() {
         );
       }
 
-      if (item.msg_type === 'file' && media?.remote_url) {
+      if (item.msg_type === 'file' && remoteUri) {
         return (
           <FileBubble
             fileName={media.file_name ?? item.content ?? 'Файл'}
             fileSize={media.file_size}
-            uri={media.remote_url}
+            uri={remoteUri}
             isMe={false}
             caption={item.content}
             time={time}

@@ -1,3 +1,4 @@
+import { resolveMediaUrl } from '../config';
 import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
@@ -278,7 +279,7 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
     chat_id: api.chat_id,
     sender_id: api.sender_id,
     sender_name: api.sender_name ?? null,
-    sender_avatar_url: api.sender_avatar_url ?? null,
+    sender_avatar_url: resolveMediaUrl(api.sender_avatar_url) ?? api.sender_avatar_url ?? null,
     msg_type: api.msg_type,
     content: api.content,
     reply_to_id: api.reply_to_id ?? null,
@@ -298,8 +299,8 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
         media_type: item.media_type ?? undefined,
         duration_ms: item.duration_ms ?? undefined,
         waveform: decodeServerWaveform(item.waveform),
-        remote_url: item.remote_url ?? undefined,
-        thumbnail_url: item.thumbnail_url ?? undefined,
+        remote_url: resolveMediaUrl(item.remote_url) ?? item.remote_url ?? undefined,
+        thumbnail_url: resolveMediaUrl(item.thumbnail_url) ?? item.thumbnail_url ?? undefined,
         width: item.width ?? undefined,
         height: item.height ?? undefined,
         file_name: item.file_name ?? undefined,

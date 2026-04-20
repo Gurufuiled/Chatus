@@ -6,7 +6,7 @@
 import { SyncQueueDao } from '../db';
 import { WebSocketService } from './WebSocketService';
 import { apiGet, apiUpload, apiUploadVoice } from './apiClient';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, resolveMediaUrl } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import { authStore } from '../stores/authStore';
@@ -213,7 +213,7 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
       media_type: m.media_type,
       duration_ms: m.duration_ms ?? 0,
       waveform: decodeServerWaveform(m.waveform),
-      thumbnail_url: m.thumbnail_url,
+      thumbnail_url: resolveMediaUrl(m.thumbnail_url) ?? m.thumbnail_url,
       thumbnail_path: m.thumbnail_path,
       is_round: m.is_round,
       is_viewed: m.is_viewed,
@@ -221,7 +221,7 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
       height: m.height,
       file_name: m.file_name,
       file_size: m.file_size,
-      remote_url: m.remote_url,
+      remote_url: resolveMediaUrl(m.remote_url) ?? m.remote_url,
     })) ?? undefined;
 
   return {
