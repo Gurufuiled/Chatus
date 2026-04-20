@@ -13,7 +13,8 @@ type ChatusFatherState =
   | { kind: 'awaiting_agreement' }
   | { kind: 'newapp_title' }
   | { kind: 'newapp_url'; title: string }
-  | { kind: 'newapp_description'; title: string; baseUrl: string };
+  | { kind: 'newapp_description'; title: string; baseUrl: string }
+  | { kind: 'newapp_icon'; title: string; baseUrl: string; description?: string };
 
 export interface ChatusFatherReply {
   text: string;
@@ -106,7 +107,7 @@ export class ChatusFatherService {
           text:
             'Привет! Я ChatusFather — помогаю публиковать мини-приложения.\n\n' +
             'Команды:\n' +
-            '/newapp — зарегистрировать новое мини-приложение\n' +
+            '/newapp — зарегистрировать новое мини-приложение (в конце можно указать URL иконки)\n' +
             '/myapps — список ваших приложений\n' +
             '/agreement — правила разработчика\n' +
             '/cancel — отменить текущий шаг',
@@ -159,10 +160,10 @@ export class ChatusFatherService {
       if (apps.length === 0) {
         return [{ text: 'У вас пока нет приложений. Создайте первое: /newapp' }];
       }
-      const lines = apps.map(
-        (a, i) =>
-          `${i + 1}. ${a.title}\n   id: ${a.short_id}\n   URL: ${a.base_url}\n   secret: ${a.secret}`,
-      );
+      const lines = apps.map((a, i) => {
+        var iconLn = a.icon_url ? `\n   icon: ${a.icon_url}` : '';
+        return `${i + 1}. ${a.title}\n   id: ${a.short_id}\n   URL: ${a.base_url}${iconLn}\n   secret: ${a.secret}`;
+      });
       return [
         {
           text:
@@ -223,17 +224,49 @@ export class ChatusFatherService {
 
     if (state.kind === 'newapp_description') {
       const description = text === '-' ? undefined : text.slice(0, 200);
+      this.setState(userId, {
+        kind: 'newapp_icon',
+        title: state.title,
+        baseUrl: state.baseUrl,
+        description,
+      });
+      return [
+        {
+          text:
+            'Иконка в каталоге «Сервисы»: пришлите HTTPS-ссылку на картинку (PNG, WebP или SVG), например файл на том же Netlify/GitHub Pages.\n' +
+            'Или отправьте «-» чтобы без иконки.',
+        },
+      ];
+    }
+
+    if (state.kind === 'newapp_icon') {
+      let iconUrl: string | undefined;
+      if (text !== '-') {
+        let url: URL | null = null;
+        try {
+          url = new URL(text.trim());
+        } catch {
+          return [{ text: 'Нужна корректная HTTPS-ссылка на изображение или «-». Попробуйте ещё раз.' }];
+        }
+        if (url.protocol !== 'https:') {
+          return [{ text: 'Иконка только по HTTPS. Пришлите другой URL или «-».' }];
+        }
+        iconUrl = text.trim();
+      }
       try {
         const app = await this.miniApps.createApp(userId, {
           title: state.title,
           base_url: state.baseUrl,
-          description,
+          description: state.description,
+          icon_url: iconUrl,
         });
         this.setState(userId, { kind: 'idle' });
+        const iconLine = iconUrl ? `иконка: ${iconUrl}\n` : '';
         return [
           {
             text:
               `Приложение создано и опубликовано в «Сервисах».\n\n` +
+              iconLine +
               `id: ${app.short_id}\n` +
               `URL: ${app.base_url}\n` +
               `secret: ${app.secret}\n\n` +
