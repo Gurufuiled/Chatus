@@ -99,22 +99,45 @@ export function buildChannelInviteDeepLink(inviteToken: string): string {
   return `${CHANNEL_LINK_SCHEME}://join/${encodeURIComponent(inviteToken.trim())}`;
 }
 
-/** Resolve relative avatar URL (/uploads/xxx) to full URL using API host. */
+/**
+ * Avatars and static media live under `/uploads/` on the API host (see server `main.ts`).
+ * Prefer resolving via {@link resolveMediaUrl} so LAN/legacy absolute URLs in DB are rebased to `API_BASE_URL`.
+ */
 export function resolveAvatarUrl(avatarUrl: string | null | undefined): string | null {
-  if (!avatarUrl || typeof avatarUrl !== 'string') return null;
-  if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) return avatarUrl;
-  if (avatarUrl.startsWith('/uploads/')) {
-    try {
-      const url = new URL(API_BASE_URL);
-      return `${url.protocol}//${url.host}${avatarUrl}`;
-    } catch {
-      return avatarUrl;
-    }
-  }
-  return avatarUrl;
+  return resolveMediaUrl(avatarUrl);
 }
 
-/** Same rules as {@link resolveAvatarUrl}: post/video thumbnails and files under `/uploads/` need the API origin. */
+/**
+ * Turn stored media paths into the URL this build can fetch:
+ * - `/uploads/…` or `uploads/…` → current API origin + path
+ * - `http(s)://any-host/uploads/…` → same path/query on **current** API origin (fixes subscribers when DB has another host/port)
+ */
 export function resolveMediaUrl(url: string | null | undefined): string | null {
-  return resolveAvatarUrl(url);
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  try {
+    const api = new URL(API_BASE_URL);
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      const u = new URL(trimmed);
+      if (u.pathname.startsWith('/uploads/')) {
+        return `${api.origin}${u.pathname}${u.search}${u.hash}`;
+      }
+      return trimmed;
+    }
+
+    if (trimmed.startsWith('/uploads/')) {
+      return `${api.origin}${trimmed}`;
+    }
+
+    if (trimmed.startsWith('uploads/')) {
+      return `${api.origin}/${trimmed}`;
+    }
+
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
 }

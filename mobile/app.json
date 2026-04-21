@@ -1,6 +1,7 @@
 {
   "expo": {
     "plugins": [
+      "./plugins/withAndroidApkBasename",
       [
         "expo-build-properties",
         {
@@ -22,8 +23,8 @@
       "expo-video",
       "expo-asset"
     ],
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Chatus",
+    "slug": "chatus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

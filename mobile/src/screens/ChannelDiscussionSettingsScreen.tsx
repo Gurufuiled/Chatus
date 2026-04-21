@@ -9,23 +9,28 @@ import {
   View,
 } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
+import Feather from '@expo/vector-icons/Feather';
 import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelDiscussionSettings'>;
 
 /* ─── Toggle Row ─── */
 
 function ToggleRow({
+  icon,
+  iconColor,
   label,
   sublabel,
   value,
   onValueChange,
   disabled,
 }: {
+  icon: React.ComponentProps<typeof Feather>['name'];
+  iconColor: string;
   label: string;
   sublabel?: string;
   value: boolean;
@@ -34,11 +39,21 @@ function ToggleRow({
 }) {
   return (
     <View style={[styles.toggleRow, disabled && styles.toggleRowDisabled]}>
+      <View style={[styles.toggleIcon, { backgroundColor: withAlpha(iconColor, 0.14) }]}>
+        <Feather name={icon} size={17} color={iconColor} />
+      </View>
       <View style={styles.toggleBody}>
         <Text style={styles.toggleLabel}>{label}</Text>
         {sublabel ? <Text style={styles.toggleSublabel}>{sublabel}</Text> : null}
       </View>
-      <Switch value={value} onValueChange={onValueChange} disabled={disabled} />
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        trackColor={{ false: '#E5E7EB', true: withAlpha(colors.accent, 0.55) }}
+        thumbColor={value ? colors.accent : '#FAFAFA'}
+        ios_backgroundColor="#E5E7EB"
+      />
     </View>
   );
 }
@@ -171,7 +186,9 @@ export function ChannelDiscussionSettingsScreen() {
         <Text style={styles.sectionLabel}>КОММЕНТАРИИ</Text>
         <View style={styles.sectionCard}>
           <ToggleRow
-            label="Откл. комментарии к новым постам"
+            icon="message-square"
+            iconColor={colors.accent}
+            label="Откл. к новым постам"
             sublabel="Новые посты публикуются без комментариев"
             value={disableNew}
             onValueChange={(v) => void handleDisableNew(v)}
@@ -179,7 +196,9 @@ export function ChannelDiscussionSettingsScreen() {
           />
           <View style={styles.divider} />
           <ToggleRow
-            label="Откл. комментарии для всех постов"
+            icon="slash"
+            iconColor="#EF4444"
+            label="Откл. для всех постов"
             sublabel="Комментарии полностью отключены"
             value={disableAll}
             onValueChange={(v) => void handleDisableAll(v)}
@@ -188,15 +207,20 @@ export function ChannelDiscussionSettingsScreen() {
         </View>
 
         {disableAll ? (
-          <Text style={styles.hint}>
-            Комментарии отключены для всех постов. Это перекрывает настройку «только для новых».
-          </Text>
+          <View style={styles.noticeCard}>
+            <Feather name="info" size={15} color="#B45309" />
+            <Text style={styles.noticeText}>
+              Комментарии отключены для всех постов. Это перекрывает настройку «только для новых».
+            </Text>
+          </View>
         ) : null}
 
         {/* ─── Content restrictions ─── */}
         <Text style={styles.sectionLabel}>ОГРАНИЧЕНИЯ КОНТЕНТА</Text>
         <View style={styles.sectionCard}>
           <ToggleRow
+            icon="mic-off"
+            iconColor="#8A6DF1"
             label="Запретить голосовые"
             sublabel="Пользователи не смогут отправлять голосовые сообщения"
             value={disableVoice}
@@ -205,6 +229,8 @@ export function ChannelDiscussionSettingsScreen() {
           />
           <View style={styles.divider} />
           <ToggleRow
+            icon="image"
+            iconColor="#F59E0B"
             label="Запретить медиа"
             sublabel="Фото и видео в комментариях запрещены"
             value={disableMedia}
@@ -217,10 +243,13 @@ export function ChannelDiscussionSettingsScreen() {
         <Text style={styles.sectionLabel}>АНТИФЛУД</Text>
         <View style={styles.sectionCard}>
           <View style={styles.stepperRow}>
+            <View style={[styles.toggleIcon, { backgroundColor: withAlpha('#10B981', 0.14) }]}>
+              <Feather name="clock" size={17} color="#10B981" />
+            </View>
             <View style={styles.stepperBody}>
               <Text style={styles.stepperLabel}>Таймер между сообщениями</Text>
               <Text style={styles.stepperSublabel}>
-                Мин. интервал между сообщениями в обсуждении
+                Мин. интервал в обсуждении
               </Text>
             </View>
           </View>
@@ -234,10 +263,15 @@ export function ChannelDiscussionSettingsScreen() {
                 (!canEdit || cooldown <= 0) && styles.stepperBtnDisabled,
               ]}
             >
-              <Text style={styles.stepperBtnText}>−</Text>
+              <Feather name="minus" size={18} color={colors.accent} />
             </Pressable>
             <View style={styles.stepperValueWrap}>
-              <Text style={styles.stepperValue}>
+              <Text
+                style={[
+                  styles.stepperValue,
+                  cooldown === 0 && styles.stepperValueOff,
+                ]}
+              >
                 {cooldown === 0 ? 'Выкл' : `${cooldown} сек`}
               </Text>
             </View>
@@ -250,8 +284,17 @@ export function ChannelDiscussionSettingsScreen() {
                 (!canEdit || cooldown >= 15) && styles.stepperBtnDisabled,
               ]}
             >
-              <Text style={styles.stepperBtnText}>+</Text>
+              <Feather name="plus" size={18} color={colors.accent} />
             </Pressable>
+          </View>
+          <View style={styles.trackWrap}>
+            <View style={styles.trackBg} />
+            <View
+              style={[
+                styles.trackFill,
+                { width: `${(cooldown / 15) * 100}%` },
+              ]}
+            />
           </View>
         </View>
 
@@ -271,79 +314,131 @@ export function ChannelDiscussionSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F0F0F5' },
+  screen: { flex: 1, backgroundColor: '#F2F4F8' },
   container: { flex: 1 },
   content: { paddingBottom: 40 },
 
   /* Section */
   sectionLabel: {
-    marginTop: 24,
+    marginTop: 22,
     marginBottom: 8,
     marginLeft: 32,
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '700',
     color: '#6B7280',
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
   },
   sectionCard: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
 
   /* Toggle row */
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  toggleIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   toggleRowDisabled: { opacity: 0.5 },
-  toggleBody: { flex: 1, marginRight: 12 },
-  toggleLabel: { fontSize: 16, color: '#111827', fontWeight: '500' },
-  toggleSublabel: { marginTop: 2, fontSize: 13, color: '#9CA3AF', lineHeight: 17 },
+  toggleBody: { flex: 1 },
+  toggleLabel: { fontSize: 15.5, color: colors.textPrimary, fontWeight: '600', lineHeight: 20 },
+  toggleSublabel: { marginTop: 2, fontSize: 12.5, color: colors.textSecondary, lineHeight: 17 },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E3E4E8',
-    marginLeft: 16,
+    backgroundColor: colors.separator,
+    marginLeft: 64,
+  },
+
+  /* Notice */
+  noticeCard: {
+    marginTop: 8,
+    marginHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FEF3C7',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#FCD34D',
+  },
+  noticeText: {
+    flex: 1,
+    color: '#92400E',
+    fontSize: 12.5,
+    lineHeight: 17,
+    fontWeight: '500',
   },
 
   /* Stepper */
   stepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 4,
+    gap: 12,
   },
   stepperBody: { flex: 1 },
-  stepperLabel: { fontSize: 16, color: '#111827', fontWeight: '500' },
-  stepperSublabel: { marginTop: 2, fontSize: 13, color: '#9CA3AF', lineHeight: 17 },
+  stepperLabel: { fontSize: 15.5, color: colors.textPrimary, fontWeight: '600', lineHeight: 20 },
+  stepperSublabel: { marginTop: 2, fontSize: 12.5, color: colors.textSecondary, lineHeight: 17 },
   stepperControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 14,
-    paddingTop: 8,
+    paddingBottom: 10,
+    paddingTop: 10,
     gap: 16,
   },
   stepperBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#F0F0F5',
+    backgroundColor: withAlpha(colors.accent, 0.1),
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepperBtnPressed: { backgroundColor: '#E3E4E8' },
+  stepperBtnPressed: { backgroundColor: withAlpha(colors.accent, 0.18) },
   stepperBtnDisabled: { opacity: 0.35 },
-  stepperBtnText: { fontSize: 22, fontWeight: '600', color: colors.accent },
   stepperValueWrap: {
-    minWidth: 70,
+    minWidth: 88,
     alignItems: 'center',
   },
-  stepperValue: { fontSize: 18, fontWeight: '600', color: '#111827' },
+  stepperValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  stepperValueOff: { color: colors.textSecondary, fontWeight: '600' },
+  trackWrap: {
+    height: 4,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    justifyContent: 'center',
+  },
+  trackBg: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.inputBackground,
+    borderRadius: 2,
+  },
+  trackFill: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+  },
 
   /* Hint */
   hint: {

@@ -9,16 +9,25 @@ import {
   type NavigationProp,
 } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { ChatsStack } from './ChatsStack';
 import { SettingsStack } from './SettingsStack';
 import { ContactsScreen } from '../screens';
 import type { MainTabParamList } from './types';
-import { colors } from '../theme/colors';
+import { colors, withAlpha } from '../theme/colors';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_TAB_GLYPHS } from '../icons/telegram/tabPaths';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Feather from '@expo/vector-icons/Feather';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -91,25 +100,27 @@ function TabBarItem({
   );
 }
 
-function GroupChatIcon() {
-  const g = TELEGRAM_PROFILE_GLYPHS.groupAddMember;
+function QuickActionIconTile({
+  tint,
+  children,
+}: {
+  tint: string;
+  children: React.ReactNode;
+}) {
   return (
-    <View style={styles.quickActionIcon}>
-      <TelegramGlyph d={g.d} fillRule={g.fillRule} color={colors.accent} size={26} />
+    <View style={[styles.quickMenuIconTile, { backgroundColor: withAlpha(tint, 0.14) }]}>
+      <View style={[styles.quickMenuIconInner, { backgroundColor: tint }]}>{children}</View>
     </View>
   );
 }
 
+function GroupChatIcon() {
+  const g = TELEGRAM_PROFILE_GLYPHS.groupAddMember;
+  return <TelegramGlyph d={g.d} fillRule={g.fillRule} color="#FFFFFF" size={22} />;
+}
+
 function ChannelIcon() {
-  return (
-    <View style={styles.quickActionIcon}>
-      <MaterialCommunityIcons
-        name="bullhorn-outline"
-        color={colors.accent}
-        size={25}
-      />
-    </View>
-  );
+  return <MaterialCommunityIcons name="bullhorn" color="#FFFFFF" size={20} />;
 }
 
 function ChatsQuickActionsMenu({
@@ -125,40 +136,103 @@ function ChatsQuickActionsMenu({
   onCreateChannel: () => void;
   bottomInset: number;
 }) {
+  const [mounted, setMounted] = React.useState(visible);
+  const progress = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    } else if (mounted) {
+      Animated.timing(progress, {
+        toValue: 0,
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setMounted(false);
+      });
+    }
+  }, [visible, mounted, progress]);
+
+  if (!mounted) return null;
+
+  const backdropOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const cardTranslate = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [24, 0],
+  });
+  const cardOpacity = progress.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0, 0.4, 1],
+  });
+  const cardScale = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.96, 1],
+  });
+
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+    <Modal transparent visible={mounted} animationType="none" onRequestClose={onClose}>
       <View style={styles.menuRoot}>
-        <Pressable style={styles.menuBackdrop} onPress={onClose} />
-        <View style={[styles.quickMenuCard, { marginBottom: 86 + bottomInset }]}>
+        <Animated.View style={[styles.menuBackdrop, { opacity: backdropOpacity }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.quickMenuCard,
+            {
+              marginBottom: 86 + bottomInset,
+              opacity: cardOpacity,
+              transform: [{ translateY: cardTranslate }, { scale: cardScale }],
+            },
+          ]}
+        >
           <Pressable
             onPress={onCreateGroup}
+            android_ripple={{ color: withAlpha(colors.accent, 0.08) }}
             style={({ pressed }) => [
               styles.quickMenuButton,
               pressed && styles.quickMenuButtonPressed,
             ]}
           >
-            <View style={styles.quickMenuIconWrap}>
+            <QuickActionIconTile tint="#8A6DF1">
               <GroupChatIcon />
-            </View>
+            </QuickActionIconTile>
             <View style={styles.quickMenuTextWrap}>
               <Text style={styles.quickMenuTitle}>Создать группу</Text>
+              <Text style={styles.quickMenuSubtitle}>До 200 000 участников</Text>
             </View>
+            <Feather name="chevron-right" size={18} color={colors.textSecondary} />
           </Pressable>
+
+          <View style={styles.quickMenuSeparator} />
+
           <Pressable
             onPress={onCreateChannel}
+            android_ripple={{ color: withAlpha(colors.accent, 0.08) }}
             style={({ pressed }) => [
               styles.quickMenuButton,
               pressed && styles.quickMenuButtonPressed,
             ]}
           >
-            <View style={styles.quickMenuIconWrap}>
+            <QuickActionIconTile tint={colors.accent}>
               <ChannelIcon />
-            </View>
+            </QuickActionIconTile>
             <View style={styles.quickMenuTextWrap}>
               <Text style={styles.quickMenuTitle}>Создать канал</Text>
+              <Text style={styles.quickMenuSubtitle}>Публикации для аудитории</Text>
             </View>
+            <Feather name="chevron-right" size={18} color={colors.textSecondary} />
           </Pressable>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -394,49 +468,70 @@ const styles = StyleSheet.create({
   },
   menuBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(17, 24, 39, 0.12)',
+    backgroundColor: 'rgba(15, 23, 42, 0.28)',
   },
   quickMenuCard: {
-    width: 228,
-    borderRadius: 14,
+    width: 280,
+    borderRadius: 18,
+    paddingVertical: 6,
     backgroundColor: colors.inputBackgroundSolid,
-    shadowColor: '#1F2937',
-    shadowOpacity: 0.16,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 14,
   },
   quickMenuButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     gap: 12,
+    borderRadius: 14,
+    marginHorizontal: 4,
   },
   quickMenuButtonPressed: {
-    opacity: 0.92,
+    backgroundColor: withAlpha('#0F172A', 0.04),
   },
-  quickMenuIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  quickMenuIconTile: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.inputBackground,
   },
-  quickActionIcon: {
-    width: 28,
-    height: 28,
+  quickMenuIconInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  quickMenuSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+    marginHorizontal: 18,
+    marginVertical: 2,
   },
   quickMenuTextWrap: {
     flex: 1,
   },
   quickMenuTitle: {
-    fontSize: 15,
+    fontSize: 15.5,
     fontWeight: '700',
     color: colors.textPrimary,
     lineHeight: 20,
+  },
+  quickMenuSubtitle: {
+    marginTop: 2,
+    fontSize: 12.5,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
 });
