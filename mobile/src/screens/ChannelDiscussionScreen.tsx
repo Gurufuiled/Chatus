@@ -41,6 +41,8 @@ import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors } from '../theme/colors';
+import { resolveMediaUrl } from '../config';
+import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import {
   ChatContextMenuOverlay,
   ChatInputDock,
@@ -246,11 +248,13 @@ function DiscussionMessageBubble({
     }
 
     if (item.msg_type === 'voice' && media) {
+      const voiceUri =
+        resolveVoiceMessageUri(item) ?? media.remote_url ?? `file://${item.id}`;
       return (
         <View style={styles.mediaWrap}>
           {replySnippet}
           <VoiceBubble
-            uri={media.remote_url ?? `file://${item.id}`}
+            uri={voiceUri}
             waveform={media.waveform ?? []}
             durationMs={media.duration_ms ?? 0}
             isMe={isMe}
@@ -263,13 +267,20 @@ function DiscussionMessageBubble({
     }
 
     if (item.msg_type === 'video_note' && media?.remote_url) {
+      const vnUri =
+        resolveVoiceMessageUri(item) ??
+        resolveMediaUrl(media.remote_url) ??
+        media.remote_url;
+      const vnThumb = media.thumbnail_url
+        ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+        : undefined;
       return (
         <View style={styles.mediaWrap}>
           {replySnippet}
           <VideoNoteBubble
             messageId={item.id}
-            uri={media.remote_url}
-            thumbnailUri={media.thumbnail_url ?? undefined}
+            uri={vnUri}
+            thumbnailUri={vnThumb}
             durationMs={media.duration_ms ?? 0}
             isMe={isMe}
             time={time}
@@ -282,11 +293,12 @@ function DiscussionMessageBubble({
     }
 
     if (item.msg_type === 'image' && media?.remote_url) {
+      const imgUri = resolveMediaUrl(media.remote_url) ?? media.remote_url;
       return (
         <View style={styles.mediaWrap}>
           {replySnippet}
           <ImageBubble
-            uri={media.remote_url}
+            uri={imgUri}
             isMe={isMe}
             width={media.width}
             height={media.height}
@@ -300,12 +312,16 @@ function DiscussionMessageBubble({
     }
 
     if (item.msg_type === 'video' && media?.remote_url) {
+      const vidUri = resolveMediaUrl(media.remote_url) ?? media.remote_url;
+      const vidThumb = media.thumbnail_url
+        ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+        : undefined;
       return (
         <View style={styles.mediaWrap}>
           {replySnippet}
           <VideoBubble
-            uri={media.remote_url}
-            thumbnailUri={media.thumbnail_url ?? undefined}
+            uri={vidUri}
+            thumbnailUri={vidThumb}
             isMe={isMe}
             width={media.width}
             height={media.height}
@@ -320,13 +336,18 @@ function DiscussionMessageBubble({
     }
 
     if (item.msg_type === 'file' && media) {
+      const rawFile = media.remote_url ?? '';
+      const fileUri =
+        rawFile.trim().length > 0
+          ? resolveMediaUrl(rawFile) ?? rawFile
+          : undefined;
       return (
         <View style={styles.mediaWrap}>
           {replySnippet}
           <FileBubble
             fileName={media.file_name ?? item.content ?? 'File'}
             fileSize={media.file_size}
-            uri={media.remote_url ?? undefined}
+            uri={fileUri}
             isMe={isMe}
             caption={item.content ?? undefined}
             time={time}
@@ -365,7 +386,7 @@ function DiscussionMessageBubble({
   );
 }
 
-function scaleMedia(media: Message['media'][number] | undefined, maxWidth: number) {
+function scaleMedia(media: NonNullable<Message['media']>[number] | undefined, maxWidth: number) {
   const w = media?.width ?? 0;
   const h = media?.height ?? 0;
   if (!w || !h) return null;
@@ -403,7 +424,7 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
       <View style={styles.originalPostAlign}>
         {post.msg_type === 'image' && media?.remote_url ? (
           <ImageBubble
-            uri={media.remote_url}
+            uri={resolveMediaUrl(media.remote_url) ?? media.remote_url}
             isMe={false}
             width={media.width}
             height={media.height}
@@ -417,8 +438,12 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
         ) : null}
         {post.msg_type === 'video' && media?.remote_url ? (
           <VideoBubble
-            uri={media.remote_url}
-            thumbnailUri={media.thumbnail_url ?? undefined}
+            uri={resolveMediaUrl(media.remote_url) ?? media.remote_url}
+            thumbnailUri={
+              media.thumbnail_url
+                ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+                : undefined
+            }
             isMe={false}
             width={media.width}
             height={media.height}
@@ -432,7 +457,11 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
         ) : null}
         {post.msg_type === 'voice' && media ? (
           <VoiceBubble
-            uri={media.remote_url ?? `file://${post.id}`}
+            uri={
+              resolveVoiceMessageUri(post) ??
+              media.remote_url ??
+              `file://${post.id}`
+            }
             waveform={media.waveform ?? []}
             durationMs={media.duration_ms ?? 0}
             isMe={false}
@@ -444,8 +473,12 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
         {post.msg_type === 'video_note' && media?.remote_url ? (
           <VideoNoteBubble
             messageId={post.id}
-            uri={media.remote_url}
-            thumbnailUri={media.thumbnail_url ?? undefined}
+            uri={resolveVoiceMessageUri(post) ?? resolveMediaUrl(media.remote_url) ?? media.remote_url}
+            thumbnailUri={
+              media.thumbnail_url
+                ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+                : undefined
+            }
             durationMs={media.duration_ms ?? 0}
             isMe={false}
             time={time}

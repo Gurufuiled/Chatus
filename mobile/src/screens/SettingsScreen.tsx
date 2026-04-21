@@ -13,7 +13,6 @@ import {
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import { authStore } from '../stores/authStore';
 import { authService, apiUserToUserRow } from '../services/AuthService';
@@ -22,6 +21,7 @@ import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 import { SettingsIconRow } from '../components/settings/SettingsIconRow';
 import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
 import { colors, withAlpha } from '../theme/colors';
@@ -43,6 +43,7 @@ export function SettingsScreen() {
   const [savingDisplayName, setSavingDisplayName] = useState(false);
   const [savingHandle, setSavingHandle] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -74,40 +75,33 @@ export function SettingsScreen() {
     }
   }, []);
 
-  const handleAvatarTap = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow access to photos to change avatar.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets[0]) return;
+  const handleAvatarTap = useCallback(() => {
+    setAvatarSheetVisible(true);
+  }, []);
 
-    setUploadingAvatar(true);
-    setError(null);
-    try {
-      const asset = result.assets[0];
-      const uploadRes = await apiUpload({
-        uri: asset.uri,
-        name: asset.fileName ?? 'avatar.jpg',
-        type: asset.mimeType ?? 'image/jpeg',
-      });
-      const avatarUrl = typeof uploadRes.url === 'string' ? uploadRes.url : (uploadRes as { url: string }).url;
-      const updated = await updateProfile({ avatar_url: avatarUrl });
-      setProfile((prev) => (prev ? { ...prev, avatar_url: updated.avatar_url } : null));
-      await authService.saveUserToLocal(updated);
-      syncAuthStore(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to upload avatar');
-    } finally {
-      setUploadingAvatar(false);
-    }
-  }, [syncAuthStore]);
+  const handleAvatarPicked = useCallback(
+    async (pick: AvatarPickResult) => {
+      setUploadingAvatar(true);
+      setError(null);
+      try {
+        const uploadRes = await apiUpload({
+          uri: pick.uri,
+          name: pick.name,
+          type: pick.type,
+        });
+        const avatarUrlRaw = typeof uploadRes.url === 'string' ? uploadRes.url : (uploadRes as { url: string }).url;
+        const updated = await updateProfile({ avatar_url: avatarUrlRaw });
+        setProfile((prev) => (prev ? { ...prev, avatar_url: updated.avatar_url } : null));
+        await authService.saveUserToLocal(updated);
+        syncAuthStore(updated);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to upload avatar');
+      } finally {
+        setUploadingAvatar(false);
+      }
+    },
+    [syncAuthStore],
+  );
 
   const handleSaveDisplayName = useCallback(async () => {
     const trimmed = displayName.trim();
@@ -184,6 +178,7 @@ export function SettingsScreen() {
   }
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -378,9 +373,16 @@ export function SettingsScreen() {
           />
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
-  );
-}
+      </KeyboardAvoidingView>
+      <AvatarPickSheet
+        visible={avatarSheetVisible}
+        onClose={() => setAvatarSheetVisible(false)}
+        onPick={(pick) => void handleAvatarPicked(pick)}
+        subtitle="Фото профиля"
+      />
+    </>
+    );
+  }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.chatBackground },

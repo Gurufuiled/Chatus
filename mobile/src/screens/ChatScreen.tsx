@@ -84,6 +84,8 @@ import {
 } from './chatScreen.shared';
 import { formatMediaDuration, formatPlaybackElapsedDuration } from '../utils/mediaDuration';
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
+import { resolveMediaUrl } from '../config';
+import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
 type ChatNavigation = NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
@@ -144,7 +146,9 @@ function MediaAlbumBubble({
 
   const renderTile = (item: VisualMediaItem, index: number, style: object) => {
     const kind = getVisualMediaKind(message, item);
-    const uri = kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
+    const rawUri =
+      kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
+    const uri = resolveMediaUrl(rawUri?.trim() ?? null) ?? rawUri ?? '';
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
     return (
@@ -1515,9 +1519,11 @@ export function ChatScreen() {
     if (item.msg_type === 'voice' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
       const forwardHeader = replySnippet ? null : renderForwardHeader();
+      const voiceUri =
+        resolveVoiceMessageUri(item) ?? item.media[0].remote_url ?? `file://${item.id}`;
       const voiceContent = (
         <VoiceBubble
-          uri={item.media[0].remote_url ?? `file://${item.id}`}
+          uri={voiceUri}
           waveform={item.media[0].waveform ?? []}
           durationMs={item.media[0].duration_ms ?? 0}
           isMe={isMe}
@@ -1554,8 +1560,12 @@ export function ChatScreen() {
 
     if (item.msg_type === 'video_note' && item.media?.[0]) {
       const media = item.media[0];
-      const videoUri = media.remote_url?.trim() ?? '';
+      const rawVideo = media.remote_url?.trim() ?? '';
+      const videoUri = resolveMediaUrl(rawVideo || null) ?? rawVideo;
       if (!videoUri) return null;
+      const thumbNote = media.thumbnail_url
+        ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+        : undefined;
 
       const replySnippet = renderReplySnippet();
       const forwardHeader = replySnippet ? null : renderForwardHeader();
@@ -1563,7 +1573,7 @@ export function ChatScreen() {
         <VideoNoteBubble
           messageId={item.id}
           uri={videoUri}
-          thumbnailUri={media.thumbnail_url ?? undefined}
+          thumbnailUri={thumbNote}
           durationMs={media.duration_ms ?? 0}
           isMe={isMe}
           time={formatTime(item.created_at)}
@@ -1638,7 +1648,8 @@ export function ChatScreen() {
 
     if (item.msg_type === 'image') {
       const media = item.media?.[0];
-      const imageUri = media?.remote_url ?? '';
+      const rawImage = media?.remote_url ?? '';
+      const imageUri = resolveMediaUrl(rawImage.trim() || null) ?? rawImage;
       if (!imageUri.trim()) return null;
 
       const replySnippet = renderReplySnippet();
@@ -1682,15 +1693,19 @@ export function ChatScreen() {
 
     if (item.msg_type === 'video') {
       const media = item.media?.[0];
-      const videoUri = media?.remote_url ?? '';
+      const rawVideo = media?.remote_url ?? '';
+      const videoUri = resolveMediaUrl(rawVideo.trim() || null) ?? rawVideo;
       if (!videoUri.trim()) return null;
+      const thumbVideo = media?.thumbnail_url
+        ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+        : undefined;
 
       const replySnippet = renderReplySnippet();
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const videoContent = (
         <VideoBubble
           uri={videoUri}
-          thumbnailUri={media?.thumbnail_url ?? undefined}
+          thumbnailUri={thumbVideo}
           isMe={isMe}
           width={media?.width}
           height={media?.height}
@@ -1728,13 +1743,18 @@ export function ChatScreen() {
 
     if (item.msg_type === 'file' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
+      const rawFile = item.media[0].remote_url ?? '';
+      const fileUri =
+        rawFile.trim().length > 0
+          ? resolveMediaUrl(rawFile) ?? rawFile
+          : undefined;
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
           {replySnippet}
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
             fileSize={item.media[0].file_size}
-            uri={item.media[0].remote_url ?? undefined}
+            uri={fileUri}
             isMe={isMe}
             caption={item.content ?? undefined}
             time={formatTime(item.created_at)}

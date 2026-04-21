@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
+  ActivityIndicator,
   Dimensions,
   Image,
   Modal,
@@ -106,10 +107,12 @@ export function ImageBubble({
   const [imageLoaded, setImageLoaded] = useState(() =>
     normalizedUri.length > 0 && loadedImageUris.has(normalizedUri)
   );
+  const [loadError, setLoadError] = useState(false);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
+    setLoadError(false);
     setImageLoaded(normalizedUri.length > 0 && loadedImageUris.has(normalizedUri));
 
     if (fixedSize && propWidth && propHeight) {
@@ -144,6 +147,15 @@ export function ImageBubble({
       cancelled = true;
     };
   }, [normalizedUri, propWidth, propHeight, fixedSize]);
+
+  /** Avoid endless gray placeholder if decode callbacks never fire (seen on some Android builds). */
+  useEffect(() => {
+    if (!normalizedUri || imageLoaded || loadError) return;
+    const t = setTimeout(() => {
+      setImageLoaded(true);
+    }, 35000);
+    return () => clearTimeout(t);
+  }, [normalizedUri, imageLoaded, loadError]);
 
   const handlePress = useCallback(() => {
     if (onOpenFullscreen) {
@@ -184,30 +196,31 @@ export function ImageBubble({
             embedded && styles.imageWrapperEmbedded,
           ]}
         >
-          {!imageLoaded ? (
-            <View
-              pointerEvents="none"
-              style={[
-                styles.imagePlaceholder,
-                { width: w, height: h },
-              ]}
-            />
+          {!imageLoaded && !loadError ? (
+            <View pointerEvents="none" style={[styles.loadingOverlay, { width: w, height: h }]}>
+              <ActivityIndicator color={colors.iconMuted} />
+            </View>
+          ) : null}
+          {loadError ? (
+            <View pointerEvents="none" style={[styles.errorOverlay, { width: w, height: h }]}>
+              <Feather name="image" size={28} color={colors.iconMuted} />
+            </View>
           ) : null}
           <Image
             source={{ uri: normalizedUri }}
             fadeDuration={0}
-            onError={() => setImageLoaded(true)}
+            onError={() => {
+              setLoadError(true);
+              setImageLoaded(true);
+            }}
             onLoad={() => {
               if (normalizedUri) {
                 loadedImageUris.add(normalizedUri);
               }
+              setLoadError(false);
               setImageLoaded(true);
             }}
-            style={[
-              styles.image,
-              { width: w, height: h },
-              !imageLoaded && styles.imageHidden,
-            ]}
+            style={[styles.image, { width: w, height: h }]}
             resizeMode={resizeMode}
           />
 
@@ -256,7 +269,7 @@ export function ImageBubble({
           <Pressable style={styles.fullscreenBackdrop} onPress={handleClose}>
             <View style={styles.fullscreenContent}>
               <Image
-                source={{ uri }}
+                source={{ uri: normalizedUri }}
                 style={styles.fullscreenImage}
                 resizeMode="contain"
               />
@@ -318,16 +331,23 @@ const styles = StyleSheet.create({
   imageWrapperEmbedded: {
     borderRadius: 0,
   },
-  imagePlaceholder: {
+  loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(243, 244, 246, 0.92)',
+    zIndex: 1,
+  },
+  errorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.placeholderBg,
+    zIndex: 1,
   },
   image: {
     maxWidth: MAX_BUBBLE_WIDTH,
     maxHeight: MAX_BUBBLE_HEIGHT,
-  },
-  imageHidden: {
-    opacity: 0,
   },
   overlayMeta: {
     position: 'absolute',

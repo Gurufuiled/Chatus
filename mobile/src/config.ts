@@ -11,7 +11,9 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_API_URL'
   | 'EXPO_PUBLIC_USE_EMULATOR'
   | 'EXPO_PUBLIC_USE_MOCKS'
-  | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID';
+  | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID'
+  /** Plain hostname or IPv4 — physical iPhone cannot reach Mac `localhost`; set LAN IP when using http://localhost in EXPO_PUBLIC_API_URL. */
+  | 'EXPO_PUBLIC_IOS_DEV_HOST';
 
 function readExpoPublic(key: PublicEnvKey): string | undefined {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
@@ -30,27 +32,56 @@ const forceEmulator = readExpoPublic('EXPO_PUBLIC_USE_EMULATOR') === 'true';
 const forceDevice = readExpoPublic('EXPO_PUBLIC_USE_EMULATOR') === 'false';
 
 /**
+ * Physical iPhone: localhost/127.0.0.1 points at the phone, not your dev machine.
+ * Set EXPO_PUBLIC_IOS_DEV_HOST to your Mac/PC LAN IP or hostname when testing on device.
+ */
+function rewriteIosPhysicalDeviceApiUrl(urlString: string): string {
+  if (Platform.OS !== 'ios') return urlString;
+  if (!Constants.isDevice) return urlString;
+
+  const devHost = readExpoPublic('EXPO_PUBLIC_IOS_DEV_HOST')?.trim();
+  if (!devHost) return urlString;
+
+  try {
+    const url = new URL(urlString);
+    if (url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+      return urlString;
+    }
+    url.hostname = devHost;
+    return url.toString();
+  } catch {
+    return urlString;
+  }
+}
+
+/**
  * Resolve API URL for Android:
  * - Реальный прод/девайс с IP/доменом: всегда как в .env (extra).
  * - Только при явном EXPO_PUBLIC_USE_EMULATOR=true: localhost/192.168.x → 10.0.2.2 для AVD.
  * Раньше localhost + (!Constants.isDevice) давал 10.0.2.2 на части телефонов при пустом process.env.
  */
 function resolveApiUrl(): string {
-  if (Platform.OS !== 'android') return envApiUrl;
-  try {
-    const url = new URL(envApiUrl);
-    if (forceDevice) return envApiUrl;
-    if (forceEmulator) {
-      if (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname.startsWith('192.168.')) {
-        url.hostname = '10.0.2.2';
-        return url.toString();
+  let resolved = envApiUrl;
+
+  if (Platform.OS === 'android') {
+    try {
+      const url = new URL(envApiUrl);
+      if (!forceDevice && forceEmulator) {
+        if (
+          url.hostname === '127.0.0.1' ||
+          url.hostname === 'localhost' ||
+          url.hostname.startsWith('192.168.')
+        ) {
+          url.hostname = '10.0.2.2';
+          resolved = url.toString();
+        }
       }
-      return envApiUrl;
+    } catch {
+      resolved = envApiUrl;
     }
-    return envApiUrl;
-  } catch {
-    return envApiUrl;
   }
+
+  return rewriteIosPhysicalDeviceApiUrl(resolved);
 }
 
 export const API_BASE_URL = resolveApiUrl();
@@ -120,16 +151,30 @@ export function resolveMediaUrl(url: string | null | undefined): string | null {
   try {
     const api = new URL(API_BASE_URL);
 
+    const rebasedUploadsPath = (pathname: string, search: string, hash: string): string | null => {
+      let p = pathname;
+      // Legacy wrong prefix from some clients / proxies: `/api/uploads/...` → static is `/uploads/...`
+      if (p.startsWith('/api/uploads/')) {
+        p = p.replace(/^\/api(?=\/uploads\/)/, '');
+      }
+      if (p.startsWith('/uploads/')) {
+        return `${api.origin}${p}${search}${hash}`;
+      }
+      return null;
+    };
+
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       const u = new URL(trimmed);
-      if (u.pathname.startsWith('/uploads/')) {
-        return `${api.origin}${u.pathname}${u.search}${u.hash}`;
-      }
+      const rebased = rebasedUploadsPath(u.pathname, u.search, u.hash);
+      if (rebased) return rebased;
       return trimmed;
     }
 
-    if (trimmed.startsWith('/uploads/')) {
-      return `${api.origin}${trimmed}`;
+    if (trimmed.startsWith('/uploads/') || trimmed.startsWith('/api/uploads/')) {
+      const pathOnly = trimmed.startsWith('/api/')
+        ? trimmed.replace(/^\/api(?=\/uploads\/)/, '')
+        : trimmed;
+      return `${api.origin}${pathOnly}`;
     }
 
     if (trimmed.startsWith('uploads/')) {

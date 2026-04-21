@@ -7,6 +7,9 @@
         {
           "android": {
             "usesCleartextTraffic": true
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
           }
         }
       ],
@@ -21,7 +24,15 @@
         }
       ],
       "expo-video",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Разрешите доступ к фото для выбора изображений и аватара.",
+          "cameraPermission": "Разрешите доступ к камере для съёмки и аватара."
+        }
+      ],
+      "./plugins/withIosProductionPlist"
     ],
     "name": "Chatus",
     "slug": "chatus",
@@ -39,7 +50,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.mobile",
       "infoPlist": {
+        "CFBundleDisplayName": "Chatus",
+        "LSMinimumSystemVersion": "15.1",
         "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
           "NSExceptionDomains": {
             "45.11.93.210": {
               "NSExceptionAllowsInsecureHTTPLoads": true,

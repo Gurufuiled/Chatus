@@ -1,3 +1,5 @@
+export { AvatarPickSheet } from './AvatarPickSheet';
+export type { AvatarPickResult } from './AvatarPickSheet';
 export { BubbleTail } from './BubbleTail';
 export { ChatListRow } from './ChatListRow';
 export { ChatListActionsMenu } from './ChatListActionsMenu';

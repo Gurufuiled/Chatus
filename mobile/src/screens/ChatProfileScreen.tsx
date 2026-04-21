@@ -48,6 +48,7 @@ import { messageStore } from '../stores/messageStore';
 import type { Message } from '../stores/types';
 import { uiStore } from '../stores/uiStore';
 import { colors, withAlpha } from '../theme/colors';
+import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
 
 type ChatProfileRoute = RouteProp<ChatsStackParamList, 'ChatProfile'>;
@@ -457,7 +458,7 @@ export function ChatProfileScreen() {
         .map((message) => ({
           id: message.id,
           kind: message.msg_type === 'video_note' ? 'video_note' : 'voice',
-          uri: extractRemoteMediaUri(message),
+          uri: resolveVoiceMessageUri(message),
           thumbnailUri:
             message.msg_type === 'video_note'
               ? resolveAvatarUrl(message.media?.[0]?.thumbnail_url ?? null) ?? undefined

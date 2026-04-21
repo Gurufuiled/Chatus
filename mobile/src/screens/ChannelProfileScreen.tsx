@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   Pressable,
   ScrollView,
@@ -9,6 +10,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,6 +39,14 @@ import { formatMediaDuration } from '../utils/mediaDuration';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelProfile'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelProfile'>;
+
+const CHANNEL_HERO_SCREEN_W = Dimensions.get('window').width;
+const CHANNEL_HERO_COLLAPSED = 88;
+const CHANNEL_HERO_EXPANDED_W = CHANNEL_HERO_SCREEN_W - 56;
+const CHANNEL_HERO_EXPANDED_H = Math.min(
+  Math.max(CHANNEL_HERO_EXPANDED_W * 1.02, 280),
+  420,
+);
 
 function extractRemoteMediaUri(message: Message): string | null {
   const media = message.media?.[0];
@@ -87,6 +104,72 @@ export function ChannelProfileScreen() {
   const [selectedMediaIndex, setSelectedMediaIndex] = React.useState<number | null>(null);
   const [leaveBusy, setLeaveBusy] = React.useState(false);
   const [leaveConfirmVisible, setLeaveConfirmVisible] = React.useState(false);
+  const [isAvatarExpanded, setIsAvatarExpanded] = React.useState(false);
+  const avatarProgress = useSharedValue(0);
+
+  const channelHeroAvatarUrl = React.useMemo(
+    () =>
+      detail?.channel ? resolveAvatarUrl(detail.channel.avatar_url ?? null) : null,
+    [detail?.channel?.avatar_url],
+  );
+
+  React.useEffect(() => {
+    avatarProgress.value = withSpring(isAvatarExpanded ? 1 : 0, {
+      damping: 22,
+      stiffness: 185,
+      mass: 0.94,
+      overshootClamping: true,
+    });
+  }, [avatarProgress, isAvatarExpanded]);
+
+  React.useEffect(() => {
+    if (!channelHeroAvatarUrl) setIsAvatarExpanded(false);
+  }, [channelHeroAvatarUrl]);
+
+  const toggleChannelAvatarExpanded = React.useCallback(() => {
+    if (!channelHeroAvatarUrl) return;
+    setIsAvatarExpanded((prev) => !prev);
+  }, [channelHeroAvatarUrl]);
+
+  const heroAvatarGesture = React.useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(Boolean(channelHeroAvatarUrl))
+        .maxPointers(1)
+        .activeOffsetY(8)
+        .failOffsetX([-18, 18])
+        .onEnd((event) => {
+          if (!channelHeroAvatarUrl) return;
+
+          if (!isAvatarExpanded && event.translationY > 34) {
+            runOnJS(setIsAvatarExpanded)(true);
+            return;
+          }
+
+          if (isAvatarExpanded && event.translationY < -28) {
+            runOnJS(setIsAvatarExpanded)(false);
+          }
+        }),
+    [channelHeroAvatarUrl, isAvatarExpanded],
+  );
+
+  const heroAvatarFrameStyle = useAnimatedStyle(() => ({
+    width: interpolate(
+      avatarProgress.value,
+      [0, 1],
+      [CHANNEL_HERO_COLLAPSED, CHANNEL_HERO_EXPANDED_W],
+    ),
+    height: interpolate(
+      avatarProgress.value,
+      [0, 1],
+      [CHANNEL_HERO_COLLAPSED, CHANNEL_HERO_EXPANDED_H],
+    ),
+    borderRadius: interpolate(avatarProgress.value, [0, 1], [44, 14]),
+  }));
+
+  const heroAvatarMarginStyle = useAnimatedStyle(() => ({
+    marginBottom: interpolate(avatarProgress.value, [0, 1], [10, 14]),
+  }));
 
   const showSnackbar = React.useCallback((message: string) => {
     setSnackbar(message);
@@ -256,7 +339,6 @@ export function ChannelProfileScreen() {
       ? buildChannelSlugDeepLink(channel.slug.trim())
       : null;
   const description = channel.description?.trim() || 'Описание не указано';
-  const avatarUrl = resolveAvatarUrl(channel.avatar_url ?? null);
 
   const canManageAdmins = detail.channel_permissions?.can_manage_admins === true;
   const canAdminOps =
@@ -299,13 +381,38 @@ export function ChannelProfileScreen() {
             </Pressable>
           ) : null}
 
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initial}</Text>
-            </View>
-          )}
+          <GestureDetector gesture={heroAvatarGesture}>
+            <Pressable
+              onPress={toggleChannelAvatarExpanded}
+              disabled={!channelHeroAvatarUrl}
+              style={({ pressed }) => [
+                styles.avatarPressable,
+                channelHeroAvatarUrl && pressed && styles.avatarPressablePressed,
+              ]}
+            >
+              <Reanimated.View style={[styles.avatarAnimatedWrap, heroAvatarMarginStyle]}>
+                <Reanimated.View
+                  style={[
+                    styles.avatarFrame,
+                    heroAvatarFrameStyle,
+                    !channelHeroAvatarUrl ? { backgroundColor: '#FF6D6D' } : null,
+                  ]}
+                >
+                  {channelHeroAvatarUrl ? (
+                    <Image
+                      source={{ uri: channelHeroAvatarUrl }}
+                      style={styles.avatarMedia}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.avatarLetterWrap}>
+                      <Text style={styles.avatarText}>{initial}</Text>
+                    </View>
+                  )}
+                </Reanimated.View>
+              </Reanimated.View>
+            </Pressable>
+          </GestureDetector>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>{channel.subscriber_count ?? 0} подписчиков</Text>
         </View>
@@ -512,18 +619,26 @@ const styles = StyleSheet.create({
   editPillPressed: { opacity: 0.82 },
   editPlus: { color: colors.accent, fontWeight: '800', fontSize: 18, marginTop: -1 },
   editText: { color: '#111827', fontSize: 17, fontWeight: '600' },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+  avatarPressable: {
+    alignSelf: 'center',
+  },
+  avatarPressablePressed: {
+    opacity: 0.92,
+  },
+  avatarAnimatedWrap: {
+    alignSelf: 'center',
+  },
+  avatarFrame: {
+    overflow: 'hidden',
+  },
+  avatarMedia: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarLetterWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FF6D6D',
-  },
-  avatarImage: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
   },
   avatarText: { color: '#FFFFFF', fontSize: 42, fontWeight: '700' },
   title: { marginTop: 10, fontSize: 34, lineHeight: 40, color: '#111827', fontWeight: '500' },

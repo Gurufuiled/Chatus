@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import * as ImagePicker from 'expo-image-picker';
 import {
   Alert,
   Animated,
@@ -26,6 +25,7 @@ import {
   DEFAULT_MEMBER_TAG_COLOR,
   isGroupMemberTagColor,
 } from '../components/group-profile/groupProfile.constants';
+import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 import { FloatingVideoNoteOverlay } from '../components/FloatingVideoNoteOverlay';
 import { GroupProfileHeaderSection } from '../components/group-profile/GroupProfileHeaderSection';
 import { GroupProfileMediaContent } from '../components/group-profile/GroupProfileMediaContent';
@@ -67,6 +67,7 @@ import {
   getGroupMemberPickerContacts,
   mergeGroupMemberPickerUsers,
 } from '../utils/groupMemberPicker';
+import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 
 type GroupProfileRoute = RouteProp<ChatsStackParamList, 'GroupProfile'>;
 type GroupProfileNavigation = NativeStackNavigationProp<ChatsStackParamList, 'GroupProfile'>;
@@ -376,6 +377,7 @@ export function GroupProfileScreen() {
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(null);
   const [floatingVideoNote, setFloatingVideoNote] = useState<GroupVoiceItem | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
   const [memberMenu, setMemberMenu] = useState<MemberContextMenuState>(null);
@@ -502,7 +504,7 @@ export function GroupProfileScreen() {
         .map((message) => ({
           id: message.id,
           kind: message.msg_type === 'video_note' ? 'video_note' : 'voice',
-          uri: extractRemoteMediaUri(message),
+          uri: resolveVoiceMessageUri(message),
           thumbnailUri:
             message.msg_type === 'video_note'
               ? extractPreviewMediaUri(message) ?? undefined
@@ -875,29 +877,17 @@ export function GroupProfileScreen() {
     setIsEditMode(false);
   }, [chat, hydrateDraftsFromChat]);
 
-  const handlePickAvatar = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Нужен доступ', 'Разреши доступ к фото, чтобы изменить аватар группы.');
-      return;
-    }
+  const openAvatarPickerSheet = useCallback(() => {
+    setAvatarSheetVisible(true);
+  }, []);
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.82,
-    });
-
-    if (result.canceled || !result.assets[0]) return;
-
+  const handleAvatarPicked = useCallback(async (pick: AvatarPickResult) => {
     setAvatarUploading(true);
     try {
-      const asset = result.assets[0];
       const uploadResult = await apiUpload({
-        uri: asset.uri,
-        name: asset.fileName ?? 'group-avatar.jpg',
-        type: asset.mimeType ?? 'image/jpeg',
+        uri: pick.uri,
+        name: pick.name,
+        type: pick.type,
       });
       setAvatarDraftUrl(uploadResult.url);
     } catch (error) {
@@ -1337,7 +1327,7 @@ export function GroupProfileScreen() {
             navigation.goBack();
           }}
           onPrimaryPress={isEditMode ? () => void handleSaveGroup() : handleEnterEditMode}
-          onPickAvatar={() => void handlePickAvatar()}
+          onPickAvatar={openAvatarPickerSheet}
           onToggleHeroExpanded={() => setIsHeroExpanded((current) => !current)}
           onChangeName={setNameDraft}
           onChangeDescription={setDescriptionDraft}
@@ -1454,6 +1444,13 @@ export function GroupProfileScreen() {
         onToggleUser={toggleSearchUser}
         onClose={closeAddMembers}
         onSubmit={() => void handleAddMembers()}
+      />
+
+      <AvatarPickSheet
+        visible={avatarSheetVisible}
+        onClose={() => setAvatarSheetVisible(false)}
+        onPick={(pick) => void handleAvatarPicked(pick)}
+        subtitle="Фото группы"
       />
     </View>
   );

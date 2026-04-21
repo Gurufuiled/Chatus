@@ -36,8 +36,14 @@ export interface AuthSession {
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 min
 
-function randomState(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+function randomOAuthState(): string {
+  try {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
 }
 
 export function apiUserToUserRow(u: ApiUser): UserRow {
@@ -104,7 +110,7 @@ export class AuthService {
       redirect_uri: OAUTH_REDIRECT_URI,
       response_type: 'code',
       scope: 'openid email profile',
-      state: randomState(),
+      state: randomOAuthState(),
     });
     const fallback = {
       url: `https://loginus.startapus.com/ru/auth?${params.toString()}`,

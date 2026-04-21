@@ -88,6 +88,31 @@ class SignalingServiceClass {
     this.doConnect(token);
   }
 
+  /** Force new socket with current token (e.g. after access token refresh). */
+  reconnect(): void {
+    const token = authStore.getState().accessToken;
+    if (!token) return;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    this.manualDisconnect = true;
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      this.ws.close();
+      this.ws = null;
+    }
+
+    this.reconnectAttempt = 0;
+    this.manualDisconnect = false;
+    this.doConnect(token);
+  }
+
   private doConnect(token: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
     if (this.ws?.readyState === WebSocket.CONNECTING) return;

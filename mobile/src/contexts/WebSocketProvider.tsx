@@ -55,6 +55,57 @@ interface ServerMessagePayload {
   reactions?: { emoji: string; count: number; reacted_by_me: boolean }[];
 }
 
+const MEDIA_ACK_TYPES = new Set([
+  'voice',
+  'video_note',
+  'image',
+  'video',
+  'file',
+]);
+
+/**
+ * After send_message ACK, replace optimistic file:// remote_url with server HTTP URL from content
+ * when needed; synthesize media row if server payload omitted it.
+ */
+function mergeMediaOnOptimisticAck(sending: Message, mapped: Message): Message['media'] | undefined {
+  const serverList = mapped.media ?? [];
+  const content = mapped.content?.trim() ?? '';
+  const urlFromContent =
+    /^https?:\/\//i.test(content) ||
+    content.startsWith('/uploads/') ||
+    content.startsWith('/api/uploads/')
+      ? resolveMediaUrl(content) ?? content
+      : null;
+
+  if (serverList.length > 0) {
+    const first = serverList[0];
+    const remote = first.remote_url?.trim() ?? '';
+    const remoteIsLocal =
+      remote.startsWith('file') ||
+      remote.startsWith('content') ||
+      remote.startsWith('blob');
+    const shouldPatchRemote =
+      !!urlFromContent?.startsWith('http') &&
+      mapped.msg_type != null &&
+      MEDIA_ACK_TYPES.has(mapped.msg_type) &&
+      (!remote || remoteIsLocal);
+
+    const fixedFirst = shouldPatchRemote ? { ...first, remote_url: urlFromContent } : first;
+    return [fixedFirst, ...serverList.slice(1)];
+  }
+
+  if (
+    urlFromContent?.startsWith('http') &&
+    mapped.msg_type != null &&
+    MEDIA_ACK_TYPES.has(mapped.msg_type)
+  ) {
+    const base = sending.media?.[0] ?? {};
+    return [{ ...base, remote_url: urlFromContent }] as NonNullable<Message['media']>;
+  }
+
+  return undefined;
+}
+
 function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
   const createdAt =
     typeof payload.created_at === 'string'
@@ -184,6 +235,26 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   const handlersSetRef = useRef(false);
   const prevNetworkConnectedRef = useRef<boolean | null>(null);
   const appStateRef = useRef(AppState.currentState);
+  const accessTokenRef = useRef<string | null>(null);
+
+  // After silent token refresh, reconnect chat + signaling so JWT in URL matches store.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      accessTokenRef.current = null;
+      return undefined;
+    }
+    accessTokenRef.current = authStore.getState().accessToken;
+    const unsub = authStore.subscribe(() => {
+      const token = authStore.getState().accessToken;
+      const prev = accessTokenRef.current;
+      if (prev && token && prev !== token) {
+        WebSocketService.reconnect();
+        SignalingService.reconnect();
+      }
+      accessTokenRef.current = token;
+    });
+    return unsub;
+  }, [isAuthenticated]);
 
   // Reconnect WebSocket when network goes from offline to online (not on initial null->true)
   useEffect(() => {
@@ -279,6 +350,10 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             sendingByTempId ??
             (sendingCandidates.length > 0 ? sendingCandidates[sendingCandidates.length - 1] : undefined);
           if (sending) {
+            const mergedMedia = mergeMediaOnOptimisticAck(sending, mapped);
+            const media =
+              mergedMedia ??
+              (mapped.media?.length ? mapped.media : sending.media);
             messageStore.getState().updateMessage(msg.chat_id, sending.id, {
               id: mapped.id,
               content: mapped.content ?? null,
@@ -291,7 +366,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               transport: mapped.transport,
               created_at: mapped.created_at,
               updated_at: mapped.updated_at,
-              ...(mapped.media?.length && { media: mapped.media }),
+              ...(media ? { media } : {}),
             });
           } else {
             if (__DEV__) console.log('[WS onNewMessage] recipient: prependMessage', { chat_id: msg.chat_id, content: mapped.content });

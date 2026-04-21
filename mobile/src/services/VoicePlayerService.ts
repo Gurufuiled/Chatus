@@ -66,9 +66,19 @@ class VoicePlayerServiceClass {
     return dir;
   }
 
+  /** Short deterministic name — avoids Android path limits from encodeURIComponent(longUrl). */
+  private hashUriForFilename(uri: string): string {
+    let h = 5381;
+    for (let i = 0; i < uri.length; i += 1) {
+      h = ((h << 5) + h) ^ uri.charCodeAt(i);
+    }
+    const unsigned = h >>> 0;
+    return `${unsigned.toString(16)}_${uri.length}`;
+  }
+
   private getCachedVoicePath(uri: string, ext: string): Promise<string> {
     return this.ensureVoiceCacheDir().then((dir) => {
-      const safeName = encodeURIComponent(uri).replace(/%/g, '_');
+      const safeName = this.hashUriForFilename(uri);
       return `${dir}${safeName}.${ext}`;
     });
   }
@@ -83,11 +93,23 @@ class VoicePlayerServiceClass {
     const localPath = await this.getCachedVoicePath(uri, ext);
     const info = await FileSystem.getInfoAsync(localPath).catch(() => null);
     if (info?.exists && !info.isDirectory) {
-      return localPath;
+      const size =
+        typeof (info as { size?: number }).size === 'number'
+          ? (info as { size?: number }).size
+          : undefined;
+      if (size === undefined || size > 64) {
+        return localPath;
+      }
+      await FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
     }
 
-    await FileSystem.downloadAsync(uri, localPath);
-    return localPath;
+    try {
+      await FileSystem.downloadAsync(uri, localPath);
+      return localPath;
+    } catch {
+      await FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
+      throw new Error(`Voice download failed for ${uri.slice(0, 120)}`);
+    }
   }
 
   /** Ensure audio mode allows playback (plays in silent mode on iOS). */

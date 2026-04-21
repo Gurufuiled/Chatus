@@ -37,7 +37,8 @@ import {
 import { VideoBubble } from './VideoBubble';
 import { VideoNoteBubble } from './VideoNoteBubble';
 import { VoiceBubble } from './VoiceBubble';
-import { resolveAvatarUrl } from '../config';
+import { resolveAvatarUrl, resolveMediaUrl } from '../config';
+import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import { DOUBLE_TAP_REACTION_EMOJI } from './ChatContextMenuOverlay';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -138,7 +139,9 @@ function MediaAlbumBubble({
 
   const renderTile = (item: VisualMediaItem, index: number, style: object) => {
     const kind = getVisualMediaKind(message, item);
-    const uri = kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
+    const rawUri =
+      kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
+    const uri = resolveMediaUrl(rawUri?.trim() ?? null) ?? rawUri ?? '';
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
 
@@ -336,7 +339,8 @@ function AlbumMediaViewerModal({
             });
           }}
           renderItem={({ item }) => {
-            const uri = item.remote_url?.trim() || item.thumbnail_url?.trim() || '';
+            const raw = item.remote_url?.trim() || item.thumbnail_url?.trim() || '';
+            const uri = resolveMediaUrl(raw || null) ?? raw;
             return (
               <View style={styles.viewerSlide}>
                 {uri ? (
@@ -690,9 +694,11 @@ const MessageRow = React.memo(function MessageRow({
     if (item.msg_type === 'voice' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
       const topHeader = replySnippet ? null : renderIncomingHeader();
+      const voiceUri =
+        resolveVoiceMessageUri(item) ?? item.media[0].remote_url ?? `file://${item.id}`;
       const voiceContent = (
         <VoiceBubble
-          uri={item.media[0].remote_url ?? `file://${item.id}`}
+          uri={voiceUri}
           waveform={item.media[0].waveform ?? []}
           durationMs={item.media[0].duration_ms ?? 0}
           isMe={isMe}
@@ -843,7 +849,8 @@ const MessageRow = React.memo(function MessageRow({
 
     if (item.msg_type === 'image') {
       const media = item.media?.[0];
-      const imageUri = media?.remote_url ?? '';
+      const rawImage = media?.remote_url ?? '';
+      const imageUri = resolveMediaUrl(rawImage.trim() || null) ?? rawImage;
       if (!imageUri.trim()) return null;
 
       const replySnippet = renderReplySnippet();
@@ -896,15 +903,19 @@ const MessageRow = React.memo(function MessageRow({
 
     if (item.msg_type === 'video') {
       const media = item.media?.[0];
-      const videoUri = media?.remote_url ?? '';
+      const rawVideo = media?.remote_url ?? '';
+      const videoUri = resolveMediaUrl(rawVideo.trim() || null) ?? rawVideo;
       if (!videoUri.trim()) return null;
 
       const replySnippet = renderReplySnippet();
       const topHeader = replySnippet ? null : renderIncomingHeader();
+      const thumbResolved = media?.thumbnail_url
+        ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+        : undefined;
       const videoContent = (
         <VideoBubble
           uri={videoUri}
-          thumbnailUri={media?.thumbnail_url ?? undefined}
+          thumbnailUri={thumbResolved}
           isMe={isMe}
           width={media?.width}
           height={media?.height}
@@ -951,6 +962,11 @@ const MessageRow = React.memo(function MessageRow({
 
     if (item.msg_type === 'file' && item.media?.[0]) {
       const replySnippet = renderReplySnippet();
+      const rawFile = item.media[0].remote_url ?? '';
+      const fileUri =
+        rawFile.trim().length > 0
+          ? resolveMediaUrl(rawFile) ?? rawFile
+          : undefined;
       return (
         <View
           style={[
@@ -962,7 +978,7 @@ const MessageRow = React.memo(function MessageRow({
           <FileBubble
             fileName={item.media[0].file_name ?? 'File'}
             fileSize={item.media[0].file_size}
-            uri={item.media[0].remote_url ?? undefined}
+            uri={fileUri}
             isMe={isMe}
             caption={item.content ?? undefined}
             time={formatTime(item.created_at)}

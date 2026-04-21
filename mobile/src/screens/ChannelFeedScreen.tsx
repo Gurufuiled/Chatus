@@ -17,6 +17,7 @@ import {
 import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { BlurTargetView } from 'expo-blur';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useIsFocused } from '@react-navigation/native';
@@ -62,6 +63,7 @@ import {
 } from './chatScreen.shared';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
+import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelFeed'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelFeed'>;
@@ -132,7 +134,7 @@ function sortPostsOldestFirst(messages: Message[]) {
   });
 }
 
-function computeChannelMediaWidth(media?: Message['media'][number]): number | null {
+function computeChannelMediaWidth(media?: NonNullable<Message['media']>[number]): number | null {
   const rawWidth = media?.width ?? null;
   const rawHeight = media?.height ?? null;
   if (!rawWidth || !rawHeight || rawWidth <= 0 || rawHeight <= 0) {
@@ -180,7 +182,7 @@ type RenderPostContentOptions = {
 };
 
 function resolveVisualMediaSize(
-  media: Message['media'][number] | undefined,
+  media: NonNullable<Message['media']>[number] | undefined,
   targetWidth?: number,
 ): { width?: number; height?: number } {
   if (!targetWidth || !media?.width || !media.height || media.width <= 0 || media.height <= 0) {
@@ -200,6 +202,26 @@ type ChannelAlbumOptions = {
   visualMediaWidth?: number;
   onTilePress?: (index: number) => void;
 };
+
+/** Album tiles must load remote URLs without gallery permission — show fallback on failure instead of blank white. */
+function ChannelAlbumTileImage({ uri }: { uri: string }) {
+  const [failed, setFailed] = React.useState(false);
+  if (failed) {
+    return (
+      <View style={[styles.channelAlbumImage, styles.channelAlbumImageFallback]}>
+        <MaterialCommunityIcons name="image-off-outline" size={24} color="#68849A" />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={styles.channelAlbumImage}
+      resizeMode="cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 function renderChannelMediaAlbum(
   item: Message,
@@ -231,7 +253,7 @@ function renderChannelMediaAlbum(
 
     const tileContent = (
       <>
-        <Image source={{ uri }} style={styles.channelAlbumImage} resizeMode="cover" />
+        <ChannelAlbumTileImage uri={uri} />
         {kind === 'video' ? (
           <View style={styles.channelAlbumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
@@ -1234,12 +1256,16 @@ export function ChannelFeedScreen() {
         });
       }
 
-      if (item.msg_type === 'voice' && remoteUri) {
+      const voiceUri =
+        item.msg_type === 'voice' ? resolveVoiceMessageUri(item) ?? remoteUri : undefined;
+
+      if (item.msg_type === 'voice' && voiceUri) {
+        const m0 = item.media?.[0];
         return (
           <VoiceBubble
-            uri={remoteUri}
-            waveform={media.waveform ?? []}
-            durationMs={media.duration_ms ?? 0}
+            uri={voiceUri}
+            waveform={m0?.waveform ?? []}
+            durationMs={m0?.duration_ms ?? 0}
             isMe={false}
             embedded
             time={time}
@@ -1255,7 +1281,7 @@ export function ChannelFeedScreen() {
             messageId={item.id}
             uri={remoteUri}
             thumbnailUri={thumbUri ?? undefined}
-            durationMs={media.duration_ms ?? 0}
+            durationMs={media?.duration_ms ?? 0}
             isMe={false}
             embedded
             time={time}
@@ -1314,7 +1340,7 @@ export function ChannelFeedScreen() {
               fixedSize
               width={mediaSize.width}
               height={mediaSize.height}
-              durationMs={media.duration_ms ?? 0}
+              durationMs={media?.duration_ms ?? 0}
               time={hasCaption ? undefined : time}
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
@@ -1337,8 +1363,8 @@ export function ChannelFeedScreen() {
       if (item.msg_type === 'file' && remoteUri) {
         return (
           <FileBubble
-            fileName={media.file_name ?? item.content ?? 'Файл'}
-            fileSize={media.file_size}
+            fileName={media?.file_name ?? item.content ?? 'Файл'}
+            fileSize={media?.file_size}
             uri={remoteUri}
             isMe={false}
             caption={item.content}
@@ -1840,6 +1866,11 @@ const styles = StyleSheet.create({
   channelAlbumImage: {
     width: '100%',
     height: '100%',
+  },
+  channelAlbumImageFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8EDF3',
   },
   channelAlbumVideoBadge: {
     position: 'absolute',

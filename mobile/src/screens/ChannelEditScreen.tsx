@@ -10,7 +10,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,6 +20,7 @@ import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { colors } from '../theme/colors';
 import { resolveAvatarUrl } from '../config';
+import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelEdit'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelEdit'>;
@@ -47,6 +47,7 @@ export function ChannelEditScreen() {
   const [avatarUrl, setAvatarUrl] = React.useState(detail?.channel.avatar_url ?? null);
   const [saving, setSaving] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
+  const [avatarSheetVisible, setAvatarSheetVisible] = React.useState(false);
   const [snackbar, setSnackbar] = React.useState<string | null>(null);
   const resolvedAvatar = resolveAvatarUrl(avatarUrl);
 
@@ -76,40 +77,32 @@ export function ChannelEditScreen() {
     }
   }, [channelId, detail]);
 
-  const pickAvatar = React.useCallback(async () => {
+  const openAvatarPicker = React.useCallback(() => {
     if (!canEditAvatar) return showSnackbar('Недостаточно прав для изменения аватара канала');
-
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Нет доступа', 'Разрешите доступ к фото в настройках устройства.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-
-    setUploading(true);
-    try {
-      const uploaded = await apiUpload({
-        uri: asset.uri,
-        name: asset.fileName ?? 'channel-avatar.jpg',
-        type: asset.mimeType ?? 'image/jpeg',
-      });
-      setAvatarUrl(uploaded.url);
-    } catch (error) {
-      Alert.alert(
-        'Не удалось загрузить фото',
-        error instanceof Error ? error.message : 'Попробуйте еще раз.',
-      );
-    } finally {
-      setUploading(false);
-    }
+    setAvatarSheetVisible(true);
   }, [canEditAvatar, showSnackbar]);
+
+  const handleAvatarPicked = React.useCallback(
+    async (pick: AvatarPickResult) => {
+      setUploading(true);
+      try {
+        const uploaded = await apiUpload({
+          uri: pick.uri,
+          name: pick.name,
+          type: pick.type,
+        });
+        setAvatarUrl(uploaded.url);
+      } catch (error) {
+        Alert.alert(
+          'Не удалось загрузить фото',
+          error instanceof Error ? error.message : 'Попробуйте еще раз.',
+        );
+      } finally {
+        setUploading(false);
+      }
+    },
+    [],
+  );
 
   const save = React.useCallback(async () => {
     if (!canEditAnything) return showSnackbar('Недостаточно прав для изменения канала');
@@ -179,7 +172,7 @@ export function ChannelEditScreen() {
           </View>
         ) : null}
 
-        <Pressable onPress={() => void pickAvatar()} style={styles.avatarButton}>
+        <Pressable onPress={() => openAvatarPicker()} style={styles.avatarButton}>
           {resolvedAvatar ? (
             <Image source={{ uri: resolvedAvatar }} style={styles.avatarImage} />
           ) : (
@@ -227,6 +220,13 @@ export function ChannelEditScreen() {
           {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveText}>Сохранить</Text>}
         </Pressable>
       </ScrollView>
+
+      <AvatarPickSheet
+        visible={avatarSheetVisible}
+        onClose={() => setAvatarSheetVisible(false)}
+        onPick={(pick) => void handleAvatarPicked(pick)}
+        subtitle="Фото канала"
+      />
 
       {snackbar ? (
         <View style={styles.snackbarWrap} pointerEvents="none">
