@@ -375,21 +375,22 @@ const CallOverlay = React.memo(function CallOverlay({
   const canToggleSpeaker = Platform.OS === 'android' && showUtilityControls;
   const canToggleMute = Boolean(callState?.isLocalAudioReady && showUtilityControls);
   const canToggleVideo = Boolean(callState?.isLocalAudioReady && showUtilityControls);
+  // Main video stage ALWAYS shows the remote stream once we have it. We used
+  // to fall back to showing the local camera full-screen until a remote video
+  // track arrived, but that caused the stage to flip between local and remote
+  // as tracks were added/renegotiated, producing rapid flicker.
   const remoteVideoStageUrl =
-    callState?.hasRemoteVideoEverEnabled && callState.remoteStreamUrl
+    callState?.callKind === 'video' &&
+    callState.hasRemoteVideoEverEnabled &&
+    callState.remoteStreamUrl
       ? callState.remoteStreamUrl
       : null;
-  const localVideoStageUrl =
-    callState?.callKind === 'video' &&
-    !callState.hasRemoteVideoEverEnabled &&
-    callState.isLocalVideoEnabled &&
-    callState.localStreamUrl
-      ? callState.localStreamUrl
-      : null;
-  const fullVideoUrl = remoteVideoStageUrl ?? localVideoStageUrl ?? null;
+  const fullVideoUrl = remoteVideoStageUrl;
   const showVideoStage = Boolean(callState && !isIncoming && fullVideoUrl);
   const showLocalPreview = Boolean(
-    remoteVideoStageUrl && callState?.isLocalVideoEnabled && callState.localStreamUrl
+    callState?.callKind === 'video' &&
+      callState.isLocalVideoEnabled &&
+      callState.localStreamUrl
   );
   const endLabel = callState?.phase === 'active' ? 'Завершить' : 'Отменить';
   const controlsLayout = useMemo(() => getCallControlsLayout(screenWidth), [screenWidth]);
@@ -746,8 +747,50 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       (pc as RTCPeerConnection & {
         ontrack?: (event: { streams?: RTCMediaStream[]; track: MediaStreamTrack }) => void;
       }).ontrack = (event) => {
-        remoteStreamRef.current = event.streams?.[0] ?? null;
+        const incomingStream = event.streams?.[0] ?? null;
+        const existing = remoteStreamRef.current;
+
+        if (!existing) {
+          remoteStreamRef.current = incomingStream;
+        } else if (incomingStream && incomingStream !== existing) {
+          // Keep the same MediaStream reference across renegotiations so that
+          // RTCView's streamURL stays stable and does not flicker. Merge new
+          // tracks into the already-attached stream instead of swapping.
+          try {
+            incomingStream.getTracks().forEach((t) => {
+              const already = existing
+                .getTracks()
+                .some((x) => (x as MediaStreamTrack).id === (t as MediaStreamTrack).id);
+              if (!already) {
+                existing.addTrack(t);
+              }
+            });
+          } catch {
+            // If adding fails for any reason, fall back to the new stream.
+            remoteStreamRef.current = incomingStream;
+          }
+        } else if (!existing.getTracks().some((x) => x.id === event.track.id)) {
+          try {
+            existing.addTrack(event.track);
+          } catch {
+            // Ignore — track is already attached via streams[0].
+          }
+        }
+
         updateRemoteStreamState();
+      };
+
+      const promoteToActive = () => {
+        clearOutgoingTimeout();
+        setCallState((current) => {
+          if (!current) return current;
+          if (current.phase === 'active') return current;
+          return {
+            ...current,
+            phase: 'active',
+            startedAt: current.startedAt ?? Date.now(),
+          };
+        });
       };
 
       (pc as RTCPeerConnection & { onconnectionstatechange?: () => void }).onconnectionstatechange =
@@ -756,16 +799,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             .connectionState;
 
           if (connectionState === 'connected') {
-            clearOutgoingTimeout();
-            setCallState((current) =>
-              current
-                ? {
-                    ...current,
-                    phase: 'active',
-                    startedAt: current.startedAt ?? Date.now(),
-                  }
-                : current
-            );
+            promoteToActive();
             return;
           }
 
@@ -774,6 +808,25 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             connectionState === 'disconnected' ||
             connectionState === 'closed'
           ) {
+            void cleanupCallSession();
+          }
+        };
+
+      // Some devices / react-native-webrtc versions never flip
+      // `connectionState` to 'connected' reliably — rely on ICE state as the
+      // authoritative signal that media can flow, so both peers agree on
+      // "active" even if the PeerConnection-level event is late or missing.
+      (pc as RTCPeerConnection & { oniceconnectionstatechange?: () => void }).oniceconnectionstatechange =
+        () => {
+          const iceState = (pc as RTCPeerConnection & { iceConnectionState?: string })
+            .iceConnectionState;
+
+          if (iceState === 'connected' || iceState === 'completed') {
+            promoteToActive();
+            return;
+          }
+
+          if (iceState === 'failed' || iceState === 'closed') {
             void cleanupCallSession();
           }
         };
@@ -1115,9 +1168,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           await pc.setRemoteDescription(remoteAnswer);
           await flushPendingIceCandidates();
           clearOutgoingTimeout();
-          setCallState((state) =>
-            state ? { ...state, phase: 'connecting' } : state
-          );
+          setCallState((state) => {
+            if (!state) return state;
+            // Never demote from 'active' back to 'connecting' on renegotiation
+            // answers — once media is flowing we must keep the UI stable.
+            if (state.phase === 'active') return state;
+            return { ...state, phase: 'connecting' };
+          });
         } catch {
           await cleanupCallSession();
           Alert.alert('Звонок прерван', 'Не удалось установить соединение.');
