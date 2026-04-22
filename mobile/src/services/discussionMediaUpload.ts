@@ -148,3 +148,32 @@ export async function ensureDiscussionMediaUploaded(
 
   return media;
 }
+
+/** Один объект медиа как в теле POST /channels/:id/posts */
+export type ChannelPostMediaPayloadItem = DiscussionMediaPayload & {
+  media_type?: string;
+};
+
+/**
+ * Перед POST публикации в канал локальные URI нужно загрузить на сервер и подставить HTTP URL —
+ * иначе в БД сохранится file:///… с телефона автора, и другие участники не увидят медиа (в отличие от комментариев, где загрузка уже есть).
+ */
+export async function ensureChannelPostMediaUploaded(
+  msgType: Parameters<typeof ensureDiscussionMediaUploaded>[0],
+  media: ChannelPostMediaPayloadItem | ChannelPostMediaPayloadItem[] | undefined,
+): Promise<typeof media> {
+  if (!media) return media;
+
+  if (Array.isArray(media)) {
+    const out: ChannelPostMediaPayloadItem[] = [];
+    for (const item of media) {
+      const kind =
+        item.media_type?.toLowerCase() === 'video' ? 'video' : 'image';
+      const uploaded = await ensureDiscussionMediaUploaded(kind, item);
+      out.push({ ...item, ...uploaded });
+    }
+    return out;
+  }
+
+  return ensureDiscussionMediaUploaded(msgType, media);
+}

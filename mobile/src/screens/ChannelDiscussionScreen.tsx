@@ -1067,13 +1067,13 @@ export function ChannelDiscussionScreen() {
           <LoadErrorState message={loadError} onRetry={() => void load()} />
         ) : (
           <Reanimated.View style={[styles.listWrap, listWrapAnimatedStyle]}>
-            <FlatList
+          <FlatList
               ref={listRef}
               data={sortedMessages}
-              keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id}
               renderItem={renderRow}
-              refreshing={loading}
-              onRefresh={() => void load()}
+            refreshing={loading}
+            onRefresh={() => void load()}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[styles.listContent, { paddingBottom: (thread?.can_comment ? inputBarHeight : 16) + Math.max(insets.bottom, 8) }]}
               ListHeaderComponent={<OriginalPostHeader post={thread?.post ?? null} />}

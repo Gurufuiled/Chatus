@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Расход и стоимость топлива</title>
+  <style>
+    :root {
+      --bg: #f4f4f5;
+      --text: #111;
+      --muted: #6b7280;
+      --accent: #3390ec;
+      --card: #fff;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: max(16px, env(safe-area-inset-top)) 16px 24px;
+      padding-bottom: max(24px, env(safe-area-inset-bottom));
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+    .subtitle {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+    label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--muted);
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 1rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--text);
+    }
+    input:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 0;
+    }
+    .field { margin-bottom: 14px; }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .results {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .results h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin: 0 0 12px;
+      font-weight: 600;
+    }
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9375rem;
+    }
+    .metric:last-child { border-bottom: none; }
+    .metric span:first-child { color: var(--muted); }
+    .metric strong { font-variant-numeric: tabular-nums; }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    button {
+      padding: 14px 16px;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+    .hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 16px;
+      line-height: 1.45;
+    }
+  </style>
+</head>
+<body>
+  <h1>Топливо: расход и цена</h1>
+  <p class="subtitle">
+    Укажите средний расход (л/100 км), длину поездки и цену за литр — посчитаем расход литров и сумму за поездку и за 100 км в деньгах.
+  </p>
+
+  <div class="field">
+    <label for="consumption">Расход, л / 100 км</label>
+    <input id="consumption" type="number" inputmode="decimal" step="0.1" min="0" placeholder="Например 8.5" value="8.5" />
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="distance">Дистанция, км</label>
+      <input id="distance" type="number" inputmode="decimal" step="1" min="0" placeholder="350" value="350" />
+    </div>
+    <div class="field">
+      <label for="price">Цена за 1 л, ₽</label>
+      <input id="price" type="number" inputmode="decimal" step="0.1" min="0" placeholder="62" value="62" />
+    </div>
+  </div>
+
+  <div class="results" id="results">
+    <h2>Результат</h2>
+    <div class="metric">
+      <span>Литров на поездку</span>
+      <strong id="outLiters">—</strong>
+    </div>
+    <div class="metric">
+      <span>Стоимость поездки</span>
+      <strong id="outTrip">—</strong>
+    </div>
+    <div class="metric">
+      <span>Стоимость 100 км</span>
+      <strong id="outPer100">—</strong>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="button" class="primary" id="btnRecalc">Пересчитать</button>
+    <button type="button" class="secondary" id="btnClose">Закрыть</button>
+  </div>
+
+  <p class="hint">
+    Открыто внутри Chatus: тема может подтягиваться из приложения. Для продакшена проверяйте подпись <code>initData</code> на своём сервере, не доверяйте только данным для отображения.
+  </p>
+
+  <script>
+    (function () {
+      function fmtMoney(n) {
+        if (!isFinite(n)) return '—';
+        return (
+          new Intl.NumberFormat('ru-RU', {
+            minimumFractionDigits: n % 1 ? 2 : 0,
+            maximumFractionDigits: 2,
+          }).format(n) + ' ₽'
+        );
+      }
+      function fmtLiters(n) {
+        if (!isFinite(n)) return '—';
+        return (
+          new Intl.NumberFormat('ru-RU', {
+            minimumFractionDigits: n % 1 ? 1 : 0,
+            maximumFractionDigits: 2,
+          }).format(n) + ' л'
+        );
+      }
+
+      function applyTheme(w) {
+        if (!w || !w.themeParams) return;
+        var t = w.themeParams;
+        var root = document.documentElement;
+        if (t.bg_color) root.style.setProperty('--bg', t.bg_color);
+        if (t.text_color) root.style.setProperty('--text', t.text_color);
+        if (t.hint_color) root.style.setProperty('--muted', t.hint_color);
+        if (t.button_color) root.style.setProperty('--accent', t.button_color);
+        if (t.secondary_bg_color) {
+          root.style.setProperty('--card', t.secondary_bg_color);
+        }
+      }
+
+      function recalc() {
+        var c = parseFloat(document.getElementById('consumption').value);
+        var d = parseFloat(document.getElementById('distance').value);
+        var p = parseFloat(document.getElementById('price').value);
+
+        if (!isFinite(c) || !isFinite(d) || !isFinite(p) || c < 0 || d < 0 || p < 0) {
+          document.getElementById('outLiters').textContent = '—';
+          document.getElementById('outTrip').textContent = '—';
+          document.getElementById('outPer100').textContent = '—';
+          return;
+        }
+
+        var litersTrip = (d * c) / 100;
+        var costTrip = litersTrip * p;
+        var costPer100 = c * p;
+
+        document.getElementById('outLiters').textContent = fmtLiters(litersTrip);
+        document.getElementById('outTrip').textContent = fmtMoney(costTrip);
+        document.getElementById('outPer100').textContent = fmtMoney(costPer100);
+      }
+
+      var w = window.ChatusWebApp;
+      if (w) {
+        applyTheme(w);
+        recalc();
+        try {
+          w.ready();
+        } catch (e) {}
+        if (typeof w.onEvent === 'function') {
+          w.onEvent('themeChanged', function () {
+            applyTheme(window.ChatusWebApp);
+          });
+        }
+      } else {
+        recalc();
+      }
+
+      document.getElementById('btnRecalc').addEventListener('click', recalc);
+      ['consumption', 'distance', 'price'].forEach(function (id) {
+        document.getElementById(id).addEventListener('input', recalc);
+      });
+
+      document.getElementById('btnClose').addEventListener('click', function () {
+        if (window.ChatusWebApp && typeof window.ChatusWebApp.close === 'function') {
+          window.ChatusWebApp.close();
+        } else {
+          window.history.back();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -42,6 +42,7 @@ import {
   subscribeToChannel,
   toggleChannelReaction,
 } from '../services/channelService';
+import { ensureChannelPostMediaUploaded } from '../services/discussionMediaUpload';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
@@ -634,10 +635,14 @@ export function ChannelFeedScreen() {
         .setFeed(channelId, sortPostsOldestFirst([...currentFeedBeforeSend, optimistic]));
 
       try {
+        const uploadedMedia =
+          mediaPayload !== undefined
+            ? await ensureChannelPostMediaUploaded(type, mediaPayload)
+            : undefined;
         const saved = await publishChannelPost(channelId, {
           msg_type: type,
           content,
-          media: mediaPayload,
+          ...(uploadedMedia !== undefined ? { media: uploadedMedia } : {}),
         });
         const currentFeed = channelStore.getState().feedByChannelId[channelId] ?? [];
         channelStore

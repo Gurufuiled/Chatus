@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Курс криптовалют · Chatus</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-deep: #06080f;
+      --bg-card: rgba(18, 22, 38, 0.72);
+      --stroke: rgba(255, 255, 255, 0.07);
+      --gold: #c9a962;
+      --gold-dim: rgba(201, 169, 98, 0.35);
+      --accent: #7dd3fc;
+      --accent-glow: rgba(125, 211, 252, 0.25);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --success: #34d399;
+      --danger: #fb7185;
+      --radius: 20px;
+      --font-sans: 'Outfit', system-ui, sans-serif;
+      --font-display: 'Cormorant Garamond', Georgia, serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      -webkit-font-smoothing: antialiased;
+      height: 100%;
+    }
+
+    body {
+      min-height: 100%;
+      font-family: var(--font-sans);
+      color: var(--text);
+      background: var(--bg-deep);
+      overflow-x: hidden;
+      padding: max(20px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
+    }
+
+    /* Ambient mesh */
+    .ambient {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(125, 211, 252, 0.18), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 50%, rgba(201, 169, 98, 0.08), transparent),
+        radial-gradient(ellipse 50% 35% at 0% 80%, rgba(99, 102, 241, 0.12), transparent);
+    }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 440px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+      padding-top: 8px;
+    }
+
+    .eyebrow {
+      font-size: 0.7rem;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: 2.15rem;
+      font-weight: 500;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .live-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(52, 211, 153, 0.1);
+      border: 1px solid rgba(52, 211, 153, 0.22);
+      font-size: 0.75rem;
+      color: var(--success);
+      font-weight: 500;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 12px var(--success);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.65; transform: scale(0.92); }
+    }
+
+    /* Coin cards */
+    .cards {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+
+    .coin-card {
+      position: relative;
+      padding: 18px 18px 16px;
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--stroke);
+      box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .coin-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(201, 169, 98, 0.25);
+      box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.45),
+        0 0 0 1px var(--gold-dim);
+    }
+
+    .coin-card.active {
+      border-color: rgba(125, 211, 252, 0.35);
+      box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.45),
+        0 0 40px var(--accent-glow);
+    }
+
+    .coin-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .coin-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .coin-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+
+    .coin-icon.btc { background: linear-gradient(145deg, #f7931a, #e2761b); }
+    .coin-icon.eth { background: linear-gradient(145deg, #627eea, #3c3c9b); }
+    .coin-icon.sol { background: linear-gradient(145deg, #9945ff, #14f195); }
+
+    /* USDT / RUB strip */
+    .rub-panel {
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--stroke);
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+    }
+
+    .rub-panel h3 {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 500;
+      margin-bottom: 12px;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+
+    .rub-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .rub-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .rub-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.35;
+      max-width: 62%;
+    }
+
+    .rub-value {
+      font-size: 1rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--accent);
+      text-align: right;
+    }
+
+    .rub-note {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 12px;
+      line-height: 1.45;
+      opacity: 0.9;
+    }
+
+    .coin-name {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .coin-symbol {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-top: 2px;
+    }
+
+    .coin-price {
+      text-align: right;
+    }
+
+    .price-main {
+      font-size: 1.05rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+    }
+
+    .price-change {
+      font-size: 0.78rem;
+      margin-top: 4px;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .price-change.up { color: var(--success); }
+    .price-change.down { color: var(--danger); }
+
+    /* Chart panel */
+    .chart-panel {
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--stroke);
+      padding: 20px 18px 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .chart-title {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .periods {
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+    }
+
+    .periods button {
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 9px;
+      cursor: pointer;
+      background: transparent;
+      color: var(--muted);
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .periods button.active {
+      background: linear-gradient(145deg, rgba(125, 211, 252, 0.2), rgba(99, 102, 241, 0.15));
+      color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 220px;
+      margin-top: 4px;
+    }
+
+    .chart-wrap canvas {
+      max-height: 220px;
+    }
+
+    .badge-demo {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 12px;
+      text-align: center;
+      opacity: 0.85;
+    }
+
+    footer.actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    footer.actions button {
+      font-family: var(--font-sans);
+      padding: 14px;
+      border-radius: 14px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+
+    footer.actions button:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--gold) 0%, #a18442 100%);
+      color: #0a0c12;
+      box-shadow: 0 8px 24px rgba(201, 169, 98, 0.35);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--stroke) !important;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(6, 8, 15, 0.65);
+      backdrop-filter: blur(8px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .loading-overlay.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--stroke);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+  </div>
+
+  <div class="wrap">
+    <header>
+      <p class="eyebrow">Рынок · Mini App</p>
+      <h1>Курс криптовалют</h1>
+      <div class="live-row">
+        <span class="live-dot"></span>
+        <span id="liveLabel">Загрузка котировок…</span>
+      </div>
+    </header>
+
+    <section class="rub-panel" aria-label="Курс USDT к рублю">
+      <h3>USDT ↔ рубль</h3>
+      <div class="rub-rows">
+        <div class="rub-row">
+          <span class="rub-label">Актуальный справочный курс (CoinGecko, USDT/RUB)</span>
+          <span class="rub-value" id="usdtRubRef">—</span>
+        </div>
+        <div class="rub-row">
+          <span class="rub-label">Средний курс Bybit P2P (покупка USDT за ₽, топ объявлений)</span>
+          <span class="rub-value" id="usdtRubP2p">—</span>
+        </div>
+      </div>
+      <p class="rub-note" id="rubNote">
+        Загрузка курсов USDT…
+      </p>
+    </section>
+
+    <section class="cards" id="cards" aria-label="Котировки"></section>
+
+    <section class="chart-panel">
+      <div class="chart-head">
+        <h2 class="chart-title" id="chartHeading">Bitcoin</h2>
+        <div class="periods" role="tablist" aria-label="Период графика">
+          <button type="button" data-days="1" class="period-btn">24ч</button>
+          <button type="button" data-days="7" class="period-btn active">7д</button>
+          <button type="button" data-days="30" class="period-btn">30д</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="priceChart" aria-label="График цены"></canvas>
+      </div>
+      <p class="badge-demo" id="chartFoot">Данные CoinGecko · для демонстрации Chatus Mini Apps</p>
+    </section>
+
+    <footer class="actions">
+      <button type="button" class="btn-primary" id="btnRefresh">Обновить</button>
+      <button type="button" class="btn-ghost" id="btnClose">Закрыть</button>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      var COINS = [
+        { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', emoji: '₿', cls: 'btc' },
+        { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', emoji: 'Ξ', cls: 'eth' },
+        { id: 'solana', symbol: 'SOL', name: 'Solana', emoji: '◎', cls: 'sol' },
+      ];
+
+      var selectedId = 'bitcoin';
+      var chartDays = 7;
+      var chartInstance = null;
+
+      function fmtUsd(n) {
+        if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+        if (n >= 1e3) return '$' + (n / 1e3).toFixed(2) + 'K';
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: n < 1 ? 4 : 2,
+        }).format(n);
+      }
+
+      function fmtPct(x) {
+        var sign = x >= 0 ? '+' : '';
+        return sign + x.toFixed(2) + '%';
+      }
+
+      function fmtRub(n) {
+        return new Intl.NumberFormat('ru-RU', {
+          style: 'currency',
+          currency: 'RUB',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(n);
+      }
+
+      /** Справочный USDT/RUB (агрегированная котировка, не P2P). */
+      async function fetchUsdtRubReference() {
+        var url =
+          'https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub&precision=full';
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('coingecko_rub');
+        var j = await res.json();
+        var v = j.tether && j.tether.rub;
+        if (v == null || isNaN(Number(v))) throw new Error('coingecko_rub');
+        return Number(v);
+      }
+
+      /**
+       * Средняя цена по списку онлайн-объявлений Bybit P2P (неофициальный endpoint, как у веб-клиента).
+       * side "0" — покупка USDT за фиат (продавцы выставляют USDT).
+       */
+      async function fetchBybitP2pAverageUsdtRub() {
+        var body = {
+          userId: '',
+          tokenId: 'USDT',
+          currencyId: 'RUB',
+          payment: [],
+          side: '0',
+          size: '20',
+          page: '1',
+          amount: '',
+          authMaker: false,
+          canTrade: false,
+          itemRegion: 2,
+        };
+        var res = await fetch('https://api2.bybit.com/fiat/otc/item/online', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error('bybit_http');
+        var j = await res.json();
+        var code = j.ret_code != null ? j.ret_code : j.retCode;
+        if (code != null && code !== 0) throw new Error('bybit_ret');
+        var items = (j.result && j.result.items) || [];
+        var prices = [];
+        for (var i = 0; i < items.length; i++) {
+          var raw = items[i] && items[i].price;
+          if (raw == null) continue;
+          var n = parseFloat(String(raw).replace(',', '.'));
+          if (!isNaN(n) && n > 0) prices.push(n);
+        }
+        if (!prices.length) throw new Error('bybit_empty');
+        var sum = 0;
+        for (var k = 0; k < prices.length; k++) sum += prices[k];
+        return sum / prices.length;
+      }
+
+      async function loadUsdtRub() {
+        var refEl = document.getElementById('usdtRubRef');
+        var p2pEl = document.getElementById('usdtRubP2p');
+        var noteEl = document.getElementById('rubNote');
+        refEl.textContent = '…';
+        p2pEl.textContent = '…';
+        noteEl.textContent = 'Загрузка…';
+
+        var refOk = false;
+        try {
+          var ref = await fetchUsdtRubReference();
+          refEl.textContent = fmtRub(ref) + ' / USDT';
+          refOk = true;
+        } catch (e) {
+          refEl.textContent = '—';
+        }
+
+        var p2pOk = false;
+        try {
+          var avg = await fetchBybitP2pAverageUsdtRub();
+          p2pEl.textContent = fmtRub(avg) + ' / USDT';
+          p2pOk = true;
+        } catch (e) {
+          p2pEl.textContent = '—';
+        }
+
+        var explain =
+          'Справочный курс — агрегатор CoinGecko (USDT/RUB). P2P Bybit — среднее по ценам в первых ~20 онлайн-объявлениях покупки USDT за рубли (все способы оплаты), тот же API, что использует сайт Bybit.';
+        var bybitFail =
+          'Bybit P2P не загрузился (сеть, CORS или антибот у api2.bybit.com). При необходимости используйте серверный прокси к этому endpoint.';
+        if (refOk && p2pOk) noteEl.textContent = explain;
+        else if (refOk && !p2pOk) noteEl.textContent = explain + ' ' + bybitFail;
+        else if (!refOk && p2pOk)
+          noteEl.textContent =
+            'Курс CoinGecko недоступен. P2P — среднее по объявлениям Bybit (см. выше).';
+        else
+          noteEl.textContent =
+            'Не удалось загрузить курсы USDT (CoinGecko и Bybit). Проверьте соединение.';
+      }
+
+      function showLoading(on) {
+        document.getElementById('loading').classList.toggle('show', on);
+      }
+
+      function mockSeries(days) {
+        var n = Math.min(168, Math.max(24, days * 24));
+        var base = selectedId === 'bitcoin' ? 97000 : selectedId === 'ethereum' ? 3200 : 180;
+        var out = [];
+        var t = Date.now() - n * 3600e3;
+        for (var i = 0; i < n; i++) {
+          t += 3600e3;
+          var wobble = Math.sin(i * 0.15) * base * 0.02 + (Math.random() - 0.5) * base * 0.008;
+          out.push([t, base + wobble + i * (base * 0.0003)]);
+        }
+        return out;
+      }
+
+      async function fetchPrices() {
+        var ids = COINS.map(function (c) { return c.id; }).join(',');
+        var url =
+          'https://api.coingecko.com/api/v3/simple/price?ids=' +
+          ids +
+          '&vs_currencies=usd&include_24hr_change=true';
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('price');
+        return res.json();
+      }
+
+      async function fetchChart(coinId, days) {
+        var url =
+          'https://api.coingecko.com/api/v3/coins/' +
+          coinId +
+          '/market_chart?vs_currency=usd&days=' +
+          days;
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('chart');
+        var j = await res.json();
+        return j.prices || [];
+      }
+
+      function renderCards(prices) {
+        var el = document.getElementById('cards');
+        el.innerHTML = '';
+        COINS.forEach(function (c) {
+          var p = prices[c.id];
+          var usd = p && p.usd;
+          var ch = p && p.usd_24h_change;
+          var card = document.createElement('button');
+          card.type = 'button';
+          card.className = 'coin-card' + (c.id === selectedId ? ' active' : '');
+          card.setAttribute('data-id', c.id);
+          var changeClass = ch == null ? '' : ch >= 0 ? ' up' : ' down';
+          var changeHtml =
+            ch == null
+              ? '—'
+              : '<span class="price-change' +
+                changeClass +
+                '">' +
+                fmtPct(ch) +
+                ' за 24ч</span>';
+
+          card.innerHTML =
+            '<div class="coin-top">' +
+            '<div class="coin-meta">' +
+            '<div class="coin-icon ' +
+            c.cls +
+            '">' +
+            c.emoji +
+            '</div>' +
+            '<div><div class="coin-name">' +
+            c.name +
+            '</div><div class="coin-symbol">' +
+            c.symbol +
+            '</div></div>' +
+            '</div>' +
+            '<div class="coin-price">' +
+            '<div class="price-main">' +
+            (usd != null ? fmtUsd(usd) : '—') +
+            '</div>' +
+            changeHtml +
+            '</div></div>';
+
+          card.addEventListener('click', function () {
+            selectedId = c.id;
+            document.querySelectorAll('.coin-card').forEach(function (x) {
+              x.classList.toggle('active', x.getAttribute('data-id') === selectedId);
+            });
+            document.getElementById('chartHeading').textContent = c.name;
+            loadChart(true);
+          });
+
+          el.appendChild(card);
+        });
+      }
+
+      function buildChart(points, label) {
+        var ctx = document.getElementById('priceChart').getContext('2d');
+        var len = points.length;
+        var step = Math.max(1, Math.floor(len / 48));
+        var sparse = [];
+        for (var i = 0; i < len; i += step) sparse.push(points[i]);
+        if (sparse[sparse.length - 1] !== points[len - 1]) sparse.push(points[len - 1]);
+
+        var fmtShort = function (ts) {
+          var d = new Date(ts);
+          if (chartDays <= 1) {
+            return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' }).format(d);
+          }
+          return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short' }).format(d);
+        };
+
+        var labels = sparse.map(function (p) {
+          return fmtShort(p[0]);
+        });
+        var data = sparse.map(function (p) {
+          return p[1];
+        });
+
+        var grad = ctx.createLinearGradient(0, 0, 0, 220);
+        grad.addColorStop(0, 'rgba(125, 211, 252, 0.45)');
+        grad.addColorStop(0.5, 'rgba(99, 102, 241, 0.12)');
+        grad.addColorStop(1, 'rgba(125, 211, 252, 0)');
+
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: label,
+                data: data,
+                borderColor: '#7dd3fc',
+                backgroundColor: grad,
+                borderWidth: 2,
+                fill: true,
+                tension: 0.38,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(15, 18, 30, 0.92)',
+                borderColor: 'rgba(255,255,255,0.1)',
+                borderWidth: 1,
+                titleFont: { family: 'Outfit' },
+                bodyFont: { family: 'Outfit' },
+                callbacks: {
+                  title: function (items) {
+                    return items.length ? labels[items[0].dataIndex] : '';
+                  },
+                  label: function (item) {
+                    return ' ' + fmtUsd(item.parsed.y);
+                  },
+                },
+              },
+            },
+            scales: {
+              x: {
+                grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+                ticks: {
+                  color: '#64748b',
+                  maxRotation: 0,
+                  autoSkip: true,
+                  maxTicksLimit: chartDays <= 1 ? 8 : 7,
+                  font: { family: 'Outfit', size: 10 },
+                },
+              },
+              y: {
+                grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+                ticks: {
+                  color: '#64748b',
+                  font: { family: 'Outfit', size: 10 },
+                  callback: function (v) {
+                    return '$' + (v >= 1e3 ? (v / 1e3).toFixed(v >= 1e6 ? 2 : 1) + 'k' : v.toFixed(0));
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      async function loadChart(showSpinner) {
+        if (showSpinner) showLoading(true);
+        try {
+          var pts = await fetchChart(selectedId, chartDays);
+          if (!pts.length) pts = mockSeries(chartDays);
+          buildChart(pts, COINS.find(function (c) { return c.id === selectedId; }).symbol);
+          document.getElementById('chartFoot').textContent =
+            'Данные CoinGecko · для демонстрации Chatus Mini Apps';
+        } catch (e) {
+          buildChart(mockSeries(chartDays), 'демо');
+          document.getElementById('chartFoot').textContent =
+            'Демо-график (API недоступен или лимит). Презентация продолжается.';
+        }
+        if (showSpinner) showLoading(false);
+
+        var w = window.ChatusWebApp;
+        if (w && typeof w.ready === 'function') {
+          try {
+            w.ready();
+          } catch (err) {}
+        }
+      }
+
+      async function loadAll() {
+        showLoading(true);
+        document.getElementById('liveLabel').textContent = 'Обновление…';
+        var rubPromise = loadUsdtRub();
+        try {
+          var prices = await fetchPrices();
+          renderCards(prices);
+          document.getElementById('liveLabel').textContent = 'Котировки онлайн';
+        } catch (e) {
+          renderCards({});
+          document.getElementById('liveLabel').textContent = 'Офлайн-демо · проверьте сеть';
+        }
+        await rubPromise;
+        await loadChart(false);
+        showLoading(false);
+      }
+
+      document.querySelectorAll('.period-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          chartDays = parseInt(btn.getAttribute('data-days'), 10);
+          document.querySelectorAll('.period-btn').forEach(function (b) {
+            b.classList.toggle('active', b === btn);
+          });
+          loadChart(true);
+        });
+      });
+
+      document.getElementById('btnRefresh').addEventListener('click', function () {
+        loadAll();
+      });
+
+      document.getElementById('btnClose').addEventListener('click', function () {
+        if (window.ChatusWebApp && typeof window.ChatusWebApp.close === 'function') {
+          window.ChatusWebApp.close();
+        } else {
+          window.history.back();
+        }
+      });
+
+      if (typeof Chart === 'undefined') {
+        document.getElementById('liveLabel').textContent = 'Ошибка загрузки графика';
+        showLoading(false);
+      } else {
+        loadAll().catch(function () {
+          chartDays = 7;
+          selectedId = 'bitcoin';
+          buildChart(mockSeries(chartDays), 'демо');
+          renderCards({});
+          document.getElementById('liveLabel').textContent = 'Демо без сети';
+          showLoading(false);
+          var w = window.ChatusWebApp;
+          if (w && typeof w.ready === 'function') w.ready();
+        });
+      }
+
+      /* Theme from Chatus */
+      function applyChatusTheme() {
+        var w = window.ChatusWebApp;
+        if (!w || !w.themeParams) return;
+        var t = w.themeParams;
+        if (t.bg_color) document.documentElement.style.setProperty('--bg-deep', t.bg_color);
+        if (t.secondary_bg_color) {
+          document.documentElement.style.setProperty('--bg-card', t.secondary_bg_color + 'bb');
+        }
+        if (t.text_color) document.documentElement.style.setProperty('--text', t.text_color);
+        if (t.hint_color) document.documentElement.style.setProperty('--muted', t.hint_color);
+        if (t.link_color) document.documentElement.style.setProperty('--accent', t.link_color);
+        if (t.button_color) document.documentElement.style.setProperty('--gold', t.button_color);
+      }
+
+      applyChatusTheme();
+      if (window.ChatusWebApp && typeof window.ChatusWebApp.onEvent === 'function') {
+        window.ChatusWebApp.onEvent('themeChanged', applyChatusTheme);
+      }
+    })();
+  </script>
+</body>
+</html>
