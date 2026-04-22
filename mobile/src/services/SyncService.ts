@@ -116,6 +116,19 @@ interface ApiChat {
   peer_display_name?: string | null;
 }
 
+function normalizeApiMember(
+  member: NonNullable<ApiChat['members']>[number]
+): NonNullable<ApiChat['members']>[number] {
+  const loose = member as Record<string, unknown>;
+  const tag = member.tag ?? (loose.tag as string | null | undefined) ?? null;
+  const tag_color =
+    member.tag_color ??
+    (loose.tag_color as string | null | undefined) ??
+    (loose.tagColor as string | null | undefined) ??
+    null;
+  return { ...member, tag, tag_color };
+}
+
 function mapApiChatToChat(api: ApiChat): Chat {
   return {
     id: api.id,
@@ -151,7 +164,7 @@ function mapApiChatToChat(api: ApiChat): Chat {
     draft: api.draft,
     created_at: api.created_at,
     updated_at: api.updated_at,
-    members: api.members,
+    members: api.members?.map(normalizeApiMember),
     peer_display_name: api.peer_display_name ?? null,
   };
 }

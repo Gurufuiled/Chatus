@@ -28,5 +28,9 @@ export function resolveVoiceMessageUri(message: Message): string | null {
     resolvedContent?.startsWith('content://')
   )
     return resolvedContent;
-  return resolvedMedia ?? resolvedContent ?? null;
+  const raw = resolvedMedia ?? resolvedContent ?? null;
+  if (!raw?.trim()) return null;
+  const t = raw.trim();
+  // Всегда приводим /uploads/… к полному URL — иначе expo-av на iOS не играет относительные пути.
+  return resolveMediaUrl(t) ?? t;
 }

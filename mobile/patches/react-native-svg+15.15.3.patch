@@ -1,0 +1,15 @@
+diff --git a/node_modules/react-native-svg/RNSVG.podspec b/node_modules/react-native-svg/RNSVG.podspec
+index 6f3abc3..1ea28be 100644
+--- a/node_modules/react-native-svg/RNSVG.podspec
++++ b/node_modules/react-native-svg/RNSVG.podspec
+@@ -25,7 +25,9 @@ Pod::Spec.new do |s|
+   s.osx.resource_bundles  = {'RNSVGFilters' => ['apple/**/*.macosx.metallib']}
+   s.ios.resource_bundles  = {'RNSVGFilters' => ['apple/**/*.iphoneos.metallib']}
+   s.tvos.resource_bundles  = {'RNSVGFilters' => ['apple/**/*.appletvos.metallib']}
+-  s.visionos.resource_bundles  = {'RNSVGFilters' => ['apple/**/*.xros.metallib']}
++  if s.respond_to?(:visionos)
++    s.visionos.resource_bundles  = {'RNSVGFilters' => ['apple/**/*.xros.metallib']}
++  end
+ 
+   s.xcconfig = {
+     "OTHER_CFLAGS" => "$(inherited) -DREACT_NATIVE_MINOR_VERSION=#{svgConfig[:react_native_minor_version]}",

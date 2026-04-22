@@ -3,6 +3,7 @@ import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
+  ActivityIndicator,
   Animated,
   FlatList,
   Image,
@@ -21,6 +22,10 @@ import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
 } from '../../utils/videoThumbnail';
+import {
+  isIosPhAssetUri,
+  useIosResolvableMediaLibraryUri,
+} from '../../utils/resolveIosPhotoLibraryUri';
 import type { GroupMediaItem } from './groupProfile.types';
 
 const CLOSE_SWIPE_DISTANCE = 84;
@@ -79,6 +84,9 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
   panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
   onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const resolved = useIosResolvableMediaLibraryUri(item.uri);
+  const ph = isIosPhAssetUri(item.uri);
+
   return (
     <Pressable
       onLongPress={(event) => onOpenActionMenu(item.id, event)}
@@ -87,16 +95,24 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
       style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}
       {...panHandlers}
     >
-      <Image
-        source={{ uri: item.uri }}
-        style={[styles.media, { width: viewportWidth, height: viewportHeight }]}
-        resizeMode="contain"
-      />
+      {ph && resolved === null ? (
+        <ActivityIndicator color="#FFFFFF" size="large" />
+      ) : ph && resolved === '' ? (
+        <View style={styles.phErrorWrap}>
+          <Feather name="image" size={48} color="rgba(255,255,255,0.45)" />
+        </View>
+      ) : (
+        <Image
+          source={{ uri: resolved ?? item.uri }}
+          style={[styles.media, { width: viewportWidth, height: viewportHeight }]}
+          resizeMode="contain"
+        />
+      )}
     </Pressable>
   );
 });
 
-const VideoViewerSlide = React.memo(function VideoViewerSlide({
+const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
   item,
   isActive,
   viewportWidth,
@@ -199,6 +215,55 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
   );
 });
 
+const VideoViewerSlide = React.memo(function VideoViewerSlide({
+  item,
+  isActive,
+  viewportWidth,
+  viewportHeight,
+  panHandlers,
+  onOpenActionMenu,
+}: {
+  item: GroupMediaItem;
+  isActive: boolean;
+  viewportWidth: number;
+  viewportHeight: number;
+  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
+  onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
+}) {
+  const resolved = useIosResolvableMediaLibraryUri(item.uri);
+  const ph = isIosPhAssetUri(item.uri);
+
+  if (ph && resolved === null) {
+    return (
+      <Pressable style={[styles.slide, { width: viewportWidth, height: viewportHeight }]} {...panHandlers}>
+        <ActivityIndicator color="#FFFFFF" size="large" />
+      </Pressable>
+    );
+  }
+
+  if (ph && resolved === '') {
+    return (
+      <Pressable style={[styles.slide, { width: viewportWidth, height: viewportHeight }]} {...panHandlers}>
+        <View style={styles.phErrorWrap}>
+          <Feather name="video-off" size={48} color="rgba(255,255,255,0.45)" />
+        </View>
+      </Pressable>
+    );
+  }
+
+  const playable = resolved ?? item.uri;
+  return (
+    <VideoViewerSlideLoaded
+      item={{ ...item, uri: playable }}
+      isActive={isActive}
+      viewportWidth={viewportWidth}
+      viewportHeight={viewportHeight}
+      panHandlers={panHandlers}
+      onOpenActionMenu={onOpenActionMenu}
+    />
+  );
+});
+
 type GroupProfileMediaViewerModalProps = {
   visible: boolean;
   mediaItems: GroupMediaItem[];
@@ -270,7 +335,7 @@ export function GroupProfileMediaViewerModal({
           resetPosition();
         },
         onPanResponderTerminate: resetPosition,
-        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminationRequest: () => true,
       }),
     [closeFromSwipe, resetPosition, translateY]
   );
@@ -340,6 +405,7 @@ export function GroupProfileMediaViewerModal({
             horizontal
             pagingEnabled
             bounces={false}
+            removeClippedSubviews={false}
             showsHorizontalScrollIndicator={false}
             initialScrollIndex={safeIndex}
             getItemLayout={(_, index) => ({
@@ -362,7 +428,13 @@ export function GroupProfileMediaViewerModal({
 
         <View style={[styles.topBar, { top: topInset + 10 }]} pointerEvents="box-none">
           <Text style={styles.counter}>{safeIndex + 1} / {mediaItems.length}</Text>
-          <Pressable onPress={onClose} style={styles.closeButton} hitSlop={12}>
+          <Pressable
+            onPress={onClose}
+            style={styles.closeButton}
+            hitSlop={16}
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть"
+          >
             <Feather name="x" size={22} color="#FFFFFF" />
           </Pressable>
         </View>
@@ -383,6 +455,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    zIndex: 50,
+    elevation: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phErrorWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -39,6 +39,7 @@ import { VideoNoteBubble } from './VideoNoteBubble';
 import { VoiceBubble } from './VoiceBubble';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
+import type { MessageAuthorPresentation } from '../screens/chatScreen.shared';
 import { DOUBLE_TAP_REACTION_EMOJI } from './ChatContextMenuOverlay';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -86,7 +87,7 @@ type ChatMessageListProps = {
     message: Message,
     chatId: string,
     currentUserId: string | null
-  ) => { name: string; avatarUrl: string | null; color: string; initial: string };
+  ) => MessageAuthorPresentation;
   getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
@@ -460,12 +461,27 @@ type MessageRowProps = {
     message: Message,
     chatId: string,
     currentUserId: string | null
-  ) => { name: string; avatarUrl: string | null; color: string; initial: string };
+  ) => MessageAuthorPresentation;
   getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
   chatTheme: ChatTheme;
 };
+
+const AUTHOR_TAG_STYLES: Record<
+  string,
+  { bubble: string; text: string }
+> = {
+  blue: { bubble: 'rgba(91, 141, 239, 0.16)', text: '#4C7FE5' },
+  green: { bubble: 'rgba(84, 177, 115, 0.16)', text: '#3F9960' },
+  orange: { bubble: 'rgba(243, 154, 74, 0.18)', text: '#D8822D' },
+  red: { bubble: 'rgba(230, 108, 122, 0.18)', text: '#CC5563' },
+};
+
+function getAuthorTagStyle(color?: string | null) {
+  if (!color) return AUTHOR_TAG_STYLES.blue;
+  return AUTHOR_TAG_STYLES[color] ?? AUTHOR_TAG_STYLES.blue;
+}
 
 const MessageRow = React.memo(function MessageRow({
   item,
@@ -572,10 +588,25 @@ const MessageRow = React.memo(function MessageRow({
   const renderAuthorLabel = () => {
     if (!showAuthorName) return null;
 
+    const tag = authorPresentation.tag?.trim() || null;
+    const tagPalette = getAuthorTagStyle(authorPresentation.tagColor);
+
     return (
-      <Text style={[styles.authorLabel, { color: authorColor }]} numberOfLines={1}>
-        {authorName}
-      </Text>
+      <View style={styles.authorLabelRow}>
+        <Text
+          style={[styles.authorLabel, { color: authorColor }]}
+          numberOfLines={1}
+        >
+          {authorName}
+        </Text>
+        {tag ? (
+          <View style={[styles.authorTagChip, { backgroundColor: tagPalette.bubble }]}>
+            <Text style={[styles.authorTagText, { color: tagPalette.text }]} numberOfLines={1}>
+              {tag}
+            </Text>
+          </View>
+        ) : null}
+      </View>
     );
   };
 
@@ -1414,12 +1445,33 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 8,
   },
-  authorLabel: {
+  authorLabelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
     marginBottom: 4,
+    maxWidth: '100%',
+  },
+  authorLabel: {
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 12,
     lineHeight: 15,
     fontWeight: '700',
     color: '#8B5CF6',
+  },
+  authorTagChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    maxWidth: 140,
+  },
+  authorTagText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
   },
   bubble: {
     paddingHorizontal: 10,

@@ -71,25 +71,43 @@ function getInitial(name: string): string {
   return name.trim().charAt(0).toUpperCase() || '?';
 }
 
+export type MessageAuthorPresentation = {
+  name: string;
+  avatarUrl: string | null;
+  color: string;
+  initial: string;
+  tag: string | null;
+  tagColor: string | null;
+};
+
 export function getMessageAuthorPresentation(
   message: Message,
   chatId: string,
   currentUserId: string | null
-): { name: string; avatarUrl: string | null; color: string; initial: string } {
+): MessageAuthorPresentation {
+  const chat = chatStore.getState().chats.find((item) => item.id === chatId);
+
   if (message.sender_id === currentUserId) {
     const me =
       authStore.getState().user?.display_name?.trim() ||
       authStore.getState().user?.username?.trim();
     const name = me || 'You';
+    const selfMember =
+      chat?.chat_type === 'group' && currentUserId
+        ? chat.members?.find((item) => item.user_id === currentUserId)
+        : undefined;
+    const tag = selfMember?.tag?.trim() || null;
+    const tagColor = selfMember?.tag_color?.trim() || null;
     return {
       name,
       avatarUrl: authStore.getState().user?.avatar_url ?? null,
       color: colors.accent,
       initial: getInitial(name),
+      tag,
+      tagColor,
     };
   }
 
-  const chat = chatStore.getState().chats.find((item) => item.id === chatId);
   if (chat?.chat_type === 'group') {
     const member = chat.members?.find((item) => item.user_id === message.sender_id);
     const name =
@@ -98,11 +116,15 @@ export function getMessageAuthorPresentation(
       member?.user?.handle?.trim() ||
       message.sender_id?.trim() ||
       'Participant';
+    const tag = member?.tag?.trim() || null;
+    const tagColor = member?.tag_color?.trim() || null;
     return {
       name,
       avatarUrl: member?.user?.avatar_url ?? null,
       color: pickGroupAuthorColor(member?.user_id ?? message.sender_id),
       initial: getInitial(name),
+      tag,
+      tagColor,
     };
   }
 
@@ -112,6 +134,8 @@ export function getMessageAuthorPresentation(
     avatarUrl: chat?.avatar_url ?? null,
     color: colors.accent,
     initial: getInitial(name),
+    tag: null,
+    tagColor: null,
   };
 }
 

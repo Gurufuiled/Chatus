@@ -4,6 +4,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { BlurView } from 'expo-blur';
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   FlatList,
@@ -24,6 +25,10 @@ import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
 } from '../utils/videoThumbnail';
+import {
+  isIosPhAssetUri,
+  useIosResolvableMediaLibraryUri,
+} from '../utils/resolveIosPhotoLibraryUri';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -81,6 +86,9 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
   panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
   onTap?: () => void;
 }) {
+  const resolved = useIosResolvableMediaLibraryUri(item.uri);
+  const ph = isIosPhAssetUri(item.uri);
+
   return (
     <Pressable
       onPress={onTap}
@@ -88,12 +96,24 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
       android_disableSound
       {...panHandlers}
     >
-      <Image source={{ uri: item.uri }} style={styles.media} resizeMode="contain" />
+      {ph && resolved === null ? (
+        <ActivityIndicator color="#FFFFFF" size="large" />
+      ) : ph && resolved === '' ? (
+        <View style={styles.phErrorWrap}>
+          <Feather name="image" size={48} color="rgba(255,255,255,0.45)" />
+        </View>
+      ) : (
+        <Image
+          source={{ uri: resolved ?? item.uri }}
+          style={styles.media}
+          resizeMode="contain"
+        />
+      )}
     </Pressable>
   );
 });
 
-const VideoViewerSlide = React.memo(function VideoViewerSlide({
+const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
   item,
   isActive,
   panHandlers,
@@ -176,6 +196,46 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
         </View>
       ) : null}
     </Pressable>
+  );
+});
+
+const VideoViewerSlide = React.memo(function VideoViewerSlide({
+  item,
+  isActive,
+  panHandlers,
+}: {
+  item: MediaTile;
+  isActive: boolean;
+  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
+}) {
+  const resolved = useIosResolvableMediaLibraryUri(item.uri);
+  const ph = isIosPhAssetUri(item.uri);
+
+  if (ph && resolved === null) {
+    return (
+      <Pressable style={styles.slide} {...panHandlers}>
+        <ActivityIndicator color="#FFFFFF" size="large" />
+      </Pressable>
+    );
+  }
+
+  if (ph && resolved === '') {
+    return (
+      <Pressable style={styles.slide} {...panHandlers}>
+        <View style={styles.phErrorWrap}>
+          <Feather name="video-off" size={48} color="rgba(255,255,255,0.45)" />
+        </View>
+      </Pressable>
+    );
+  }
+
+  const playable = resolved ?? item.uri;
+  return (
+    <VideoViewerSlideLoaded
+      item={{ ...item, uri: playable }}
+      isActive={isActive}
+      panHandlers={panHandlers}
+    />
   );
 });
 
@@ -278,7 +338,7 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
           resetPosition();
         },
         onPanResponderTerminate: resetPosition,
-        onPanResponderTerminationRequest: () => false,
+        onPanResponderTerminationRequest: () => true,
       }),
     [closeFromSwipe, resetPosition, translateY]
   );
@@ -335,6 +395,7 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
             horizontal
             pagingEnabled
             bounces={false}
+            removeClippedSubviews={false}
             showsHorizontalScrollIndicator={false}
             initialScrollIndex={safeIndex}
             getItemLayout={(_, index) => ({
@@ -357,7 +418,13 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
 
         <View style={styles.topBar} pointerEvents="box-none">
           <Text style={styles.counter}>{safeIndex + 1} / {items.length}</Text>
-          <Pressable onPress={onClose} style={styles.closeButton} hitSlop={12}>
+          <Pressable
+            onPress={onClose}
+            style={styles.closeButton}
+            hitSlop={16}
+            accessibilityRole="button"
+            accessibilityLabel="Закрыть"
+          >
             <Feather name="x" size={22} color="#FFFFFF" />
           </Pressable>
         </View>
@@ -365,7 +432,7 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
         {hasCaption && !captionOpen ? (
           <Pressable
             onPress={toggleCaption}
-            style={styles.captionHint}
+            style={[styles.captionHint, styles.overlayChrome]}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Feather name="align-left" size={15} color="#FFFFFF" />
@@ -375,7 +442,7 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
 
         {hasCaption ? (
           <View
-            style={styles.captionLayer}
+            style={[styles.captionLayer, captionOpen ? styles.overlayChrome : null]}
             pointerEvents={captionOpen ? 'box-none' : 'none'}
           >
             <Pressable
@@ -469,6 +536,17 @@ const styles = StyleSheet.create({
     top: 46,
     left: 0,
     right: 0,
+    zIndex: 50,
+    elevation: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  overlayChrome: {
+    zIndex: 50,
+    elevation: 50,
+  },
+  phErrorWrap: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

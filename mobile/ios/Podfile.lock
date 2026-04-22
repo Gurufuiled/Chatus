@@ -2,7 +2,7 @@ PODS:
   - EXAV (16.0.8):
     - ExpoModulesCore
     - ReactCommon/turbomodule/core
-  - EXConstants (55.0.9):
+  - EXConstants (55.0.11):
     - ExpoModulesCore
   - Expo (55.0.9):
     - ExpoModulesCore
@@ -29,7 +29,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - ExpoAsset (55.0.10):
+  - ExpoAsset (55.0.12):
     - ExpoModulesCore
   - ExpoBlur (55.0.10):
     - ExpoModulesCore
@@ -45,7 +45,7 @@ PODS:
     - ExpoModulesCore
   - ExpoFileSystem (55.0.12):
     - ExpoModulesCore
-  - ExpoFont (55.0.4):
+  - ExpoFont (55.0.6):
     - ExpoModulesCore
   - ExpoImageManipulator (55.0.11):
     - ExpoModulesCore
@@ -53,6 +53,8 @@ PODS:
   - ExpoImagePicker (55.0.14):
     - ExpoModulesCore
   - ExpoKeepAwake (55.0.4):
+    - ExpoModulesCore
+  - ExpoLinking (55.0.13):
     - ExpoModulesCore
   - ExpoLogBox (55.0.8):
     - React-Core
@@ -2150,6 +2152,51 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - RNSVG (15.15.3):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - RNSVG/common (= 15.15.3)
+    - Yoga
+  - RNSVG/common (15.15.3):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - RNWorklets (0.7.4):
     - hermes-engine
     - RCTRequired
@@ -2236,17 +2283,18 @@ DEPENDENCIES:
   - EXAV (from `../node_modules/expo-av/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
   - Expo (from `../node_modules/expo`)
-  - ExpoAsset (from `../node_modules/expo/node_modules/expo-asset/ios`)
+  - ExpoAsset (from `../node_modules/expo-asset/ios`)
   - ExpoBlur (from `../node_modules/expo-blur/ios`)
   - ExpoCamera (from `../node_modules/expo-camera/ios`)
   - ExpoClipboard (from `../node_modules/expo-clipboard/ios`)
   - ExpoDocumentPicker (from `../node_modules/expo-document-picker/ios`)
   - "ExpoDomWebView (from `../node_modules/expo/node_modules/@expo/log-box/node_modules/@expo/dom-webview/ios`)"
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios`)
-  - ExpoFont (from `../node_modules/expo/node_modules/expo-font/ios`)
+  - ExpoFont (from `../node_modules/expo-font/ios`)
   - ExpoImageManipulator (from `../node_modules/expo-image-manipulator/ios`)
   - ExpoImagePicker (from `../node_modules/expo-image-picker/ios`)
   - ExpoKeepAwake (from `../node_modules/expo/node_modules/expo-keep-awake/ios`)
+  - ExpoLinking (from `../node_modules/expo-linking/ios`)
   - "ExpoLogBox (from `../node_modules/expo/node_modules/@expo/log-box`)"
   - ExpoMediaLibrary (from `../node_modules/expo-media-library/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
@@ -2335,6 +2383,7 @@ DEPENDENCIES:
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNScreens (from `../node_modules/react-native-screens`)
+  - RNSVG (from `../node_modules/react-native-svg`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -2354,7 +2403,7 @@ EXTERNAL SOURCES:
   Expo:
     :path: "../node_modules/expo"
   ExpoAsset:
-    :path: "../node_modules/expo/node_modules/expo-asset/ios"
+    :path: "../node_modules/expo-asset/ios"
   ExpoBlur:
     :path: "../node_modules/expo-blur/ios"
   ExpoCamera:
@@ -2368,13 +2417,15 @@ EXTERNAL SOURCES:
   ExpoFileSystem:
     :path: "../node_modules/expo-file-system/ios"
   ExpoFont:
-    :path: "../node_modules/expo/node_modules/expo-font/ios"
+    :path: "../node_modules/expo-font/ios"
   ExpoImageManipulator:
     :path: "../node_modules/expo-image-manipulator/ios"
   ExpoImagePicker:
     :path: "../node_modules/expo-image-picker/ios"
   ExpoKeepAwake:
     :path: "../node_modules/expo/node_modules/expo-keep-awake/ios"
+  ExpoLinking:
+    :path: "../node_modules/expo-linking/ios"
   ExpoLogBox:
     :path: "../node_modules/expo/node_modules/@expo/log-box"
   ExpoMediaLibrary:
@@ -2550,6 +2601,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-reanimated"
   RNScreens:
     :path: "../node_modules/react-native-screens"
+  RNSVG:
+    :path: "../node_modules/react-native-svg"
   RNWorklets:
     :path: "../node_modules/react-native-worklets"
   Yoga:
@@ -2557,19 +2610,20 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   EXAV: c2de1057f4d9b0bcbdd908c6f2dcff48ece36f2b
-  EXConstants: e0d15d47fcde213b51ac1f5e69eaa5e6b5af8842
+  EXConstants: 2dad38ad95feae15fea50bb4116562d93b1c6f45
   Expo: 2749929a52192142cfcc2aa17dafd918d8cf074a
-  ExpoAsset: 4966b4823ff0a7a0657c7b53e83b237a2eb9f45b
+  ExpoAsset: c4592649f2c5082b9fdc4a6912db5150a377db2b
   ExpoBlur: f14c5e74ee210dcc8dbaa6c46d579095b32d6a9c
   ExpoCamera: 4a08667024d397623b1c18873f97356db16f0910
   ExpoClipboard: dba8098503411e059788411a86c497e9d307d275
   ExpoDocumentPicker: 5d0159b487681bae479a7b0ff4c617f06c76063c
   ExpoDomWebView: d4f2ed3c3fa31d0ce89e79501a0c041c2f233189
   ExpoFileSystem: a36716f500022a3ca30605d3f10b908d7728b414
-  ExpoFont: 4d2a6dedce012c4793532cb38d561d3da95eaafd
+  ExpoFont: e4fe17baebfe22a21576d6efd8f27b0dad06d653
   ExpoImageManipulator: 0dca311f56e2946c8b558ed44eba0564bc5453c4
   ExpoImagePicker: cbe89985f43afee507f757fa2bf3b995d6d21ad1
   ExpoKeepAwake: 55711a70fe88a41e793bbe28543c93cb47ff265d
+  ExpoLinking: 36e1e619adec0a946395142444210d848c80cb54
   ExpoLogBox: adb715d4d0882d0f2d6d4d37eaeda1db51b1f93f
   ExpoMediaLibrary: 9b5859b214faca10999b818435f16ca515a99169
   ExpoModulesCore: 546b540cc25fc0acc52c5026602607ab87ea3ca0
@@ -2659,6 +2713,7 @@ SPEC CHECKSUMS:
   RNGestureHandler: 45b73017de8393ba07defb6ea3664b1b7a138412
   RNReanimated: d8cae22c24758ad0f74b0711d466c2b850d14546
   RNScreens: 7ed5d9017244b28281a4acec2eaf8842f3d2db1b
+  RNSVG: 8525e46d9f0c9ef0b42b274b38f1beb920bfde25
   RNWorklets: 80af85abaac570a8673c933710b2fd55a30b9638
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   SDWebImageWebPCoder: 0e06e365080397465cc73a7a9b472d8a3bd0f377
