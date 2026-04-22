@@ -16,6 +16,7 @@ import {
   Transport,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MESSAGE_RELATIONS_INCLUDE } from '../common/message-include';
 import {
   mapMessage,
   type MappedMessage,
@@ -39,10 +40,7 @@ const VALID_MSG_TYPES: MessageType[] = [
   MessageType.file,
 ];
 
-const MESSAGE_INCLUDE = {
-  media: { orderBy: { createdAt: 'asc' } },
-  reactions: true,
-} satisfies Prisma.MessageInclude;
+const MESSAGE_INCLUDE = MESSAGE_RELATIONS_INCLUDE;
 
 export interface CreateMessageMedia {
   media_type?: string;

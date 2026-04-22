@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { colors, bubbleRadius, typography } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -45,6 +46,9 @@ export interface ImageBubbleProps {
   fixedSize?: boolean;
   /** Parent handles fullscreen (e.g. swipe-to-dismiss profile viewer). */
   onOpenFullscreen?: () => void;
+  inlineReactions?: InlineReactionItem[];
+  allowMessageReactions?: boolean;
+  onToggleInlineReaction?: (emoji: string) => void;
 }
 
 function computeDisplaySize(
@@ -97,6 +101,9 @@ export function ImageBubble({
   resizeMode = 'cover',
   fixedSize = false,
   onOpenFullscreen,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
@@ -256,6 +263,15 @@ export function ImageBubble({
           >
             {caption}
           </Text>
+        ) : null}
+
+        {inlineReactions?.length ? (
+          <MessageReactionInline
+            reactions={inlineReactions}
+            isMe={isMe}
+            allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+            onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+          />
         ) : null}
       </View>
 

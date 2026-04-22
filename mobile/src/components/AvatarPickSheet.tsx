@@ -56,7 +56,7 @@ function PhotoCell({
   return (
     <View style={styles.cellOuter}>
       <Pressable style={styles.cell} disabled={disabled} onPress={() => onPress(item)}>
-        <Image source={{ uri: item.uri }} style={styles.cellImage} />
+        <Image source={{ uri: item.uri }} style={styles.cellImage} fadeDuration={0} />
       </Pressable>
     </View>
   );
@@ -112,15 +112,31 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
         });
 
         if (cancelled) return;
-        setItems(
-          result.assets.map((a) => ({
-            id: a.id,
-            uri: a.uri,
-            width: a.width,
-            height: a.height,
-            fileName: a.filename,
-          }))
+        const base = result.assets.map((a) => ({
+          id: a.id,
+          uri: a.uri,
+          width: a.width,
+          height: a.height,
+          fileName: a.filename,
+        }));
+        setItems(base);
+
+        const enriched = await Promise.all(
+          base.map(async (p) => {
+            try {
+              const info = await MediaLibrary.getAssetInfoAsync(p.id, {
+                shouldDownloadFromNetwork: true,
+              });
+              const faster = info.localUri?.trim() || info.uri?.trim() || p.uri;
+              return { ...p, uri: faster };
+            } catch {
+              return p;
+            }
+          })
         );
+        if (!cancelled) {
+          setItems(enriched);
+        }
       } catch {
         if (!cancelled) setItems([]);
       } finally {
@@ -259,10 +275,10 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
                 contentContainerStyle={[styles.galleryGrid, { paddingBottom: 88 }]}
                 columnWrapperStyle={styles.galleryRow}
                 showsVerticalScrollIndicator={false}
-                removeClippedSubviews
-                initialNumToRender={18}
-                maxToRenderPerBatch={12}
-                windowSize={5}
+                removeClippedSubviews={false}
+                initialNumToRender={24}
+                maxToRenderPerBatch={18}
+                windowSize={7}
                 keyboardShouldPersistTaps="handled"
                 onScroll={handleGalleryScroll}
                 scrollEventThrottle={16}

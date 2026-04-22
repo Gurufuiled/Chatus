@@ -302,6 +302,14 @@ export type MappedMessageReaction = {
   emoji: string;
   count: number;
   reacted_by_me: boolean;
+  /** Up to 3 distinct reactors (newest first); current user sorted first when present. */
+  reactors?: { user_id: string; avatar_url: string | null }[];
+};
+
+const MAX_REACTION_AVATARS = 3;
+
+type ReactionWithUser = MessageReaction & {
+  user?: { id: string; avatarUrl: string | null } | null;
 };
 
 export function mapMessage(
@@ -344,23 +352,51 @@ export function mapMessage(
     base.media = message.media.map(mapMedia);
   }
   if (opts?.includeReactions) {
-    const grouped = new Map<string, { count: number; reacted_by_me: boolean }>();
-    for (const reaction of message.reactions ?? []) {
+    const grouped = new Map<
+      string,
+      {
+        count: number;
+        reacted_by_me: boolean;
+        reactors: { user_id: string; avatar_url: string | null }[];
+      }
+    >();
+    for (const reaction of (message.reactions ?? []) as ReactionWithUser[]) {
       const existing = grouped.get(reaction.emoji) ?? {
         count: 0,
         reacted_by_me: false,
+        reactors: [] as { user_id: string; avatar_url: string | null }[],
       };
       existing.count += 1;
       if (opts.currentUserId && reaction.userId === opts.currentUserId) {
         existing.reacted_by_me = true;
       }
+      if (
+        existing.reactors.length < MAX_REACTION_AVATARS &&
+        !existing.reactors.some((r) => r.user_id === reaction.userId)
+      ) {
+        existing.reactors.push({
+          user_id: reaction.userId,
+          avatar_url: reaction.user?.avatarUrl ?? null,
+        });
+      }
       grouped.set(reaction.emoji, existing);
     }
-    base.reactions = [...grouped.entries()].map(([emoji, reaction]) => ({
-      emoji,
-      count: reaction.count,
-      reacted_by_me: reaction.reacted_by_me,
-    }));
+    base.reactions = [...grouped.entries()].map(([emoji, reaction]) => {
+      const reactors = [...reaction.reactors];
+      if (opts.currentUserId) {
+        reactors.sort((a, b) => {
+          if (a.user_id === opts.currentUserId) return -1;
+          if (b.user_id === opts.currentUserId) return 1;
+          return 0;
+        });
+      }
+      return {
+        emoji,
+        count: reaction.count,
+        reacted_by_me: reaction.reacted_by_me,
+        ...(reactors.length > 0 ? { reactors } : {}),
+      };
+    });
   }
   return base;
 }

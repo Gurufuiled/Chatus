@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { bubbleRadius, colors, typography } from '../theme/colors';
+import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 export interface FileBubbleProps {
@@ -16,6 +17,9 @@ export interface FileBubbleProps {
   outgoingTextColor?: string;
   outgoingMetaColor?: string;
   outgoingAccentColor?: string;
+  inlineReactions?: InlineReactionItem[];
+  allowMessageReactions?: boolean;
+  onToggleInlineReaction?: (emoji: string) => void;
 }
 
 function formatFileSize(bytes?: number): string | null {
@@ -64,6 +68,9 @@ export function FileBubble({
   outgoingTextColor,
   outgoingMetaColor,
   outgoingAccentColor,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
   const fileCaption = useMemo(
@@ -168,6 +175,15 @@ export function FileBubble({
         >
           {fileCaption}
         </Text>
+      ) : null}
+
+      {inlineReactions?.length ? (
+        <MessageReactionInline
+          reactions={inlineReactions}
+          isMe={isMe}
+          allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+          onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+        />
       ) : null}
     </View>
   );

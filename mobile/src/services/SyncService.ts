@@ -206,7 +206,12 @@ interface ApiMessage {
     file_name?: string;
     file_size?: number;
   }[];
-  reactions?: { emoji: string; count: number; reacted_by_me: boolean }[];
+  reactions?: {
+    emoji: string;
+    count: number;
+    reacted_by_me: boolean;
+    reactors?: { user_id: string; avatar_url: string | null }[];
+  }[];
 }
 
 function mapApiMessageToMessage(api: ApiMessage): Message {
@@ -265,6 +270,7 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
         emoji: r.emoji,
         count: r.count,
         reacted_by_me: r.reacted_by_me,
+        reactors: r.reactors,
       })) ?? undefined,
   };
 }

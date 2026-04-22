@@ -14,6 +14,7 @@ import {
   SubscriptionStatus,
   Transport,
 } from '@prisma/client';
+import { MESSAGE_RELATIONS_INCLUDE } from '../common/message-include';
 import { mapChat, mapMessage } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -420,10 +421,7 @@ export class ChannelsService {
         isDeleted: false,
         isChannelPost: true,
       },
-      include: {
-        media: true,
-        reactions: true,
-      },
+      include: MESSAGE_RELATIONS_INCLUDE,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -705,10 +703,7 @@ export class ChannelsService {
         isChannelPost: true,
         ...(beforeDate ? { createdAt: { lt: beforeDate } } : {}),
       },
-      include: {
-        media: true,
-        reactions: true,
-      },
+      include: MESSAGE_RELATIONS_INCLUDE,
       orderBy: { createdAt: 'desc' },
       take,
     });
@@ -842,8 +837,7 @@ export class ChannelsService {
         isDeleted: false,
       },
       include: {
-        media: true,
-        reactions: true,
+        ...MESSAGE_RELATIONS_INCLUDE,
         sender: true,
       },
     });
@@ -861,8 +855,7 @@ export class ChannelsService {
         ...(beforeDate ? { createdAt: { lt: beforeDate } } : {}),
       },
       include: {
-        media: true,
-        reactions: true,
+        ...MESSAGE_RELATIONS_INCLUDE,
         sender: true,
       },
       orderBy: { createdAt: 'desc' },

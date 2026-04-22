@@ -111,7 +111,7 @@ export function CreateChannelScreen() {
       });
       channelStore.getState().upsertChannel(channel);
       chatStore.getState().addOrUpdateChat(channel);
-      navigation.replace('ChannelAdmin', { channelId: channel.id });
+      navigation.replace('ChannelFeed', { channelId: channel.id });
     } catch (error) {
       Alert.alert(
         'Не удалось создать канал',

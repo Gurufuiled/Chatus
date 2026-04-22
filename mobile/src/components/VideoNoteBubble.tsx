@@ -33,6 +33,7 @@ import {
   formatMediaDuration,
   formatPlaybackElapsedDuration,
 } from '../utils/mediaDuration';
+import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -289,6 +290,9 @@ export interface VideoNoteBubbleProps {
   enableReplySwipe?: boolean;
   onReplySwipe?: () => void;
   registerPlaybackState?: boolean;
+  inlineReactions?: InlineReactionItem[];
+  allowMessageReactions?: boolean;
+  onToggleInlineReaction?: (emoji: string) => void;
 }
 
 function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
@@ -307,7 +311,10 @@ function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
     prev.outgoingAccentColor === next.outgoingAccentColor &&
     prev.enableReplySwipe === next.enableReplySwipe &&
     prev.onReplySwipe === next.onReplySwipe &&
-    prev.registerPlaybackState === next.registerPlaybackState
+    prev.registerPlaybackState === next.registerPlaybackState &&
+    prev.inlineReactions === next.inlineReactions &&
+    prev.allowMessageReactions === next.allowMessageReactions &&
+    prev.onToggleInlineReaction === next.onToggleInlineReaction
   );
 }
 
@@ -324,6 +331,9 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   enableReplySwipe = false,
   onReplySwipe,
   registerPlaybackState = true,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
 }: VideoNoteBubbleProps) {
   const generatedNoteId = React.useId();
   const noteId = messageId ?? generatedNoteId;
@@ -1129,6 +1139,15 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
           pressableContent
         )}
       </Reanimated.View>
+
+      {inlineReactions?.length ? (
+        <MessageReactionInline
+          reactions={inlineReactions}
+          isMe={isMe}
+          allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+          onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+        />
+      ) : null}
     </View>
   );
 }, arePropsEqual);

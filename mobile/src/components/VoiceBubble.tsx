@@ -11,6 +11,7 @@ import {
   formatRemainingPlaybackDuration,
 } from '../utils/mediaDuration';
 import { stopActiveVideoNotePlayback } from './VideoNoteBubble';
+import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 export interface VoiceBubbleProps {
@@ -27,6 +28,9 @@ export interface VoiceBubbleProps {
   outgoingTextColor?: string;
   outgoingMetaColor?: string;
   outgoingAccentColor?: string;
+  inlineReactions?: InlineReactionItem[];
+  allowMessageReactions?: boolean;
+  onToggleInlineReaction?: (emoji: string) => void;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -137,6 +141,9 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   outgoingTextColor,
   outgoingMetaColor,
   outgoingAccentColor,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -227,7 +234,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
         >
           <Feather
             name={isPlaying ? 'pause' : 'play'}
-            size={14}
+            size={16}
             color={isMe ? outgoingAccentColor ?? colors.accent : '#FFFFFF'}
             style={isPlaying ? undefined : styles.playIconPlay}
           />
@@ -289,6 +296,15 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           </View>
         </View>
       </View>
+
+      {inlineReactions?.length ? (
+        <MessageReactionInline
+          reactions={inlineReactions}
+          isMe={isMe}
+          allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+          onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+        />
+      ) : null}
     </View>
   );
 }, arePropsEqual);
@@ -329,29 +345,39 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   playButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   playButtonMe: {
     backgroundColor: '#FFFFFF',
-    borderColor: 'rgba(255,255,255,0.95)',
+    borderColor: 'rgba(15, 23, 42, 0.1)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   playButtonOther: {
-    backgroundColor: '#4A8FF5',
-    borderColor: '#4A8FF5',
+    backgroundColor: '#3B7AED',
+    borderColor: 'rgba(255,255,255,0.22)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.2,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   playButtonActive: {
-    transform: [{ scale: 0.98 }],
+    transform: [{ scale: 0.97 }],
   },
   playButtonPressed: {
-    opacity: 0.72,
+    opacity: 0.75,
   },
   playIconPlay: {
-    marginLeft: 1,
+    marginLeft: 2,
   },
   contentColumn: {
     flex: 1,

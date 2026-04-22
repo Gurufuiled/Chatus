@@ -38,5 +38,6 @@ export type Message = MessageRow & {
     emoji: string;
     count: number;
     reacted_by_me: boolean;
+    reactors?: { user_id: string; avatar_url: string | null }[];
   }[];
 };

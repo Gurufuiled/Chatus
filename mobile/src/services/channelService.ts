@@ -115,6 +115,7 @@ type ApiReaction = {
   emoji: string;
   count: number;
   reacted_by_me: boolean;
+  reactors?: { user_id: string; avatar_url: string | null }[];
 };
 
 type ApiMessage = {
@@ -313,6 +314,7 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
       emoji: item.emoji,
       count: item.count,
       reacted_by_me: item.reacted_by_me,
+      reactors: item.reactors,
     })),
   };
 }

@@ -24,15 +24,8 @@ interface MessageStatusIconProps {
   iconColor?: string;
 }
 
-function getResolvedIconColor(
-  status: string,
-  isMe: boolean,
-  iconColor?: string,
-) {
-  if (status === 'read' && isMe) {
-    return colors.accent;
-  }
-
+function getResolvedIconColor(isMe: boolean, iconColor?: string) {
+  /** Не форсим colors.accent для read: он совпадает с bubbleMe на теме по умолчанию — галочки пропадают. */
   return iconColor ?? (isMe ? colors.textSecondaryMuted : colors.textSecondary);
 }
 
@@ -125,7 +118,7 @@ export function MessageStatusIcon({
 }: MessageStatusIconProps) {
   if (!isMe) return null;
 
-  const resolvedIconColor = getResolvedIconColor(status, isMe, iconColor);
+  const resolvedIconColor = getResolvedIconColor(isMe, iconColor);
 
   if (status === 'delivered' || status === 'read') {
     return <DoubleCheckIcon compact={compact} color={resolvedIconColor} />;

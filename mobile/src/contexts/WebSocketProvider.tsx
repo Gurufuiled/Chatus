@@ -52,7 +52,12 @@ interface ServerMessagePayload {
     file_size?: number | null;
     is_round?: boolean;
   }[];
-  reactions?: { emoji: string; count: number; reacted_by_me: boolean }[];
+  reactions?: {
+    emoji: string;
+    count: number;
+    reacted_by_me: boolean;
+    reactors?: { user_id: string; avatar_url: string | null }[];
+  }[];
 }
 
 const MEDIA_ACK_TYPES = new Set([
@@ -429,7 +434,12 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             channel_id?: string;
             post_id?: string;
             discussion_chat_id?: string;
-            reactions?: { emoji: string; count: number; reacted_by_me: boolean }[];
+            reactions?: {
+              emoji: string;
+              count: number;
+              reacted_by_me: boolean;
+              reactors?: { user_id: string; avatar_url: string | null }[];
+            }[];
           };
           if (!raw.message_id || !raw.reactions) return;
 

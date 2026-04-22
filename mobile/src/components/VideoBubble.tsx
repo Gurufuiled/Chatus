@@ -24,6 +24,7 @@ import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
 } from '../utils/videoThumbnail';
+import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -57,6 +58,9 @@ export interface VideoBubbleProps {
   fixedSize?: boolean;
   /** Parent handles fullscreen (e.g. swipe-to-dismiss profile viewer). */
   onOpenFullscreen?: () => void;
+  inlineReactions?: InlineReactionItem[];
+  allowMessageReactions?: boolean;
+  onToggleInlineReaction?: (emoji: string) => void;
 }
 
 function computeDisplaySize(
@@ -407,6 +411,9 @@ export function VideoBubble({
   viewCount,
   fixedSize = false,
   onOpenFullscreen,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -575,6 +582,15 @@ export function VideoBubble({
           >
             {caption}
           </Text>
+        ) : null}
+
+        {inlineReactions?.length ? (
+          <MessageReactionInline
+            reactions={inlineReactions}
+            isMe={isMe}
+            allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+            onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+          />
         ) : null}
       </View>
 

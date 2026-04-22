@@ -37,6 +37,7 @@ import {
 import { VideoBubble } from './VideoBubble';
 import { VideoNoteBubble } from './VideoNoteBubble';
 import { VoiceBubble } from './VoiceBubble';
+import { MessageReactionInline } from './MessageReactionInline';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import type { MessageAuthorPresentation } from '../screens/chatScreen.shared';
@@ -121,6 +122,9 @@ function MediaAlbumBubble({
   status,
   chatTheme,
   onOpenMedia,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
 }: {
   message: Message;
   isMe: boolean;
@@ -128,6 +132,9 @@ function MediaAlbumBubble({
   status: string;
   chatTheme: ChatTheme;
   onOpenMedia?: (media: VisualMediaItem[], index: number) => void;
+  inlineReactions?: NonNullable<Message['reactions']>;
+  allowMessageReactions?: boolean;
+  onToggleInlineReaction?: (emoji: string) => void;
 }) {
   const media = (message.media ?? [])
     .filter((item) => item.remote_url?.trim())
@@ -260,6 +267,15 @@ function MediaAlbumBubble({
             iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
           />
         </View>
+      ) : null}
+
+      {inlineReactions?.length ? (
+        <MessageReactionInline
+          reactions={inlineReactions}
+          isMe={isMe}
+          allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+          onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+        />
       ) : null}
     </View>
   );
@@ -478,9 +494,47 @@ const AUTHOR_TAG_STYLES: Record<
   red: { bubble: 'rgba(230, 108, 122, 0.18)', text: '#CC5563' },
 };
 
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace('#', '').trim();
+  const full =
+    h.length === 3
+      ? h
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : h.slice(0, 6);
+  if (full.length !== 6) return AUTHOR_TAG_STYLES.blue.bubble;
+  const n = parseInt(full, 16);
+  if (Number.isNaN(n)) return AUTHOR_TAG_STYLES.blue.bubble;
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function expandHexColor(hexInput: string): string {
+  const h = hexInput.replace('#', '').trim();
+  const full =
+    h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+  return full.length === 6 ? `#${full}` : '#4C7FE5';
+}
+
+/** Сервер может отдавать preset (blue|green|…) или произвольный #hex. */
 function getAuthorTagStyle(color?: string | null) {
   if (!color) return AUTHOR_TAG_STYLES.blue;
-  return AUTHOR_TAG_STYLES[color] ?? AUTHOR_TAG_STYLES.blue;
+  const key = color.toLowerCase().trim();
+  if (key in AUTHOR_TAG_STYLES) {
+    return AUTHOR_TAG_STYLES[key as keyof typeof AUTHOR_TAG_STYLES];
+  }
+  if (/^#?[0-9a-f]{3}([0-9a-f]{3})?$/i.test(key)) {
+    const withHash = key.startsWith('#') ? key : `#${key}`;
+    const expanded = expandHexColor(withHash);
+    return {
+      bubble: hexToRgba(expanded, 0.22),
+      text: expanded,
+    };
+  }
+  return AUTHOR_TAG_STYLES.blue;
 }
 
 const MessageRow = React.memo(function MessageRow({
@@ -526,6 +580,13 @@ const MessageRow = React.memo(function MessageRow({
   );
   const showAuthorName = isGroupChat && !isMe && item.is_deleted !== 1;
   const showAuthorAvatar = isGroupChat && !isMe;
+  const showOwnGroupAuthorTag =
+    isGroupChat &&
+    isMe &&
+    item.is_deleted !== 1 &&
+    !!(authorPresentation.tag?.trim() ?? '');
+  const inlineReactionList =
+    selectionMode || !(item.reactions?.length ?? 0) ? undefined : item.reactions;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
 
   React.useEffect(() => {
@@ -610,9 +671,40 @@ const MessageRow = React.memo(function MessageRow({
     );
   };
 
+  /** В группе для своих сообщений — имя + тег над баблом (если тег задан на сервере). */
+  const renderOwnGroupAuthorLabel = () => {
+    if (!showOwnGroupAuthorTag) return null;
+    const tag = (authorPresentation.tag ?? '').trim();
+    const tagPalette = getAuthorTagStyle(authorPresentation.tagColor);
+
+    return (
+      <View style={[styles.authorLabelRow, styles.authorLabelRowOutgoingGroup]}>
+        <Text
+          style={[styles.authorLabel, { color: chatTheme.bubbleMeText }]}
+          numberOfLines={1}
+        >
+          {authorName}
+        </Text>
+        <View style={[styles.authorTagChip, { backgroundColor: tagPalette.bubble }]}>
+          <Text style={[styles.authorTagText, { color: tagPalette.text }]} numberOfLines={1}>
+            {tag}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   const renderIncomingHeader = (options?: { suppressForwardHeader?: boolean }) => {
     if (isMe) {
-      return options?.suppressForwardHeader ? null : renderForwardHeader();
+      const forward = options?.suppressForwardHeader ? null : renderForwardHeader();
+      const ownTagRow = renderOwnGroupAuthorLabel();
+      if (!ownTagRow && !forward) return null;
+      return (
+        <>
+          {ownTagRow}
+          {forward}
+        </>
+      );
     }
 
     const authorLabel = renderAuthorLabel();
@@ -684,6 +776,14 @@ const MessageRow = React.memo(function MessageRow({
               navigation={navigation}
               chatTheme={chatTheme}
             />
+            {inlineReactionList?.length ? (
+              <MessageReactionInline
+                reactions={inlineReactionList}
+                isMe={isMe}
+                allowReactions={allowReactions}
+                onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+              />
+            ) : null}
           </View>
         );
       }
@@ -718,6 +818,14 @@ const MessageRow = React.memo(function MessageRow({
               iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
             />
           </View>
+          {inlineReactionList?.length ? (
+            <MessageReactionInline
+              reactions={inlineReactionList}
+              isMe={isMe}
+              allowReactions={allowReactions}
+              onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+            />
+          ) : null}
         </View>
       );
     }
@@ -741,6 +849,9 @@ const MessageRow = React.memo(function MessageRow({
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
+          inlineReactions={inlineReactionList}
+          allowMessageReactions={allowReactions}
+          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
         />
       );
 
@@ -797,6 +908,9 @@ const MessageRow = React.memo(function MessageRow({
           outgoingAccentColor={chatTheme.bubbleMeAccent}
           enableReplySwipe={canSwipe}
           onReplySwipe={onReply}
+          inlineReactions={inlineReactionList}
+          allowMessageReactions={allowReactions}
+          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
         />
       );
 
@@ -845,6 +959,9 @@ const MessageRow = React.memo(function MessageRow({
           status={item.status}
           chatTheme={chatTheme}
           onOpenMedia={onOpenAlbumMedia}
+          inlineReactions={inlineReactionList}
+          allowMessageReactions={allowReactions}
+          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
         />
       );
 
@@ -899,6 +1016,9 @@ const MessageRow = React.memo(function MessageRow({
           header={topHeader}
           bubbleMeColor={chatTheme.bubbleMe}
           outgoingTextColor={chatTheme.bubbleMeText}
+          inlineReactions={inlineReactionList}
+          allowMessageReactions={allowReactions}
+          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
         />
       );
 
@@ -1019,44 +1139,15 @@ const MessageRow = React.memo(function MessageRow({
             outgoingTextColor={chatTheme.bubbleMeText}
             outgoingMetaColor={chatTheme.bubbleMeMeta}
             outgoingAccentColor={chatTheme.bubbleMeAccent}
+            inlineReactions={inlineReactionList}
+            allowMessageReactions={allowReactions}
+            onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
           />
         </View>
       );
     }
 
     return null;
-  };
-
-  const renderReactions = () => {
-    if (selectionMode || !(item.reactions?.length ?? 0)) return null;
-    return (
-      <View
-        style={[styles.reactionRow, isMe ? styles.reactionRowMe : styles.reactionRowOther]}
-      >
-        {item.reactions!.map((r) => (
-          <Pressable
-            key={r.emoji}
-            onPress={() => {
-              if (allowReactions) onToggleReaction(item.id, r.emoji);
-            }}
-            disabled={!allowReactions}
-            style={({ pressed }) => [
-              styles.reactionChip,
-              isMe ? styles.reactionChipMine : styles.reactionChipOther,
-              pressed && allowReactions && styles.reactionChipPressed,
-              !allowReactions && styles.reactionChipDisabled,
-            ]}
-          >
-            <Text style={[styles.reactionChipEmoji, isMe && styles.reactionChipEmojiMe]}>
-              {r.emoji}
-            </Text>
-            <Text style={[styles.reactionChipCount, isMe && styles.reactionChipCountMe]}>
-              {r.count}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    );
   };
 
   const card = (
@@ -1107,7 +1198,18 @@ const MessageRow = React.memo(function MessageRow({
           >
             {showAuthorAvatar ? (
               <View style={styles.groupIncomingRow}>
-                <View style={styles.groupAvatarSlot}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Профиль: ${authorName}`}
+                  hitSlop={10}
+                  onPress={() => {
+                    navigation.navigate('ChatProfile', {
+                      chatId,
+                      userId: item.sender_id,
+                    });
+                  }}
+                  style={styles.groupAvatarSlot}
+                >
                   {authorAvatarUri ? (
                     <Image source={{ uri: authorAvatarUri }} style={styles.groupAvatarImage} />
                   ) : (
@@ -1115,7 +1217,7 @@ const MessageRow = React.memo(function MessageRow({
                       <Text style={styles.groupAvatarInitial}>{authorPresentation.initial}</Text>
                     </View>
                   )}
-                </View>
+                </Pressable>
                 <View
                   ref={(node) => setContentRef(item.id, node)}
                   collapsable={false}
@@ -1141,7 +1243,6 @@ const MessageRow = React.memo(function MessageRow({
               </View>
             )}
           </View>
-          {renderReactions()}
         </View>
       </View>
     </Pressable>
@@ -1454,6 +1555,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     maxWidth: '100%',
   },
+  authorLabelRowOutgoingGroup: {
+    alignSelf: 'flex-end',
+    justifyContent: 'flex-end',
+  },
   authorLabel: {
     flexShrink: 1,
     minWidth: 0,
@@ -1723,54 +1828,5 @@ const styles = StyleSheet.create({
     elevation: 4,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  reactionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 2,
-    marginBottom: 2,
-    paddingHorizontal: 12,
-  },
-  reactionRowMe: {
-    alignSelf: 'flex-end',
-    justifyContent: 'flex-end',
-  },
-  reactionRowOther: {
-    alignSelf: 'flex-start',
-    justifyContent: 'flex-start',
-  },
-  reactionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  reactionChipMine: {
-    backgroundColor: 'rgba(255,255,255,0.28)',
-  },
-  reactionChipOther: {
-    backgroundColor: 'rgba(15,23,42,0.07)',
-  },
-  reactionChipPressed: {
-    opacity: 0.78,
-  },
-  reactionChipDisabled: {
-    opacity: 0.55,
-  },
-  reactionChipEmoji: {
-    fontSize: 15,
-    lineHeight: 18,
-  },
-  reactionChipEmojiMe: {},
-  reactionChipCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  reactionChipCountMe: {
-    color: 'rgba(255,255,255,0.92)',
   },
 });
