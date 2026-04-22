@@ -18,9 +18,9 @@ export function buildChannelPostMediaTiles(message: Message): MediaTile[] {
   const caption = captionRaw && captionRaw.length > 0 ? captionRaw : undefined;
   return mediaList.map((m, i) => {
     const kind = getVisualMediaKind(message, m);
-    const uri = resolveMediaUrl(m.remote_url ?? null) ?? m.remote_url!.trim();
-    const thumb = resolveMediaUrl(m.thumbnail_url ?? null);
-    const preview = kind === 'video' ? thumb ?? undefined : thumb ?? uri;
+    const uri = m.remote_url!.trim();
+    const thumb = m.thumbnail_url?.trim() || undefined;
+    const preview = kind === 'video' ? thumb : thumb ?? uri;
     return {
       id: `${message.id}-m${i}`,
       kind,

@@ -295,7 +295,9 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
     created_at: api.created_at,
     updated_at: api.updated_at,
     media:
-      api.media?.map((item) => ({
+      api.media?.map((item, index) => ({
+        id: `media-${api.id}-${index}`,
+        message_id: api.id,
         media_type: item.media_type ?? undefined,
         duration_ms: item.duration_ms ?? undefined,
         waveform: decodeServerWaveform(item.waveform),

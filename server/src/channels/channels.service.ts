@@ -489,7 +489,8 @@ export class ChannelsService {
             return new Set();
           }
         }
-        throw error;
+        console.warn('[channels.service] markChannelPostsViewed item failed:', postId, error);
+        continue;
       }
     }
 

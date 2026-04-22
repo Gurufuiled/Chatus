@@ -30,7 +30,7 @@ export interface VoiceBubbleProps {
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
-const VOICE_BAR_COUNT = 56;
+const VOICE_BAR_COUNT = 74;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
@@ -241,18 +241,6 @@ export const VoiceBubble = React.memo(function VoiceBubble({
             }}
             style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
           >
-            {filledBarCount > 0 ? (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.waveformTrack,
-                  styles.waveformTrackFilled,
-                  isMe ? styles.waveformTrackFilledMe : styles.waveformTrackFilledOther,
-                  { width: `${(filledBarCount / barCount) * 100}%` },
-                ]}
-              />
-            ) : null}
-
             {barHeights.map((barHeight, index) => {
               const isFilled = progress > 0 && index / barCount <= progress;
               return (
@@ -263,16 +251,14 @@ export const VoiceBubble = React.memo(function VoiceBubble({
                     {
                       height: barHeight,
                       backgroundColor: isFilled
-                      ? isMe
+                        ? isMe
                           ? outgoingTextColor ?? '#FFFFFF'
-                          : '#B8B8BE'
-                      : isMe
-                        ? hasPlaybackProgress
-                          ? '#C8D0DC'
-                          : outgoingTextColor ?? '#FFFFFF'
-                        : 'rgba(130, 163, 214, 0.72)',
-                  },
-                ]}
+                          : '#4A8FF5'
+                        : isMe
+                          ? outgoingTextColor ? `${outgoingTextColor}66` : 'rgba(255, 255, 255, 0.4)'
+                          : '#D2D5DA',
+                    },
+                  ]}
                 />
               );
             })}
@@ -383,26 +369,10 @@ const styles = StyleSheet.create({
   waveformPressed: {
     opacity: 0.9,
   },
-  waveformTrack: {
-    position: 'absolute',
-    left: 0,
-    height: 2,
-    borderRadius: 999,
-    top: 13,
-  },
-  waveformTrackFilled: {
-    right: 'auto',
-  },
-  waveformTrackFilledMe: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  waveformTrackFilledOther: {
-    backgroundColor: 'rgba(74, 143, 245, 0.22)',
-  },
   bar: {
-    width: 1.5,
+    width: 2.2,
     borderRadius: 999,
-    minHeight: 2,
+    minHeight: 2.5,
   },
   metaRow: {
     marginTop: 4,

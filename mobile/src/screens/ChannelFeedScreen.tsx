@@ -1237,11 +1237,11 @@ export function ChannelFeedScreen() {
       const media = item.media?.[0];
       const remoteUri =
         media?.remote_url != null && media.remote_url.trim() !== ''
-          ? resolveMediaUrl(media.remote_url) ?? media.remote_url
+          ? media.remote_url
           : undefined;
       const thumbUri =
         media?.thumbnail_url != null && media.thumbnail_url.trim() !== ''
-          ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+          ? media.thumbnail_url
           : undefined;
       const visualMediaCount =
         item.msg_type === 'image' || item.msg_type === 'video'

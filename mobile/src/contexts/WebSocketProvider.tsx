@@ -138,7 +138,9 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
     updated_at: createdAt,
   };
   if (payload.media?.length) {
-    msg.media = payload.media.map((m) => ({
+    msg.media = payload.media.map((m, index) => ({
+      id: `media-${payload.id}-${index}`,
+      message_id: payload.id,
       media_type: m.media_type ?? undefined,
       waveform: decodeServerWaveform(m.waveform),
       duration_ms: m.duration_ms ?? undefined,
