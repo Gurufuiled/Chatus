@@ -60,6 +60,16 @@ enum Transport {
   websocket
 }
 
+enum FeedbackType {
+  bug
+  suggestion
+}
+
+enum FeedbackStatus {
+  open
+  closed
+}
+
 enum ChatMemberRole {
   owner
   admin
@@ -96,8 +106,25 @@ model User {
   messageReactions MessageReaction[]
   channelPostViews ChannelPostView[]
   developerProfile DeveloperProfile?
+  feedbackEntries FeedbackEntry[]
 
   @@map("users")
+}
+
+model FeedbackEntry {
+  id        String         @id @default(uuid())
+  type      FeedbackType
+  status    FeedbackStatus @default(open)
+  title     String
+  body      String
+  authorId  String         @map("author_id")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId])
+  @@index([type, createdAt])
+  @@map("feedback_entries")
 }
 
 model DeveloperProfile {

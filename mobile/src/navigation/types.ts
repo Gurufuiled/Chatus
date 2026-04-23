@@ -43,6 +43,8 @@ export type SettingsStackParamList = {
   SettingsMain: undefined;
   Services: undefined;
   MiniApp: { appId: string; title?: string };
+  FeedbackList: { kind: 'bug' | 'suggestion' };
+  FeedbackCompose: { kind: 'bug' | 'suggestion' };
 };
 
 export type MainTabParamList = {

@@ -878,11 +878,25 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     }
 
     let frameId: number;
+    let lastTick = Date.now();
+    let virtualMs = (player.currentTime ?? 0) * 1000;
+
     const processFrame = () => {
-      const liveElapsedMs = Math.max(
-        Math.round((player.currentTime ?? 0) * 1000),
-        0
-      );
+      const now = Date.now();
+      const deltaMs = now - lastTick;
+      lastTick = now;
+
+      const actualMs = (player.currentTime ?? 0) * 1000;
+      virtualMs += deltaMs;
+
+      const diff = actualMs - virtualMs;
+      if (Math.abs(diff) > 350) {
+        virtualMs = actualMs;
+      } else {
+        virtualMs += diff * 0.15;
+      }
+
+      const liveElapsedMs = Math.max(Math.round(virtualMs), 0);
       const prog = clampUnit(
         effectiveDurationMs > 0 ? liveElapsedMs / effectiveDurationMs : 0
       );
@@ -1175,7 +1189,6 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
 const styles = StyleSheet.create({
   container: {
-    alignSelf: 'flex-start',
     maxWidth: '100%',
     paddingVertical: 2,
   },

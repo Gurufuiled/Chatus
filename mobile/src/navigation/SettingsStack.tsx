@@ -1,6 +1,11 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SettingsScreen, ServicesScreen } from '../screens';
+import {
+  FeedbackComposeScreen,
+  FeedbackListScreen,
+  SettingsScreen,
+  ServicesScreen,
+} from '../screens';
 import { MiniAppScreen } from '../screens/MiniAppScreen';
 import { colors } from '../theme/colors';
 import type { SettingsStackParamList } from './types';
@@ -33,6 +38,16 @@ export function SettingsStack() {
         name="MiniApp"
         component={MiniAppScreen}
         options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="FeedbackList"
+        component={FeedbackListScreen}
+        options={{ headerBackTitle: 'Назад' }}
+      />
+      <Stack.Screen
+        name="FeedbackCompose"
+        component={FeedbackComposeScreen}
+        options={{ headerBackTitle: 'Назад' }}
       />
     </Stack.Navigator>
   );

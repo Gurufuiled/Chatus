@@ -397,6 +397,25 @@ let dynamicMessages: Record<string, Array<Record<string, unknown>>> = JSON.parse
   JSON.stringify(mockMessagesByChat)
 );
 
+type MockFeedbackWire = {
+  id: string;
+  type: 'bug' | 'suggestion';
+  status: 'open' | 'closed';
+  title: string;
+  body: string;
+  author_id: string;
+  created_at: number;
+  author: {
+    id: string;
+    display_name: string | null;
+    handle: string | null;
+    avatar_url: string | null;
+  };
+};
+
+let mockFeedbackBug: MockFeedbackWire[] = [];
+let mockFeedbackSuggestion: MockFeedbackWire[] = [];
+
 function createMockResponse<T>(data: T, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -589,6 +608,25 @@ export async function mockApiGet(path: string): Promise<Response> {
     return createMockResponse(filtered);
   }
 
+  if (path.startsWith('/feedback')) {
+    const url = new URL(path, 'http://localhost');
+    const fbType = url.searchParams.get('type');
+    const inbox =
+      (mockCurrentUser.handle ?? '').trim().toLowerCase() === 'admin';
+    if (fbType === 'bug') {
+      const list = inbox
+        ? mockFeedbackBug
+        : mockFeedbackBug.filter((e) => e.author_id === mockCurrentUser.id);
+      return createMockResponse(list);
+    }
+    if (fbType === 'suggestion') {
+      const list = inbox
+        ? mockFeedbackSuggestion
+        : mockFeedbackSuggestion.filter((e) => e.author_id === mockCurrentUser.id);
+      return createMockResponse(list);
+    }
+  }
+
   return new Response(JSON.stringify({ error: 'Not found' }), {
     status: 404,
     headers: { 'Content-Type': 'application/json' },
@@ -635,6 +673,32 @@ export async function mockApiPost(
   path: string,
   body?: unknown
 ): Promise<Response> {
+  if (path === '/feedback' && body && typeof body === 'object') {
+    const b = body as { type?: string; title?: string; body?: string };
+    const t = b.type === 'suggestion' ? 'suggestion' : 'bug';
+    const entry: MockFeedbackWire = {
+      id: `mock-fb-${Date.now()}`,
+      type: t,
+      status: 'open',
+      title: String(b.title ?? '').trim() || '(empty)',
+      body: String(b.body ?? '').trim() || '(empty)',
+      author_id: mockCurrentUser.id,
+      created_at: Date.now(),
+      author: {
+        id: mockCurrentUser.id,
+        display_name: mockCurrentUser.display_name ?? null,
+        handle: mockCurrentUser.handle ?? null,
+        avatar_url: mockCurrentUser.avatar_url ?? null,
+      },
+    };
+    if (t === 'bug') {
+      mockFeedbackBug = [entry, ...mockFeedbackBug];
+    } else {
+      mockFeedbackSuggestion = [entry, ...mockFeedbackSuggestion];
+    }
+    return createMockResponse(entry);
+  }
+
   // POST /chats
   if (path === '/chats' && body && typeof body === 'object') {
     const b = body as { chat_type?: string; member_ids?: string[] };

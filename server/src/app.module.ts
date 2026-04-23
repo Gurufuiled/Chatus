@@ -11,6 +11,7 @@ import { WebsocketModule } from './websocket/websocket.module';
 import { SignalingModule } from './signaling/signaling.module';
 import { ChannelsModule } from './channels/channels.module';
 import { MiniAppsModule } from './mini-apps/mini-apps.module';
+import { FeedbackModule } from './feedback/feedback.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { MiniAppsModule } from './mini-apps/mini-apps.module';
     MessagesModule,
     ChannelsModule,
     MiniAppsModule,
+    FeedbackModule,
     UploadModule,
     WebsocketModule,
     SignalingModule,

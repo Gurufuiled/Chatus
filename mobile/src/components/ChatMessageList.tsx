@@ -634,7 +634,7 @@ const MessageRow = React.memo(function MessageRow({
     );
   };
 
-  const renderForwardHeader = (options?: { compact?: boolean }) => {
+  const renderForwardHeader = (options?: { compact?: boolean; forceLightText?: boolean }) => {
     if (!item.forwarded_from_name && !item.forwarded_from_message_id) {
       return null;
     }
@@ -645,20 +645,27 @@ const MessageRow = React.memo(function MessageRow({
     );
     const avatarUri = resolveAvatarUrl(rawAvatar);
 
+    const labelColor = options?.forceLightText
+      ? 'rgba(255,255,255,0.72)'
+      : isMe ? chatTheme.forwardHeaderMeSub : withAlpha(colors.accent, 0.72);
+    const titleColor = options?.forceLightText
+      ? '#FFFFFF'
+      : isMe ? chatTheme.forwardHeaderMe : colors.accent;
+
     return (
       <ForwardHeader
         isMe={isMe}
         name={item.forwarded_from_name}
         avatarUri={avatarUri ?? undefined}
-        labelColor={isMe ? chatTheme.forwardHeaderMeSub : withAlpha(colors.accent, 0.72)}
-        titleColor={isMe ? chatTheme.forwardHeaderMe : colors.accent}
+        labelColor={labelColor}
+        titleColor={titleColor}
         compact={options?.compact}
         onPress={onForwardHeaderPress ? () => onForwardHeaderPress(item) : undefined}
       />
     );
   };
 
-  const renderAuthorLabel = () => {
+  const renderAuthorLabel = (options?: { forceLightText?: boolean }) => {
     if (!showAuthorName) return null;
 
     const tag = authorPresentation.tag?.trim() || null;
@@ -667,7 +674,7 @@ const MessageRow = React.memo(function MessageRow({
     return (
       <View style={styles.authorLabelRow}>
         <Text
-          style={[styles.authorLabel, { color: authorColor }]}
+          style={[styles.authorLabel, options?.forceLightText ? { color: '#FFFFFF' } : { color: authorColor }]}
           numberOfLines={1}
         >
           {authorName}
@@ -684,7 +691,7 @@ const MessageRow = React.memo(function MessageRow({
   };
 
   /** В группе для своих сообщений — имя + тег над баблом (если тег задан на сервере). */
-  const renderOwnGroupAuthorLabel = () => {
+  const renderOwnGroupAuthorLabel = (options?: { forceLightText?: boolean }) => {
     if (!showOwnGroupAuthorTag) return null;
     const tag = (authorPresentation.tag ?? '').trim();
     const tagPalette = getAuthorTagStyle(authorPresentation.tagColor);
@@ -692,7 +699,10 @@ const MessageRow = React.memo(function MessageRow({
     return (
       <View style={[styles.authorLabelRow, styles.authorLabelRowOutgoingGroup]}>
         <Text
-          style={[styles.authorLabel, { color: chatTheme.bubbleMeText }]}
+          style={[
+            styles.authorLabel,
+            options?.forceLightText ? { color: '#FFFFFF' } : { color: chatTheme.bubbleMeText }
+          ]}
           numberOfLines={1}
         >
           {authorName}
@@ -706,10 +716,10 @@ const MessageRow = React.memo(function MessageRow({
     );
   };
 
-  const renderIncomingHeader = (options?: { suppressForwardHeader?: boolean }) => {
+  const renderIncomingHeader = (options?: { suppressForwardHeader?: boolean; forceLightText?: boolean }) => {
     if (isMe) {
-      const forward = options?.suppressForwardHeader ? null : renderForwardHeader();
-      const ownTagRow = renderOwnGroupAuthorLabel();
+      const forward = options?.suppressForwardHeader ? null : renderForwardHeader(options);
+      const ownTagRow = renderOwnGroupAuthorLabel(options);
       if (!ownTagRow && !forward) return null;
       return (
         <>
@@ -719,8 +729,8 @@ const MessageRow = React.memo(function MessageRow({
       );
     }
 
-    const authorLabel = renderAuthorLabel();
-    const forwardHeader = options?.suppressForwardHeader ? null : renderForwardHeader();
+    const authorLabel = renderAuthorLabel(options);
+    const forwardHeader = options?.suppressForwardHeader ? null : renderForwardHeader(options);
 
     if (!authorLabel && !forwardHeader) return null;
 
@@ -906,17 +916,12 @@ const MessageRow = React.memo(function MessageRow({
       
       let topHeaderRaw = replySnippet
         ? null
-        : renderIncomingHeader();
+        : renderIncomingHeader({ forceLightText: true });
 
       let topHeader = null;
       if (topHeaderRaw) {
         topHeader = (
-          <View
-            style={[
-              isMe ? styles.videoNoteHeaderBadgeMe : styles.videoNoteHeaderBadgeOther,
-              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
-            ]}
-          >
+          <View style={styles.videoNoteHeaderBadge}>
             {topHeaderRaw}
           </View>
         );
@@ -1647,25 +1652,13 @@ const styles = StyleSheet.create({
   mediaStack: {
     maxWidth: '82%',
   },
-  videoNoteHeaderBadgeMe: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.bubbleMe,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    marginBottom: 4,
-    ...bubbleRadius.mine,
-  },
-  videoNoteHeaderBadgeOther: {
+  videoNoteHeaderBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.bubbleOther,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.bubbleOtherBorder,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 14,
     marginBottom: 4,
-    ...bubbleRadius.other,
   },
   albumBubble: {
     maxWidth: '100%',

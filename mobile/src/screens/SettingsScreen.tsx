@@ -20,6 +20,8 @@ import { getProfile, updateProfile } from '../services/profileService';
 import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { SettingsStackParamList } from '../navigation/types';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 import { SettingsIconRow } from '../components/settings/SettingsIconRow';
@@ -30,7 +32,8 @@ const HANDLE_REGEX = /^[a-zA-Z0-9_]{5,32}$/;
 
 export function SettingsScreen() {
   const { user, logout } = useAuth();
-  const navigation = useNavigation();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const [profile, setProfile] = useState<{
     display_name: string | null;
     avatar_url: string | null;
@@ -340,7 +343,7 @@ export function SettingsScreen() {
         <Text style={styles.sectionTitle}>Сервисы</Text>
         <View style={styles.settingsCard}>
           <Pressable
-            onPress={() => navigation.navigate('Services' as never)}
+            onPress={() => navigation.navigate('Services')}
             style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
           >
             <View style={styles.servicesIconBubble}>
@@ -355,6 +358,40 @@ export function SettingsScreen() {
               <Text style={styles.servicesSubtitle}>
                 Мини-приложения и ChatusFather
               </Text>
+            </View>
+            <Text style={styles.servicesChevron}>›</Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.sectionTitle}>Обратная связь</Text>
+        <View style={styles.settingsCard}>
+          <Pressable
+            onPress={() => navigation.navigate('FeedbackList', { kind: 'bug' })}
+            style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
+          >
+            <View style={styles.servicesIconBubble}>
+              <MaterialCommunityIcons name="bug-outline" size={22} color={colors.accent} />
+            </View>
+            <View style={styles.servicesText}>
+              <Text style={styles.servicesTitle}>Сообщить о баге</Text>
+              <Text style={styles.servicesSubtitle}>Список ваших сообщений и новая заявка</Text>
+            </View>
+            <Text style={styles.servicesChevron}>›</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate('FeedbackList', { kind: 'suggestion' })}
+            style={({ pressed }) => [
+              styles.servicesRow,
+              styles.feedbackRowSecond,
+              pressed && styles.servicesRowPressed,
+            ]}
+          >
+            <View style={styles.servicesIconBubble}>
+              <MaterialCommunityIcons name="lightbulb-outline" size={22} color={colors.accent} />
+            </View>
+            <View style={styles.servicesText}>
+              <Text style={styles.servicesTitle}>Предложения</Text>
+              <Text style={styles.servicesSubtitle}>Идеи по улучшению приложения</Text>
             </View>
             <Text style={styles.servicesChevron}>›</Text>
           </Pressable>
@@ -548,5 +585,9 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginLeft: 4,
     fontWeight: '300',
+  },
+  feedbackRowSecond: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
   },
 });

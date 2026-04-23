@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { Dimensions, type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from 'react-native-gesture-handler';
 import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,

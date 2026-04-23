@@ -14,7 +14,8 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
-import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import Reanimated, { runOnJS, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -1502,21 +1503,24 @@ export function ChannelFeedScreen() {
       const hasReactions = (item.reactions?.length ?? 0) > 0;
       const itemCanComment = canCommentOnPost(item, detail?.channel, canComment);
 
+      const openMenuGesture = Gesture.LongPress()
+        .minDuration(220)
+        .onStart(() => {
+          runOnJS(openPostInteractionMenu)(item);
+        });
+
       return (
-      <Pressable
-        style={styles.postWrap}
-        onLongPress={() => openPostInteractionMenu(item)}
-        delayLongPress={220}
-      >
-        <View
-          ref={(node) => setPostContentRef(item.id, node)}
-          style={[
-            styles.postBubble,
-            isVisualMediaPost && styles.postBubbleVisualMedia,
-            isVoicePost && styles.postBubbleVoice,
-            isVisualMediaPost && mediaWidth ? { width: mediaWidth } : null,
-          ]}
-        >
+      <GestureDetector gesture={openMenuGesture}>
+        <View style={styles.postWrap} collapsable={false}>
+          <View
+            ref={(node) => setPostContentRef(item.id, node)}
+            style={[
+              styles.postBubble,
+              isVisualMediaPost && styles.postBubbleVisualMedia,
+              isVoicePost && styles.postBubbleVoice,
+              isVisualMediaPost && mediaWidth ? { width: mediaWidth } : null,
+            ]}
+          >
             {isVisualMediaPost ? (
               <View style={styles.mediaContentWrap}>
                 {renderPostContent(item, { visualMediaWidth: mediaWidth ?? undefined })}
@@ -1525,44 +1529,45 @@ export function ChannelFeedScreen() {
               renderPostContent(item)
             )}
 
-          {itemCanComment || hasReactions ? (
-            <View style={[styles.postActionsRow, isVisualMediaPost && styles.postActionsRowMedia]}>
-              {itemCanComment ? (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.discussionPill,
-                    isVisualMediaPost && styles.discussionPillMedia,
-                    pressed && styles.discussionPillPressed,
-                  ]}
-                  onPress={() =>
-                    navigation.navigate('ChannelDiscussion', {
-                      channelId,
-                      postId: item.id,
-                    })
-                  }
-                >
-                  <Feather name="message-circle" size={14} color={colors.accent} />
-                  {/* Без numberOfLines + flexShrink: иначе после возврата с профиля RN даёт тексту чуть меньшую ширину и режет хвост / «…» */}
-                  <Text style={styles.discussionLink}>
-                    {(item.comment_count ?? 0) > 0
-                      ? `${item.comment_count} комментариев`
-                      : 'Прокомментировать'}
-                  </Text>
-                </Pressable>
-              ) : null}
-              {hasReactions ? (
-                <View style={styles.reactionSummaryRow}>
-                  {item.reactions?.map((reaction) => (
-                    <Text key={reaction.emoji} style={styles.reactionSummaryText}>
-                      {reaction.emoji} {reaction.count}
+            {itemCanComment || hasReactions ? (
+              <View style={[styles.postActionsRow, isVisualMediaPost && styles.postActionsRowMedia]}>
+                {itemCanComment ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.discussionPill,
+                      isVisualMediaPost && styles.discussionPillMedia,
+                      pressed && styles.discussionPillPressed,
+                    ]}
+                    onPress={() =>
+                      navigation.navigate('ChannelDiscussion', {
+                        channelId,
+                        postId: item.id,
+                      })
+                    }
+                  >
+                    <Feather name="message-circle" size={14} color={colors.accent} />
+                    {/* Без numberOfLines + flexShrink: иначе после возврата с профиля RN даёт тексту чуть меньшую ширину и режет хвост / «…» */}
+                    <Text style={styles.discussionLink}>
+                      {(item.comment_count ?? 0) > 0
+                        ? `${item.comment_count} комментариев`
+                        : 'Прокомментировать'}
                     </Text>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          ) : null}
+                  </Pressable>
+                ) : null}
+                {hasReactions ? (
+                  <View style={styles.reactionSummaryRow}>
+                    {item.reactions?.map((reaction) => (
+                      <Text key={reaction.emoji} style={styles.reactionSummaryText}>
+                        {reaction.emoji} {reaction.count}
+                      </Text>
+                    ))}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         </View>
-      </Pressable>
+      </GestureDetector>
       );
     },
     [canComment, detail?.channel, channelId, navigation, openPostInteractionMenu, renderPostContent, setPostContentRef]

@@ -380,7 +380,19 @@ function DiscussionMessageBubble({
         forcedWidth ? { width: Math.ceil(forcedWidth), maxWidth: Math.ceil(forcedWidth) } : null,
       ]}
     >
-      <Pressable onLongPress={onLongPress} delayLongPress={220}>{content}</Pressable>
+      {onLongPress ? (
+        <GestureDetector
+          gesture={Gesture.LongPress()
+            .minDuration(220)
+            .onStart(() => {
+              runOnJS(onLongPress)();
+            })}
+        >
+          <View collapsable={false}>{content}</View>
+        </GestureDetector>
+      ) : (
+        content
+      )}
       {reactionSummary ? <Text style={styles.reactionSummaryText}>{reactionSummary}</Text> : null}
     </View>
   );

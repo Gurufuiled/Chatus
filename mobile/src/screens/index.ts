@@ -25,3 +25,5 @@ export { ContactsScreen } from './ContactsScreen';
 export { SettingsScreen } from './SettingsScreen';
 export { ServicesScreen } from './ServicesScreen';
 export { MiniAppScreen } from './MiniAppScreen';
+export { FeedbackListScreen } from './FeedbackListScreen';
+export { FeedbackComposeScreen } from './FeedbackComposeScreen';
