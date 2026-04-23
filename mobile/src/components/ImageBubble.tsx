@@ -190,7 +190,9 @@ export function ImageBubble({
           isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
         ]}
       >
-        {header}
+        {header ? (
+          <View style={{ maxWidth: w, alignSelf: 'flex-start' }}>{header}</View>
+        ) : null}
 
         <Pressable
           accessibilityRole="button"

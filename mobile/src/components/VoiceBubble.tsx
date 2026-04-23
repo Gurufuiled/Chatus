@@ -13,6 +13,8 @@ import {
 import { stopActiveVideoNotePlayback } from './VideoNoteBubble';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { AnimatedPlayPauseIcon } from './AnimatedPlayPauseIcon';
+
 
 export interface VoiceBubbleProps {
   uri: string;
@@ -123,7 +125,10 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.outgoingTextColor === next.outgoingTextColor &&
     prev.outgoingMetaColor === next.outgoingMetaColor &&
     prev.outgoingAccentColor === next.outgoingAccentColor &&
-    prev.waveform === next.waveform
+    prev.waveform === next.waveform &&
+    prev.inlineReactions === next.inlineReactions &&
+    prev.allowMessageReactions === next.allowMessageReactions &&
+    prev.onToggleInlineReaction === next.onToggleInlineReaction
   );
 }
 
@@ -226,17 +231,15 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           style={({ pressed }) => [
             styles.playButton,
             isMe ? styles.playButtonMe : styles.playButtonOther,
-            isPlaying && styles.playButtonActive,
             pressed && styles.playButtonPressed,
           ]}
           onPress={handlePress}
           hitSlop={8}
         >
-          <Feather
-            name={isPlaying ? 'pause' : 'play'}
-            size={16}
-            color={isMe ? outgoingAccentColor ?? colors.accent : '#FFFFFF'}
-            style={isPlaying ? undefined : styles.playIconPlay}
+          <AnimatedPlayPauseIcon
+            isPlaying={isPlaying}
+            size={18}
+            color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
           />
         </Pressable>
 
@@ -303,6 +306,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           isMe={isMe}
           allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
           onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+          variant="floatingTail"
         />
       ) : null}
     </View>
@@ -370,14 +374,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
-  playButtonActive: {
-    transform: [{ scale: 0.97 }],
-  },
   playButtonPressed: {
     opacity: 0.75,
-  },
-  playIconPlay: {
-    marginLeft: 2,
   },
   contentColumn: {
     flex: 1,

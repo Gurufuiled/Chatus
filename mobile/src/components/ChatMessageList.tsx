@@ -23,7 +23,7 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import type { Message } from '../stores/types';
-import { bubbleRadius, colors } from '../theme/colors';
+import { bubbleRadius, colors, withAlpha } from '../theme/colors';
 import type { ChatTheme } from '../theme/chatThemes';
 import { FileBubble } from './FileBubble';
 import { ForwardHeader } from './ForwardHeader';
@@ -40,7 +40,10 @@ import { VoiceBubble } from './VoiceBubble';
 import { MessageReactionInline } from './MessageReactionInline';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
-import type { MessageAuthorPresentation } from '../screens/chatScreen.shared';
+import {
+  type MessageAuthorPresentation,
+  resolveForwardedSenderAvatarUrl,
+} from '../screens/chatScreen.shared';
 import { DOUBLE_TAP_REACTION_EMOJI } from './ChatContextMenuOverlay';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -631,16 +634,25 @@ const MessageRow = React.memo(function MessageRow({
     );
   };
 
-  const renderForwardHeader = () => {
+  const renderForwardHeader = (options?: { compact?: boolean }) => {
     if (!item.forwarded_from_name && !item.forwarded_from_message_id) {
       return null;
     }
+
+    const rawAvatar = resolveForwardedSenderAvatarUrl(
+      item.forwarded_from_sender_id,
+      item.forwarded_from_chat_id
+    );
+    const avatarUri = resolveAvatarUrl(rawAvatar);
 
     return (
       <ForwardHeader
         isMe={isMe}
         name={item.forwarded_from_name}
-        meColor={chatTheme.forwardHeaderMe}
+        avatarUri={avatarUri ?? undefined}
+        labelColor={isMe ? chatTheme.forwardHeaderMeSub : withAlpha(colors.accent, 0.72)}
+        titleColor={isMe ? chatTheme.forwardHeaderMe : colors.accent}
+        compact={options?.compact}
         onPress={onForwardHeaderPress ? () => onForwardHeaderPress(item) : undefined}
       />
     );
@@ -891,7 +903,14 @@ const MessageRow = React.memo(function MessageRow({
       if (!videoUri) return null;
 
       const replySnippet = renderReplySnippet();
-      const topHeader = replySnippet ? null : renderIncomingHeader();
+      const hasForwardMeta =
+        !!(item.forwarded_from_name?.trim() || item.forwarded_from_message_id);
+      const useForwardAside = !replySnippet && hasForwardMeta;
+      const topHeader = replySnippet
+        ? null
+        : renderIncomingHeader({ suppressForwardHeader: useForwardAside });
+      const forwardAside = useForwardAside ? renderForwardHeader({ compact: true }) : null;
+
       const videoContent = (
         <VideoNoteBubble
           messageId={item.id}
@@ -913,6 +932,23 @@ const MessageRow = React.memo(function MessageRow({
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
         />
       );
+
+      const layoutContent =
+        forwardAside != null ? (
+          <View style={styles.forwardVideoNoteRow}>
+            <View
+              style={[
+                styles.forwardVideoNoteAside,
+                isMe ? styles.forwardVideoNoteAsideMe : styles.forwardVideoNoteAsideOther,
+              ]}
+            >
+              {forwardAside}
+            </View>
+            {videoContent}
+          </View>
+        ) : (
+          videoContent
+        );
 
       if (replySnippet) {
         return (
@@ -939,7 +975,7 @@ const MessageRow = React.memo(function MessageRow({
             showAuthorAvatar && styles.groupMessageSurface,
           ]}
         >
-          {videoContent}
+          {layoutContent}
         </View>
       );
     }
@@ -1616,6 +1652,26 @@ const styles = StyleSheet.create({
   },
   mediaStack: {
     maxWidth: '82%',
+  },
+  forwardVideoNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    maxWidth: '100%',
+  },
+  forwardVideoNoteAside: {
+    maxWidth: 148,
+    flexShrink: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  forwardVideoNoteAsideMe: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  forwardVideoNoteAsideOther: {
+    backgroundColor: 'rgba(15,23,42,0.06)',
   },
   albumBubble: {
     maxWidth: '100%',

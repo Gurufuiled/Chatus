@@ -3,6 +3,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Reanimated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { colors, withAlpha } from '../theme/colors';
+import { AnimatedPlayPauseIcon } from './AnimatedPlayPauseIcon';
 
 type ChatTopBannersProps = {
   selectionMode: boolean;
@@ -125,11 +126,10 @@ const VoiceBanner = React.memo(function VoiceBanner({
             pressed && styles.voiceBannerButtonPressed,
           ]}
         >
-          <Feather
-            name={activeVoiceIsPlaying ? 'pause' : 'play'}
-            size={18}
-            color={colors.accent}
-            style={!activeVoiceIsPlaying ? styles.voiceBannerPlayIcon : undefined}
+          <AnimatedPlayPauseIcon
+            isPlaying={activeVoiceIsPlaying}
+            size={16}
+            color="#FFFFFF"
           />
         </Pressable>
 
@@ -194,11 +194,10 @@ const VideoNoteBanner = React.memo(function VideoNoteBanner({
             pressed && styles.voiceBannerButtonPressed,
           ]}
         >
-          <Feather
-            name={activeVideoNoteIsPlaying ? 'pause' : 'play'}
-            size={18}
+          <AnimatedPlayPauseIcon
+            isPlaying={activeVideoNoteIsPlaying}
+            size={16}
             color="#FFFFFF"
-            style={!activeVideoNoteIsPlaying ? styles.voiceBannerPlayIcon : undefined}
           />
         </Pressable>
 
@@ -461,41 +460,47 @@ const styles = StyleSheet.create({
     color: '#334155',
   },
   voiceBannerWrap: {
-    paddingTop: 2,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 4,
+    zIndex: 10,
   },
   voiceBanner: {
-    minHeight: 52,
-    paddingLeft: 12,
+    height: 44,
+    borderRadius: 22,
+    paddingLeft: 8,
     paddingRight: 8,
-    paddingTop: 8,
-    paddingBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(148,163,184,0.32)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(213,220,230,0.8)',
     overflow: 'hidden',
   },
   videoNoteBanner: {
     backgroundColor: 'rgba(255,255,255,0.98)',
   },
   voiceBannerPlayButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  videoNotePlayButton: {
     backgroundColor: colors.accent,
     shadowColor: colors.accent,
     shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  voiceBannerPlayIcon: {
-    marginLeft: 2,
+  videoNotePlayButton: {
+    backgroundColor: '#7C5CFF',
+    shadowColor: '#7C5CFF',
   },
   voiceBannerTextWrap: {
     flex: 1,

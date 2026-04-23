@@ -14,6 +14,8 @@ type MessageReactionInlineProps = {
   isMe: boolean;
   allowReactions: boolean;
   onToggle: (emoji: string) => void;
+  /** Компактные «таблетки» снизу справа (голос / кружок), как в Telegram */
+  variant?: 'default' | 'floatingTail';
 };
 
 const AVATAR = 15;
@@ -24,11 +26,14 @@ export function MessageReactionInline({
   isMe,
   allowReactions,
   onToggle,
+  variant = 'default',
 }: MessageReactionInlineProps) {
   if (!reactions.length) return null;
 
+  const isTail = variant === 'floatingTail';
+
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, isTail && styles.rowFloatingTail]}>
       {reactions.map((r) => (
         <Pressable
           key={r.emoji}
@@ -38,8 +43,15 @@ export function MessageReactionInline({
           onPress={() => allowReactions && onToggle(r.emoji)}
           style={({ pressed }) => [
             styles.chip,
-            isMe ? styles.chipPaletteMe : styles.chipPaletteOther,
-            r.reacted_by_me && (isMe ? styles.chipMineOnMe : styles.chipMineOnOther),
+            isTail
+              ? styles.chipFloatingTail
+              : isMe
+                ? styles.chipPaletteMe
+                : styles.chipPaletteOther,
+            !isTail && r.reacted_by_me && (isMe ? styles.chipMineOnMe : styles.chipMineOnOther),
+            isTail &&
+              r.reacted_by_me &&
+              (isMe ? styles.chipMineTailOnMe : styles.chipMineTailOnOther),
             pressed && allowReactions && styles.chipPressed,
             !allowReactions && styles.chipDisabled,
           ]}
@@ -54,7 +66,11 @@ export function MessageReactionInline({
                   style={[
                     styles.avatarRing,
                     index > 0 && { marginLeft: -AVATAR_OVERLAP },
-                    isMe ? styles.avatarRingMe : styles.avatarRingOther,
+                    isTail
+                      ? styles.avatarRingTail
+                      : isMe
+                        ? styles.avatarRingMe
+                        : styles.avatarRingOther,
                   ]}
                 >
                   {uri ? (
@@ -68,7 +84,18 @@ export function MessageReactionInline({
           </View>
           {r.count > (r.reactors?.length ?? 0) ||
           (!(r.reactors?.length ?? 0) && r.count > 1) ? (
-            <Text style={[styles.count, isMe && styles.countMe]}>{r.count}</Text>
+            <Text
+              style={[
+                styles.count,
+                isTail
+                  ? r.reacted_by_me && isMe
+                    ? styles.countMe
+                    : styles.countTail
+                  : isMe && styles.countMe,
+              ]}
+            >
+              {r.count}
+            </Text>
           ) : null}
         </Pressable>
       ))}
@@ -85,6 +112,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
     paddingRight: 2,
     maxWidth: '100%',
+  },
+  rowFloatingTail: {
+    marginTop: 0,
+    justifyContent: 'flex-end',
+    alignSelf: 'flex-end',
+    maxWidth: '92%',
   },
   chip: {
     flexDirection: 'row',
@@ -107,6 +140,24 @@ const styles = StyleSheet.create({
   },
   chipMineOnOther: {
     backgroundColor: 'rgba(139, 92, 246, 0.34)',
+  },
+  chipFloatingTail: {
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(15,23,42,0.08)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.14,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  chipMineTailOnMe: {
+    backgroundColor: 'rgba(167, 139, 250, 0.88)',
+    borderColor: 'rgba(91, 33, 182, 0.22)',
+  },
+  chipMineTailOnOther: {
+    backgroundColor: 'rgba(139, 92, 246, 0.42)',
+    borderColor: 'rgba(91, 33, 182, 0.18)',
   },
   chipPressed: {
     opacity: 0.82,
@@ -139,6 +190,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(0,0,0,0.12)',
   },
+  avatarRingTail: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(15,23,42,0.12)',
+  },
   avatarImg: {
     width: AVATAR,
     height: AVATAR,
@@ -162,5 +217,8 @@ const styles = StyleSheet.create({
   },
   countMe: {
     color: 'rgba(255,255,255,0.82)',
+  },
+  countTail: {
+    color: 'rgba(17,24,39,0.62)',
   },
 });

@@ -79,12 +79,13 @@ import {
   MENU_WIDTH,
   estimateMenuCardHeight,
   REPLIED_VOICE_BUBBLE_WIDTH,
+  resolveForwardedSenderAvatarUrl,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
 } from './chatScreen.shared';
 import { formatMediaDuration, formatPlaybackElapsedDuration } from '../utils/mediaDuration';
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
-import { resolveMediaUrl } from '../config';
+import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
@@ -1222,38 +1223,38 @@ export function ChatScreen() {
   const handleForwardHeaderPress = useCallback((message: Message) => {
     const sourceChatId = message.forwarded_from_chat_id ?? null;
     const sourceMessageId = message.forwarded_from_message_id ?? null;
-    const sourceSenderId = message.forwarded_from_sender_id ?? null;
+    const sourceSenderId = message.forwarded_from_sender_id?.trim() || null;
+
+    if (sourceChatId && sourceChatId === chatId && sourceMessageId) {
+      scrollToMessageId(sourceMessageId, 'Исходное сообщение недоступно');
+      return;
+    }
+
+    if (sourceSenderId) {
+      navigation.navigate('ChatProfile', {
+        chatId,
+        userId: sourceSenderId,
+        chatTitle: message.forwarded_from_name?.trim() || 'Профиль',
+      });
+      return;
+    }
 
     if (!sourceChatId) {
       return;
     }
 
-    const sourceChat = chats.find((chat) => chat.id === sourceChatId) ?? null;
+    const sourceChat = chats.find((c) => c.id === sourceChatId) ?? null;
     const sourceChatTitle =
       sourceChat?.peer_display_name?.trim() ||
       sourceChat?.name?.trim() ||
       message.forwarded_from_name?.trim() ||
       'Чат';
 
-    if (sourceChatId === chatId && sourceMessageId) {
-      scrollToMessageId(sourceMessageId, 'Исходное сообщение недоступно');
-      return;
-    }
-
     if (sourceChat) {
       navigation.navigate('Chat', {
         chatId: sourceChatId,
         chatTitle: sourceChatTitle,
         focusMessageId: sourceMessageId ?? undefined,
-      });
-      return;
-    }
-
-    if (sourceSenderId) {
-      navigation.navigate('ChatProfile', {
-        chatId: sourceChatId,
-        userId: sourceSenderId,
-        chatTitle: sourceChatTitle,
       });
     }
   }, [chatId, chats, navigation, scrollToMessageId]);
@@ -1443,10 +1444,19 @@ export function ChatScreen() {
         return null;
       }
 
+      const rawAvatar = resolveForwardedSenderAvatarUrl(
+        item.forwarded_from_sender_id,
+        item.forwarded_from_chat_id
+      );
+      const avatarUri = resolveAvatarUrl(rawAvatar);
+
       return (
         <ForwardHeader
           isMe={isMe}
           name={item.forwarded_from_name}
+          avatarUri={avatarUri ?? undefined}
+          labelColor={isMe ? chatTheme.forwardHeaderMeSub : withAlpha(colors.accent, 0.72)}
+          titleColor={isMe ? chatTheme.forwardHeaderMe : colors.accent}
           onPress={() => handleForwardHeaderPress(item)}
         />
       );

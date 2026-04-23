@@ -31,6 +31,9 @@ export type ChatTheme = {
   replyAccentMe: string;
   replyTextMe: string;
   replyAuthorMe: string;
+  /** «Переслано от» — muted line on outgoing bubbles. */
+  forwardHeaderMeSub: string;
+  /** Имя отправителя / акцент в блоке пересылки (исходящие). */
   forwardHeaderMe: string;
   deletedBubbleMe: string;
   deletedTextMe: string;
@@ -56,7 +59,8 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     replyAccentMe: '#DFF2A8',
     replyTextMe: 'rgba(255,255,255,0.88)',
     replyAuthorMe: '#FFD08A',
-    forwardHeaderMe: '#DFF2A8',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.52)',
+    forwardHeaderMe: 'rgba(255,255,255,0.94)',
     deletedBubbleMe: '#D8E8F9',
     deletedTextMe: '#426789',
     canvasColor: '#E8F4D6',
@@ -76,7 +80,8 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     replyAccentMe: '#45A8DB',
     replyTextMe: '#1E4770',
     replyAuthorMe: '#2F8FCD',
-    forwardHeaderMe: '#2B88C7',
+    forwardHeaderMeSub: 'rgba(16,56,92,0.48)',
+    forwardHeaderMe: '#0F3A5C',
     deletedBubbleMe: '#D7ECF6',
     deletedTextMe: '#47657E',
     canvasColor: '#4956A6',
@@ -97,7 +102,8 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     replyAccentMe: '#6D8CDE',
     replyTextMe: '#34517D',
     replyAuthorMe: '#5E7FD6',
-    forwardHeaderMe: '#5877CF',
+    forwardHeaderMeSub: 'rgba(38,63,108,0.48)',
+    forwardHeaderMe: '#2A4A7A',
     deletedBubbleMe: '#E2EAF4',
     deletedTextMe: '#61708D',
     canvasColor: '#324A96',
@@ -118,7 +124,8 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     replyAccentMe: '#D38C2C',
     replyTextMe: '#7B561B',
     replyAuthorMe: '#C37A29',
-    forwardHeaderMe: '#B86A20',
+    forwardHeaderMeSub: 'rgba(110,73,21,0.52)',
+    forwardHeaderMe: '#7A4A10',
     deletedBubbleMe: '#F5E6C6',
     deletedTextMe: '#8B7140',
     canvasColor: '#EAA76F',

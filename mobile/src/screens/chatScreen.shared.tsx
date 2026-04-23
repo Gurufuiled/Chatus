@@ -80,6 +80,69 @@ export type MessageAuthorPresentation = {
   tagColor: string | null;
 };
 
+/** Avatar URL for the original author of a forwarded message (best-effort via known chats). */
+export function resolveForwardedSenderAvatarUrl(
+  forwardedSenderId: string | null | undefined,
+  forwardedFromChatId: string | null | undefined
+): string | null {
+  const sid = forwardedSenderId?.trim();
+  if (!sid) return null;
+
+  const chats = chatStore.getState().chats;
+
+  const fromChat = (chatId: string | undefined): string | null => {
+    if (!chatId) return null;
+    const chat = chats.find((c) => c.id === chatId);
+    if (!chat) return null;
+
+    if (
+      chat.chat_type === 'group' ||
+      chat.chat_type === 'channel' ||
+      chat.chat_type === 'discussion'
+    ) {
+      const member = chat.members?.find((m) => m.user_id === sid);
+      return member?.user?.avatar_url ?? null;
+    }
+
+    if (chat.chat_type === 'private' && chat.members?.length) {
+      const member = chat.members.find((m) => m.user_id === sid);
+      if (member) {
+        return member.user?.avatar_url ?? chat.avatar_url ?? null;
+      }
+    }
+
+    return null;
+  };
+
+  const direct = fromChat(forwardedFromChatId ?? undefined);
+  if (direct) return direct;
+
+  for (const chat of chats) {
+    if (chat.chat_type === 'private' && chat.members?.length) {
+      const member = chat.members.find((m) => m.user_id === sid);
+      if (member) {
+        return member.user?.avatar_url ?? chat.avatar_url ?? null;
+      }
+    }
+  }
+
+  for (const chat of chats) {
+    if (
+      chat.chat_type !== 'group' &&
+      chat.chat_type !== 'channel' &&
+      chat.chat_type !== 'discussion'
+    ) {
+      continue;
+    }
+    const member = chat.members?.find((m) => m.user_id === sid);
+    if (member?.user?.avatar_url) {
+      return member.user.avatar_url;
+    }
+  }
+
+  return null;
+}
+
 export function getMessageAuthorPresentation(
   message: Message,
   chatId: string,

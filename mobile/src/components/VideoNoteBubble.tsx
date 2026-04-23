@@ -1113,41 +1113,40 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     <View style={[styles.container, embedded && styles.containerEmbedded]}>
       {header}
 
-      <Reanimated.View
-        style={[
-          styles.slot,
-          slotStyle,
-          isMe ? styles.slotMe : styles.slotOther,
-        ]}
-      >
-        {enableReplySwipe && onReplySwipe ? (
-          <GestureDetector gesture={composedGesture}>
-            <View style={styles.replyGestureContainer}>
-              <Reanimated.View style={[styles.replySwipeAction, replyIconStyle]}>
-                <View style={styles.replySwipeIconWrap}>
-                  <Feather name="corner-left-up" size={18} color={colors.accent} />
-                </View>
-              </Reanimated.View>
-              <Reanimated.View style={[styles.replyGestureContent, replyContentStyle]}>
-                {pressableContent}
-              </Reanimated.View>
-            </View>
-          </GestureDetector>
-        ) : showPausedPlayOverlay ? (
-          <GestureDetector gesture={composedGesture}>{pressableContent}</GestureDetector>
-        ) : (
-          pressableContent
-        )}
-      </Reanimated.View>
+      <View style={[styles.noteSlotShell, isMe ? styles.slotMe : styles.slotOther]}>
+        <Reanimated.View style={[styles.slot, slotStyle]}>
+          {enableReplySwipe && onReplySwipe ? (
+            <GestureDetector gesture={composedGesture}>
+              <View style={styles.replyGestureContainer}>
+                <Reanimated.View style={[styles.replySwipeAction, replyIconStyle]}>
+                  <View style={styles.replySwipeIconWrap}>
+                    <Feather name="corner-left-up" size={18} color={colors.accent} />
+                  </View>
+                </Reanimated.View>
+                <Reanimated.View style={[styles.replyGestureContent, replyContentStyle]}>
+                  {pressableContent}
+                </Reanimated.View>
+              </View>
+            </GestureDetector>
+          ) : showPausedPlayOverlay ? (
+            <GestureDetector gesture={composedGesture}>{pressableContent}</GestureDetector>
+          ) : (
+            pressableContent
+          )}
+        </Reanimated.View>
 
-      {inlineReactions?.length ? (
-        <MessageReactionInline
-          reactions={inlineReactions}
-          isMe={isMe}
-          allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
-          onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
-        />
-      ) : null}
+        {inlineReactions?.length ? (
+          <View style={styles.noteReactionOverlay} pointerEvents="box-none">
+            <MessageReactionInline
+              reactions={inlineReactions}
+              isMe={isMe}
+              allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+              onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+              variant="floatingTail"
+            />
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }, arePropsEqual);
@@ -1160,6 +1159,20 @@ const styles = StyleSheet.create({
   },
   containerEmbedded: {
     paddingVertical: 0,
+  },
+  noteSlotShell: {
+    position: 'relative',
+  },
+  noteReactionOverlay: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    bottom: META_ROW_HEIGHT + META_ROW_GAP + 4,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    zIndex: 4,
   },
   slot: {
     justifyContent: 'center',
