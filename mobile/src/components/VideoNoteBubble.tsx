@@ -865,61 +865,92 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const scrubThumbCenterY = scrubRingCenter + Math.sin(scrubAngleRadians) * scrubRingRadius;
   const scrubThumbCaptureRadius = scrubThumbOffset + SCRUB_THUMB_CAPTURE_PADDING;
 
+  /**
+   * Smooth progress ring animation.
+   *
+   * Strategy: when playback starts we launch ONE `withTiming(0→1)` over
+   * the full remaining duration. This runs entirely on the native UI‑thread
+   * at the display's refresh rate (60–120 Hz) with zero JS bridge crossings,
+   * giving perfectly smooth arc filling.
+   *
+   * Every ~100 ms the player fires `timeUpdate` which updates `liveElapsedMs`.
+   * We compare the projected position with the actual position;  if drift
+   * exceeds a small threshold we re‑sync (e.g. buffering stall, seek).
+   * Otherwise we leave the animation untouched — no cancel/restart jitter.
+   */
+  const progressTimingLaunchedRef = React.useRef(false);
+  const lastSyncedElapsedRef = React.useRef(0);
+  const lastSyncWallClockRef = React.useRef(0);
+
+  // Effect 1: Handle non-playing states (collapsed, scrubbing, paused)
   React.useEffect(() => {
     if (!isExpanded) {
+      progressTimingLaunchedRef.current = false;
       cancelAnimation(playbackProgress);
       playbackProgress.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
       return;
     }
     if (scrubProgress != null) {
+      progressTimingLaunchedRef.current = false;
       cancelAnimation(playbackProgress);
       playbackProgress.value = clampUnit(scrubProgress);
       return;
     }
-
-    let frameId: number;
-    let lastTick = Date.now();
-    let virtualMs = (player.currentTime ?? 0) * 1000;
-
-    const processFrame = () => {
-      const now = Date.now();
-      const deltaMs = now - lastTick;
-      lastTick = now;
-
-      const actualMs = (player.currentTime ?? 0) * 1000;
-      virtualMs += deltaMs;
-
-      const diff = actualMs - virtualMs;
-      if (Math.abs(diff) > 350) {
-        virtualMs = actualMs;
-      } else {
-        virtualMs += diff * 0.15;
-      }
-
-      const liveElapsedMs = Math.max(Math.round(virtualMs), 0);
-      const prog = clampUnit(
-        effectiveDurationMs > 0 ? liveElapsedMs / effectiveDurationMs : 0
-      );
-      playbackProgress.value = prog;
-      frameId = requestAnimationFrame(processFrame);
-    };
-
-    if (isPlaying) {
+    if (!isPlaying) {
+      progressTimingLaunchedRef.current = false;
       cancelAnimation(playbackProgress);
-      frameId = requestAnimationFrame(processFrame);
-    } else {
       playbackProgress.value = withTiming(effectiveProgress, {
         duration: PLAYBACK_PROGRESS_SMOOTH_MS,
         easing: Easing.linear,
       });
     }
+  }, [isExpanded, isPlaying, scrubProgress, effectiveProgress, playbackProgress]);
 
-    return () => {
-      if (frameId) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [effectiveDurationMs, effectiveProgress, isExpanded, isPlaying, playbackProgress, player, scrubProgress]);
+  // Effect 2: Launch / correct the smooth forward projection while playing
+  React.useEffect(() => {
+    if (!isExpanded || !isPlaying || scrubProgress != null || effectiveDurationMs <= 0) {
+      return;
+    }
+
+    const currentProgress = clampUnit(liveElapsedMs / effectiveDurationMs);
+    const remainingMs = Math.max((1 - currentProgress) * effectiveDurationMs, 16);
+
+    if (!progressTimingLaunchedRef.current) {
+      // First launch: snap to current and project forward to 1.0
+      progressTimingLaunchedRef.current = true;
+      lastSyncedElapsedRef.current = liveElapsedMs;
+      lastSyncWallClockRef.current = Date.now();
+      cancelAnimation(playbackProgress);
+      playbackProgress.value = currentProgress;
+      playbackProgress.value = withTiming(1, {
+        duration: remainingMs,
+        easing: Easing.linear,
+      });
+      return;
+    }
+
+    // Drift check using wall‑clock time:
+    // We compare where the player *should* be (based on wall‑clock elapsed
+    // since the last sync) with where the player *actually* is.
+    // If they diverge significantly (buffering stall, seek, etc.), re‑sync.
+    const wallElapsedSinceSync = Date.now() - lastSyncWallClockRef.current;
+    const expectedElapsedMs = lastSyncedElapsedRef.current + wallElapsedSinceSync;
+    const expectedProgress = clampUnit(expectedElapsedMs / effectiveDurationMs);
+    const drift = Math.abs(currentProgress - expectedProgress);
+
+    // Only correct if drift exceeds ~1.5% of total duration or 300ms
+    const driftThresholdProgress = Math.max(0.015, 300 / effectiveDurationMs);
+    if (drift > driftThresholdProgress) {
+      lastSyncedElapsedRef.current = liveElapsedMs;
+      lastSyncWallClockRef.current = Date.now();
+      cancelAnimation(playbackProgress);
+      playbackProgress.value = currentProgress;
+      playbackProgress.value = withTiming(1, {
+        duration: remainingMs,
+        easing: Easing.linear,
+      });
+    }
+  }, [effectiveDurationMs, isExpanded, isPlaying, liveElapsedMs, playbackProgress, scrubProgress]);
 
   const progressArcAnimatedProps = useAnimatedProps(() => ({
     strokeDashoffset: scrubRingCircumference * (1 - clampUnit(playbackProgress.value)),
