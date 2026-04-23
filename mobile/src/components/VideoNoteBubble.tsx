@@ -865,11 +865,6 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const scrubThumbCenterY = scrubRingCenter + Math.sin(scrubAngleRadians) * scrubRingRadius;
   const scrubThumbCaptureRadius = scrubThumbOffset + SCRUB_THUMB_CAPTURE_PADDING;
 
-  /**
-   * Шкала прогресса + позиция ползунка рендерятся через один `playbackProgress`
-   * на UI-тред: это убирает «рваные» прыжки между эвентами `timeUpdate`
-   * и гарантирует, что ползунок всегда сидит точно на кольце.
-   */
   React.useEffect(() => {
     if (!isExpanded) {
       cancelAnimation(playbackProgress);
@@ -881,11 +876,36 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       playbackProgress.value = clampUnit(scrubProgress);
       return;
     }
-    playbackProgress.value = withTiming(effectiveProgress, {
-      duration: PLAYBACK_PROGRESS_SMOOTH_MS,
-      easing: Easing.linear,
-    });
-  }, [effectiveProgress, isExpanded, playbackProgress, scrubProgress]);
+
+    let frameId: number;
+    const processFrame = () => {
+      const liveElapsedMs = Math.max(
+        Math.round((player.currentTime ?? 0) * 1000),
+        0
+      );
+      const prog = clampUnit(
+        effectiveDurationMs > 0 ? liveElapsedMs / effectiveDurationMs : 0
+      );
+      playbackProgress.value = prog;
+      frameId = requestAnimationFrame(processFrame);
+    };
+
+    if (isPlaying) {
+      cancelAnimation(playbackProgress);
+      frameId = requestAnimationFrame(processFrame);
+    } else {
+      playbackProgress.value = withTiming(effectiveProgress, {
+        duration: PLAYBACK_PROGRESS_SMOOTH_MS,
+        easing: Easing.linear,
+      });
+    }
+
+    return () => {
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [effectiveDurationMs, effectiveProgress, isExpanded, isPlaying, playbackProgress, player, scrubProgress]);
 
   const progressArcAnimatedProps = useAnimatedProps(() => ({
     strokeDashoffset: scrubRingCircumference * (1 - clampUnit(playbackProgress.value)),
@@ -894,8 +914,10 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const scrubThumbAnimatedStyle = useAnimatedStyle(() => {
     const angle = clampUnit(playbackProgress.value) * Math.PI * 2 - Math.PI / 2;
     return {
-      left: scrubRingCenter + Math.cos(angle) * scrubRingRadius,
-      top: scrubRingCenter + Math.sin(angle) * scrubRingRadius,
+      transform: [
+        { translateX: Math.cos(angle) * scrubRingRadius },
+        { translateY: Math.sin(angle) * scrubRingRadius },
+      ],
     };
   });
 
@@ -1251,10 +1273,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [
-      { translateX: -SCRUB_THUMB_SIZE / 2 },
-      { translateY: -SCRUB_THUMB_SIZE / 2 },
-    ],
+    top: '50%',
+    left: '50%',
+    marginTop: -SCRUB_THUMB_SIZE / 2,
+    marginLeft: -SCRUB_THUMB_SIZE / 2,
   },
   scrubThumbDot: {
     width: 14,

@@ -903,13 +903,24 @@ const MessageRow = React.memo(function MessageRow({
       if (!videoUri) return null;
 
       const replySnippet = renderReplySnippet();
-      const hasForwardMeta =
-        !!(item.forwarded_from_name?.trim() || item.forwarded_from_message_id);
-      const useForwardAside = !replySnippet && hasForwardMeta;
-      const topHeader = replySnippet
+      
+      let topHeaderRaw = replySnippet
         ? null
-        : renderIncomingHeader({ suppressForwardHeader: useForwardAside });
-      const forwardAside = useForwardAside ? renderForwardHeader({ compact: true }) : null;
+        : renderIncomingHeader();
+
+      let topHeader = null;
+      if (topHeaderRaw) {
+        topHeader = (
+          <View
+            style={[
+              isMe ? styles.videoNoteHeaderBadgeMe : styles.videoNoteHeaderBadgeOther,
+              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+            ]}
+          >
+            {topHeaderRaw}
+          </View>
+        );
+      }
 
       const videoContent = (
         <VideoNoteBubble
@@ -932,23 +943,6 @@ const MessageRow = React.memo(function MessageRow({
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
         />
       );
-
-      const layoutContent =
-        forwardAside != null ? (
-          <View style={styles.forwardVideoNoteRow}>
-            <View
-              style={[
-                styles.forwardVideoNoteAside,
-                isMe ? styles.forwardVideoNoteAsideMe : styles.forwardVideoNoteAsideOther,
-              ]}
-            >
-              {forwardAside}
-            </View>
-            {videoContent}
-          </View>
-        ) : (
-          videoContent
-        );
 
       if (replySnippet) {
         return (
@@ -975,7 +969,7 @@ const MessageRow = React.memo(function MessageRow({
             showAuthorAvatar && styles.groupMessageSurface,
           ]}
         >
-          {layoutContent}
+          {videoContent}
         </View>
       );
     }
@@ -1653,25 +1647,25 @@ const styles = StyleSheet.create({
   mediaStack: {
     maxWidth: '82%',
   },
-  forwardVideoNoteRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    maxWidth: '100%',
-  },
-  forwardVideoNoteAside: {
-    maxWidth: 148,
-    flexShrink: 1,
-    justifyContent: 'flex-end',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+  videoNoteHeaderBadgeMe: {
+    alignSelf: 'flex-end',
+    backgroundColor: colors.bubbleMe,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 14,
+    marginBottom: 4,
+    ...bubbleRadius.mine,
   },
-  forwardVideoNoteAsideMe: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  forwardVideoNoteAsideOther: {
-    backgroundColor: 'rgba(15,23,42,0.06)',
+  videoNoteHeaderBadgeOther: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.bubbleOther,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.bubbleOtherBorder,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginBottom: 4,
+    ...bubbleRadius.other,
   },
   albumBubble: {
     maxWidth: '100%',

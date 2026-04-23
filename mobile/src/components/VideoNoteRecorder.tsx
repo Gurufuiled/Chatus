@@ -354,7 +354,6 @@ export function VideoNoteRecorder({
           <View style={styles.stageWrap}>
             <View style={styles.circleShell}>
               {circleContent}
-              <View style={styles.circleProgressPill} />
               {isPreparing ? (
                 <View style={styles.loadingOverlay}>
                   <ActivityIndicator size="large" color="#FFFFFF" />
