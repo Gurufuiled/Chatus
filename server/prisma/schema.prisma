@@ -112,13 +112,14 @@ model User {
 }
 
 model FeedbackEntry {
-  id        String         @id @default(uuid())
-  type      FeedbackType
-  status    FeedbackStatus @default(open)
-  title     String
-  body      String
-  authorId  String         @map("author_id")
-  createdAt DateTime       @default(now()) @map("created_at")
+  id             String         @id @default(uuid())
+  type           FeedbackType
+  status         FeedbackStatus @default(open)
+  title          String
+  body           String
+  attachmentUrl  String?        @map("attachment_url")
+  authorId       String         @map("author_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
 
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 

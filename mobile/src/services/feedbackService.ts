@@ -13,6 +13,7 @@ export type FeedbackEntry = {
   status: 'open' | 'closed';
   title: string;
   body: string;
+  attachment_url?: string | null;
   author_id: string;
   created_at: number;
   author: FeedbackAuthor;
@@ -31,6 +32,7 @@ export async function createFeedback(payload: {
   type: 'bug' | 'suggestion';
   title: string;
   body: string;
+  attachment_url?: string;
 }): Promise<FeedbackEntry> {
   const res = await apiPost('/feedback', payload);
   if (!res.ok) {

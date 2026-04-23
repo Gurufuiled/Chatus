@@ -1,6 +1,7 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { FeedbackEntry } from '../services/feedbackService';
 
 export type AuthStackParamList = {
   Login: undefined;
@@ -43,7 +44,7 @@ export type SettingsStackParamList = {
   SettingsMain: undefined;
   Services: undefined;
   MiniApp: { appId: string; title?: string };
-  FeedbackList: { kind: 'bug' | 'suggestion' };
+  FeedbackList: { kind: 'bug' | 'suggestion'; prependEntry?: FeedbackEntry };
   FeedbackCompose: { kind: 'bug' | 'suggestion' };
 };
 

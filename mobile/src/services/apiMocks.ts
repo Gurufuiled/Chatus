@@ -403,6 +403,7 @@ type MockFeedbackWire = {
   status: 'open' | 'closed';
   title: string;
   body: string;
+  attachment_url: string | null;
   author_id: string;
   created_at: number;
   author: {
@@ -674,14 +675,16 @@ export async function mockApiPost(
   body?: unknown
 ): Promise<Response> {
   if (path === '/feedback' && body && typeof body === 'object') {
-    const b = body as { type?: string; title?: string; body?: string };
+    const b = body as { type?: string; title?: string; body?: string; attachment_url?: string };
     const t = b.type === 'suggestion' ? 'suggestion' : 'bug';
+    const att = typeof b.attachment_url === 'string' && b.attachment_url.trim() ? b.attachment_url.trim() : null;
     const entry: MockFeedbackWire = {
       id: `mock-fb-${Date.now()}`,
       type: t,
       status: 'open',
       title: String(b.title ?? '').trim() || '(empty)',
       body: String(b.body ?? '').trim() || '(empty)',
+      attachment_url: att,
       author_id: mockCurrentUser.id,
       created_at: Date.now(),
       author: {

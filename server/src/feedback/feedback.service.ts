@@ -23,11 +23,13 @@ export class FeedbackService {
   async create(userId: string, dto: CreateFeedbackDto) {
     const type =
       dto.type === 'bug' ? FeedbackType.bug : FeedbackType.suggestion;
+    const attachmentUrl = dto.attachment_url?.trim();
     const row = await this.prisma.feedbackEntry.create({
       data: {
         type,
         title: dto.title.trim(),
         body: dto.body.trim(),
+        attachmentUrl: attachmentUrl || null,
         authorId: userId,
         status: FeedbackStatus.open,
       },
@@ -58,6 +60,7 @@ export class FeedbackService {
       status: row.status,
       title: row.title,
       body: row.body,
+      attachmentUrl: row.attachmentUrl ?? null,
       authorId: row.authorId,
       createdAt: dateToUnixMs(row.createdAt) ?? 0,
       author: {
