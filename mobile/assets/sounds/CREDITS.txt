@@ -1,4 +1,3 @@
 Sounds from Mixkit (https://mixkit.co/) — Mixkit Free License: https://mixkit.co/license/#sfxFree
 
 - message_notification.wav — "Correct answer tone" (sfx id 2870)
-- outgoing_ringback.wav — "Office telephone ring" (sfx id 1350)

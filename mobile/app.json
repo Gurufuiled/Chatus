@@ -73,6 +73,7 @@
       }
     },
     "android": {
+      "icon": "./assets/chatus_icon.png",
       "intentFilters": [
         {
           "action": "VIEW",

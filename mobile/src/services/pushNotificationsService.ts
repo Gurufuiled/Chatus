@@ -10,7 +10,11 @@ import { apiDelete, apiPost } from './apiClient';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
+    /** iOS / старые пути */
     shouldShowAlert: true,
+    /** Android 13+ и актуальный Expo: иначе push в foreground часто не попадает в шторку и список уведомлений */
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
