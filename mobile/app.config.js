@@ -49,6 +49,11 @@ function env(key) {
   return envFile[key] || process.env[key];
 }
 
+/** EAS / Expo Push: @alohaha2238/chatus — переопредели через EXPO_PUBLIC_EAS_PROJECT_ID в .env при смене проекта */
+const EAS_PROJECT_ID_DEFAULT = 'd3eb9f0c-dd7a-49fc-9113-ee9078bcb257';
+const easProjectId =
+  (env('EXPO_PUBLIC_EAS_PROJECT_ID') || '').trim() || EAS_PROJECT_ID_DEFAULT;
+
 module.exports = {
   expo: {
     ...appJson.expo,
@@ -57,6 +62,7 @@ module.exports = {
       EXPO_PUBLIC_USE_EMULATOR: env('EXPO_PUBLIC_USE_EMULATOR'),
       EXPO_PUBLIC_LOGINUS_CLIENT_ID: env('EXPO_PUBLIC_LOGINUS_CLIENT_ID'),
       EXPO_PUBLIC_USE_MOCKS: env('EXPO_PUBLIC_USE_MOCKS'),
+      eas: { projectId: easProjectId },
     },
   },
 };

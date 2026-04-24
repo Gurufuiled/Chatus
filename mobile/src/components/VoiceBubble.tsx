@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import { Dimensions, type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
@@ -15,6 +15,9 @@ import { stopActiveVideoNotePlayback } from './VideoNoteBubble';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 import { AnimatedPlayPauseIcon } from './AnimatedPlayPauseIcon';
+
+/** Throttle waveform bar re-renders to ~8fps while playing (125ms) — imperceptible visually. */
+const WAVEFORM_RENDER_THROTTLE_MS = 125;
 
 
 export interface VoiceBubbleProps {
@@ -154,6 +157,23 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
   const [waveformWidth, setWaveformWidth] = useState(0);
+
+  // Throttle the progress value used for waveform rendering to avoid
+  // excessive re-renders from 100ms service ticks. UI looks identical at 8fps.
+  const throttledProgressRef = useRef(0);
+  const lastThrottleTimestampRef = useRef(0);
+  const [renderProgress, setRenderProgress] = useState(0);
+  React.useEffect(() => {
+    const now = Date.now();
+    if (!isPlaying || now - lastThrottleTimestampRef.current >= WAVEFORM_RENDER_THROTTLE_MS) {
+      lastThrottleTimestampRef.current = now;
+      if (throttledProgressRef.current !== progress) {
+        throttledProgressRef.current = progress;
+        setRenderProgress(progress);
+      }
+    }
+  }, [isPlaying, progress]);
+
   const shouldShowRemainingDuration = isCurrent && (isPlaying || progress > 0);
   const durationLabel = shouldShowRemainingDuration
     ? formatRemainingPlaybackDuration(remainingMs)
@@ -174,8 +194,8 @@ export const VoiceBubble = React.memo(function VoiceBubble({
 
   const barCount = bars.length;
   const filledBarCount =
-    progress > 0 ? Math.max(0, Math.min(barCount, Math.round(progress * barCount))) : 0;
-  const hasPlaybackProgress = isCurrent && progress > 0;
+    renderProgress > 0 ? Math.max(0, Math.min(barCount, Math.round(renderProgress * barCount))) : 0;
+  const hasPlaybackProgress = isCurrent && renderProgress > 0;
 
   const handlePress = async () => {
     if (isPlaying) {
@@ -253,7 +273,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
             style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
           >
             {barHeights.map((barHeight, index) => {
-              const isFilled = progress > 0 && index / barCount <= progress;
+              const isFilled = renderProgress > 0 && index / barCount <= renderProgress;
               return (
                 <View
                   key={index}

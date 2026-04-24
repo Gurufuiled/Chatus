@@ -38,6 +38,7 @@ import { SignalingService } from '../services/SignalingService';
 import { VoicePlayerService } from '../services/VoicePlayerService';
 import { chatStore } from '../stores/chatStore';
 import { colors, withAlpha } from '../theme/colors';
+import outgoingRingbackWav from '../../assets/sounds/outgoing_ringback.wav';
 
 type CallPhase = 'incoming' | 'outgoing' | 'connecting' | 'active';
 type CallKind = 'audio' | 'video';
@@ -542,10 +543,62 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const outgoingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callStateRef = useRef<CallUiState | null>(null);
+  const callRingRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+
+  const stopCallRing = useCallback(async () => {
+    const sound = callRingRef.current;
+    callRingRef.current = null;
+    if (!sound) return;
+    try {
+      await sound.stopAsync();
+    } catch {
+      // ignore
+    }
+    try {
+      await sound.unloadAsync();
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const startCallRing = useCallback(async () => {
+    await stopCallRing();
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      const { sound } = await Audio.Sound.createAsync(
+        outgoingRingbackWav,
+        { isLooping: true, volume: 0.88 },
+        undefined,
+        false
+      );
+      callRingRef.current = sound;
+      await sound.playAsync();
+    } catch {
+      // ignore — гудок не критичен для установки соединения
+    }
+  }, [stopCallRing]);
+
+  useEffect(() => {
+    const phase = callState?.phase;
+    if (phase === 'outgoing' || phase === 'incoming') {
+      void startCallRing();
+      return () => {
+        void stopCallRing();
+      };
+    }
+    void stopCallRing();
+    return undefined;
+  }, [callState?.phase, startCallRing, stopCallRing]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -618,9 +671,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, [clearOutgoingTimeout, resetAudioMode]);
 
   const cleanupCallSession = useCallback(async () => {
+    await stopCallRing();
     await cleanupMedia();
     setCallState(null);
-  }, [cleanupMedia]);
+  }, [cleanupMedia, stopCallRing]);
 
   const updateLocalStreamState = useCallback((nextKind?: CallKind) => {
     const localStream = localStreamRef.current;

@@ -365,7 +365,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
   const player = useVideoPlayer(normalizedUri, (instance) => {
     instance.loop = false;
-    instance.timeUpdateEventInterval = 0.1;
+    instance.timeUpdateEventInterval = 0.05; // 50ms updates for smooth progress
   });
   const { isPlaying } = useEvent(player, 'playingChange', {
     isPlaying: player.playing,
@@ -929,17 +929,18 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       return;
     }
 
-    // Drift check using wall‑clock time:
-    // We compare where the player *should* be (based on wall‑clock elapsed
+    // Drift check using wall-clock time:
+    // We compare where the player *should* be (based on wall-clock elapsed
     // since the last sync) with where the player *actually* is.
-    // If they diverge significantly (buffering stall, seek, etc.), re‑sync.
+    // If they diverge significantly (buffering stall, seek, etc.), re-sync.
     const wallElapsedSinceSync = Date.now() - lastSyncWallClockRef.current;
     const expectedElapsedMs = lastSyncedElapsedRef.current + wallElapsedSinceSync;
     const expectedProgress = clampUnit(expectedElapsedMs / effectiveDurationMs);
     const drift = Math.abs(currentProgress - expectedProgress);
 
-    // Only correct if drift exceeds ~1.5% of total duration or 300ms
-    const driftThresholdProgress = Math.max(0.015, 300 / effectiveDurationMs);
+    // Correct if drift exceeds ~1% of total duration or 100ms — whichever is larger.
+    // Tighter than before (was 1.5% / 300ms) to catch scrubbing and buffering stalls faster.
+    const driftThresholdProgress = Math.max(0.01, 100 / effectiveDurationMs);
     if (drift > driftThresholdProgress) {
       lastSyncedElapsedRef.current = liveElapsedMs;
       lastSyncWallClockRef.current = Date.now();

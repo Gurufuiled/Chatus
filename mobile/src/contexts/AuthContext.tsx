@@ -1,6 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { authStore } from '../stores/authStore';
 import { authService, apiUserToUserRow, type AuthSession } from '../services/AuthService';
+import {
+  registerPushWithBackendAfterLogin,
+  unregisterPushOnLogout,
+} from '../services/pushNotificationsService';
 
 type AuthContextType = {
   isLoading: boolean;
@@ -50,12 +54,35 @@ export function AuthProvider({ children, initialSession = null }: AuthProviderPr
     return unsub;
   }, [syncFromStore]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await registerPushWithBackendAfterLogin();
+      } catch {
+        if (__DEV__) {
+          console.warn('[Auth] push registration skipped or failed');
+        }
+      }
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, accessToken]);
+
   const login = useCallback(async () => {
     await authStore.getState().restoreSession();
     syncFromStore();
   }, [syncFromStore]);
 
   const logout = useCallback(async () => {
+    try {
+      await unregisterPushOnLogout();
+    } catch {
+      // ignore
+    }
     try {
       const result = await authService.logout();
       if (result.slo_url) {

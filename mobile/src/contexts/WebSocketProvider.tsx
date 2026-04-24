@@ -395,6 +395,20 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               chatStore.getState().clearUnread(msg.chat_id);
             } else {
               chatStore.getState().incrementUnread(msg.chat_id);
+              
+              const chatTitle = 
+                messageChat?.local_contact_name?.trim() || 
+                messageChat?.peer_display_name || 
+                messageChat?.name || 
+                'Chat';
+
+              uiStore.getState().showPushNotification({
+                chatId: msg.chat_id,
+                title: chatTitle,
+                messagePreview: buildMessagePreview(mapped),
+                avatarUrl: messageChat?.avatar_url || mapped.sender_avatar_url || undefined,
+                messageType: mapped.msg_type,
+              });
             }
           }
         },

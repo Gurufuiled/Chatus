@@ -6,6 +6,15 @@ export type ConnectionStatus = 'offline' | 'connecting' | 'online';
 export type TypingEntry = { userId: string; at: number };
 export type PresenceEntry = { is_online: boolean; last_seen?: number };
 
+export type PushNotificationData = {
+  id: string;
+  chatId: string;
+  title: string;
+  messagePreview: string;
+  avatarUrl?: string;
+  messageType?: string;
+};
+
 type UIState = {
   connectionStatus: ConnectionStatus;
   transportStatusVersion: number;
@@ -18,6 +27,7 @@ type UIState = {
   isChatThemesHydrated: boolean;
   blockedUserIds: Record<string, true>;
   isBlockedUsersHydrated: boolean;
+  pushNotification: PushNotificationData | null;
 };
 
 type UIActions = {
@@ -34,6 +44,8 @@ type UIActions = {
   hydrateChatThemes: () => Promise<void>;
   setUserBlocked: (userId: string, blocked: boolean) => void;
   hydrateBlockedUsers: () => Promise<void>;
+  showPushNotification: (data: Omit<PushNotificationData, 'id'>) => void;
+  dismissPushNotification: () => void;
 };
 
 const TYPING_STALE_MS = 5000;
@@ -53,6 +65,7 @@ const initialState: UIState = {
   isChatThemesHydrated: false,
   blockedUserIds: {},
   isBlockedUsersHydrated: false,
+  pushNotification: null,
 };
 
 export const uiStore = create<UIState & UIActions>((set) => ({
@@ -170,4 +183,11 @@ export const uiStore = create<UIState & UIActions>((set) => ({
       set({ isBlockedUsersHydrated: true });
     }
   },
+
+  showPushNotification: (data) =>
+    set({
+      pushNotification: { ...data, id: Date.now().toString() },
+    }),
+
+  dismissPushNotification: () => set({ pushNotification: null }),
 }));

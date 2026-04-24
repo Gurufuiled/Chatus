@@ -8,7 +8,7 @@
 import { API_BASE_URL, USE_MOCKS } from '../config';
 import { authStore } from '../stores/authStore';
 import { authService } from './AuthService';
-import { mockApiGet, mockApiPost, mockApiPatch } from './apiMocks';
+import { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete } from './apiMocks';
 
 const FETCH_TIMEOUT_MS = 15000;
 const UPLOAD_FETCH_TIMEOUT_MS = 60000;
@@ -145,6 +145,9 @@ export async function apiDelete(
   path: string,
   init?: ApiFetchOptions
 ): Promise<Response> {
+  if (USE_MOCKS) {
+    return mockApiDelete(path, init);
+  }
   return apiFetch(path, {
     ...init,
     method: 'DELETE',

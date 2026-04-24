@@ -702,6 +702,10 @@ export async function mockApiPost(
     return createMockResponse(entry);
   }
 
+  if (path === '/users/me/push-token') {
+    return createMockResponse({ ok: true });
+  }
+
   // POST /chats
   if (path === '/chats' && body && typeof body === 'object') {
     const b = body as { chat_type?: string; member_ids?: string[] };
@@ -1019,6 +1023,19 @@ export async function mockApiPost(
     }
   }
 
+  return new Response(JSON.stringify({ error: 'Not found' }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+export async function mockApiDelete(
+  path: string,
+  _init?: RequestInit,
+): Promise<Response> {
+  if (path === '/users/me/push-token') {
+    return createMockResponse({ ok: true });
+  }
   return new Response(JSON.stringify({ error: 'Not found' }), {
     status: 404,
     headers: { 'Content-Type': 'application/json' },

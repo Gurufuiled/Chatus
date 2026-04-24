@@ -219,7 +219,11 @@ export function FeedbackComposeScreen({ navigation, route }: Props) {
 
         {attachmentPreviewUri ? (
           <View style={styles.inlinePreview}>
-            <Image source={{ uri: attachmentPreviewUri }} style={styles.inlinePreviewImg} />
+            <Image
+              source={{ uri: attachmentPreviewUri }}
+              style={styles.inlinePreviewImg}
+              resizeMode="contain"
+            />
             <Pressable
               accessibilityLabel="Убрать фото"
               style={styles.inlinePreviewRemove}
@@ -303,14 +307,16 @@ const styles = StyleSheet.create({
   },
   bodyInput: { minHeight: 200 },
   inlinePreview: {
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
     marginBottom: 8,
+    height: 200,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.separator,
+    backgroundColor: colors.inputBackground,
   },
-  inlinePreviewImg: { width: 160, height: 160, borderRadius: 12 },
+  inlinePreviewImg: { width: '100%', height: '100%' },
   inlinePreviewRemove: {
     position: 'absolute',
     top: 8,

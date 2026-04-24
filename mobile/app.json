@@ -20,7 +20,8 @@
         {
           "icon": "./assets/chatus_icon.png",
           "color": "#4B8FEA",
-          "defaultChannel": "default"
+          "defaultChannel": "chatus_messages",
+          "sounds": ["./assets/sounds/message_notification.wav"]
         }
       ],
       [

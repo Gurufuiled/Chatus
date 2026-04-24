@@ -4,13 +4,17 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../push/push.service';
 import { mapUser, type MappedUser } from '../common/mappers';
 import type { User } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pushService: PushService,
+  ) {}
 
   async getProfile(userId: string): Promise<MappedUser> {
     const user = await this.prisma.user.findUnique({
@@ -149,5 +153,20 @@ export class UsersService {
       }
       throw e;
     }
+  }
+
+  async registerPushToken(
+    userId: string,
+    expoToken: string,
+    platform: 'android' | 'ios',
+  ): Promise<void> {
+    await this.pushService.registerToken(userId, expoToken, platform);
+  }
+
+  async unregisterPushToken(
+    userId: string,
+    expoToken: string,
+  ): Promise<void> {
+    await this.pushService.unregisterToken(userId, expoToken);
   }
 }

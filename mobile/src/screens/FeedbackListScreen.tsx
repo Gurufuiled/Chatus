@@ -7,6 +7,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -33,6 +34,9 @@ function formatListDate(ms: number): string {
 }
 
 export function FeedbackListScreen({ navigation, route }: Props) {
+  const { height: windowHeight } = useWindowDimensions();
+  const imageBoxHeight = Math.min(480, Math.round(windowHeight * 0.4));
+
   const { kind } = route.params;
   const prependEntry = route.params.prependEntry;
   const { user } = useAuth();
@@ -108,7 +112,9 @@ export function FeedbackListScreen({ navigation, route }: Props) {
             </Text>
           ) : null}
           {imgUri ? (
-            <Image source={{ uri: imgUri }} style={styles.cardImage} resizeMode="cover" />
+            <View style={[styles.cardImageWrap, { height: imageBoxHeight }]}>
+              <Image source={{ uri: imgUri }} style={styles.cardImage} resizeMode="contain" />
+            </View>
           ) : null}
           <Text style={styles.cardBody} numberOfLines={8}>
             {item.body}
@@ -117,7 +123,7 @@ export function FeedbackListScreen({ navigation, route }: Props) {
         </View>
       );
     },
-    [inbox],
+    [imageBoxHeight, inbox],
   );
 
   if (loading && items.length === 0) {
@@ -197,12 +203,16 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   cardAuthor: { fontSize: 13, color: colors.accent, marginTop: 4 },
+  cardImageWrap: {
+    width: '100%',
+    marginTop: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: colors.inputBackground,
+  },
   cardImage: {
     width: '100%',
-    height: 200,
-    borderRadius: 10,
-    marginTop: 10,
-    backgroundColor: colors.inputBackground,
+    height: '100%',
   },
   cardBody: { fontSize: 15, color: colors.textPrimary, marginTop: 10, lineHeight: 21 },
   cardMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 10 },

@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { PushService } from '../push/push.service';
 import {
   ChatMemberRole,
   ChatType,
@@ -74,7 +75,10 @@ export interface CreateMessageOptions {
 
 @Injectable()
 export class MessagesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pushService: PushService,
+  ) {}
 
   private getStatusRank(status: MessageStatus): number {
     switch (status) {
@@ -263,7 +267,9 @@ export class MessagesService {
       where: { id: result.id },
       include: MESSAGE_INCLUDE,
     });
-    return this.mapMessageForUser(withMedia!, senderId);
+    const mapped = this.mapMessageForUser(withMedia!, senderId);
+    void this.pushService.notifyNewMessage(chatId, senderId).catch(() => undefined);
+    return mapped;
   }
 
   async createChannelPost(

@@ -107,8 +107,23 @@ model User {
   channelPostViews ChannelPostView[]
   developerProfile DeveloperProfile?
   feedbackEntries FeedbackEntry[]
+  pushDevices     PushDevice[]
 
   @@map("users")
+}
+
+model PushDevice {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  expoToken String   @unique @map("expo_token")
+  platform  String   @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_devices")
 }
 
 model FeedbackEntry {

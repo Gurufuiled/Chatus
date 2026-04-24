@@ -23,6 +23,7 @@ import { SettingsStack } from './SettingsStack';
 import { ContactsScreen } from '../screens';
 import type { MainTabParamList } from './types';
 import { colors, withAlpha } from '../theme/colors';
+import { chatStore } from '../stores/chatStore';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_TAB_GLYPHS } from '../icons/telegram/tabPaths';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
@@ -88,10 +89,27 @@ function TabBarItem({
   color: string;
   focused: boolean;
 }) {
+  const totalUnreadCount = chatStore(
+    React.useCallback((state) => {
+      if (routeName !== 'Chats') return 0;
+      return state.chats.reduce((acc, chat) => acc + Math.max(0, chat.unread_count ?? 0), 0);
+    }, [routeName])
+  );
+
+  const showBadge = routeName === 'Chats' && totalUnreadCount > 0;
+  const badgeLabel = totalUnreadCount > 999 ? '999+' : String(totalUnreadCount);
+
   return (
     <View style={[styles.tabButton, focused && styles.tabButtonActive]}>
       <View style={styles.tabButtonContent}>
-        {getTabIcon(routeName, color, focused)}
+        <View>
+          {getTabIcon(routeName, color, focused)}
+          {showBadge && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText} numberOfLines={1} adjustsFontSizeToFit>{badgeLabel}</Text>
+            </View>
+          )}
+        </View>
         <Text style={[styles.customLabel, { color }]} numberOfLines={1}>
           {getTabLabel(routeName)}
         </Text>
@@ -256,12 +274,34 @@ function ChatsTabButton({
   style,
   ignoreNextPressRef,
 }: ChatsTabButtonProps) {
+  const scale = React.useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.85,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 0,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 12,
+    }).start();
+  };
+
   return (
     <Pressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="tab"
       accessibilityState={accessibilityState}
       testID={testID}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       onPress={(event) => {
         if (ignoreNextPressRef.current) {
           ignoreNextPressRef.current = false;
@@ -278,7 +318,44 @@ function ChatsTabButton({
       delayLongPress={220}
       style={style}
     >
-      {children}
+      <Animated.View style={[{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }, { transform: [{ scale }] }]}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+function AnimatedTabButton(props: BottomTabBarButtonProps) {
+  const scale = React.useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.85,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 0,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 12,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      {...props}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={props.style}
+    >
+      <Animated.View style={[{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }, { transform: [{ scale }] }]}>
+        {props.children}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -348,7 +425,10 @@ export function MainTabs() {
         <Tab.Screen
           name="Contacts"
           component={ContactsScreen}
-          options={{ title: 'Контакты' }}
+          options={{
+            title: 'Контакты',
+            tabBarButton: (props) => <AnimatedTabButton {...props} />,
+          }}
         />
         <Tab.Screen
           name="Chats"
@@ -394,6 +474,7 @@ export function MainTabs() {
               title: 'Настройки',
               headerShown: false,
               tabBarStyle: hide ? styles.hiddenTabBar : tabBarStyle,
+              tabBarButton: (props) => <AnimatedTabButton {...props} />,
             };
           }}
         />
@@ -533,5 +614,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.textSecondary,
     lineHeight: 16,
+  },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    backgroundColor: '#FF3B30',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.inputBackgroundSolid,
+  },
+  tabBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
 });

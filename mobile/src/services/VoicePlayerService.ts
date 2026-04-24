@@ -7,7 +7,7 @@ import { Audio } from 'expo-av';
 import type { AVPlaybackStatus } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 
-const PROGRESS_UPDATE_INTERVAL_MS = 250;
+const PROGRESS_UPDATE_INTERVAL_MS = 100;
 
 export interface VoicePlayerStatus {
   positionMs: number;
@@ -171,9 +171,12 @@ class VoicePlayerServiceClass {
     if (!status.isLoaded) return;
 
     if (status.didJustFinish) {
+      const finalDurationMs = status.durationMillis ?? this.lastStatus.durationMs;
       this.lastStatus = {
-        positionMs: 0,
-        durationMs: status.durationMillis ?? this.lastStatus.durationMs,
+        // Keep positionMs at the full duration so the timer shows 0:00 remaining
+        // instead of jumping back to the total duration on the last tick.
+        positionMs: finalDurationMs,
+        durationMs: finalDurationMs,
         isPlaying: false,
         rate: status.rate ?? this.playbackRate,
       };
