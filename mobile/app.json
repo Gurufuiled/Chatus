@@ -16,6 +16,14 @@
       "expo-secure-store",
       "expo-sqlite",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/chatus_icon.png",
+          "color": "#4B8FEA",
+          "defaultChannel": "default"
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Разрешите доступ к камере для записи видеокружков.",
@@ -38,7 +46,7 @@
     "slug": "chatus",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/chatus_icon.png",
     "userInterfaceStyle": "light",
     "scheme": ["messenger", "chatus"],
     "splash": {
@@ -98,12 +106,14 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/chatus_icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobile"
+      "package": "com.anonymous.mobile",
+      "notification": {
+        "icon": "./assets/chatus_icon.png",
+        "color": "#4B8FEA"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
