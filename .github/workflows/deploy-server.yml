@@ -13,6 +13,7 @@
 # На сервере отдельно нужен deploy key или SSH-доступ к GitHub для `git pull` (см. ранее в переписке).
 #
 # Ручной деплой без новых коммитов в server/: вкладка Actions → «Deploy server (API)» → Run workflow (workflow_dispatch).
+# Пуш в этот файл на main тоже запускает job (git pull подтянет весь монорепозиторий, включая mobile).
 #
 name: Deploy server (API)
 
