@@ -1,14 +1,24 @@
-# EAS загружает архив на сервер — без node_modules архив лёгкий, зависимости ставятся в облаке.
-node_modules/
+# Зависимости ставятся на сервере EAS — локальный node_modules не отправлять
+node_modules
+**/node_modules
 
-# Вся папка android не в архив: иначе в билд попадают Windows-пути из локального prebuild
-# (ошибка react-native-webview: .../android/C:/Users/...). На EAS заново выполнится prebuild.
-android/
+# Нативные папки — только prebuild на Linux (без Windows-путей и без ручного ios)
+android
+**/android
+ios
+**/ios
 
-# Кэши на случай если android снова появится локально
-ios/
+# Xcode / CocoaPods (если появятся)
+**/Pods
+**/build
+**/*.xcworkspace/xcuserdata
 
-# Локальная сборка / мусор
-.expo/
-dist/
+.expo
+dist
+web-build
 *.log
+
+# Локальные артефакты
+*.apk
+*.aab
+*.ipa
