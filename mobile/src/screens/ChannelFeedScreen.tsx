@@ -6,7 +6,6 @@ import {
   Alert,
   Dimensions,
   FlatList,
-  Image,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Reanimated, { runOnJS, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -219,7 +219,8 @@ function ChannelAlbumTileImage({ uri }: { uri: string }) {
     <Image
       source={{ uri }}
       style={styles.channelAlbumImage}
-      resizeMode="cover"
+      contentFit="cover"
+      cachePolicy="disk"
       onError={() => setFailed(true)}
     />
   );
@@ -411,7 +412,9 @@ export function ChannelFeedScreen() {
   const detail = channelStore((state) => state.detailsById[channelId]);
   const linkResolve = channelStore((state) => state.linkResolveByChannelId[channelId]);
   const feed = channelStore((state) => state.feedByChannelId[channelId] ?? EMPTY_FEED);
-  const chats = chatStore((state) => state.chats);
+  const channelChat = chatStore(
+    React.useCallback((state) => state.chats.find((c) => c.id === channelId) ?? null, [channelId])
+  );
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const [loading, setLoading] = React.useState(feed.length === 0);
   const [feedError, setFeedError] = React.useState<string | null>(null);
@@ -456,13 +459,12 @@ export function ChannelFeedScreen() {
   }, [detail, currentUserId]);
 
   const pinnedMessageId = detail?.channel.pinned_message_id ?? null;
-  const channelChat = React.useMemo(
-    () => chats.find((c) => c.id === channelId) ?? null,
-    [chats, channelId],
-  );
   const forwardTargets = React.useMemo(
-    () => chats.filter((c) => c.id !== channelId),
-    [chats, channelId],
+    () => forwardSourceMessageIds.length > 0
+      ? chatStore.getState().chats.filter((c) => c.id !== channelId)
+      : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [channelId, forwardSourceMessageIds.length > 0]
   );
 
   const openChannelFeedMediaViewer = React.useCallback((message: Message, initialIndex: number) => {
@@ -1038,7 +1040,7 @@ export function ChannelFeedScreen() {
           )
         ) {
           messageStore.getState().prependMessage(targetChatId, optimisticMessage);
-          const targetChat = chats.find((chat) => chat.id === targetChatId);
+          const targetChat = chatStore.getState().chats.find((chat) => chat.id === targetChatId);
           if (targetChat) {
             chatStore.getState().updateChat({
               ...targetChat,
@@ -1056,7 +1058,7 @@ export function ChannelFeedScreen() {
         Alert.alert('Не удалось переслать', 'Проверьте соединение.');
       }
     },
-    [chats, currentUserId, detail?.channel?.name, forwardSourceMessageIds, sortedFeed],
+    [currentUserId, detail?.channel?.name, forwardSourceMessageIds, sortedFeed],
   );
 
   const handlePostMenuAction = React.useCallback(
@@ -1615,7 +1617,7 @@ export function ChannelFeedScreen() {
         <ChatBackgroundPattern />
         <View style={[styles.privateGateWrap, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           {lockedAvatar ? (
-            <Image source={{ uri: lockedAvatar }} style={styles.privateGateAvatar} />
+            <Image source={{ uri: lockedAvatar }} style={styles.privateGateAvatar} contentFit="cover" cachePolicy="disk" />
           ) : (
             <View style={styles.privateGateAvatarPlaceholder}>
               <Text style={styles.privateGateAvatarLetter}>{(lockedTitle[0] || '?').toUpperCase()}</Text>

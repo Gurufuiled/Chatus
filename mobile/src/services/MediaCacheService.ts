@@ -23,6 +23,15 @@ class MediaCacheServiceClass {
   private _initialized = false;
   private _initPromise: Promise<void> | null = null;
   private metadataPath = '';
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private schedulePersist(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void this.persist();
+    }, 5000);
+  }
 
   private getMetadataPath(): string {
     if (this.metadataPath) return this.metadataPath;
@@ -103,7 +112,7 @@ class MediaCacheServiceClass {
       this.map.delete(id);
       this._totalSize -= size;
     }
-    await this.persist();
+    this.schedulePersist();
   }
 
   private async persist(): Promise<void> {
@@ -148,7 +157,7 @@ class MediaCacheServiceClass {
       this.map.set(mediaId, entry);
       this._totalSize += fileSize;
       await this.evictIfOverLimit();
-      await this.persist();
+      this.schedulePersist();
     } catch (e) {
       if (__DEV__) {
         console.warn('[MediaCacheService] add failed:', e);
@@ -162,7 +171,7 @@ class MediaCacheServiceClass {
     const entry = this.map.get(mediaId);
     if (entry) {
       entry.lastAccess = Date.now();
-      await this.persist();
+      this.schedulePersist();
     }
   }
 
@@ -175,7 +184,7 @@ class MediaCacheServiceClass {
       const info = await FileSystem.getInfoAsync(entry.localPath);
       if (info.exists && !info.isDirectory) {
         entry.lastAccess = Date.now();
-        await this.persist();
+        this.schedulePersist();
         return entry.localPath;
       }
       return null;
@@ -198,7 +207,7 @@ class MediaCacheServiceClass {
     }
     this.map.delete(mediaId);
     this._totalSize -= entry.size;
-    await this.persist();
+    this.schedulePersist();
   }
 
   /** Total size of all cached files in bytes. */

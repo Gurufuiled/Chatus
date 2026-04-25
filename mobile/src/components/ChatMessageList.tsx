@@ -4,13 +4,14 @@ import {
   Dimensions,
   FlatList,
   FlatListProps,
-  Image,
+  Image as RNImage,
   Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Extrapolation,
@@ -69,7 +70,6 @@ type ChatMessageListProps = {
   isGroupChat: boolean;
   currentUserId: string | null;
   messages: Message[];
-  messageById: Map<string, Message>;
   selectionMode: boolean;
   selectedMessageIdSet: Set<string>;
   highlightedMessageId: string | null;
@@ -164,7 +164,7 @@ function MediaAlbumBubble({
         onPress={() => onOpenMedia?.(media, index)}
         style={[styles.albumTile, style]}
       >
-        <Image source={{ uri }} style={styles.albumImage} resizeMode="cover" />
+        <Image source={{ uri }} style={styles.albumImage} contentFit="cover" cachePolicy="disk" transition={100} />
         {kind === 'video' ? (
           <View style={styles.albumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
@@ -278,6 +278,7 @@ function MediaAlbumBubble({
           isMe={isMe}
           allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
           onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+          accentColor={chatTheme.bubbleMeAccent}
         />
       ) : null}
     </View>
@@ -364,7 +365,7 @@ function AlbumMediaViewerModal({
             return (
               <View style={styles.viewerSlide}>
                 {uri ? (
-                  <Image source={{ uri }} style={styles.viewerImage} resizeMode="contain" />
+                  <Image source={{ uri }} style={styles.viewerImage} contentFit="contain" cachePolicy="disk" />
                 ) : null}
               </View>
             );
@@ -485,6 +486,7 @@ type MessageRowProps = {
   getDeletedPlaceholder: (isMe: boolean) => string;
   repliedVoiceBubbleWidth: number;
   chatTheme: ChatTheme;
+  navigation: NativeStackNavigationProp<ChatsStackParamList>;
 };
 
 const AUTHOR_TAG_STYLES: Record<
@@ -565,8 +567,8 @@ const MessageRow = React.memo(function MessageRow({
   getDeletedPlaceholder,
   repliedVoiceBubbleWidth,
   chatTheme,
+  navigation,
 }: MessageRowProps) {
-  const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
   const lastTapAtRef = useRef(0);
   const isMe = item.sender_id === currentUserId;
   const ownsInlineReplySwipe = item.msg_type === 'video_note';
@@ -804,6 +806,7 @@ const MessageRow = React.memo(function MessageRow({
                 isMe={isMe}
                 allowReactions={allowReactions}
                 onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+                accentColor={chatTheme.bubbleMeAccent}
               />
             ) : null}
           </View>
@@ -846,6 +849,7 @@ const MessageRow = React.memo(function MessageRow({
               isMe={isMe}
               allowReactions={allowReactions}
               onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+              accentColor={chatTheme.bubbleMeAccent}
             />
           ) : null}
         </View>
@@ -871,6 +875,7 @@ const MessageRow = React.memo(function MessageRow({
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
@@ -1051,6 +1056,7 @@ const MessageRow = React.memo(function MessageRow({
           header={topHeader}
           bubbleMeColor={chatTheme.bubbleMe}
           outgoingTextColor={chatTheme.bubbleMeText}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
@@ -1113,6 +1119,10 @@ const MessageRow = React.memo(function MessageRow({
           header={topHeader}
           bubbleMeColor={chatTheme.bubbleMe}
           outgoingTextColor={chatTheme.bubbleMeText}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
+          inlineReactions={inlineReactionList}
+          allowMessageReactions={allowReactions}
+          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
         />
       );
 
@@ -1174,6 +1184,7 @@ const MessageRow = React.memo(function MessageRow({
             outgoingTextColor={chatTheme.bubbleMeText}
             outgoingMetaColor={chatTheme.bubbleMeMeta}
             outgoingAccentColor={chatTheme.bubbleMeAccent}
+            reactionAccentColor={chatTheme.bubbleMeAccent}
             inlineReactions={inlineReactionList}
             allowMessageReactions={allowReactions}
             onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
@@ -1246,7 +1257,7 @@ const MessageRow = React.memo(function MessageRow({
                   style={styles.groupAvatarSlot}
                 >
                   {authorAvatarUri ? (
-                    <Image source={{ uri: authorAvatarUri }} style={styles.groupAvatarImage} />
+                    <Image source={{ uri: authorAvatarUri }} style={styles.groupAvatarImage} contentFit="cover" cachePolicy="disk" />
                   ) : (
                     <View style={[styles.groupAvatarFallback, { backgroundColor: authorColor }]}>
                       <Text style={styles.groupAvatarInitial}>{authorPresentation.initial}</Text>
@@ -1318,7 +1329,6 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   isGroupChat,
   currentUserId,
   messages,
-  messageById,
   selectionMode,
   selectedMessageIdSet,
   highlightedMessageId,
@@ -1343,6 +1353,18 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   chatTheme,
   activeVideoNoteVisible,
 }: ChatMessageListProps) {
+  const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
+
+  const messageByIdInternal = React.useMemo(() => {
+    const m = new Map<string, Message>();
+    for (const msg of messages) {
+      m.set(msg.id, msg);
+    }
+    return m;
+  }, [messages]);
+  const messageByIdRef = React.useRef(messageByIdInternal);
+  messageByIdRef.current = messageByIdInternal;
+
   const [albumViewerState, setAlbumViewerState] = React.useState<AlbumViewerState>(null);
   const handleOpenAlbumMedia = React.useCallback((media: VisualMediaItem[], index: number) => {
     setAlbumViewerState({
@@ -1360,7 +1382,9 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       chatId={chatId}
       isGroupChat={isGroupChat}
       currentUserId={currentUserId}
-      repliedMessage={item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null}
+      repliedMessage={
+        item.reply_to_id ? messageByIdRef.current.get(item.reply_to_id) ?? null : null
+      }
       selectionMode={selectionMode}
       isSelected={selectedMessageIdSet.has(item.id)}
       isHighlighted={highlightedMessageId === item.id}
@@ -1380,6 +1404,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       getDeletedPlaceholder={getDeletedPlaceholder}
       repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
       chatTheme={chatTheme}
+      navigation={navigation}
     />
   ), [
     allowReactions,
@@ -1394,7 +1419,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     handleOpenAlbumMedia,
     highlightedMessageId,
     isGroupChat,
-    messageById,
+    navigation,
     onMessageLongPress,
     onForwardHeaderPress,
     onToggleReaction,
@@ -1407,13 +1432,15 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     setContentRef,
   ]);
 
+  const keyExtractor = React.useCallback((message: Message) => message.id, []);
+
   return (
     <Reanimated.View style={[styles.listWrap, listAnimatedStyle]}>
       <FlatList
         ref={listRef}
         key={chatId}
         data={messages}
-        keyExtractor={(message) => message.id}
+        keyExtractor={keyExtractor}
         inverted
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
@@ -1437,7 +1464,6 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.isGroupChat === next.isGroupChat &&
     prev.currentUserId === next.currentUserId &&
     prev.messages === next.messages &&
-    prev.messageById === next.messageById &&
     prev.selectionMode === next.selectionMode &&
     prev.selectedMessageIdSet === next.selectedMessageIdSet &&
     prev.highlightedMessageId === next.highlightedMessageId &&

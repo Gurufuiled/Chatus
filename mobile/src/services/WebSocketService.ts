@@ -85,7 +85,6 @@ class WebSocketServiceClass {
 
     socket.onopen = () => {
       this.reconnectAttempt = 0;
-      if (__DEV__) console.log('[WebSocket] connected', baseUrl);
       this.handlers.onConnected?.();
     };
 
@@ -99,7 +98,6 @@ class WebSocketServiceClass {
       if (target !== this.ws) {
         return;
       }
-      if (__DEV__) console.log('[WebSocket] closed', e.code, e.reason);
       this.ws = null;
       this.handlers.onDisconnected?.();
       if (!this.manualDisconnect && authStore.getState().accessToken) {
@@ -129,10 +127,6 @@ class WebSocketServiceClass {
     }
 
     const type = msg?.type;
-    if (__DEV__ && type === 'message') {
-      const m = (msg as { message?: { content?: string } }).message;
-      console.log('[WebSocket] RAW received type=message', { hasMessage: !!m, content: m?.content?.slice(0, 30) });
-    }
     if (!type) return;
 
     switch (type) {
@@ -172,9 +166,6 @@ class WebSocketServiceClass {
         this.handlers.onError?.(msg);
         break;
       default:
-        if (__DEV__ && type) {
-          console.log('[WebSocket] unhandled type', type, Object.keys(msg).slice(0, 5));
-        }
         break;
     }
   }

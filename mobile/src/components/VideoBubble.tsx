@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
-  Image,
+  Image as RNImage,
   Modal,
   PanResponder,
   Pressable,
@@ -11,6 +11,7 @@ import {
   type LayoutChangeEvent,
   type PressableStateCallbackType,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -61,6 +62,7 @@ export interface VideoBubbleProps {
   inlineReactions?: InlineReactionItem[];
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
+  reactionAccentColor?: string;
 }
 
 function computeDisplaySize(
@@ -414,6 +416,7 @@ export function VideoBubble({
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
+  reactionAccentColor,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -537,7 +540,7 @@ export function VideoBubble({
           ]}
         >
           {posterUri ? (
-            <Image source={{ uri: posterUri }} style={styles.poster} resizeMode="cover" />
+            <Image source={{ uri: posterUri }} style={styles.poster} contentFit="cover" cachePolicy="disk" />
           ) : (
             <View style={styles.posterFallback} />
           )}
@@ -590,6 +593,7 @@ export function VideoBubble({
             isMe={isMe}
             allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
             onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+            accentColor={reactionAccentColor}
           />
         ) : null}
       </View>

@@ -37,6 +37,7 @@ export interface VoiceBubbleProps {
   inlineReactions?: InlineReactionItem[];
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
+  reactionAccentColor?: string;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -153,6 +154,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
+  reactionAccentColor,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -197,15 +199,17 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     renderProgress > 0 ? Math.max(0, Math.min(barCount, Math.round(renderProgress * barCount))) : 0;
   const hasPlaybackProgress = isCurrent && renderProgress > 0;
 
-  const handlePress = async () => {
+  const handlePress = () => {
     if (isPlaying) {
-      await pause();
+      void pause();
       return;
     }
 
     try {
       stopActiveVideoNotePlayback();
-      await play(uri);
+      void play(uri).catch((err) => {
+        if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
+      });
     } catch (err) {
       if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
     }
@@ -218,7 +222,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     }
   };
 
-  const handleWaveformPress = async (pressX: number) => {
+  const handleWaveformPress = (pressX: number) => {
     if (waveformWidth <= 0 || durationMs <= 0) return;
     const ratio = clamp01(pressX / waveformWidth);
     const targetPositionMs = Math.round(durationMs * ratio);
@@ -226,9 +230,13 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     try {
       if (!isCurrent) {
         stopActiveVideoNotePlayback();
-        await play(uri, targetPositionMs);
+        void play(uri, targetPositionMs).catch((err) => {
+          if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
+        });
       } else {
-        await seekTo(targetPositionMs);
+        void seekTo(targetPositionMs).catch((err) => {
+          if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
+        });
       }
     } catch (err) {
       if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
@@ -268,7 +276,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           <Pressable
             onLayout={handleWaveformLayout}
             onPress={(event) => {
-              void handleWaveformPress(event.nativeEvent.locationX);
+              handleWaveformPress(event.nativeEvent.locationX);
             }}
             style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
           >
@@ -328,6 +336,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
           onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
           variant="floatingTail"
+          accentColor={reactionAccentColor}
         />
       ) : null}
     </View>

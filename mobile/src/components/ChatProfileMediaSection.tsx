@@ -237,7 +237,7 @@ const VoiceRow = React.memo(function VoiceRow({
     : formatMediaDuration(item.durationMs);
   const bars = useMemo(() => buildVoicePreviewBars(item.waveform), [item.waveform]);
 
-  const handlePlayPress = async () => {
+  const handlePlayPress = () => {
     if (!item.uri) {
       Alert.alert(
         'Голосовое недоступно',
@@ -248,9 +248,13 @@ const VoiceRow = React.memo(function VoiceRow({
 
     try {
       if (isPlaying) {
-        await pause();
+        void pause().catch(() => {
+          Alert.alert('Не удалось воспроизвести', 'Попробуй еще раз чуть позже.');
+        });
       } else {
-        await play(item.uri);
+        void play(item.uri).catch(() => {
+          Alert.alert('Не удалось воспроизвести', 'Попробуй еще раз чуть позже.');
+        });
       }
     } catch {
       Alert.alert('Не удалось воспроизвести', 'Попробуй еще раз чуть позже.');

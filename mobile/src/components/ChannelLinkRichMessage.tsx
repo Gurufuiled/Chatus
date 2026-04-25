@@ -1,13 +1,14 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Image,
+  Image as RNImage,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 import {
@@ -150,7 +151,7 @@ export function ChannelLinkRichMessage({
               </Text>
             </View>
             {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={styles.previewThumb} />
+              <Image source={{ uri: avatarUri }} style={styles.previewThumb} contentFit="cover" cachePolicy="disk" />
             ) : (
               <View style={[styles.previewThumb, styles.previewThumbPlaceholder]}>
                 <Text style={styles.previewThumbLetter}>

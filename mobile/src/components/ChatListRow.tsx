@@ -57,33 +57,30 @@ export const ChatListRow = React.memo(function ChatListRow({
   onPress,
   onLongPress,
 }: ChatListRowProps) {
-  const lastMessageSenderId = messageStore(
+  const lastMessageMetaKey = messageStore(
     React.useCallback(
       (state) => {
         const chatMessages = state.messagesByChatId[chat.id] ?? [];
         const lastMessage = chat.last_message_id
           ? chatMessages.find((message) => message.id === chat.last_message_id)
           : null;
-
-        return lastMessage?.sender_id ?? null;
+        return JSON.stringify({
+          s: lastMessage?.sender_id ?? null,
+          t: lastMessage?.status ?? '',
+        });
       },
       [chat.id, chat.last_message_id]
     )
   );
 
-  const lastMessageStatus = messageStore(
-    React.useCallback(
-      (state) => {
-        const chatMessages = state.messagesByChatId[chat.id] ?? [];
-        const lastMessage = chat.last_message_id
-          ? chatMessages.find((message) => message.id === chat.last_message_id)
-          : null;
-
-        return lastMessage?.status ?? '';
-      },
-      [chat.id, chat.last_message_id]
-    )
-  );
+  const { lastMessageSenderId, lastMessageStatus } = React.useMemo(() => {
+    try {
+      const parsed = JSON.parse(lastMessageMetaKey) as { s: string | null; t: string };
+      return { lastMessageSenderId: parsed.s, lastMessageStatus: parsed.t };
+    } catch {
+      return { lastMessageSenderId: null as string | null, lastMessageStatus: '' };
+    }
+  }, [lastMessageMetaKey]);
 
   const title =
     chat.local_contact_name?.trim() ||

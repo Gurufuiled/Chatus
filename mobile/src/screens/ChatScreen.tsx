@@ -7,7 +7,7 @@ import {
   Animated,
   AppState,
   FlatList,
-  Image,
+  Image as RNImage,
   InteractionManager,
   Keyboard,
   LayoutChangeEvent,
@@ -17,6 +17,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +39,7 @@ import { uiStore } from '../stores/uiStore';
 import {
   ChatContextMenuOverlay,
   ChatForwardSheet,
+  ChatThemePickerModal,
   ChatInputDock,
   ChatMessageList,
   ChatMessagesSkeleton,
@@ -64,7 +66,7 @@ import {
 } from '../contexts/VoicePlayerContext';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors, withAlpha } from '../theme/colors';
-import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
+import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatThemeId } from '../theme/chatThemes';
 import {
   ChatBackgroundPattern,
   EMPTY_MESSAGES,
@@ -154,7 +156,7 @@ function MediaAlbumBubble({
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
     return (
       <View key={`${item.remote_url}-${index}`} style={[styles.albumTile, style]}>
-        <Image source={{ uri }} style={styles.albumImage} resizeMode="cover" />
+        <Image source={{ uri }} style={styles.albumImage} contentFit="cover" cachePolicy="disk" />
         {kind === 'video' ? (
           <View style={styles.albumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
@@ -307,9 +309,30 @@ export function ChatScreen() {
       [chatId]
     )
   );
-  const chats = chatStore((state) => state.chats);
+  const currentChat = chatStore(
+    useCallback((state) => state.chats.find((c) => c.id === chatId) ?? null, [chatId])
+  );
   const chatThemeId = uiStore((state) => state.chatThemeIdByChatId[chatId] ?? DEFAULT_CHAT_THEME_ID);
-  const chatTheme = React.useMemo(() => getChatTheme(chatThemeId), [chatThemeId]);
+  
+  const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
+  const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
+
+  useEffect(() => {
+    if (route.params.openThemePicker) {
+      setIsThemePickerVisible(true);
+      setDraftThemeId(chatThemeId as ChatThemeId);
+      navigation.setParams({ openThemePicker: undefined });
+    }
+  }, [route.params.openThemePicker, navigation, chatThemeId]);
+
+  const activeThemeId = isThemePickerVisible ? draftThemeId : chatThemeId;
+  const chatTheme = React.useMemo(() => getChatTheme(activeThemeId), [activeThemeId]);
+
+  const handleApplyTheme = useCallback(() => {
+    uiStore.getState().setChatTheme(chatId, draftThemeId);
+    setIsThemePickerVisible(false);
+  }, [chatId, draftThemeId]);
+
 
   const [initialLoadElapsed, setInitialLoadElapsed] = React.useState(
     () => messages.length > 0,
@@ -350,12 +373,14 @@ export function ChatScreen() {
     () => [...selectedMessages].sort((a, b) => a.created_at - b.created_at),
     [selectedMessages]
   );
-  const currentChat = chats.find((chat) => chat.id === chatId) ?? null;
   const pinnedMessageId = currentChat?.pinned_message_id ?? null;
   const pinnedMessage = pinnedMessageId ? messageById.get(pinnedMessageId) ?? null : null;
   const forwardTargets = useMemo(
-    () => chats.filter((chat) => chat.id !== chatId),
-    [chatId, chats]
+    () => forwardSourceMessageIds.length > 0
+      ? chatStore.getState().chats.filter((chat) => chat.id !== chatId)
+      : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chatId, forwardSourceMessageIds.length > 0]
   );
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const matchedMessageIds = useMemo(() => {
@@ -486,15 +511,17 @@ export function ChatScreen() {
     if (!WebSocketService.isConnected()) return;
 
     for (const message of messages) {
+      // Skip our own messages or deleted messages
       if (message.sender_id === currentUserId || message.is_deleted === 1) {
         continue;
       }
-      if (message.status === 'read') {
+      
+      // If we reach a message that is already read, we can safely stop.
+      // Since messages are sorted newest-first, all older messages from this user
+      // are also guaranteed to be read.
+      if (message.status === 'read' || sentReadReceiptIdsRef.current.has(message.id)) {
         sentReadReceiptIdsRef.current.add(message.id);
-        continue;
-      }
-      if (sentReadReceiptIdsRef.current.has(message.id)) {
-        continue;
+        break;
       }
 
       WebSocketService.sendEvent('ack', {
@@ -1177,7 +1204,7 @@ export function ChatScreen() {
         }, tempId)
       ) {
         messageStore.getState().prependMessage(targetChatId, optimisticMessage);
-        const targetChat = chats.find((chat) => chat.id === targetChatId);
+        const targetChat = chatStore.getState().chats.find((chat) => chat.id === targetChatId);
         if (targetChat) {
           chatStore.getState().updateChat({
             ...targetChat,
@@ -1206,14 +1233,14 @@ export function ChatScreen() {
       SyncService.fetchMessagesForChat(targetChatId).catch(() => {});
     }, 250);
 
-    const targetChat = chats.find((chat) => chat.id === targetChatId);
+    const targetChat = chatStore.getState().chats.find((chat) => chat.id === targetChatId);
     Alert.alert(
       'Переслано',
       sentCount === 1
         ? `Сообщение отправлено в чат «${targetChat?.peer_display_name || targetChat?.name || 'Чат'}».`
         : `${sentCount} сообщений отправлено в чат «${targetChat?.peer_display_name || targetChat?.name || 'Чат'}».`
     );
-  }, [chatId, chats, currentChat?.chat_type, currentUserId, forwardFromSelection, forwardSourceMessageIds, messageById]);
+  }, [chatId, currentChat?.chat_type, currentUserId, forwardFromSelection, forwardSourceMessageIds, messageById]);
 
   const handleForwardSheetClose = useCallback(() => {
     setForwardSourceMessageIds([]);
@@ -1243,7 +1270,7 @@ export function ChatScreen() {
       return;
     }
 
-    const sourceChat = chats.find((c) => c.id === sourceChatId) ?? null;
+    const sourceChat = chatStore.getState().chats.find((c) => c.id === sourceChatId) ?? null;
     const sourceChatTitle =
       sourceChat?.peer_display_name?.trim() ||
       sourceChat?.name?.trim() ||
@@ -1257,7 +1284,7 @@ export function ChatScreen() {
         focusMessageId: sourceMessageId ?? undefined,
       });
     }
-  }, [chatId, chats, navigation, scrollToMessageId]);
+  }, [chatId, navigation, scrollToMessageId]);
 
   const handleForwardSelectedMessages = useCallback(() => {
     if (!canForwardSelectedMessages) {
@@ -1818,7 +1845,7 @@ export function ChatScreen() {
   return (
     <View style={[styles.container, { backgroundColor: chatTheme.canvasColor }]}>
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.chatContentLayer}>
-        <ChatBackgroundPattern themeId={chatThemeId} />
+        <ChatBackgroundPattern themeId={activeThemeId} />
         <ChatTopBanners
           selectionMode={selectionMode}
           selectedCount={selectedMessageIds.length}
@@ -1870,7 +1897,6 @@ export function ChatScreen() {
           isGroupChat={currentChat?.chat_type === 'group'}
           currentUserId={currentUserId}
           messages={messages}
-          messageById={messageById}
           selectionMode={selectionMode}
           selectedMessageIdSet={selectedMessageIdSet}
           highlightedMessageId={highlightedMessageId}
@@ -2029,6 +2055,14 @@ export function ChatScreen() {
         chats={forwardTargets}
         onClose={handleForwardSheetClose}
         onSelectChat={handleForwardToChat}
+      />
+
+      <ChatThemePickerModal
+        visible={isThemePickerVisible}
+        selectedThemeId={draftThemeId}
+        onSelectTheme={setDraftThemeId}
+        onApply={handleApplyTheme}
+        onClose={() => setIsThemePickerVisible(false)}
       />
     </View>
   );

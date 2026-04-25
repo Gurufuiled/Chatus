@@ -321,41 +321,44 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         onNewMessage: (payload) => {
           const msg = (payload as { message?: ServerMessagePayload }).message;
           if (!msg?.chat_id || !msg?.id) return;
-          // Deduplication: skip if we already have this message (same id)
+          // Deduplication and optimistic match in a single pass
           const existing = messageStore.getState().messagesByChatId[msg.chat_id] ?? [];
-          if (existing.some((m) => m.id === msg.id)) return;
-          if (__DEV__) {
-            console.log('[WS onNewMessage] message from server', { id: msg.id, chat_id: msg.chat_id, content: msg.content, msg_type: msg.msg_type });
-          }
-          const mapped = mapServerMessageToMessage(msg);
+          let sendingByTempId;
+          let oldestSendingCandidate;
           const currentUserId = authStore.getState().user?.id ?? null;
-          const selectedChatId = chatStore.getState().selectedChatId;
+          
           const clientTempId =
             typeof msg.client_temp_id === 'string' && msg.client_temp_id.trim().length > 0
               ? msg.client_temp_id.trim()
               : null;
-          const sendingByTempId = clientTempId
-            ? existing.find(
-                (m) =>
-                  m.id === clientTempId &&
-                  m.sender_id === currentUserId &&
-                  msg.sender_id === currentUserId
-              )
-            : undefined;
-          const sendingCandidates = sendingByTempId
-            ? []
-            : existing.filter(
-                (m) =>
-                  m.status === 'sending' &&
-                  m.sender_id === currentUserId &&
-                  msg.sender_id === currentUserId &&
-                  m.msg_type === msg.msg_type &&
-                  (m.msg_type === 'text' ? m.content === msg.content : true)
-              );
-          // Take oldest (first sent) - array is [newest..oldest], confirmations arrive in order
-          const sending =
-            sendingByTempId ??
-            (sendingCandidates.length > 0 ? sendingCandidates[sendingCandidates.length - 1] : undefined);
+
+          for (let i = 0; i < existing.length; i++) {
+            const m = existing[i];
+            if (m.id === msg.id) return; // Already have this message
+            
+            if (
+              m.status === 'sending' && 
+              m.sender_id === currentUserId && 
+              msg.sender_id === currentUserId
+            ) {
+              if (clientTempId && m.id === clientTempId) {
+                sendingByTempId = m;
+              } else if (
+                m.msg_type === msg.msg_type &&
+                (m.msg_type === 'text' ? m.content === msg.content : true)
+              ) {
+                // Iterating newest-to-oldest, so the last match we find will be the oldest
+                oldestSendingCandidate = m;
+              }
+            }
+          }
+          
+          if (__DEV__) {
+            console.log('[WS onNewMessage] message from server', { id: msg.id, chat_id: msg.chat_id, content: msg.content, msg_type: msg.msg_type });
+          }
+          const mapped = mapServerMessageToMessage(msg);
+          const selectedChatId = chatStore.getState().selectedChatId;
+          const sending = sendingByTempId ?? oldestSendingCandidate;
           if (sending) {
             const mergedMedia = mergeMediaOnOptimisticAck(sending, mapped);
             const media =

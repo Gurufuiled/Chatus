@@ -7,6 +7,7 @@ import {
   Easing,
   GestureResponderEvent,
   Image,
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -54,6 +55,8 @@ import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
 type ChatProfileRoute = RouteProp<ChatsStackParamList, 'ChatProfile'>;
 type ChatProfileNavigation = NativeStackNavigationProp<ChatsStackParamList, 'ChatProfile'>;
 const EMPTY_PROFILE_MESSAGES: Message[] = [];
+/** Scan only recent messages for media/voice/links — full history blocks the JS thread. */
+const PROFILE_MEDIA_SCAN_LIMIT = 500;
 
 type InfoRow = {
   id: string;
@@ -364,7 +367,10 @@ export function ChatProfileScreen() {
   }, [userId]);
 
   useEffect(() => {
-    void uiStore.getState().hydrateBlockedUsers();
+    const task = InteractionManager.runAfterInteractions(() => {
+      void uiStore.getState().hydrateBlockedUsers();
+    });
+    return () => task.cancel();
   }, []);
 
   useEffect(() => {
@@ -404,9 +410,17 @@ export function ChatProfileScreen() {
   const expandedHeroWidth = PROFILE_SCREEN_WIDTH;
   const expandedHeroHeight = Math.min(Math.max(PROFILE_SCREEN_WIDTH * 0.92, 280), 360);
 
+  const profileMessagesSlice = useMemo(
+    () =>
+      chatMessages.length > PROFILE_MEDIA_SCAN_LIMIT
+        ? chatMessages.slice(0, PROFILE_MEDIA_SCAN_LIMIT)
+        : chatMessages,
+    [chatMessages]
+  );
+
   const mediaItems = useMemo<MediaTile[]>(
     () =>
-      chatMessages
+      profileMessagesSlice
         .filter(
           (message) =>
             !message.is_deleted &&
@@ -430,12 +444,12 @@ export function ChatProfileScreen() {
           } satisfies MediaTile;
         })
         .filter((item) => item.uri.length > 0),
-    [chatMessages]
+    [profileMessagesSlice]
   );
 
   const fileItems = useMemo<FileItem[]>(
     () =>
-      chatMessages
+      profileMessagesSlice
         .filter((message) => !message.is_deleted && message.msg_type === 'file')
         .map((message) => ({
           id: message.id,
@@ -444,12 +458,12 @@ export function ChatProfileScreen() {
           uri: extractMediaUri(message),
           extension: getFileExtension(message.media?.[0]?.file_name || 'FILE'),
         })),
-    [chatMessages]
+    [profileMessagesSlice]
   );
 
   const voiceItems = useMemo<VoiceItem[]>(
     () =>
-      chatMessages
+      profileMessagesSlice
         .filter(
           (message) =>
             !message.is_deleted &&
@@ -468,12 +482,12 @@ export function ChatProfileScreen() {
           waveform: message.msg_type === 'voice' ? message.media?.[0]?.waveform ?? [] : [],
           dateLabel: formatMessageDate(message.created_at),
         })),
-    [chatMessages, currentUserId, displayName]
+    [profileMessagesSlice, currentUserId, displayName]
   );
 
   const linkItems = useMemo<LinkItem[]>(
     () =>
-      chatMessages.flatMap((message) =>
+      profileMessagesSlice.flatMap((message) =>
         message.is_deleted
           ? []
           :
@@ -484,7 +498,7 @@ export function ChatProfileScreen() {
           uri: link,
         }))
       ),
-    [chatMessages]
+    [profileMessagesSlice]
   );
 
   const handleMutePress = useCallback(() => {
@@ -620,10 +634,12 @@ export function ChatProfileScreen() {
     });
   }, [closeMoreMenu, currentThemeId]);
 
-  const handleApplyTheme = useCallback(() => {
+  const handleApplyChatTheme = useCallback(() => {
     uiStore.getState().setChatTheme(chatId, draftThemeId);
     setIsThemePickerVisible(false);
   }, [chatId, draftThemeId]);
+
+
 
   const handleToggleBlocked = useCallback(() => {
     closeMoreMenu();
@@ -875,13 +891,7 @@ export function ChatProfileScreen() {
         onCloseActionMenu={() => closeActionMenu()}
         onShowInChat={handleShowInChat}
       />
-      <ChatThemePickerModal
-        visible={isThemePickerVisible}
-        selectedThemeId={draftThemeId}
-        onSelectTheme={setDraftThemeId}
-        onApply={handleApplyTheme}
-        onClose={() => setIsThemePickerVisible(false)}
-      />
+
       <Modal
         visible={isEditContactVisible}
         animationType="slide"
@@ -945,6 +955,14 @@ export function ChatProfileScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <ChatThemePickerModal
+        visible={isThemePickerVisible}
+        selectedThemeId={draftThemeId}
+        onSelectTheme={setDraftThemeId}
+        onApply={handleApplyChatTheme}
+        onClose={() => setIsThemePickerVisible(false)}
+      />
     </View>
   );
 }

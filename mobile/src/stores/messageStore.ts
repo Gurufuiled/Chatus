@@ -81,12 +81,16 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
   updateMessage: (chatId, messageId, updates) =>
     set((state) => {
       const messages = state.messagesByChatId[chatId] ?? [];
+      const index = messages.findIndex((m) => m.id === messageId);
+      if (index === -1) return state;
+      
+      const nextMessages = [...messages];
+      nextMessages[index] = { ...messages[index], ...updates };
+      
       return {
         messagesByChatId: {
           ...state.messagesByChatId,
-          [chatId]: messages.map((m) =>
-            m.id === messageId ? { ...m, ...updates } : m
-          ),
+          [chatId]: nextMessages,
         },
       };
     }),
@@ -94,10 +98,16 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
   removeMessage: (chatId, messageId) =>
     set((state) => {
       const messages = state.messagesByChatId[chatId] ?? [];
+      const index = messages.findIndex((m) => m.id === messageId);
+      if (index === -1) return state;
+      
+      const nextMessages = [...messages];
+      nextMessages.splice(index, 1);
+      
       return {
         messagesByChatId: {
           ...state.messagesByChatId,
-          [chatId]: messages.filter((m) => m.id !== messageId),
+          [chatId]: nextMessages,
         },
       };
     }),

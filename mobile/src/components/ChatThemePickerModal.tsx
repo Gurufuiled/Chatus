@@ -25,7 +25,6 @@ export function ChatThemePickerModal({
   onClose,
 }: ChatThemePickerModalProps) {
   const insets = useSafeAreaInsets();
-  const selectedTheme = getChatTheme(selectedThemeId);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -66,14 +65,7 @@ export function ChatThemePickerModal({
             ))}
           </ScrollView>
 
-          <View style={styles.captionWrap}>
-            <Text style={styles.captionTitle}>{selectedTheme.name}</Text>
-            <Text style={styles.captionText}>
-              {selectedThemeId === DEFAULT_CHAT_THEME_ID
-                ? 'Ваши стандартные зелёные обои без дополнительной темы.'
-                : 'Фон и цвет ваших сообщений будут подстроены под выбранную тему.'}
-            </Text>
-          </View>
+
 
           <Pressable
             onPress={onApply}
@@ -95,6 +87,7 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(11, 18, 32, 0.24)',
+    zIndex: 0,
   },
   sheet: {
     borderTopLeftRadius: 26,
@@ -102,6 +95,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.98)',
     paddingTop: 14,
     paddingHorizontal: 16,
+    zIndex: 2,
+    elevation: 14,
   },
   headerRow: {
     flexDirection: 'row',
@@ -130,7 +125,7 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   previewPressable: {
-    width: 108,
+    width: 86,
     alignItems: 'center',
   },
   previewLabel: {

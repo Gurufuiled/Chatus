@@ -8,6 +8,8 @@ import type { AVPlaybackStatus } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const PROGRESS_UPDATE_INTERVAL_MS = 100;
+/** Cap React store broadcasts during playback so ChatScreen / bubbles are not repainted 10×/s. */
+const STORE_BROADCAST_MIN_INTERVAL_MS = 160;
 
 export interface VoicePlayerStatus {
   positionMs: number;
@@ -47,6 +49,8 @@ class VoicePlayerServiceClass {
     },
   };
   private playbackRate = 1;
+  private audioModeReady = false;
+  private lastStoreBroadcastAt = 0;
 
   private async ensureVoiceCacheDir(): Promise<string> {
     if (this.voiceCacheDir) return this.voiceCacheDir;
@@ -114,6 +118,7 @@ class VoicePlayerServiceClass {
 
   /** Ensure audio mode allows playback (plays in silent mode on iOS). */
   private async ensureAudioMode(): Promise<void> {
+    if (this.audioModeReady) return;
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
@@ -121,6 +126,7 @@ class VoicePlayerServiceClass {
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     });
+    this.audioModeReady = true;
   }
 
   /** Stop and unload current sound if any. */
@@ -136,7 +142,7 @@ class VoicePlayerServiceClass {
     this.soundRef = null;
     this.currentUri = null;
     this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
-    this.notifyListeners();
+    this.notifyListeners({ throttleStore: false });
   }
 
   private refreshSnapshot(): void {
@@ -146,10 +152,21 @@ class VoicePlayerServiceClass {
     };
   }
 
-  private notifyListeners(): void {
+  private notifyListeners(options?: { throttleStore?: boolean }): void {
     this.refreshSnapshot();
     this.statusListeners.forEach((cb) => cb(this.lastSnapshot.status));
-    this.storeListeners.forEach((cb) => cb());
+
+    if (!options?.throttleStore) {
+      this.lastStoreBroadcastAt = Date.now();
+      this.storeListeners.forEach((cb) => cb());
+      return;
+    }
+
+    const now = Date.now();
+    if (now - this.lastStoreBroadcastAt >= STORE_BROADCAST_MIN_INTERVAL_MS) {
+      this.lastStoreBroadcastAt = now;
+      this.storeListeners.forEach((cb) => cb());
+    }
   }
 
   addStatusListener(cb: VoicePlayerStatusListener): void {
@@ -181,7 +198,7 @@ class VoicePlayerServiceClass {
         rate: status.rate ?? this.playbackRate,
       };
       void this.soundRef?.stopAsync().catch(() => {});
-      this.notifyListeners();
+      this.notifyListeners({ throttleStore: false });
       return;
     }
 
@@ -191,8 +208,43 @@ class VoicePlayerServiceClass {
       isPlaying: status.isPlaying ?? false,
       rate: status.rate ?? this.playbackRate,
     };
-    this.notifyListeners();
+    const throttleStore = this.lastStatus.isPlaying;
+    this.notifyListeners({ throttleStore });
   };
+
+  /** Try streaming from remote URL (avoids download latency when supported). */
+  private async tryPlayFromUriDirect(uri: string, positionMs?: number): Promise<boolean> {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        {
+          shouldPlay: true,
+          progressUpdateIntervalMillis: PROGRESS_UPDATE_INTERVAL_MS,
+          rate: this.playbackRate,
+          shouldCorrectPitch: true,
+          positionMillis: positionMs != null ? Math.max(0, positionMs) : 0,
+        },
+        this.handlePlaybackStatusUpdate,
+        false
+      );
+      this.soundRef = sound;
+      this.currentUri = uri;
+      const status = await sound.getStatusAsync();
+      if (status.isLoaded) {
+        this.lastStatus = {
+          positionMs: status.positionMillis ?? 0,
+          durationMs: status.durationMillis ?? 0,
+          isPlaying: status.isPlaying ?? false,
+          rate: status.rate ?? this.playbackRate,
+        };
+      }
+      this.notifyListeners({ throttleStore: false });
+      return true;
+    } catch {
+      await this.stopAndUnloadCurrent().catch(() => {});
+      return false;
+    }
+  }
 
   /**
    * Load and play a voice message from URI.
@@ -227,7 +279,7 @@ class VoicePlayerServiceClass {
                 isPlaying: resumedStatus.isPlaying ?? false,
                 rate: resumedStatus.rate ?? this.playbackRate,
               };
-              this.notifyListeners();
+              this.notifyListeners({ throttleStore: false });
             }
           }
           return;
@@ -236,6 +288,10 @@ class VoicePlayerServiceClass {
 
       await this.stopAndUnloadCurrent();
       await this.ensureAudioMode();
+      if (/^https?:\/\//i.test(uri)) {
+        const streamed = await this.tryPlayFromUriDirect(uri, positionMs);
+        if (streamed) return;
+      }
       const playableUri = await this.resolvePlayableUri(uri);
 
       const { sound } = await Audio.Sound.createAsync(
@@ -261,7 +317,7 @@ class VoicePlayerServiceClass {
           isPlaying: status.isPlaying ?? false,
           rate: status.rate ?? this.playbackRate,
         };
-        this.notifyListeners();
+        this.notifyListeners({ throttleStore: false });
       }
     })();
     return this.playPromise;
@@ -279,12 +335,13 @@ class VoicePlayerServiceClass {
         this.lastStatus.isPlaying = false;
         this.lastStatus.positionMs = status.positionMillis ?? 0;
         this.lastStatus.rate = status.rate ?? this.playbackRate;
-        this.notifyListeners();
+        this.notifyListeners({ throttleStore: false });
       }
     } catch {
       this.soundRef = null;
       this.currentUri = null;
       this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
+      this.notifyListeners({ throttleStore: false });
       throw new Error('Failed to pause playback');
     }
   }
@@ -312,7 +369,7 @@ class VoicePlayerServiceClass {
         isPlaying: nextStatus.isPlaying ?? false,
         rate: nextStatus.rate ?? this.playbackRate,
       };
-      this.notifyListeners();
+      this.notifyListeners({ throttleStore: false });
     }
   }
 
@@ -322,7 +379,7 @@ class VoicePlayerServiceClass {
 
     if (!this.soundRef) {
       this.lastStatus.rate = normalizedRate;
-      this.notifyListeners();
+      this.notifyListeners({ throttleStore: false });
       return;
     }
 
@@ -336,11 +393,11 @@ class VoicePlayerServiceClass {
           isPlaying: status.isPlaying ?? false,
           rate: status.rate ?? normalizedRate,
         };
-        this.notifyListeners();
+        this.notifyListeners({ throttleStore: false });
       }
     } catch {
       this.lastStatus.rate = normalizedRate;
-      this.notifyListeners();
+      this.notifyListeners({ throttleStore: false });
       throw new Error('Failed to change playback rate');
     }
   }

@@ -20,6 +20,7 @@ export interface FileBubbleProps {
   inlineReactions?: InlineReactionItem[];
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
+  reactionAccentColor?: string;
 }
 
 function formatFileSize(bytes?: number): string | null {
@@ -71,6 +72,7 @@ export function FileBubble({
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
+  reactionAccentColor,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
   const fileCaption = useMemo(
@@ -183,6 +185,7 @@ export function FileBubble({
           isMe={isMe}
           allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
           onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+          accentColor={reactionAccentColor}
         />
       ) : null}
     </View>

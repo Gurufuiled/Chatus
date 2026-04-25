@@ -42,6 +42,7 @@
           "cameraPermission": "Разрешите доступ к камере для съёмки и аватара."
         }
       ],
+      "expo-image",
       "./plugins/withIosProductionPlist"
     ],
     "name": "Chatus",

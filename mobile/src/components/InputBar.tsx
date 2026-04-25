@@ -93,6 +93,7 @@ type GalleryItem = {
   id: string;
   kind: 'image' | 'video';
   uri: string;
+  localUri?: string;
   width?: number;
   height?: number;
   durationMs?: number;
@@ -416,7 +417,6 @@ export function InputBar({
   useEffect(() => {
     let pendingBackgroundTimer: ReturnType<typeof setTimeout> | null = null;
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (__DEV__) console.log('[VoiceInput] AppState change ->', nextState);
       if (nextState === 'background') {
         if (pendingBackgroundTimer) clearTimeout(pendingBackgroundTimer);
         pendingBackgroundTimer = setTimeout(() => {
@@ -437,7 +437,6 @@ export function InputBar({
   }, [forceResetVoiceState]);
 
   useEffect(() => {
-    if (__DEV__) console.log('[VoiceInput] isScreenFocused ->', isScreenFocused);
     if (!isScreenFocused) {
       setShowAttachmentSheet(false);
       setShowVideoNoteRecorder(false);
@@ -670,20 +669,45 @@ export function InputBar({
         sortBy: [[MediaLibrary.SortBy.creationTime, false]],
       });
 
-      setGalleryItems(
-        result.assets.map((asset) => ({
-          id: asset.id,
-          kind: resolveGalleryItemKind(asset.mediaType),
-          uri: asset.uri,
-          width: asset.width,
-          height: asset.height,
-          durationMs:
-            asset.mediaType === MediaLibrary.MediaType.video
-              ? Math.max(0, Math.round((asset.duration ?? 0) * 1000))
-              : undefined,
-          fileName: asset.filename,
-        }))
-      );
+      // Map immediately so the grid appears without waiting for localUri
+      const mapped = result.assets.map((asset) => ({
+        id: asset.id,
+        kind: resolveGalleryItemKind(asset.mediaType),
+        uri: asset.uri,
+        localUri: undefined as string | undefined,
+        width: asset.width,
+        height: asset.height,
+        durationMs:
+          asset.mediaType === MediaLibrary.MediaType.video
+            ? Math.max(0, Math.round((asset.duration ?? 0) * 1000))
+            : undefined,
+        fileName: asset.filename,
+      }));
+      setGalleryItems(mapped);
+
+      // Resolve localUris in background batches so images render instantly via file:// paths
+      const BATCH = 12;
+      for (let start = 0; start < mapped.length; start += BATCH) {
+        const batch = mapped.slice(start, start + BATCH);
+        const infos = await Promise.all(
+          batch.map((item) =>
+            MediaLibrary.getAssetInfoAsync(item.id).catch(() => null)
+          )
+        );
+        setGalleryItems((prev) => {
+          const next = [...prev];
+          infos.forEach((info, i) => {
+            if (!info) return;
+            const localUri = info.localUri?.trim() || info.uri?.trim();
+            if (!localUri) return;
+            const idx = start + i;
+            if (idx < next.length) {
+              next[idx] = { ...next[idx], localUri };
+            }
+          });
+          return next;
+        });
+      }
     } catch (err) {
       if (__DEV__) console.warn('[InputBar] loadGallery error:', err);
       setGalleryItems([]);

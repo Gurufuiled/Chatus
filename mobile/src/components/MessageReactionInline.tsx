@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { resolveAvatarUrl } from '../config';
+import { withAlpha } from '../theme/colors';
 
 export type InlineReactionItem = {
   emoji: string;
@@ -16,6 +17,7 @@ type MessageReactionInlineProps = {
   onToggle: (emoji: string) => void;
   /** Компактные «таблетки» снизу справа (голос / кружок), как в Telegram */
   variant?: 'default' | 'floatingTail';
+  accentColor?: string;
 };
 
 const AVATAR = 15;
@@ -27,6 +29,7 @@ export function MessageReactionInline({
   allowReactions,
   onToggle,
   variant = 'default',
+  accentColor,
 }: MessageReactionInlineProps) {
   if (!reactions.length) return null;
 
@@ -48,10 +51,16 @@ export function MessageReactionInline({
               : isMe
                 ? styles.chipPaletteMe
                 : styles.chipPaletteOther,
-            !isTail && r.reacted_by_me && (isMe ? styles.chipMineOnMe : styles.chipMineOnOther),
-            isTail &&
-              r.reacted_by_me &&
-              (isMe ? styles.chipMineTailOnMe : styles.chipMineTailOnOther),
+            !isTail && r.reacted_by_me && (
+              accentColor 
+                ? { backgroundColor: withAlpha(accentColor, isMe ? 0.52 : 0.34) }
+                : (isMe ? styles.chipMineOnMe : styles.chipMineOnOther)
+            ),
+            isTail && r.reacted_by_me && (
+              accentColor 
+                ? { backgroundColor: withAlpha(accentColor, isMe ? 0.88 : 0.42), borderColor: withAlpha(accentColor, 0.22) }
+                : (isMe ? styles.chipMineTailOnMe : styles.chipMineTailOnOther)
+            ),
             pressed && allowReactions && styles.chipPressed,
             !allowReactions && styles.chipDisabled,
           ]}

@@ -3,14 +3,14 @@ import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Dimensions,
-  Image,
+  Image as RNImage,
   Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
-  type ImageResizeMode,
 } from 'react-native';
+import { Image, ImageContentFit } from 'expo-image';
 import { colors, bubbleRadius, typography } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
@@ -41,7 +41,7 @@ export interface ImageBubbleProps {
   outgoingTextColor?: string;
   centered?: boolean;
   viewCount?: number;
-  resizeMode?: ImageResizeMode;
+  contentFit?: ImageContentFit;
   /** If true, use provided width/height as-is without internal clamping. */
   fixedSize?: boolean;
   /** Parent handles fullscreen (e.g. swipe-to-dismiss profile viewer). */
@@ -49,6 +49,7 @@ export interface ImageBubbleProps {
   inlineReactions?: InlineReactionItem[];
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
+  reactionAccentColor?: string;
 }
 
 function computeDisplaySize(
@@ -98,12 +99,13 @@ export function ImageBubble({
   outgoingTextColor,
   centered = false,
   viewCount,
-  resizeMode = 'cover',
+  contentFit = 'cover',
   fixedSize = false,
   onOpenFullscreen,
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
+  reactionAccentColor,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
@@ -137,7 +139,7 @@ export function ImageBubble({
     }
 
     let cancelled = false;
-    Image.getSize(
+    RNImage.getSize(
       normalizedUri,
       (w, h) => {
         if (!cancelled) {
@@ -217,7 +219,8 @@ export function ImageBubble({
           ) : null}
           <Image
             source={{ uri: normalizedUri }}
-            fadeDuration={0}
+            transition={150}
+            cachePolicy="disk"
             onError={() => {
               setLoadError(true);
               setImageLoaded(true);
@@ -230,7 +233,7 @@ export function ImageBubble({
               setImageLoaded(true);
             }}
             style={[styles.image, { width: w, height: h }]}
-            resizeMode={resizeMode}
+            contentFit={contentFit}
           />
 
           {time || viewCount != null ? (
@@ -273,6 +276,7 @@ export function ImageBubble({
             isMe={isMe}
             allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
             onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+            accentColor={reactionAccentColor}
           />
         ) : null}
       </View>
@@ -289,7 +293,8 @@ export function ImageBubble({
               <Image
                 source={{ uri: normalizedUri }}
                 style={styles.fullscreenImage}
-                resizeMode="contain"
+                contentFit="contain"
+                cachePolicy="disk"
               />
               <Pressable
                 style={[styles.closeButton, { top: insets.top + 12 }]}

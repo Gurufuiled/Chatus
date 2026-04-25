@@ -13,9 +13,9 @@ import {
 const DEFAULT_CHAT_BACKGROUND = require('../../chat/chat-bg.png');
 
 const CHAT_THEME_IMAGE_ASSETS = {
-  meadow: require('../assets/chat-themes/chatus_cyberpunk_clear.png'),
-  frost: require('../assets/chat-themes/chatus_space_clear.png'),
-  sunset: require('../assets/chat-themes/chatus_holiday_clear.png'),
+  meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.png'),
+  frost: require('../assets/chat-themes/bg_snow_doodle.png'),
+  sunset: require('../assets/chat-themes/bg_holiday_doodle.png'),
 } as const;
 
 export type ChatThemeId = 'default' | 'meadow' | 'frost' | 'sunset';
@@ -71,12 +71,12 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
   },
   meadow: {
     id: 'meadow',
-    name: 'Кибер',
-    bubbleMe: '#A7EEFF',
-    bubbleMeText: '#10385C',
-    bubbleMeMeta: 'rgba(16,56,92,0.68)',
-    bubbleMeAccent: '#3EB5E3',
-    replyBubbleMe: '#C8F5FF',
+    name: 'Киберпанк',
+    bubbleMe: '#E0D4F6',
+    bubbleMeText: '#3B1C69',
+    bubbleMeMeta: 'rgba(59,28,105,0.68)',
+    bubbleMeAccent: '#8B5CD6',
+    replyBubbleMe: '#F0E8FA',
     replyAccentMe: '#45A8DB',
     replyTextMe: '#1E4770',
     replyAuthorMe: '#2F8FCD',
@@ -84,7 +84,7 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     forwardHeaderMe: '#0F3A5C',
     deletedBubbleMe: '#D7ECF6',
     deletedTextMe: '#47657E',
-    canvasColor: '#4956A6',
+    canvasColor: '#9366B4',
     wallpaperKind: 'asset-image',
     wallpaperBase: '#4956A6',
     wallpaperTint: 'rgba(255,255,255,0.015)',
@@ -93,12 +93,12 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
   },
   frost: {
     id: 'frost',
-    name: 'Космос',
-    bubbleMe: '#DCE6FF',
-    bubbleMeText: '#263F6C',
-    bubbleMeMeta: 'rgba(38,63,108,0.68)',
-    bubbleMeAccent: '#6F8FE4',
-    replyBubbleMe: '#E9F0FF',
+    name: 'Снег',
+    bubbleMe: '#D4E9F6',
+    bubbleMeText: '#1C4469',
+    bubbleMeMeta: 'rgba(28,68,105,0.68)',
+    bubbleMeAccent: '#5CA1D6',
+    replyBubbleMe: '#E8F4FA',
     replyAccentMe: '#6D8CDE',
     replyTextMe: '#34517D',
     replyAuthorMe: '#5E7FD6',
@@ -106,7 +106,7 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     forwardHeaderMe: '#2A4A7A',
     deletedBubbleMe: '#E2EAF4',
     deletedTextMe: '#61708D',
-    canvasColor: '#324A96',
+    canvasColor: '#5CA1D6',
     wallpaperKind: 'asset-image',
     wallpaperBase: '#324A96',
     wallpaperTint: 'rgba(255,255,255,0.012)',
@@ -115,12 +115,12 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
   },
   sunset: {
     id: 'sunset',
-    name: 'Праздник',
-    bubbleMe: '#FFE6A8',
-    bubbleMeText: '#6E4915',
-    bubbleMeMeta: 'rgba(110,73,21,0.66)',
-    bubbleMeAccent: '#D99A33',
-    replyBubbleMe: '#FFF0C7',
+    name: 'Новый год',
+    bubbleMe: '#D4F6EE',
+    bubbleMeText: '#1C695A',
+    bubbleMeMeta: 'rgba(28,105,90,0.68)',
+    bubbleMeAccent: '#4AD6B9',
+    replyBubbleMe: '#E8FAF5',
     replyAccentMe: '#D38C2C',
     replyTextMe: '#7B561B',
     replyAuthorMe: '#C37A29',
@@ -128,7 +128,7 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     forwardHeaderMe: '#7A4A10',
     deletedBubbleMe: '#F5E6C6',
     deletedTextMe: '#8B7140',
-    canvasColor: '#EAA76F',
+    canvasColor: '#88C0BA',
     wallpaperKind: 'asset-image',
     wallpaperBase: '#EAA76F',
     wallpaperTint: 'rgba(255,255,255,0.02)',
@@ -204,7 +204,10 @@ type ChatThemePreviewProps = {
   selected: boolean;
 };
 
-export function ChatThemePreview({ themeId, selected }: ChatThemePreviewProps) {
+export const ChatThemePreview = React.memo(function ChatThemePreview({
+  themeId,
+  selected,
+}: ChatThemePreviewProps) {
   const theme = getChatTheme(themeId);
   const source = getChatWallpaperSource(theme);
 
@@ -229,7 +232,7 @@ export function ChatThemePreview({ themeId, selected }: ChatThemePreviewProps) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wallpaperRoot: {
@@ -246,8 +249,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   previewCard: {
-    width: 108,
-    height: 168,
+    width: 86,
+    height: 124,
     borderRadius: 22,
     padding: 3,
     backgroundColor: 'rgba(226,232,240,0.92)',
@@ -279,33 +282,33 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     left: 12,
-    width: 48,
-    height: 16,
-    borderRadius: 8,
+    width: 38,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.78)',
   },
   previewBubbleOther: {
     position: 'absolute',
     top: 40,
     left: 12,
-    width: 56,
-    height: 18,
-    borderRadius: 9,
+    width: 44,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: 'rgba(255,255,255,0.94)',
   },
   previewBubbleOtherSecondary: {
     top: 64,
-    width: 42,
-    left: 18,
+    width: 32,
+    left: 14,
     opacity: 0.95,
   },
   previewBubbleMe: {
     position: 'absolute',
     right: 12,
     bottom: 22,
-    width: 62,
-    height: 22,
-    borderRadius: 11,
+    width: 50,
+    height: 18,
+    borderRadius: 9,
   },
   previewBadgeWrap: {
     position: 'absolute',

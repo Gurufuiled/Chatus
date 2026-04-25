@@ -40,14 +40,14 @@ export const chatStore = create<ChatState & ChatActions>((set) => ({
   ...initialState,
 
   setChats: (chats) =>
-    set((state) => ({
-      chats: chats.map((chat) =>
-        preserveLocalContactName(
-          chat,
-          state.chats.find((existing) => existing.id === chat.id)
-        )
-      ),
-    })),
+    set((state) => {
+      const existingMap = new Map(state.chats.map((c) => [c.id, c]));
+      return {
+        chats: chats.map((chat) =>
+          preserveLocalContactName(chat, existingMap.get(chat.id))
+        ),
+      };
+    }),
 
   addChat: (chat) =>
     set((state) => ({

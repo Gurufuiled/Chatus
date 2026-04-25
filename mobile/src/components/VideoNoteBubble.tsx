@@ -6,13 +6,14 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   Dimensions,
-  Image,
+  Image as RNImage,
   type ImageStyle,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Reanimated, {
   cancelAnimation,
   Easing,
@@ -293,6 +294,7 @@ export interface VideoNoteBubbleProps {
   inlineReactions?: InlineReactionItem[];
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
+  reactionAccentColor?: string;
 }
 
 function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
@@ -334,6 +336,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
+  reactionAccentColor,
 }: VideoNoteBubbleProps) {
   const generatedNoteId = React.useId();
   const noteId = messageId ?? generatedNoteId;
@@ -1086,7 +1089,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         style={[styles.circle, circleStyle]}
       >
         {showPoster ? (
-          <Image source={{ uri: posterUri }} style={posterImageStyle} resizeMode="cover" />
+          <Image source={{ uri: posterUri }} style={posterImageStyle} contentFit="cover" cachePolicy="disk" />
         ) : null}
 
         {isPlayerMounted ? (
@@ -1211,6 +1214,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
               allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
               onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
               variant="floatingTail"
+              accentColor={reactionAccentColor}
             />
           </View>
         ) : null}

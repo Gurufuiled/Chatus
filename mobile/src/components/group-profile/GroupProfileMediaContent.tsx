@@ -154,7 +154,7 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
   const bars = useMemo(() => buildVoicePreviewBars(item.waveform), [item.waveform]);
   const suppressNextPressRef = useRef(false);
 
-  const handlePlayPress = async () => {
+  const handlePlayPress = () => {
     if (!item.uri) {
       Alert.alert(
         'Голосовое недоступно',
@@ -165,9 +165,13 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
 
     try {
       if (isPlaying) {
-        await pause();
+        void pause().catch(() => {
+          Alert.alert('Не удалось воспроизвести', 'Попробуй ещё раз чуть позже.');
+        });
       } else {
-        await play(item.uri);
+        void play(item.uri).catch(() => {
+          Alert.alert('Не удалось воспроизвести', 'Попробуй ещё раз чуть позже.');
+        });
       }
     } catch {
       Alert.alert('Не удалось воспроизвести', 'Попробуй ещё раз чуть позже.');

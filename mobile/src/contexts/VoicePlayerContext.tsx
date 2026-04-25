@@ -74,13 +74,16 @@ function isSameVoicePlaybackSelection(
   prev: VoicePlaybackForUri,
   next: VoicePlaybackForUri
 ) {
+  if (prev.isCurrent !== next.isCurrent || prev.isPlaying !== next.isPlaying || prev.rate !== next.rate) {
+    return false;
+  }
+  if (!next.isCurrent) {
+    return true;
+  }
   return (
-    prev.isCurrent === next.isCurrent &&
-    prev.isPlaying === next.isPlaying &&
-    prev.progress === next.progress &&
-    prev.positionMs === next.positionMs &&
-    prev.remainingMs === next.remainingMs &&
-    prev.rate === next.rate
+    Math.abs(prev.progress - next.progress) < 0.012 &&
+    Math.abs(prev.positionMs - next.positionMs) < 200 &&
+    Math.abs(prev.remainingMs - next.remainingMs) < 200
   );
 }
 
