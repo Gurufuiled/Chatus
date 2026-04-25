@@ -1,0 +1,14 @@
+# EAS загружает архив на сервер — без node_modules архив лёгкий, зависимости ставятся в облаке.
+node_modules/
+
+# Вся папка android не в архив: иначе в билд попадают Windows-пути из локального prebuild
+# (ошибка react-native-webview: .../android/C:/Users/...). На EAS заново выполнится prebuild.
+android/
+
+# Кэши на случай если android снова появится локально
+ios/
+
+# Локальная сборка / мусор
+.expo/
+dist/
+*.log

@@ -14,6 +14,7 @@
         }
       ],
       "expo-secure-store",
+      "expo-font",
       "expo-sqlite",
       [
         "expo-notifications",
@@ -89,21 +90,6 @@
             "BROWSABLE",
             "DEFAULT"
           ]
-        },
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "messenger",
-              "host": "auth",
-              "pathPrefix": "/callback"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
         }
       ],
       "adaptiveIcon": {
@@ -111,11 +97,7 @@
         "foregroundImage": "./assets/chatus_icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobile",
-      "notification": {
-        "icon": "./assets/chatus_icon.png",
-        "color": "#4B8FEA"
-      }
+      "package": "com.anonymous.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Дублируем EXPO_PUBLIC_* в expo.extra: при сборке release иногда не инлайнится
- * process.env.* в Hermes, из‑за чего остаётся localhost и на части девайсов
- * подставляется 10.0.2.2 (эмулятор).
+ * Статическая часть — в app.json. Здесь только extra из .env и EAS projectId.
+ * Форма ({ config }) нужна, чтобы expo-doctor видел связку app.json + app.config.js.
  */
 const fs = require('fs');
 const path = require('path');
@@ -29,15 +28,10 @@ function loadDotEnv(filePath) {
   return out;
 }
 
-/** @type {{ expo: Record<string, unknown> }} */
-const appJson = require('./app.json');
-
 const envPath = path.join(__dirname, '.env');
 const envProductionPath = path.join(__dirname, '.env.production');
 
 let envFile = loadDotEnv(envPath);
-// Release APK для прода: MOBILE_ENV=production (см. npm run android:release:prod).
-// Иначе в билд попадает только .env — часто там LAN IP, а не VPS.
 const mergeProdEnv =
   process.env.MOBILE_ENV === 'production' ||
   process.env.NODE_ENV === 'production';
@@ -49,20 +43,26 @@ function env(key) {
   return envFile[key] || process.env[key];
 }
 
-/** EAS / Expo Push: @alohaha2238/chatus — переопредели через EXPO_PUBLIC_EAS_PROJECT_ID в .env при смене проекта */
 const EAS_PROJECT_ID_DEFAULT = 'd3eb9f0c-dd7a-49fc-9113-ee9078bcb257';
 const easProjectId =
   (env('EXPO_PUBLIC_EAS_PROJECT_ID') || '').trim() || EAS_PROJECT_ID_DEFAULT;
 
-module.exports = {
-  expo: {
-    ...appJson.expo,
+/** @param {{ config: Record<string, unknown> }} ctx */
+module.exports = ({ config }) => {
+  const baseExtra =
+    config.extra && typeof config.extra === 'object' && !Array.isArray(config.extra)
+      ? config.extra
+      : {};
+
+  return {
+    ...config,
     extra: {
+      ...baseExtra,
       EXPO_PUBLIC_API_URL: env('EXPO_PUBLIC_API_URL'),
       EXPO_PUBLIC_USE_EMULATOR: env('EXPO_PUBLIC_USE_EMULATOR'),
       EXPO_PUBLIC_LOGINUS_CLIENT_ID: env('EXPO_PUBLIC_LOGINUS_CLIENT_ID'),
       EXPO_PUBLIC_USE_MOCKS: env('EXPO_PUBLIC_USE_MOCKS'),
       eas: { projectId: easProjectId },
     },
-  },
+  };
 };
