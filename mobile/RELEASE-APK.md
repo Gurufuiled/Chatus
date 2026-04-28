@@ -24,6 +24,18 @@ cp .env.production.example .env.production
 
 `app.config.js` подмешивает `.env.production` **только** при `MOBILE_ENV=production`, поверх значений из `.env`.
 
+### 1.1.1 OTA: манифест и APK с публичного GitHub (Gurufuiled/Chatus)
+
+Релизы APK и JSON манифеста живут в **публичном** репозитории, без VPS и без приватного org:
+
+- **`EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL`** (в `.env.production`) =  
+  `https://raw.githubusercontent.com/Gurufuiled/Chatus/main/config/client-update-manifest.json`  
+  (после `git push` обновление видно клиентам; деплой API для этого не нужен.)
+- В **`config/client-update-manifest.json`** поле **`apkUrl`** указывает на  
+  `https://github.com/Gurufuiled/Chatus/releases/latest/download/chatus-release.apk` — загружай туда **`chatus-release.apk`** как артефакт релиза.
+
+Перед выкладкой нового APK подними **`releaseTag`** в том же JSON и совмести с **`EXPO_PUBLIC_CLIENT_RELEASE_TAG`** при сборке (см. комментарии в примере `.env.production`).
+
 ### 1.2 Сборка release APK (локально, Expo prebuild / Gradle)
 
 Из каталога **`mobile/`** (один раз: `npm install`, чтобы подтянулся `cross-env`):

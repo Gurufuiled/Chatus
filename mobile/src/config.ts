@@ -14,7 +14,7 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID'
   /** Plain hostname or IPv4 — physical iPhone cannot reach Mac `localhost`; set LAN IP when using http://localhost in EXPO_PUBLIC_API_URL. */
   | 'EXPO_PUBLIC_IOS_DEV_HOST'
-  /** JSON манифест с versionCode и apkUrl (например raw.githubusercontent.com/.../docs/client-update-manifest.json). Пусто — проверка отключена. */
+  /** JSON манифест (например raw.githubusercontent.com/Gurufuiled/Chatus/main/config/client-update-manifest.json). Пусто — проверка отключена. */
   | 'EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL'
   /** `true` — не вызывать проверку обновлений даже при заданном URL. */
   | 'EXPO_PUBLIC_CLIENT_UPDATE_DISABLED'
