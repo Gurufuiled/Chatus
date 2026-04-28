@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   Modal,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
 import type { Chat } from '../stores/types';
-import { CHAT_LIST_MENU_WIDTH } from '../presentation';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import {
+  createChatListActionsMenuStyles,
+  type ChatListActionsMenuStyleSet,
+} from './chatListActionsMenu.styles';
 
 export type ChatListMenuState = {
   chatId: string;
@@ -32,11 +34,15 @@ function MenuAction({
   icon,
   danger = false,
   onPress,
+  styles,
+  textPrimary,
 }: {
   label: string;
   icon: React.ComponentProps<typeof Feather>['name'];
   danger?: boolean;
   onPress: () => void;
+  styles: ChatListActionsMenuStyleSet;
+  textPrimary: string;
 }) {
   return (
     <Pressable
@@ -50,7 +56,7 @@ function MenuAction({
         <Feather
           name={icon}
           size={17}
-          color={danger ? '#E53935' : colors.textPrimary}
+          color={danger ? '#E53935' : textPrimary}
         />
       </View>
       <Text style={[styles.actionLabel, danger && styles.actionLabelDanger]}>
@@ -69,6 +75,12 @@ export const ChatListActionsMenu = React.memo(function ChatListActionsMenu({
   onTogglePin,
   onDelete,
 }: ChatListActionsMenuProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatListActionsMenuStyles(themeColors),
+    [themeColors],
+  );
+
   if (!visible || !menuState || !chat) return null;
 
   const muteLabel = chat.is_muted === 1 ? 'Включить уведомления' : 'Отключить уведомления';
@@ -92,67 +104,30 @@ export const ChatListActionsMenu = React.memo(function ChatListActionsMenu({
             },
           ]}
         >
-          <MenuAction label={pinLabel} icon="bookmark" onPress={onTogglePin} />
+          <MenuAction
+            label={pinLabel}
+            icon="bookmark"
+            onPress={onTogglePin}
+            styles={styles}
+            textPrimary={themeColors.textPrimary}
+          />
           <MenuAction
             label={muteLabel}
             icon={chat.is_muted === 1 ? 'bell' : 'bell-off'}
             onPress={onToggleMute}
+            styles={styles}
+            textPrimary={themeColors.textPrimary}
           />
-          <MenuAction label="Удалить чат" icon="trash-2" danger onPress={onDelete} />
+          <MenuAction
+            label="Удалить чат"
+            icon="trash-2"
+            danger
+            onPress={onDelete}
+            styles={styles}
+            textPrimary={themeColors.textPrimary}
+          />
         </View>
       </View>
     </Modal>
   );
-});
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.12)',
-  },
-  menuCard: {
-    position: 'absolute',
-    width: CHAT_LIST_MENU_WIDTH,
-    borderRadius: 12,
-    backgroundColor: colors.inputBackgroundSolid,
-    paddingVertical: 8,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  actionRow: {
-    minHeight: 52,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionRowPressed: {
-    backgroundColor: colors.rowPressed,
-  },
-  iconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.inputBackground,
-    marginRight: 12,
-  },
-  iconWrapDanger: {
-    backgroundColor: '#FEECEC',
-  },
-  actionLabel: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  actionLabelDanger: {
-    color: '#E53935',
-  },
 });

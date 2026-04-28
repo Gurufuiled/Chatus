@@ -1,15 +1,11 @@
-import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import React, { useMemo } from 'react';
+import { Image, Pressable, Text, View, type GestureResponderEvent } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { resolveAvatarUrl } from '../config';
+import { useTheme } from '../contexts/ThemeContext';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
-import {
-  CHAT_LIST_AVATAR_GAP,
-  CHAT_LIST_AVATAR_SIZE,
-  CHAT_LIST_HORIZONTAL_PADDING,
-} from '../presentation';
-import { colors, typography } from '../theme/colors';
+import { createChatListRowStyles } from './chatListRow.styles';
 import { MessageStatusIcon } from './MessageTimeStatus';
 
 const AVATAR_COLORS = [
@@ -40,8 +36,8 @@ function formatChatTime(timestamp: number | null) {
   });
 }
 
-function getStatusColor(status: string) {
-  return status === 'read' ? colors.accent : colors.iconMuted;
+function getStatusColor(status: string, accent: string, iconMuted: string) {
+  return status === 'read' ? accent : iconMuted;
 }
 
 type ChatListRowProps = {
@@ -57,6 +53,8 @@ export const ChatListRow = React.memo(function ChatListRow({
   onPress,
   onLongPress,
 }: ChatListRowProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => createChatListRowStyles(themeColors), [themeColors]);
   const lastMessageMetaKey = messageStore(
     React.useCallback(
       (state) => {
@@ -94,7 +92,11 @@ export const ChatListRow = React.memo(function ChatListRow({
   const initial = (title.trim()[0] || '?').toUpperCase();
   const avatarColor = getAvatarColor(title);
   const isLastMessageMine = lastMessageSenderId === currentUserId;
-  const statusIconColor = getStatusColor(lastMessageStatus);
+  const statusIconColor = getStatusColor(
+    lastMessageStatus,
+    themeColors.accent,
+    themeColors.iconMuted
+  );
   const timeLabel = formatChatTime(chat.last_message_at);
   const unreadCount = Math.max(0, chat.unread_count ?? 0);
   const unreadLabel = unreadCount > 99 ? '99+' : String(unreadCount);
@@ -166,96 +168,4 @@ export const ChatListRow = React.memo(function ChatListRow({
     prev.onPress === next.onPress &&
     prev.onLongPress === next.onLongPress
   );
-});
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 76,
-    paddingHorizontal: CHAT_LIST_HORIZONTAL_PADDING,
-    paddingVertical: 10,
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  rowPressed: { backgroundColor: colors.rowPressed },
-  avatar: {
-    width: CHAT_LIST_AVATAR_SIZE,
-    height: CHAT_LIST_AVATAR_SIZE,
-    borderRadius: CHAT_LIST_AVATAR_SIZE / 2,
-  },
-  avatarPlaceholder: {
-    width: CHAT_LIST_AVATAR_SIZE,
-    height: CHAT_LIST_AVATAR_SIZE,
-    borderRadius: CHAT_LIST_AVATAR_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  channelAvatarPlaceholder: {
-    backgroundColor: colors.accent,
-  },
-  avatarPlaceholderText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  content: {
-    flex: 1,
-    marginLeft: CHAT_LIST_AVATAR_GAP,
-    justifyContent: 'center',
-  },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  title: {
-    fontSize: typography.dialogTitle,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  metaWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    justifyContent: 'flex-end',
-  },
-  metaColumn: {
-    marginLeft: 8,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    minWidth: 42,
-  },
-  timeLabel: {
-    fontSize: typography.dialogTime,
-    color: colors.textSecondary,
-  },
-  preview: {
-    marginTop: 3,
-    fontSize: typography.dialogPreview,
-    color: colors.textSecondary,
-  },
-  unreadBadge: {
-    minWidth: 20,
-    height: 20,
-    marginTop: 5,
-    paddingHorizontal: 6,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-  },
-  unreadBadgeMuted: {
-    backgroundColor: '#A8B0BC',
-  },
-  unreadBadgeWide: {
-    minWidth: 28,
-  },
-  unreadBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    includeFontPadding: false,
-  },
 });

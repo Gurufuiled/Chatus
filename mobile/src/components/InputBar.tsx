@@ -17,7 +17,9 @@ import {
 import * as MediaLibrary from 'expo-media-library';
 import Feather from '@expo/vector-icons/Feather';
 import { composerPresentation } from '../presentation';
-import { colors, typography, MIN_TAP_TARGET } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { typography, MIN_TAP_TARGET } from '../theme/colors';
 import { DocumentPickerService } from '../services/DocumentPickerService';
 import { VoiceRecorderService, type VoiceRecordingResult } from '../services/VoiceRecorderService';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
@@ -117,18 +119,22 @@ const VIDEO_NOTE_SWIPE_TRIGGER = 34;
 const VOICE_START_WATCHDOG_MS = 5000;
 
 function PaperclipIcon() {
+  const { colors } = useTheme();
   return <Feather name="paperclip" size={20} color={colors.iconMuted} />;
 }
 
 function MicIcon() {
+  const { colors } = useTheme();
   return <Feather name="mic" size={19} color={colors.iconMuted} />;
 }
 
 function VideoNoteIcon() {
+  const { colors } = useTheme();
   return <Feather name="video" size={17} color={colors.iconMuted} />;
 }
 
 function SendIcon() {
+  const { colors } = useTheme();
   return <Feather name="send" size={18} color={colors.accent} />;
 }
 
@@ -181,6 +187,8 @@ export function InputBar({
   commentCooldownEndsAt = null,
   onCommentCooldownClear,
 }: InputBarProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => createInputBarStyles(themeColors), [themeColors]);
   const [inputText, setInputText] = useState('');
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
@@ -1400,7 +1408,7 @@ export function InputBar({
               <TextInput
                 style={styles.input}
                 placeholder={placeholder}
-                placeholderTextColor={colors.placeholder}
+                placeholderTextColor={themeColors.placeholder}
                 value={inputText}
                 onChangeText={handleInputChange}
                 multiline
@@ -1487,7 +1495,8 @@ export function InputBar({
   );
 }
 
-const styles = StyleSheet.create({
+function createInputBarStyles(themeColors: ThemeColors) {
+  return StyleSheet.create({
   /** Обёртка: подсказка в потоке над полем — иначе absolute уезжает за clip родителей */
   inputBarRoot: {
     width: '100%',
@@ -1620,9 +1629,9 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   composerDockReply: {
-    backgroundColor: colors.composerSurface,
+    backgroundColor: themeColors.composerSurface,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.composerBorder,
+    borderColor: themeColors.composerBorder,
     borderRadius: 24,
     overflow: 'hidden',
   },
@@ -1631,9 +1640,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     minHeight: composerPresentation.shellMinHeight,
     borderRadius: composerPresentation.shellBorderRadius,
-    backgroundColor: colors.composerSurface,
+    backgroundColor: themeColors.composerSurface,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.composerBorder,
+    borderColor: themeColors.composerBorder,
     paddingLeft: 4,
     paddingRight: 6,
     paddingVertical: 4,
@@ -1659,7 +1668,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     fontSize: typography.messageText,
     lineHeight: typography.messageTextLineHeight,
-    color: colors.textPrimary,
+    color: themeColors.textPrimary,
   },
   trailingAction: {
     width: MIN_TAP_TARGET,
@@ -1684,7 +1693,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.accent,
+    backgroundColor: themeColors.accent,
   },
   trailingActionPressed: {
     opacity: 0.82,
@@ -1734,5 +1743,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
+}
 
 

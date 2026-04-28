@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
+import type { AppAppearancePreference } from '../theme/palettes';
+
 export type ConnectionStatus = 'offline' | 'connecting' | 'online';
 
 export type TypingEntry = { userId: string; at: number };
@@ -28,6 +30,9 @@ type UIState = {
   blockedUserIds: Record<string, true>;
   isBlockedUsersHydrated: boolean;
   pushNotification: PushNotificationData | null;
+  /** Global app appearance: system / light / dark */
+  appAppearancePreference: AppAppearancePreference;
+  isAppAppearanceHydrated: boolean;
 };
 
 type UIActions = {
@@ -46,12 +51,15 @@ type UIActions = {
   hydrateBlockedUsers: () => Promise<void>;
   showPushNotification: (data: Omit<PushNotificationData, 'id'>) => void;
   dismissPushNotification: () => void;
+  setAppAppearancePreference: (preference: AppAppearancePreference) => void;
+  hydrateAppAppearance: () => Promise<void>;
 };
 
 const TYPING_STALE_MS = 5000;
 const PINNED_MESSAGES_KEY = 'ui.pinnedMessageIdByChatId';
 const CHAT_THEMES_KEY = 'ui.chatThemeIdByChatId';
 const BLOCKED_USERS_KEY = 'ui.blockedUserIds';
+const APP_APPEARANCE_KEY = 'ui.appAppearancePreference';
 
 const initialState: UIState = {
   connectionStatus: 'offline',
@@ -66,6 +74,8 @@ const initialState: UIState = {
   blockedUserIds: {},
   isBlockedUsersHydrated: false,
   pushNotification: null,
+  appAppearancePreference: 'system',
+  isAppAppearanceHydrated: false,
 };
 
 export const uiStore = create<UIState & UIActions>((set) => ({
@@ -190,4 +200,26 @@ export const uiStore = create<UIState & UIActions>((set) => ({
     }),
 
   dismissPushNotification: () => set({ pushNotification: null }),
+
+  setAppAppearancePreference: (preference) => {
+    void SecureStore.setItemAsync(APP_APPEARANCE_KEY, preference).catch(() => {});
+    set({ appAppearancePreference: preference });
+  },
+
+  hydrateAppAppearance: async () => {
+    try {
+      const raw = await SecureStore.getItemAsync(APP_APPEARANCE_KEY);
+      const allowed: AppAppearancePreference[] = ['system', 'light', 'dark'];
+      const next =
+        raw && allowed.includes(raw as AppAppearancePreference)
+          ? (raw as AppAppearancePreference)
+          : 'system';
+      set({
+        appAppearancePreference: next,
+        isAppAppearanceHydrated: true,
+      });
+    } catch {
+      set({ isAppAppearanceHydrated: true });
+    }
+  },
 }));

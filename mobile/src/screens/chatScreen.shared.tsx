@@ -1,6 +1,6 @@
 import React from 'react';
 import { Dimensions } from 'react-native';
-import { colors } from '../theme/colors';
+import { lightPalette } from '../theme/palettes';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { Message } from '../stores/types';
@@ -63,8 +63,8 @@ function hashString(value: string): number {
   return hash;
 }
 
-function pickGroupAuthorColor(seed: string): string {
-  return GROUP_AUTHOR_COLORS[hashString(seed) % GROUP_AUTHOR_COLORS.length] ?? colors.accent;
+function pickGroupAuthorColor(seed: string, accentFallback: string): string {
+  return GROUP_AUTHOR_COLORS[hashString(seed) % GROUP_AUTHOR_COLORS.length] ?? accentFallback;
 }
 
 function getInitial(name: string): string {
@@ -146,8 +146,10 @@ export function resolveForwardedSenderAvatarUrl(
 export function getMessageAuthorPresentation(
   message: Message,
   chatId: string,
-  currentUserId: string | null
+  currentUserId: string | null,
+  opts?: { accentColor?: string }
 ): MessageAuthorPresentation {
+  const accent = opts?.accentColor ?? lightPalette.accent;
   const chat = chatStore.getState().chats.find((item) => item.id === chatId);
 
   if (message.sender_id === currentUserId) {
@@ -164,7 +166,7 @@ export function getMessageAuthorPresentation(
     return {
       name,
       avatarUrl: authStore.getState().user?.avatar_url ?? null,
-      color: colors.accent,
+      color: accent,
       initial: getInitial(name),
       tag,
       tagColor,
@@ -184,7 +186,7 @@ export function getMessageAuthorPresentation(
     return {
       name,
       avatarUrl: member?.user?.avatar_url ?? null,
-      color: pickGroupAuthorColor(member?.user_id ?? message.sender_id),
+      color: pickGroupAuthorColor(member?.user_id ?? message.sender_id, accent),
       initial: getInitial(name),
       tag,
       tagColor,
@@ -195,15 +197,20 @@ export function getMessageAuthorPresentation(
   return {
     name,
     avatarUrl: chat?.avatar_url ?? null,
-    color: colors.accent,
+    color: accent,
     initial: getInitial(name),
     tag: null,
     tagColor: null,
   };
 }
 
-export function getMessageAuthorName(message: Message, chatId: string, currentUserId: string | null): string {
-  return getMessageAuthorPresentation(message, chatId, currentUserId).name;
+export function getMessageAuthorName(
+  message: Message,
+  chatId: string,
+  currentUserId: string | null,
+  opts?: { accentColor?: string }
+): string {
+  return getMessageAuthorPresentation(message, chatId, currentUserId, opts).name;
 }
 
 export function getDeletedPlaceholder(isMe: boolean): string {

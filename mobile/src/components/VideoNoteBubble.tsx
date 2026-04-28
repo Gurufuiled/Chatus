@@ -17,6 +17,7 @@ import { Image } from 'expo-image';
 import Reanimated, {
   cancelAnimation,
   Easing,
+  type FrameInfo,
   interpolate,
   runOnJS,
   useAnimatedProps,
@@ -53,12 +54,10 @@ const SCRUB_RING_TRACK_STROKE_WIDTH = 2.5;
 const SCRUB_RING_PROGRESS_STROKE_WIDTH = 4;
 const SCRUB_RING_PROGRESS_SHADOW_WIDTH = 5.5;
 const PLAYBACK_PROGRESS_SNAP_MS = 120;
-const DRIFT_CORRECTION_LERP = 0.18;
 const SCRUB_RING_INSET = 8;
+const PLAYBACK_UI_TICK_MS = 180;
 const SCRUB_THUMB_SIZE = 18;
-const SCRUB_THUMB_CAPTURE_PADDING = 10;
 const CENTER_PLAY_TAP_EXCLUSION_RADIUS = 44;
-const SCRUB_THUMB_HOLD_DURATION_MS = 180;
 const generatedThumbnailCache = new Map<string, string>();
 const posterImageStyle: ImageStyle = {
   ...StyleSheet.absoluteFillObject,
@@ -85,19 +84,6 @@ function progressForScrubPoint(locationX: number, locationY: number, ringCenter:
   return clampUnit(normalizedAngle / (Math.PI * 2));
 }
 
-function isScrubThumbTouchTarget(
-  locationX: number,
-  locationY: number,
-  thumbCenterX: number,
-  thumbCenterY: number,
-  captureRadius: number
-) {
-  'worklet';
-  const dx = locationX - thumbCenterX;
-  const dy = locationY - thumbCenterY;
-  return dx * dx + dy * dy <= captureRadius * captureRadius;
-}
-
 function isPointWithinRadius(
   locationX: number,
   locationY: number,
@@ -109,6 +95,23 @@ function isPointWithinRadius(
   const dx = locationX - centerX;
   const dy = locationY - centerY;
   return dx * dx + dy * dy <= radius * radius;
+}
+
+/** Telegram-style: touch must land on the ring band (not center, not outside). */
+function isPointOnScrubRingBand(
+  locationX: number,
+  locationY: number,
+  center: number,
+  ringRadius: number,
+  centerExclusionRadius: number
+) {
+  'worklet';
+  const dx = locationX - center;
+  const dy = locationY - center;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const inner = Math.max(centerExclusionRadius + 4, ringRadius - 32);
+  const outer = ringRadius + 26;
+  return dist >= inner && dist <= outer;
 }
 
 type ActiveVideoNoteListener = (activeId: string | null) => void;
@@ -365,27 +368,96 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const isMountedRef = React.useRef(true);
   const suppressPressUntilRef = React.useRef(0);
   const scrubProgressRef = React.useRef<number | null>(null);
+  const scrubSeekThrottleRef = React.useRef(0);
   const playbackControllerRef = React.useRef<ActiveVideoNoteController>(null);
   const didActivateThumbScrub = useSharedValue(false);
+  const isPlayingUI = useSharedValue(false);
+  const isExpandedUI = useSharedValue(false);
+  const isScrubbingUI = useSharedValue(false);
+  /** Last sample from ExoPlayer (ms) + wall clock at that moment — ring advances smoothly between samples. */
+  const syncReportedMs = useSharedValue(0);
+  const syncWallClockMs = useSharedValue(0);
+  const totalDurationMsUI = useSharedValue(0);
 
   const player = useVideoPlayer(normalizedUri, (instance) => {
     instance.loop = false;
-    instance.timeUpdateEventInterval = 0.05; // 50ms updates for smooth progress
+    instance.timeUpdateEventInterval = 1 / 30;
   });
   const { isPlaying } = useEvent(player, 'playingChange', {
     isPlaying: player.playing,
   });
-  const timeUpdate = useEvent(player, 'timeUpdate', {
-    currentTime: player.currentTime,
-    currentLiveTimestamp: null,
-    currentOffsetFromLive: null,
-    bufferedPosition: 0,
-  });
+
+  const isExpandedRef = React.useRef(false);
+  const isPlayingRef = React.useRef(false);
+  const effectiveDurationRef = React.useRef(0);
+  const reportedPositionMsRef = React.useRef(0);
+  /** Low-frequency tick so duration label / snapshot read smooth wall-clock position without 60Hz React re-renders. */
+  const [playbackUiTick, setPlaybackUiTick] = React.useState(0);
+
+  React.useEffect(() => {
+    isExpandedRef.current = isExpanded;
+  }, [isExpanded]);
+  React.useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   const setScrubProgressValue = React.useCallback((nextProgress: number | null) => {
     scrubProgressRef.current = nextProgress;
     setScrubProgress(nextProgress);
   }, []);
+
+  useEventListener(player, 'timeUpdate', (payload) => {
+    const dur = effectiveDurationRef.current;
+    if (dur <= 0) {
+      return;
+    }
+    const raw = Math.round((payload.currentTime ?? 0) * 1000);
+    const clamped = Math.min(Math.max(raw, 0), dur);
+    reportedPositionMsRef.current = clamped;
+    if (isExpandedRef.current && isPlayingRef.current && scrubProgressRef.current == null) {
+      syncReportedMs.value = clamped;
+      syncWallClockMs.value = Date.now();
+    }
+  });
+
+  useEventListener(player, 'playingChange', (payload) => {
+    if (!payload.isPlaying) {
+      return;
+    }
+    const dur = effectiveDurationRef.current;
+    if (dur <= 0) {
+      return;
+    }
+    try {
+      const raw = Math.round((player.currentTime ?? 0) * 1000);
+      const clamped = Math.min(Math.max(raw, 0), dur);
+      reportedPositionMsRef.current = clamped;
+      if (isExpandedRef.current && scrubProgressRef.current == null) {
+        syncReportedMs.value = clamped;
+        syncWallClockMs.value = Date.now();
+      }
+    } catch {
+      // ignore
+    }
+  });
+
+  React.useEffect(() => {
+    effectiveDurationRef.current = Math.max(
+      durationMs,
+      Math.round((player.duration || 0) * 1000)
+    );
+  }, [durationMs, player.duration]);
+
+  React.useEffect(() => {
+    if (!isExpanded || !isPlaying || scrubProgress != null || showPausedPlayOverlay) {
+      return;
+    }
+    const id = setInterval(
+      () => setPlaybackUiTick((n) => n + 1),
+      PLAYBACK_UI_TICK_MS
+    );
+    return () => clearInterval(id);
+  }, [isExpanded, isPlaying, scrubProgress, showPausedPlayOverlay]);
 
   const clearCollapseTimer = React.useCallback(() => {
     if (collapseTimerRef.current) {
@@ -505,15 +577,33 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     try {
       if (!showPausedPlayOverlay) {
         setScrubProgressValue(null);
+        // Pause first so OEM players (e.g. some Realme builds) get the stop signal before UI state flips.
+        try {
+          player.pause();
+        } catch {
+          // ignore
+        }
         setShowPausedPlayOverlay(true);
-        player.pause();
+        requestAnimationFrame(() => {
+          try {
+            if (player.playing) {
+              player.pause();
+            }
+          } catch {
+            // ignore
+          }
+        });
       } else {
         setIsThumbScrubbing(false);
         setIsThumbScrubPending(false);
         setShowPausedPlayOverlay(false);
         setScrubProgressValue(null);
         badgeOpacity.value = 0;
-        player.play();
+        try {
+          player.play();
+        } catch {
+          // Best effort.
+        }
       }
     } catch {
       // Best effort toggle only.
@@ -694,10 +784,23 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     }
 
     const durationForState = Math.max(durationMs, Math.round((player.duration || 0) * 1000));
-    const rawPositionMs =
-      scrubProgress != null
-        ? Math.round(clampUnit(scrubProgress) * durationForState)
-        : Math.round((timeUpdate.currentTime ?? 0) * 1000);
+    let rawPositionMs: number;
+    if (scrubProgress != null) {
+      rawPositionMs = Math.round(clampUnit(scrubProgress) * durationForState);
+    } else if (
+      isPlaying &&
+      !showPausedPlayOverlay &&
+      durationForState > 0
+    ) {
+      rawPositionMs = Math.round(
+        Math.min(
+          Math.max(0, syncReportedMs.value + (Date.now() - syncWallClockMs.value)),
+          durationForState
+        )
+      );
+    } else {
+      rawPositionMs = reportedPositionMsRef.current;
+    }
     const positionMs = Math.min(Math.max(rawPositionMs, 0), durationForState);
     const progressValue =
       durationForState > 0 ? clampUnit(positionMs / durationForState) : 0;
@@ -739,7 +842,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     registerPlaybackState,
     scrubProgress,
     showPausedPlayOverlay,
-    timeUpdate.currentTime,
+    playbackUiTick,
   ]);
 
   const slotStyle = useAnimatedStyle(() => {
@@ -844,10 +947,30 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   });
 
   const effectiveDurationMs = Math.max(durationMs, Math.round((player.duration || 0) * 1000));
-  const liveElapsedMs = Math.min(
-    Math.max(Math.round((timeUpdate.currentTime ?? 0) * 1000), 0),
-    effectiveDurationMs
-  );
+
+  const liveElapsedMs = React.useMemo(() => {
+    if (effectiveDurationMs <= 0) {
+      return 0;
+    }
+    if (scrubProgress != null) {
+      return Math.round(clampUnit(scrubProgress) * effectiveDurationMs);
+    }
+    if (!isExpanded || !isPlaying || showPausedPlayOverlay) {
+      return Math.min(Math.max(reportedPositionMsRef.current, 0), effectiveDurationMs);
+    }
+    return Math.min(
+      Math.max(0, syncReportedMs.value + (Date.now() - syncWallClockMs.value)),
+      effectiveDurationMs
+    );
+  }, [
+    effectiveDurationMs,
+    isExpanded,
+    isPlaying,
+    playbackUiTick,
+    scrubProgress,
+    showPausedPlayOverlay,
+  ]);
+
   const effectiveProgress = clampUnit(
     scrubProgress != null
       ? scrubProgress
@@ -864,37 +987,41 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const scrubRingRadius = scrubRingSize / 2 - scrubRingPadding;
   const scrubRingCircumference = 2 * Math.PI * scrubRingRadius;
   const scrubRingCenter = scrubRingSize / 2;
-  const scrubAngleRadians = effectiveProgress * Math.PI * 2 - Math.PI / 2;
-  const scrubThumbOffset = SCRUB_THUMB_SIZE / 2;
-  const scrubThumbCenterX = scrubRingCenter + Math.cos(scrubAngleRadians) * scrubRingRadius;
-  const scrubThumbCenterY = scrubRingCenter + Math.sin(scrubAngleRadians) * scrubRingRadius;
-  const scrubThumbCaptureRadius = scrubThumbOffset + SCRUB_THUMB_CAPTURE_PADDING;
 
   /**
-   * Telegram-style smooth progress ring animation.
-   *
-   * Strategy: uses `useFrameCallback` (equivalent to CADisplayLink on iOS /
-   * Choreographer on Android) to update progress on every display frame
-   * entirely on the native UI-thread at 60–120 Hz. Zero JS bridge crossings
-   * during playback.
-   *
-   * The frame callback computes `dt / totalDuration` each frame and
-   * increments the shared value linearly. When the player reports its
-   * actual position via `timeUpdate`, we store a "target" shared value.
-   * If the animated progress drifts from the target beyond a small
-   * threshold we lerp towards it; otherwise we keep advancing linearly.
-   * This gives perfectly smooth, jitter-free arc filling even on
-   * lower-end devices (e.g. Realme GT Master Edition).
+   * Smooth ring: interpolate position linearly in real time between ExoPlayer samples (same clock idea as
+   * Telegram {@link https://github.com/DrKLO/Telegram/blob/master/TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java ChatMessageCell}
+   * audioProgress + invalidate). No per-sample React re-renders — timeUpdate only updates shared refs.
    */
+  const onPlaybackProgressFrame = React.useCallback((_frameInfo: FrameInfo) => {
+    'worklet';
+    if (!isExpandedUI.value || !isPlayingUI.value || isScrubbingUI.value) {
+      return;
+    }
 
-  // Shared values that live on the UI thread — no JS re-renders involved.
-  const isPlayingUI = useSharedValue(false);
-  const isExpandedUI = useSharedValue(false);
-  const isScrubbing = useSharedValue(false);
-  const targetProgress = useSharedValue(0);
-  const totalDurationMsUI = useSharedValue(effectiveDurationMs);
+    const dur = totalDurationMsUI.value;
+    if (dur <= 0) {
+      return;
+    }
 
-  // Sync React state → shared values (minimal JS→UI bridge, only on state change)
+    const elapsedMs =
+      syncReportedMs.value + (Date.now() - syncWallClockMs.value);
+    let p = elapsedMs / dur;
+    if (p < 0) {
+      p = 0;
+    }
+    if (p > 1) {
+      p = 1;
+    }
+    playbackProgress.value = p;
+  }, []);
+
+  const progressRingFrame = useFrameCallback(onPlaybackProgressFrame, false);
+
+  React.useEffect(() => {
+    progressRingFrame.setActive(isExpanded);
+  }, [isExpanded, progressRingFrame]);
+
   React.useEffect(() => {
     isExpandedUI.value = isExpanded;
   }, [isExpanded, isExpandedUI]);
@@ -907,83 +1034,30 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     totalDurationMsUI.value = effectiveDurationMs;
   }, [effectiveDurationMs, totalDurationMsUI]);
 
-  // Handle non-playing states: collapse, scrub, pause
+  // Collapsed / scrub / paused: snap ring without the frame runner advancing it.
   React.useEffect(() => {
     if (!isExpanded) {
-      isScrubbing.value = false;
+      isScrubbingUI.value = false;
       cancelAnimation(playbackProgress);
-      playbackProgress.value = withTiming(0, {
-        duration: 180,
-        easing: Easing.out(Easing.cubic),
-      });
+      playbackProgress.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
       return;
     }
     if (scrubProgress != null) {
-      isScrubbing.value = true;
+      isScrubbingUI.value = true;
       cancelAnimation(playbackProgress);
-      playbackProgress.value = clampUnit(scrubProgress);
-      targetProgress.value = clampUnit(scrubProgress);
+      const u = clampUnit(scrubProgress);
+      playbackProgress.value = u;
       return;
     }
-    isScrubbing.value = false;
+    isScrubbingUI.value = false;
     if (!isPlaying) {
-      // Paused — gently snap to the reported position.
       cancelAnimation(playbackProgress);
       playbackProgress.value = withTiming(effectiveProgress, {
         duration: PLAYBACK_PROGRESS_SNAP_MS,
         easing: Easing.out(Easing.cubic),
       });
-      targetProgress.value = effectiveProgress;
     }
-  }, [isExpanded, isPlaying, scrubProgress, effectiveProgress, playbackProgress, isScrubbing, targetProgress]);
-
-  // Update target when player reports new position (every ~50ms)
-  React.useEffect(() => {
-    if (isExpanded && isPlaying && scrubProgress == null && effectiveDurationMs > 0) {
-      targetProgress.value = clampUnit(liveElapsedMs / effectiveDurationMs);
-    }
-  }, [isExpanded, isPlaying, scrubProgress, liveElapsedMs, effectiveDurationMs, targetProgress]);
-
-  // ── The core frame callback: runs on EVERY display frame on the UI thread ──
-  useFrameCallback((frameInfo) => {
-    'worklet';
-    // Only advance when expanded + playing + not scrubbing.
-    if (!isExpandedUI.value || !isPlayingUI.value || isScrubbing.value) {
-      return;
-    }
-
-    const dt = frameInfo.timeSincePreviousFrame ?? 16;
-    const dur = totalDurationMsUI.value;
-    if (dur <= 0) return;
-
-    // Linear advance: increment by exactly how much time passed this frame
-    const increment = dt / dur;
-    const projected = playbackProgress.value + increment;
-
-    // Check drift against the target reported by the player
-    const target = targetProgress.value;
-    const drift = target - projected;
-    const absDrift = drift < 0 ? -drift : drift;
-
-    // Threshold: 1.5% of total duration or 80ms-equivalent, whichever is larger.
-    // Below this we keep the smooth linear advance; above we lerp towards target.
-    const threshold = 0.015 > (80 / dur) ? 0.015 : (80 / dur);
-
-    let next: number;
-    if (absDrift > threshold) {
-      // Drift too large (buffering stall, seek, etc.) — lerp towards target
-      // to avoid a visible jump while still correcting quickly.
-      next = projected + drift * DRIFT_CORRECTION_LERP;
-    } else {
-      // Normal case: smooth linear advance, no correction needed.
-      next = projected;
-    }
-
-    // Clamp to [0, 1]
-    if (next < 0) next = 0;
-    if (next > 1) next = 1;
-    playbackProgress.value = next;
-  }, isExpanded); // isActive = isExpanded: callback suspends when collapsed
+  }, [effectiveProgress, isExpanded, isPlaying, playbackProgress, scrubProgress, isScrubbingUI]);
 
   const progressArcAnimatedProps = useAnimatedProps(() => ({
     strokeDashoffset: scrubRingCircumference * (1 - clampUnit(playbackProgress.value)),
@@ -995,7 +1069,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       transform: [
         { translateX: Math.cos(angle) * scrubRingRadius },
         { translateY: Math.sin(angle) * scrubRingRadius },
-      ],
+      ] as const,
     };
   });
 
@@ -1010,12 +1084,36 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     } catch {
       // Ignore player seek races.
     }
-  }, [effectiveDurationMs, player]);
+    reportedPositionMsRef.current = nextPositionMs;
+    syncReportedMs.value = nextPositionMs;
+    syncWallClockMs.value = Date.now();
+  }, [effectiveDurationMs, player, syncReportedMs, syncWallClockMs]);
 
-  const updateScrubProgress = React.useCallback((nextProgress: number) => {
-    suppressPressUntilRef.current = Date.now() + 220;
-    setScrubProgressValue(nextProgress);
-  }, [setScrubProgressValue]);
+  const updateScrubProgress = React.useCallback(
+    (nextProgress: number) => {
+      suppressPressUntilRef.current = Date.now() + 220;
+      setScrubProgressValue(nextProgress);
+      if (effectiveDurationMs <= 0) {
+        return;
+      }
+      const now = Date.now();
+      if (now - scrubSeekThrottleRef.current < 90) {
+        return;
+      }
+      scrubSeekThrottleRef.current = now;
+      const p = Math.max(0, Math.min(1, nextProgress));
+      const nextMs = Math.round(p * effectiveDurationMs);
+      try {
+        player.currentTime = nextMs / 1000;
+      } catch {
+        // Ignore seek races while dragging (matches Telegram ~100ms seeks during round scrub).
+      }
+      reportedPositionMsRef.current = nextMs;
+      syncReportedMs.value = nextMs;
+      syncWallClockMs.value = Date.now();
+    },
+    [effectiveDurationMs, player, setScrubProgressValue, syncReportedMs, syncWallClockMs]
+  );
 
   const finalizeThumbScrub = React.useCallback((didActivate: boolean) => {
     setIsThumbScrubbing(false);
@@ -1031,7 +1129,6 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     () =>
       Gesture.Pan()
         .enabled(showPausedPlayOverlay)
-        .activateAfterLongPress(SCRUB_THUMB_HOLD_DURATION_MS)
         .onTouchesDown((event, stateManager) => {
           const touch = event.allTouches[0];
           if (!touch || !showPausedPlayOverlay) {
@@ -1055,12 +1152,12 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
           }
 
           if (
-            isScrubThumbTouchTarget(
+            isPointOnScrubRingBand(
               touch.x,
               touch.y,
-              scrubThumbCenterX,
-              scrubThumbCenterY,
-              scrubThumbCaptureRadius
+              scrubRingCenter,
+              scrubRingRadius,
+              CENTER_PLAY_TAP_EXCLUSION_RADIUS
             )
           ) {
             runOnJS(setIsThumbScrubPending)(true);
@@ -1087,16 +1184,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
           didActivateThumbScrub.value = false;
           runOnJS(finalizeThumbScrub)(didActivate);
         }),
-    [
-      didActivateThumbScrub,
-      finalizeThumbScrub,
-      scrubRingCenter,
-      scrubThumbCaptureRadius,
-      scrubThumbCenterX,
-      scrubThumbCenterY,
-      showPausedPlayOverlay,
-      updateScrubProgress,
-    ]
+    [didActivateThumbScrub, finalizeThumbScrub, scrubRingCenter, scrubRingRadius, showPausedPlayOverlay, updateScrubProgress]
   );
 
   const composedGesture = React.useMemo(

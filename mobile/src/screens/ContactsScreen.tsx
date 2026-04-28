@@ -5,7 +5,6 @@ import {
   FlatList,
   Image,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -24,7 +23,8 @@ import { chatStore } from '../stores/chatStore';
 import type { ApiUser } from '../services/AuthService';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { createContactsScreenStyles } from './contactsScreen.styles';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -34,6 +34,8 @@ type Nav = CompositeNavigationProp<
 >;
 
 export function ContactsScreen() {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => createContactsScreenStyles(themeColors), [themeColors]);
   const navigation = useNavigation<Nav>();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ApiUser[]>([]);
@@ -145,7 +147,7 @@ export function ContactsScreen() {
           ) : null}
         </View>
         {isCreating && (
-          <ActivityIndicator size="small" color={colors.accent} style={styles.rowLoader} />
+          <ActivityIndicator size="small" color={themeColors.accent} style={styles.rowLoader} />
         )}
       </Pressable>
     );
@@ -160,14 +162,14 @@ export function ContactsScreen() {
           <TelegramGlyph
             d={searchG.d}
             fillRule={searchG.fillRule}
-            color={colors.textSecondary}
+            color={themeColors.textSecondary}
             size={22}
           />
         </View>
         <TextInput
           style={styles.searchInput}
           placeholder="Search by name or @handle"
-          placeholderTextColor={colors.placeholder}
+          placeholderTextColor={themeColors.placeholder}
           value={query}
           onChangeText={setQuery}
           autoCapitalize="none"
@@ -176,7 +178,7 @@ export function ContactsScreen() {
       </View>
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.accent} />
+          <ActivityIndicator size="large" color={themeColors.accent} />
         </View>
       ) : (
         <FlatList
@@ -199,83 +201,3 @@ export function ContactsScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.inputBackgroundSolid },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 12,
-    marginTop: 12,
-    marginBottom: 4,
-    paddingHorizontal: 12,
-    backgroundColor: colors.inputBackground,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  searchIconSlot: {
-    marginRight: 4,
-    paddingVertical: 10,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.textPrimary,
-  },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e0e0e0',
-  },
-  rowPressed: { backgroundColor: '#f5f5f5' },
-  rowLoader: { marginLeft: 8 },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#ccc',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarPlaceholderText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  info: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  displayName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  handle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  empty: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: colors.placeholder,
-  },
-});

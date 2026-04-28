@@ -5,10 +5,24 @@ import { useAuth } from '../contexts/AuthContext';
 import { uiStore } from '../stores/uiStore';
 import { AuthStack } from './AuthStack';
 import { MainTabs } from './MainTabs';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 export function RootNavigator() {
   const { isLoading, isAuthenticated, login } = useAuth();
+  const { colors } = useTheme();
+
+  const styles = React.useMemo(
+    () =>
+      StyleSheet.create({
+        center: {
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: colors.inputBackgroundSolid,
+        },
+      }),
+    [colors]
+  );
 
   React.useEffect(() => {
     void uiStore.getState().hydrateChatThemes();
@@ -33,12 +47,3 @@ export function RootNavigator() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-});

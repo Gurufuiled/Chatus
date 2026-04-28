@@ -1,4 +1,4 @@
-import { colors } from '../theme/colors';
+import type { ThemeColors } from '../theme/palettes';
 import type { MiniAppSession } from '../services/miniAppsService';
 
 export interface BridgeThemeParams {
@@ -25,15 +25,17 @@ export interface BridgeInitContext {
   viewportHeight: number;
 }
 
-export const DEFAULT_THEME: BridgeThemeParams = {
-  bg_color: colors.chatBackground,
-  text_color: colors.textPrimary,
-  hint_color: colors.textSecondary,
-  link_color: colors.link,
-  button_color: colors.accent,
-  button_text_color: '#ffffff',
-  secondary_bg_color: colors.inputBackgroundSolid,
-};
+export function defaultBridgeThemeFromColors(colors: ThemeColors): BridgeThemeParams {
+  return {
+    bg_color: colors.chatBackground,
+    text_color: colors.textPrimary,
+    hint_color: colors.textSecondary,
+    link_color: colors.link,
+    button_color: colors.accent,
+    button_text_color: '#ffffff',
+    secondary_bg_color: colors.inputBackgroundSolid,
+  };
+}
 
 /**
  * Generates the JS injected into the WebView BEFORE the mini-app HTML loads.

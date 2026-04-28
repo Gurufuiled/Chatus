@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -7,7 +7,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -26,11 +25,14 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 import { SettingsIconRow } from '../components/settings/SettingsIconRow';
 import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
-import { colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { createSettingsScreenStyles } from './settingsScreen.styles';
 
 const HANDLE_REGEX = /^[a-zA-Z0-9_]{5,32}$/;
 
 export function SettingsScreen() {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => createSettingsScreenStyles(themeColors), [themeColors]);
   const { user, logout } = useAuth();
   const navigation =
     useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
@@ -175,7 +177,7 @@ export function SettingsScreen() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={themeColors.accent} />
       </View>
     );
   }
@@ -232,7 +234,7 @@ export function SettingsScreen() {
                   value={displayName}
                   onChangeText={setDisplayName}
                   placeholder="Your name"
-                  placeholderTextColor={colors.placeholder}
+                  placeholderTextColor={themeColors.placeholder}
                   autoCapitalize="words"
                 />
                 <Pressable
@@ -258,7 +260,7 @@ export function SettingsScreen() {
                   value={handle.replace(/^@/, '')}
                   onChangeText={(t) => setHandle(t.replace(/^@/, ''))}
                   placeholder="handle"
-                  placeholderTextColor={colors.placeholder}
+                  placeholderTextColor={themeColors.placeholder}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
@@ -289,6 +291,26 @@ export function SettingsScreen() {
 
         <Text style={styles.sectionTitle}>Настройки</Text>
         <View style={styles.settingsCard}>
+          <Pressable
+            onPress={() => navigation.navigate('Appearance')}
+            style={({ pressed }) => [
+              styles.servicesRow,
+              pressed && styles.servicesRowPressed,
+            ]}
+          >
+            <View style={styles.servicesIconBubble}>
+              <MaterialCommunityIcons
+                name="palette-outline"
+                size={22}
+                color={themeColors.accent}
+              />
+            </View>
+            <View style={styles.servicesText}>
+              <Text style={styles.servicesTitle}>Оформление</Text>
+              <Text style={styles.servicesSubtitle}>Тема приложения</Text>
+            </View>
+            <Text style={styles.servicesChevron}>›</Text>
+          </Pressable>
           <SettingsIconRow
             title="Уведомления и звуки"
             iconD={sg.sounds.d}
@@ -350,7 +372,7 @@ export function SettingsScreen() {
               <MaterialCommunityIcons
                 name="apps"
                 size={22}
-                color={colors.accent}
+                color={themeColors.accent}
               />
             </View>
             <View style={styles.servicesText}>
@@ -370,7 +392,7 @@ export function SettingsScreen() {
             style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
           >
             <View style={styles.servicesIconBubble}>
-              <MaterialCommunityIcons name="bug-outline" size={22} color={colors.accent} />
+              <MaterialCommunityIcons name="bug-outline" size={22} color={themeColors.accent} />
             </View>
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Сообщить о баге</Text>
@@ -387,7 +409,7 @@ export function SettingsScreen() {
             ]}
           >
             <View style={styles.servicesIconBubble}>
-              <MaterialCommunityIcons name="lightbulb-outline" size={22} color={colors.accent} />
+              <MaterialCommunityIcons name="lightbulb-outline" size={22} color={themeColors.accent} />
             </View>
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Предложения</Text>
@@ -420,174 +442,3 @@ export function SettingsScreen() {
     </>
     );
   }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.chatBackground },
-  scroll: { padding: 16, paddingBottom: 48 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-    marginTop: 8,
-    marginLeft: 4,
-  },
-  settingsCard: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  profileCard: {
-    marginBottom: 8,
-  },
-  profileHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 20,
-    backgroundColor: colors.inputBackgroundSolid,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-    marginBottom: 12,
-  },
-  profileSummary: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 16,
-  },
-  profileTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  profileSubtitle: {
-    marginTop: 4,
-    fontSize: 15,
-    color: colors.accent,
-  },
-  profileHint: {
-    marginTop: 6,
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  formCard: {
-    padding: 16,
-    borderRadius: 20,
-    backgroundColor: colors.inputBackgroundSolid,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  logoutCard: {
-    marginTop: 16,
-  },
-  errorBox: {
-    backgroundColor: '#ffebee',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorText: { color: '#c62828', fontSize: 14 },
-  avatarWrap: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-  },
-  avatarPlaceholder: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: '#9e9e9e',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarPlaceholderText: {
-    color: '#fff',
-    fontSize: 36,
-    fontWeight: '600',
-  },
-  avatarOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  field: { marginBottom: 20 },
-  fieldLast: { marginBottom: 0 },
-  label: { fontSize: 12, color: colors.textSecondary, marginBottom: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.separator,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: colors.textPrimary,
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  handleInput: { flex: 1 },
-  handlePrefix: { fontSize: 16, color: colors.textPrimary },
-  saveBtn: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  saveBtnDisabled: { opacity: 0.7 },
-  saveBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  copyBtn: {
-    marginTop: 8,
-    paddingVertical: 8,
-  },
-  copyBtnDisabled: { opacity: 0.5 },
-  copyBtnText: { color: colors.accent, fontSize: 14 },
-  copyBtnTextDisabled: { color: colors.placeholder },
-  buttonPressed: { opacity: 0.8 },
-  servicesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    minHeight: 52,
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  servicesRowPressed: {
-    backgroundColor: colors.inputBackground,
-  },
-  servicesIconBubble: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: withAlpha(colors.accent, 0.12),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  servicesText: { flex: 1, minWidth: 0 },
-  servicesTitle: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-  servicesSubtitle: { marginTop: 2, fontSize: 13, color: colors.textSecondary },
-  servicesChevron: {
-    fontSize: 22,
-    color: colors.textSecondary,
-    marginLeft: 4,
-    fontWeight: '300',
-  },
-  feedbackRowSecond: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
-  },
-});

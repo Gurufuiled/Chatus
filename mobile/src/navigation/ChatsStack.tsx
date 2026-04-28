@@ -31,7 +31,8 @@ import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
 
@@ -68,27 +69,29 @@ function ChatHeaderTitle({
   title,
   subtitle,
   avatarUrl,
+  stackStyles,
 }: {
   title: string;
   subtitle?: string;
   avatarUrl?: string | null;
+  stackStyles: ReturnType<typeof createChatsStackStyles>;
 }) {
   const initial = (title.trim()[0] || '?').toUpperCase();
   return (
-    <View style={styles.headerRow}>
+    <View style={stackStyles.headerRow}>
       {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={styles.headerRowAvatar} />
+        <Image source={{ uri: avatarUrl }} style={stackStyles.headerRowAvatar} />
       ) : (
-        <View style={styles.headerRowAvatarPlaceholder}>
-          <Text style={styles.headerAvatarPlaceholderText}>{initial}</Text>
+        <View style={stackStyles.headerRowAvatarPlaceholder}>
+          <Text style={stackStyles.headerAvatarPlaceholderText}>{initial}</Text>
         </View>
       )}
-      <View style={styles.headerTitleWrap}>
-        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+      <View style={stackStyles.headerTitleWrap}>
+        <Text style={stackStyles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
           {title}
         </Text>
         {subtitle ? (
-          <Text style={styles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={stackStyles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
             {subtitle}
           </Text>
         ) : null}
@@ -102,6 +105,8 @@ export function ChatsStack() {
   const chats = chatStore((state) => state.chats);
   const presenceByUserId = uiStore((state) => state.presenceByUserId);
   const currentUserId = authStore((state) => state.user?.id ?? null);
+  const { colors } = useTheme();
+  const stackStyles = React.useMemo(() => createChatsStackStyles(colors), [colors]);
 
   return (
     <Stack.Navigator
@@ -165,14 +170,15 @@ export function ChatsStack() {
                 onPress={isGroupChat || peerId ? openProfile : undefined}
                 disabled={!isGroupChat && !peerId}
                 style={({ pressed }) => [
-                  styles.headerTitlePressable,
-                  pressed && (isGroupChat || peerId) && styles.headerPressablePressed,
+                  stackStyles.headerTitlePressable,
+                  pressed && (isGroupChat || peerId) && stackStyles.headerPressablePressed,
                 ]}
               >
                 <ChatHeaderTitle
                   title={title}
                   subtitle={subtitle}
                   avatarUrl={avatarUrl}
+                  stackStyles={stackStyles}
                 />
               </Pressable>
             ),
@@ -233,14 +239,15 @@ export function ChatsStack() {
                   navigation.navigate('ChannelProfile', { channelId: route.params.channelId })
                 }
                 style={({ pressed }) => [
-                  styles.headerTitlePressable,
-                  pressed && styles.headerPressablePressed,
+                  stackStyles.headerTitlePressable,
+                  pressed && stackStyles.headerPressablePressed,
                 ]}
               >
                 <ChatHeaderTitle
                   title={title}
                   subtitle={subtitle}
                   avatarUrl={avatarUrl}
+                  stackStyles={stackStyles}
                 />
               </Pressable>
             ),
@@ -335,7 +342,8 @@ export function ChatsStack() {
   );
 }
 
-const styles = StyleSheet.create({
+function createChatsStackStyles(colors: ThemeColors) {
+  return StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -384,3 +392,4 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 });
+}

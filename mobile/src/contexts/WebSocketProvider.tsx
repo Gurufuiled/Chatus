@@ -335,15 +335,26 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           for (let i = 0; i < existing.length; i++) {
             const m = existing[i];
             if (m.id === msg.id) return; // Already have this message
-            
+
             if (
-              m.status === 'sending' && 
-              m.sender_id === currentUserId && 
+              clientTempId &&
+              m.id === clientTempId &&
+              m.sender_id === currentUserId &&
               msg.sender_id === currentUserId
             ) {
-              if (clientTempId && m.id === clientTempId) {
-                sendingByTempId = m;
-              } else if (
+              // Video note: TransportService pre-fills the bubble and sets status to "sent" after
+              // upload+WS send, before the server echoes the final id — it is no longer "sending",
+              // so we must still match by client_temp_id or we prepend a duplicate row.
+              sendingByTempId = m;
+              continue;
+            }
+
+            if (
+              m.status === 'sending' &&
+              m.sender_id === currentUserId &&
+              msg.sender_id === currentUserId
+            ) {
+              if (
                 m.msg_type === msg.msg_type &&
                 (m.msg_type === 'text' ? m.content === msg.content : true)
               ) {

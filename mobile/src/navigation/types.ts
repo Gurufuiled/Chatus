@@ -42,6 +42,7 @@ export type ChatsStackParamList = {
 
 export type SettingsStackParamList = {
   SettingsMain: undefined;
+  Appearance: undefined;
   Services: undefined;
   MiniApp: { appId: string; title?: string };
   FeedbackList: { kind: 'bug' | 'suggestion'; prependEntry?: FeedbackEntry };

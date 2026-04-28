@@ -17,7 +17,7 @@ import { ChatListActionsMenu, ChatListRow, ChatListSkeleton, type ChatListMenuSt
 import { resolveAvatarUrl } from '../config';
 import { ChatDao } from '../db/dao/ChatDao';
 import type { ChatsStackParamList } from '../navigation/types';
-import { computeChatListMenuPosition, CHAT_LIST_SEPARATOR_INSET } from '../presentation';
+import { computeChatListMenuPosition } from '../presentation';
 import type { ApiUser } from '../services/AuthService';
 import { createOrFindChat } from '../services/chatService';
 import { searchChannels } from '../services/channelService';
@@ -29,7 +29,8 @@ import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { createChatListStyles, type ChatListStyleSet } from './chatList.styles';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChatList'>;
 
@@ -41,8 +42,8 @@ type ChatListItem =
   | { type: 'channel'; id: string; channel: Chat }
   | { type: 'header'; id: string; title: string };
 
-function ChatSeparator() {
-  return <View style={styles.separator} />;
+function ChatSeparator({ listStyles }: { listStyles: ChatListStyleSet }) {
+  return <View style={listStyles.separator} />;
 }
 
 function getChatTitle(chat: Chat) {
@@ -94,14 +95,20 @@ function matchesChatQuery(chat: Chat, normalizedQuery: string) {
   return haystack.includes(normalizedQuery);
 }
 
-function SearchHeader() {
+function SearchHeader({
+  listStyles,
+  iconColor,
+}: {
+  listStyles: ChatListStyleSet;
+  iconColor: string;
+}) {
   const searchG = TELEGRAM_PROFILE_GLYPHS.search;
   return (
-    <View style={styles.searchIconSlot} accessibilityLabel="Search">
+    <View style={listStyles.searchIconSlot} accessibilityLabel="Search">
       <TelegramGlyph
         d={searchG.d}
         fillRule={searchG.fillRule}
-        color={colors.textSecondary}
+        color={iconColor}
         size={22}
       />
     </View>
@@ -112,10 +119,14 @@ function ContactResultRow({
   user,
   disabled,
   onPress,
+  listStyles,
+  accent,
 }: {
   user: ApiUser;
   disabled: boolean;
   onPress: (user: ApiUser) => void;
+  listStyles: ChatListStyleSet;
+  accent: string;
 }) {
   const avatarUrl = resolveAvatarUrl(user.avatar_url);
   const displayName = user.display_name || user.username || 'Unknown';
@@ -123,35 +134,37 @@ function ContactResultRow({
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.contactRow, pressed && styles.rowPressed]}
+      style={({ pressed }) => [listStyles.contactRow, pressed && listStyles.rowPressed]}
       onPress={() => onPress(user)}
       disabled={disabled}
     >
       {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={styles.contactAvatar} />
+        <Image source={{ uri: avatarUrl }} style={listStyles.contactAvatar} />
       ) : (
-        <View style={styles.contactAvatarPlaceholder}>
-          <Text style={styles.contactAvatarText}>
+        <View style={listStyles.contactAvatarPlaceholder}>
+          <Text style={listStyles.contactAvatarText}>
             {(displayName.trim()[0] || '?').toUpperCase()}
           </Text>
         </View>
       )}
-      <View style={styles.contactInfo}>
-        <Text style={styles.contactTitle} numberOfLines={1}>
+      <View style={listStyles.contactInfo}>
+        <Text style={listStyles.contactTitle} numberOfLines={1}>
           {displayName}
         </Text>
-        <Text style={styles.contactSubtitle} numberOfLines={1}>
+        <Text style={listStyles.contactSubtitle} numberOfLines={1}>
           {handle || 'Контакт'}
         </Text>
       </View>
       {disabled ? (
-        <ActivityIndicator size="small" color={colors.accent} style={styles.rowLoader} />
+        <ActivityIndicator size="small" color={accent} style={listStyles.rowLoader} />
       ) : null}
     </Pressable>
   );
 }
 
 export function ChatListScreen() {
+  const { colors: themeColors } = useTheme();
+  const listStyles = React.useMemo(() => createChatListStyles(themeColors), [themeColors]);
   const navigation = useNavigation<Nav>();
   const chats = chatStore((s) => s.chats);
   const currentUserId = authStore((s) => s.user?.id ?? null);
@@ -394,7 +407,7 @@ export function ChatListScreen() {
   const renderItem = React.useCallback(
     ({ item }: { item: ChatListItem }) => {
       if (item.type === 'header') {
-        return <Text style={styles.sectionHeader}>{item.title}</Text>;
+        return <Text style={listStyles.sectionHeader}>{item.title}</Text>;
       }
 
       if (item.type === 'contact') {
@@ -405,6 +418,8 @@ export function ChatListScreen() {
             onPress={(user) => {
               void handleStartChat(user);
             }}
+            listStyles={listStyles}
+            accent={themeColors.accent}
           />
         );
       }
@@ -419,18 +434,26 @@ export function ChatListScreen() {
         />
       );
     },
-    [creatingChatUserIds, currentUserId, handleOpenChat, handleOpenMenu, handleStartChat]
+    [
+      creatingChatUserIds,
+      currentUserId,
+      handleOpenChat,
+      handleOpenMenu,
+      handleStartChat,
+      listStyles,
+      themeColors.accent,
+    ]
   );
 
   const keyExtractor = React.useCallback((item: ChatListItem) => item.id, []);
 
   return (
-    <View style={styles.container}>
+    <View style={listStyles.container}>
       <FlatList
         data={listItems}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        ItemSeparatorComponent={ChatSeparator}
+        ItemSeparatorComponent={() => <ChatSeparator listStyles={listStyles} />}
         removeClippedSubviews={!isSearchActive}
         initialNumToRender={14}
         maxToRenderPerBatch={8}
@@ -438,19 +461,23 @@ export function ChatListScreen() {
         windowSize={8}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
-          <View style={styles.searchRow}>
-            <SearchHeader />
+          <View style={listStyles.searchRow}>
+            <SearchHeader listStyles={listStyles} iconColor={themeColors.textSecondary} />
             <TextInput
-              style={styles.searchInput}
+              style={listStyles.searchInput}
               placeholder="Поиск чатов, контактов и каналов"
-              placeholderTextColor={colors.placeholder}
+              placeholderTextColor={themeColors.placeholder}
               value={query}
               onChangeText={setQuery}
               autoCapitalize="none"
               autoCorrect={false}
             />
             {isSearching ? (
-              <ActivityIndicator size="small" color={colors.accent} style={styles.searchLoader} />
+              <ActivityIndicator
+                size="small"
+                color={themeColors.accent}
+                style={listStyles.searchLoader}
+              />
             ) : null}
           </View>
         }
@@ -458,8 +485,8 @@ export function ChatListScreen() {
           showInitialSkeleton ? (
             <ChatListSkeleton count={8} />
           ) : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>
+            <View style={listStyles.empty}>
+              <Text style={listStyles.emptyText}>
                 {isSearchActive ? 'Ничего не найдено' : 'Нет чатов'}
               </Text>
             </View>
@@ -482,96 +509,3 @@ export function ChatListScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.inputBackgroundSolid },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 12,
-    marginTop: 12,
-    marginBottom: 6,
-    paddingHorizontal: 12,
-    backgroundColor: colors.inputBackground,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  searchIconSlot: {
-    marginRight: 4,
-    paddingVertical: 10,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.textPrimary,
-  },
-  searchLoader: {
-    marginLeft: 8,
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: CHAT_LIST_SEPARATOR_INSET,
-    backgroundColor: colors.separator,
-  },
-  sectionHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    textTransform: 'uppercase',
-    color: colors.textSecondary,
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  contactRow: {
-    minHeight: 72,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  rowPressed: {
-    backgroundColor: colors.rowPressed,
-  },
-  contactAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-  },
-  contactAvatarPlaceholder: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contactAvatarText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  contactInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  contactTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  contactSubtitle: {
-    marginTop: 3,
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  rowLoader: {
-    marginLeft: 8,
-  },
-  empty: { padding: 24, alignItems: 'center' },
-  emptyText: { fontSize: 16, color: colors.textSecondary },
-});

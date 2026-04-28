@@ -22,7 +22,9 @@ import { ChatsStack } from './ChatsStack';
 import { SettingsStack } from './SettingsStack';
 import { ContactsScreen } from '../screens';
 import type { MainTabParamList } from './types';
-import { colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/colors';
 import { chatStore } from '../stores/chatStore';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_TAB_GLYPHS } from '../icons/telegram/tabPaths';
@@ -41,11 +43,15 @@ function TabTelegramIcon({
   tab,
   color,
   focused,
-}: IconProps & { tab: 'contacts' | 'chats' | 'settings' }) {
+  tabStyles,
+}: IconProps & {
+  tab: 'contacts' | 'chats' | 'settings';
+  tabStyles: ReturnType<typeof createMainTabsStyles>;
+}) {
   const glyphs = TELEGRAM_TAB_GLYPHS[tab];
   const glyph = focused ? glyphs.active : glyphs.inactive;
   return (
-    <View style={[styles.iconFrame, focused && styles.iconFocused]}>
+    <View style={[tabStyles.iconFrame, focused && tabStyles.iconFocused]}>
       <TelegramGlyph
         d={glyph.d}
         fillRule={glyph.fillRule}
@@ -56,15 +62,24 @@ function TabTelegramIcon({
   );
 }
 
-function getTabIcon(routeName: keyof MainTabParamList, color: string, focused: boolean) {
+function getTabIcon(
+  routeName: keyof MainTabParamList,
+  color: string,
+  focused: boolean,
+  tabStyles: ReturnType<typeof createMainTabsStyles>
+) {
   switch (routeName) {
     case 'Contacts':
-      return <TabTelegramIcon tab="contacts" color={color} focused={focused} />;
+      return (
+        <TabTelegramIcon tab="contacts" color={color} focused={focused} tabStyles={tabStyles} />
+      );
     case 'Settings':
-      return <TabTelegramIcon tab="settings" color={color} focused={focused} />;
+      return (
+        <TabTelegramIcon tab="settings" color={color} focused={focused} tabStyles={tabStyles} />
+      );
     case 'Chats':
     default:
-      return <TabTelegramIcon tab="chats" color={color} focused={focused} />;
+      return <TabTelegramIcon tab="chats" color={color} focused={focused} tabStyles={tabStyles} />;
   }
 }
 
@@ -84,10 +99,12 @@ function TabBarItem({
   routeName,
   color,
   focused,
+  styles: tabStyles,
 }: {
   routeName: keyof MainTabParamList;
   color: string;
   focused: boolean;
+  styles: ReturnType<typeof createMainTabsStyles>;
 }) {
   const totalUnreadCount = chatStore(
     React.useCallback((state) => {
@@ -100,17 +117,17 @@ function TabBarItem({
   const badgeLabel = totalUnreadCount > 999 ? '999+' : String(totalUnreadCount);
 
   return (
-    <View style={[styles.tabButton, focused && styles.tabButtonActive]}>
-      <View style={styles.tabButtonContent}>
+    <View style={[tabStyles.tabButton, focused && tabStyles.tabButtonActive]}>
+      <View style={tabStyles.tabButtonContent}>
         <View>
-          {getTabIcon(routeName, color, focused)}
+          {getTabIcon(routeName, color, focused, tabStyles)}
           {showBadge && (
-            <View style={styles.tabBadge}>
-              <Text style={styles.tabBadgeText} numberOfLines={1} adjustsFontSizeToFit>{badgeLabel}</Text>
+            <View style={tabStyles.tabBadge}>
+              <Text style={tabStyles.tabBadgeText} numberOfLines={1} adjustsFontSizeToFit>{badgeLabel}</Text>
             </View>
           )}
         </View>
-        <Text style={[styles.customLabel, { color }]} numberOfLines={1}>
+        <Text style={[tabStyles.customLabel, { color }]} numberOfLines={1}>
           {getTabLabel(routeName)}
         </Text>
       </View>
@@ -121,13 +138,15 @@ function TabBarItem({
 function QuickActionIconTile({
   tint,
   children,
+  menuStyles,
 }: {
   tint: string;
   children: React.ReactNode;
+  menuStyles: ReturnType<typeof createMainTabsStyles>;
 }) {
   return (
-    <View style={[styles.quickMenuIconTile, { backgroundColor: withAlpha(tint, 0.14) }]}>
-      <View style={[styles.quickMenuIconInner, { backgroundColor: tint }]}>{children}</View>
+    <View style={[menuStyles.quickMenuIconTile, { backgroundColor: withAlpha(tint, 0.14) }]}>
+      <View style={[menuStyles.quickMenuIconInner, { backgroundColor: tint }]}>{children}</View>
     </View>
   );
 }
@@ -147,12 +166,16 @@ function ChatsQuickActionsMenu({
   onCreateGroup,
   onCreateChannel,
   bottomInset,
+  themeColors,
+  styles,
 }: {
   visible: boolean;
   onClose: () => void;
   onCreateGroup: () => void;
   onCreateChannel: () => void;
   bottomInset: number;
+  themeColors: ThemeColors;
+  styles: ReturnType<typeof createMainTabsStyles>;
 }) {
   const [mounted, setMounted] = React.useState(visible);
   const progress = React.useRef(new Animated.Value(0)).current;
@@ -215,40 +238,40 @@ function ChatsQuickActionsMenu({
         >
           <Pressable
             onPress={onCreateGroup}
-            android_ripple={{ color: withAlpha(colors.accent, 0.08) }}
+            android_ripple={{ color: withAlpha(themeColors.accent, 0.08) }}
             style={({ pressed }) => [
               styles.quickMenuButton,
               pressed && styles.quickMenuButtonPressed,
             ]}
           >
-            <QuickActionIconTile tint="#8A6DF1">
+            <QuickActionIconTile tint="#8A6DF1" menuStyles={styles}>
               <GroupChatIcon />
             </QuickActionIconTile>
             <View style={styles.quickMenuTextWrap}>
               <Text style={styles.quickMenuTitle}>Создать группу</Text>
               <Text style={styles.quickMenuSubtitle}>До 200 000 участников</Text>
             </View>
-            <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+            <Feather name="chevron-right" size={18} color={themeColors.textSecondary} />
           </Pressable>
 
           <View style={styles.quickMenuSeparator} />
 
           <Pressable
             onPress={onCreateChannel}
-            android_ripple={{ color: withAlpha(colors.accent, 0.08) }}
+            android_ripple={{ color: withAlpha(themeColors.accent, 0.08) }}
             style={({ pressed }) => [
               styles.quickMenuButton,
               pressed && styles.quickMenuButtonPressed,
             ]}
           >
-            <QuickActionIconTile tint={colors.accent}>
+            <QuickActionIconTile tint={themeColors.accent} menuStyles={styles}>
               <ChannelIcon />
             </QuickActionIconTile>
             <View style={styles.quickMenuTextWrap}>
               <Text style={styles.quickMenuTitle}>Создать канал</Text>
               <Text style={styles.quickMenuSubtitle}>Публикации для аудитории</Text>
             </View>
-            <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+            <Feather name="chevron-right" size={18} color={themeColors.textSecondary} />
           </Pressable>
         </Animated.View>
       </View>
@@ -363,6 +386,9 @@ function AnimatedTabButton(props: BottomTabBarButtonProps) {
 export function MainTabs() {
   const navigation = useNavigation<NavigationProp<MainTabParamList>>();
   const insets = useSafeAreaInsets();
+  const { colors: themeColors, resolvedScheme } = useTheme();
+  const tabInactiveTint = resolvedScheme === 'dark' ? '#9AA0A6' : '#273142';
+  const styles = React.useMemo(() => createMainTabsStyles(themeColors), [themeColors]);
   const [isChatsQuickMenuVisible, setIsChatsQuickMenuVisible] = React.useState(false);
   const ignoreNextChatsPressRef = React.useRef(false);
   const tabBarStyle = React.useMemo(
@@ -373,7 +399,7 @@ export function MainTabs() {
         paddingBottom: Math.max(insets.bottom, 5),
       },
     ],
-    [insets.bottom]
+    [insets.bottom, styles.tabBar]
   );
 
   const closeChatsQuickMenu = React.useCallback(() => {
@@ -404,21 +430,21 @@ export function MainTabs() {
         screenOptions={({ route }) => ({
           headerShown: true,
           headerStyle: {
-            backgroundColor: colors.toolbar,
+            backgroundColor: themeColors.toolbar,
           },
           headerShadowVisible: false,
-          headerTintColor: colors.textPrimary,
+          headerTintColor: themeColors.textPrimary,
           headerTitleStyle: {
-            color: colors.textPrimary,
+            color: themeColors.textPrimary,
             fontWeight: '700',
           },
           tabBarShowLabel: false,
-          tabBarActiveTintColor: colors.accent,
-          tabBarInactiveTintColor: '#273142',
+          tabBarActiveTintColor: themeColors.accent,
+          tabBarInactiveTintColor: tabInactiveTint,
           tabBarItemStyle: styles.nativeTabItem,
           tabBarStyle,
           tabBarIcon: ({ color, focused }) => (
-            <TabBarItem routeName={route.name} color={color} focused={focused} />
+            <TabBarItem routeName={route.name} color={color} focused={focused} styles={styles} />
           ),
         })}
       >
@@ -486,20 +512,23 @@ export function MainTabs() {
         onCreateGroup={handleCreateGroup}
         onCreateChannel={handleCreateChannel}
         bottomInset={Math.max(insets.bottom, 0)}
+        themeColors={themeColors}
+        styles={styles}
       />
     </>
   );
 }
 
-const styles = StyleSheet.create({
+function createMainTabsStyles(themeColors: ThemeColors) {
+  return StyleSheet.create({
   tabBar: {
     height: 57,
     paddingTop: 6,
     paddingBottom: 5,
     paddingHorizontal: 10,
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: themeColors.inputBackgroundSolid,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
+    borderTopColor: themeColors.separator,
     elevation: 0,
     shadowOpacity: 0,
   },
@@ -555,7 +584,7 @@ const styles = StyleSheet.create({
     width: 280,
     borderRadius: 18,
     paddingVertical: 6,
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: themeColors.inputBackgroundSolid,
     shadowColor: '#0F172A',
     shadowOpacity: 0.22,
     shadowRadius: 28,
@@ -595,7 +624,7 @@ const styles = StyleSheet.create({
   },
   quickMenuSeparator: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
+    backgroundColor: themeColors.separator,
     marginHorizontal: 18,
     marginVertical: 2,
   },
@@ -605,14 +634,14 @@ const styles = StyleSheet.create({
   quickMenuTitle: {
     fontSize: 15.5,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: themeColors.textPrimary,
     lineHeight: 20,
   },
   quickMenuSubtitle: {
     marginTop: 2,
     fontSize: 12.5,
     fontWeight: '500',
-    color: colors.textSecondary,
+    color: themeColors.textSecondary,
     lineHeight: 16,
   },
   tabBadge: {
@@ -627,7 +656,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: colors.inputBackgroundSolid,
+    borderColor: themeColors.inputBackgroundSolid,
   },
   tabBadgeText: {
     color: '#FFFFFF',
@@ -636,3 +665,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+}

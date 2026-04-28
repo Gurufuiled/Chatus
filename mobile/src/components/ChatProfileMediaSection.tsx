@@ -6,7 +6,6 @@ import {
   Image,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -14,8 +13,12 @@ import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
 } from '../contexts/VoicePlayerContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { buildUiWaveform } from '../services/waveformUtils';
-import { colors, withAlpha } from '../theme/colors';
+import { withAlpha } from '../theme/stylePrimitives';
+import {
+  createChatProfileMediaSectionStyles,
+} from './chatProfileMediaSection.styles';
 import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
@@ -142,6 +145,11 @@ const ProfileTabsBar = React.memo(function ProfileTabsBar({
   tabCounts,
   onChangeTab,
 }: ProfileTabsBarProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileMediaSectionStyles(themeColors),
+    [themeColors],
+  );
   return (
     <ScrollView
       horizontal
@@ -180,6 +188,11 @@ const FileRow = React.memo(function FileRow({
   item: FileItem;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileMediaSectionStyles(themeColors),
+    [themeColors],
+  );
   return (
     <Pressable
       onLongPress={(event) => onOpenMenu(item.id, event)}
@@ -203,6 +216,11 @@ const FileRow = React.memo(function FileRow({
 
 /** Сетка превью — переиспользуется в профиле канала */
 export const MediaTilePreview = React.memo(function MediaTilePreview({ item }: { item: MediaTile }) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileMediaSectionStyles(themeColors),
+    [themeColors],
+  );
   const generatedPreviewUri = useVideoPreviewUri(
     item.kind === 'video' ? item.uri : null,
     item.previewUri
@@ -227,6 +245,11 @@ const VoiceRow = React.memo(function VoiceRow({
   item: VoiceItem;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileMediaSectionStyles(themeColors),
+    [themeColors],
+  );
   const { play, pause } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(
     item.uri,
@@ -296,7 +319,9 @@ const VoiceRow = React.memo(function VoiceRow({
                   styles.voiceBar,
                   {
                     height,
-                    backgroundColor: isFilled ? colors.accent : 'rgba(77,141,255,0.24)',
+                    backgroundColor: isFilled
+                      ? themeColors.accent
+                      : withAlpha(themeColors.accent, 0.24),
                   },
                 ]}
               />
@@ -321,6 +346,11 @@ const VideoNoteVoiceRow = React.memo(function VideoNoteVoiceRow({
   onOpen: (item: VoiceItem) => void;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileMediaSectionStyles(themeColors),
+    [themeColors],
+  );
   const previewUri = useVideoPreviewUri(item.uri, item.thumbnailUri);
 
   return (
@@ -365,6 +395,11 @@ const LinkRow = React.memo(function LinkRow({
   item: LinkItem;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileMediaSectionStyles(themeColors),
+    [themeColors],
+  );
   return (
     <Pressable
       onLongPress={(event) => onOpenMenu(item.id.split('-')[0] ?? item.id, event)}
@@ -372,7 +407,7 @@ const LinkRow = React.memo(function LinkRow({
       style={({ pressed }) => [styles.linkRow, pressed && styles.linkRowPressed]}
     >
       <View style={styles.linkIconWrap}>
-        <Feather name="link" size={17} color={colors.accent} />
+        <Feather name="link" size={17} color={themeColors.accent} />
       </View>
       <View style={styles.linkTextWrap}>
         <Text style={styles.linkTitle} numberOfLines={1}>
@@ -382,7 +417,7 @@ const LinkRow = React.memo(function LinkRow({
           {item.subtitle}
         </Text>
       </View>
-      <Feather name="external-link" size={16} color="#A6AFBC" />
+      <Feather name="external-link" size={16} color={themeColors.iconMuted} />
     </Pressable>
   );
 });
@@ -398,6 +433,11 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
   onOpenVideoNote,
   onOpenActionMenu,
 }: ChatProfileMediaSectionProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileMediaSectionStyles(themeColors),
+    [themeColors],
+  );
   const tabCounts = useMemo<Record<ProfileTabKey, number>>(
     () => ({
       media: mediaItems.length,
@@ -525,6 +565,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
     onOpenActionMenu,
     onOpenMedia,
     onOpenVideoNote,
+    styles,
     voiceItems,
   ]);
 
@@ -534,294 +575,4 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
       {tabContent}
     </View>
   );
-});
-
-const styles = StyleSheet.create({
-  mediaSectionCard: {
-    marginTop: 10,
-    backgroundColor: colors.inputBackgroundSolid,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  tabsRow: {
-    paddingHorizontal: 12,
-    paddingBottom: 6,
-    gap: 8,
-    alignItems: 'center',
-  },
-  tabButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    height: 38,
-    borderRadius: 999,
-    backgroundColor: colors.inputBackground,
-  },
-  tabButtonActive: {
-    backgroundColor: withAlpha(colors.accent, 0.12),
-  },
-  tabButtonPressed: {
-    opacity: 0.8,
-  },
-  tabButtonText: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  tabButtonTextActive: {
-    color: colors.accent,
-  },
-  tabCount: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '700',
-    color: '#A0A9B6',
-  },
-  tabCountActive: {
-    color: colors.accent,
-  },
-  mediaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 3,
-  },
-  mediaTile: {
-    width: '33.3333%',
-    aspectRatio: 1,
-    padding: 3,
-  },
-  mediaTilePressed: {
-    opacity: 0.88,
-  },
-  mediaImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: colors.buttonBackground,
-  },
-  mediaVideoFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.textPrimary,
-  },
-  mediaPlayBadge: {
-    position: 'absolute',
-    left: 12,
-    top: 12,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.62)',
-  },
-  mediaBadge: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(16,24,40,0.6)',
-  },
-  mediaBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  stackSection: {
-    paddingHorizontal: 14,
-    paddingTop: 4,
-    gap: 10,
-  },
-  fileRow: {
-    minHeight: 72,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackground,
-  },
-  fileRowPressed: {
-    opacity: 0.82,
-  },
-  fileBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(colors.accent, 0.14),
-    marginRight: 12,
-  },
-  fileBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.accent,
-  },
-  fileTextWrap: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  fileTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  fileSubtitle: {
-    marginTop: 3,
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  voiceRow: {
-    minHeight: 76,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackground,
-  },
-  voicePlayButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-    marginRight: 12,
-  },
-  voicePlayButtonActive: {
-    backgroundColor: colors.link,
-  },
-  voicePlayButtonPressed: {
-    opacity: 0.84,
-  },
-  voicePlayIcon: {
-    marginLeft: 2,
-  },
-  voiceWaveWrap: {
-    flex: 1,
-  },
-  voiceWaveTrack: {
-    height: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  voiceBar: {
-    width: 3,
-    borderRadius: 999,
-  },
-  voiceMetaRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  voiceDuration: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  voiceDate: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  videoNoteRowPressed: {
-    opacity: 0.86,
-  },
-  videoNoteThumbWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginRight: 12,
-    backgroundColor: colors.buttonBackground,
-  },
-  videoNoteThumb: {
-    width: '100%',
-    height: '100%',
-  },
-  videoNoteThumbFallback: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.textSecondary,
-  },
-  videoNoteThumbOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.24)',
-  },
-  videoNoteTextWrap: {
-    flex: 1,
-  },
-  videoNoteTitle: {
-    marginBottom: 5,
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  linkRow: {
-    minHeight: 72,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackground,
-  },
-  linkRowPressed: {
-    opacity: 0.82,
-  },
-  linkIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(colors.accent, 0.12),
-    marginRight: 12,
-  },
-  linkTextWrap: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  linkTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  linkSubtitle: {
-    marginTop: 3,
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 46,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  emptySubtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
 });

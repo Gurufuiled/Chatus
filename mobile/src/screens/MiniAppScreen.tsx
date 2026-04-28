@@ -16,17 +16,20 @@ import { authStore } from '../stores/authStore';
 import { openMiniAppSession, type MiniAppSession } from '../services/miniAppsService';
 import {
   buildBridgeScript,
-  DEFAULT_THEME,
+  defaultBridgeThemeFromColors,
   parseBridgeMessage,
   type BridgeInitContext,
 } from '../miniapp/bridgeScript';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'MiniApp'>;
 
 export function MiniAppScreen({ route, navigation }: Props) {
   const { appId, title } = route.params;
+  const { colors, resolvedScheme } = useTheme();
+  const styles = useMemo(() => createMiniAppStyles(colors, resolvedScheme), [colors, resolvedScheme]);
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
   const [session, setSession] = useState<MiniAppSession | null>(null);
@@ -64,12 +67,12 @@ export function MiniAppScreen({ route, navigation }: Props) {
         username: user.username,
         avatar_url: user.avatar_url,
       },
-      themeParams: DEFAULT_THEME,
-      colorScheme: 'light',
+      themeParams: defaultBridgeThemeFromColors(colors),
+      colorScheme: resolvedScheme,
       platform: Platform.OS === 'ios' ? 'ios' : 'android',
       viewportHeight: 0,
     };
-  }, [session, user]);
+  }, [session, user, colors, resolvedScheme]);
 
   const bridgeScript = useMemo(
     () => (context ? buildBridgeScript(context) : null),
@@ -193,6 +196,8 @@ export function MiniAppScreen({ route, navigation }: Props) {
           url={inAppBrowserUrl}
           onClose={() => setInAppBrowserUrl(null)}
           insets={insets}
+          styles={styles}
+          accent={colors.accent}
         />
       )}
     </View>
@@ -203,10 +208,14 @@ function InAppBrowserOverlay({
   url,
   onClose,
   insets,
+  styles,
+  accent,
 }: {
   url: string;
   onClose: () => void;
   insets: { top: number; bottom: number };
+  styles: ReturnType<typeof createMiniAppStyles>;
+  accent: string;
 }) {
   const [host, setHost] = useState<string>('');
   useEffect(() => {
@@ -247,7 +256,7 @@ function InAppBrowserOverlay({
         startInLoadingState
         renderLoading={() => (
           <View style={styles.loading}>
-            <ActivityIndicator size="large" color={colors.accent} />
+            <ActivityIndicator size="large" color={accent} />
           </View>
         )}
       />
@@ -255,79 +264,83 @@ function InAppBrowserOverlay({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.chatBackground },
-  center: { justifyContent: 'center', alignItems: 'center', padding: 24 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: colors.toolbar,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  headerBtn: {
-    minWidth: 72,
-  },
-  headerBtnText: {
-    color: colors.accent,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  webviewWrap: { flex: 1 },
-  webview: { flex: 1, backgroundColor: colors.chatBackground },
-  loading: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.chatBackground,
-  },
-  readyOverlay: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
-    padding: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-  },
-  errorText: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  backBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    backgroundColor: colors.accent,
-  },
-  backBtnText: { color: '#fff', fontWeight: '600' },
-  overlayContainer: {
-    backgroundColor: '#fff',
-  },
-  overlayHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    backgroundColor: colors.toolbar,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  overlayHost: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-});
+function createMiniAppStyles(colors: ThemeColors, resolvedScheme: 'light' | 'dark') {
+  const readyTint =
+    resolvedScheme === 'dark' ? 'rgba(30,42,53,0.92)' : 'rgba(255,255,255,0.9)';
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.chatBackground },
+    center: { justifyContent: 'center', alignItems: 'center', padding: 24 },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: colors.toolbar,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.separator,
+    },
+    headerBtn: {
+      minWidth: 72,
+    },
+    headerBtnText: {
+      color: colors.accent,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    headerTitle: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    webviewWrap: { flex: 1 },
+    webview: { flex: 1, backgroundColor: colors.chatBackground },
+    loading: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.chatBackground,
+    },
+    readyOverlay: {
+      position: 'absolute',
+      right: 16,
+      bottom: 16,
+      padding: 8,
+      borderRadius: 12,
+      backgroundColor: readyTint,
+    },
+    errorText: {
+      color: colors.textPrimary,
+      fontSize: 16,
+      textAlign: 'center',
+      marginBottom: 16,
+    },
+    backBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 24,
+      borderRadius: 20,
+      backgroundColor: colors.accent,
+    },
+    backBtnText: { color: '#fff', fontWeight: '600' },
+    overlayContainer: {
+      backgroundColor: colors.inputBackgroundSolid,
+    },
+    overlayHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingBottom: 8,
+      backgroundColor: colors.toolbar,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.separator,
+    },
+    overlayHost: {
+      flex: 1,
+      textAlign: 'center',
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textPrimary,
+    },
+  });
+}

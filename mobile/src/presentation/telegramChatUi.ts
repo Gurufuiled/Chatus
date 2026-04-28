@@ -5,7 +5,7 @@
 
 import { Dimensions } from 'react-native';
 
-import { colors } from '../theme/colors';
+import type { ThemeColors } from '../theme/palettes';
 
 /** Dialog row: horizontal screen padding (matches Material-ish list). */
 export const CHAT_LIST_HORIZONTAL_PADDING = 16;
@@ -33,7 +33,7 @@ export const chatHeaderPresentation = {
   titleFontWeight: '700' as const,
   subtitleFontSize: 13,
   /** Resolved in `ChatsStack` via `colors[subtitleColorKey]` for chat header subtitle. */
-  subtitleColorKey: 'textSecondary' as keyof typeof colors,
+  subtitleColorKey: 'textSecondary' as keyof ThemeColors,
 };
 
 export type ChatListMenuAnchor = { left: number; top: number };

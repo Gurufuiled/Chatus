@@ -65,7 +65,9 @@ import {
   useVoicePlayerState,
 } from '../contexts/VoicePlayerContext';
 import type { Message } from '../stores/types';
-import { bubbleRadius, colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { withAlpha } from '../theme/colors';
+import { buildChatScreenStyles, type ChatScreenStyleSet } from './chatScreen.styles';
 import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatThemeId } from '../theme/chatThemes';
 import {
   ChatBackgroundPattern,
@@ -132,11 +134,13 @@ function MediaAlbumBubble({
   isMe,
   time,
   status,
+  msgStyles,
 }: {
   message: Message;
   isMe: boolean;
   time: string;
   status: string;
+  msgStyles: ChatScreenStyleSet;
 }) {
   const media = (message.media ?? [])
     .filter((item) => item.remote_url?.trim())
@@ -156,19 +160,19 @@ function MediaAlbumBubble({
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
     return (
-      <View key={`${item.remote_url}-${index}`} style={[styles.albumTile, style]}>
-        <Image source={{ uri }} style={styles.albumImage} contentFit="cover" cachePolicy="disk" />
+      <View key={`${item.remote_url}-${index}`} style={[msgStyles.albumTile, style]}>
+        <Image source={{ uri }} style={msgStyles.albumImage} contentFit="cover" cachePolicy="disk" />
         {kind === 'video' ? (
-          <View style={styles.albumVideoBadge}>
+          <View style={msgStyles.albumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
-            <Text style={styles.albumVideoDuration}>
+            <Text style={msgStyles.albumVideoDuration}>
               {formatMediaDuration(item.duration_ms ?? 0)}
             </Text>
           </View>
         ) : null}
         {showExtra ? (
-          <View style={styles.albumExtraOverlay}>
-            <Text style={styles.albumExtraText}>+{extraCount}</Text>
+          <View style={msgStyles.albumExtraOverlay}>
+            <Text style={msgStyles.albumExtraText}>+{extraCount}</Text>
           </View>
         ) : null}
       </View>
@@ -183,7 +187,7 @@ function MediaAlbumBubble({
     if (visibleMedia.length === 2) {
       const tileWidth = (albumWidth - gap) / 2;
       return (
-        <View style={styles.albumRow}>
+        <View style={msgStyles.albumRow}>
           {visibleMedia.map((item, index) =>
             renderTile(item, index, { width: tileWidth, height: albumWidth })
           )}
@@ -196,9 +200,9 @@ function MediaAlbumBubble({
       const rightWidth = albumWidth - sideWidth - gap;
       const halfHeight = (albumWidth - gap) / 2;
       return (
-        <View style={styles.albumRow}>
+        <View style={msgStyles.albumRow}>
           {renderTile(visibleMedia[0], 0, { width: sideWidth, height: albumWidth })}
-          <View style={[styles.albumColumn, { width: rightWidth }]}>
+          <View style={[msgStyles.albumColumn, { width: rightWidth }]}>
             {renderTile(visibleMedia[1], 1, { width: rightWidth, height: halfHeight })}
             {renderTile(visibleMedia[2], 2, { width: rightWidth, height: halfHeight })}
           </View>
@@ -209,7 +213,7 @@ function MediaAlbumBubble({
     const columns = 3;
     const tileWidth = (albumWidth - gap * (columns - 1)) / columns;
     return (
-      <View style={styles.albumGrid}>
+      <View style={msgStyles.albumGrid}>
         {visibleMedia.map((item, index) =>
           renderTile(item, index, { width: tileWidth, height: tileWidth })
         )}
@@ -218,11 +222,13 @@ function MediaAlbumBubble({
   })();
 
   return (
-    <View style={[styles.albumBubble, isMe ? styles.albumBubbleMe : styles.albumBubbleOther]}>
-      <View style={[styles.albumGridClip, { width: albumWidth }]}>
+    <View
+      style={[msgStyles.albumBubble, isMe ? msgStyles.albumBubbleMe : msgStyles.albumBubbleOther]}
+    >
+      <View style={[msgStyles.albumGridClip, { width: albumWidth }]}>
         {grid}
         {!caption ? (
-          <View style={styles.albumTimeOverlay}>
+          <View style={msgStyles.albumTimeOverlay}>
             <MessageTimeStatus
               time={time}
               status={status}
@@ -237,11 +243,11 @@ function MediaAlbumBubble({
       {caption ? (
         <View
           style={[
-            styles.albumCaptionWrap,
-            isMe ? styles.albumCaptionMe : styles.albumCaptionOther,
+            msgStyles.albumCaptionWrap,
+            isMe ? msgStyles.albumCaptionMe : msgStyles.albumCaptionOther,
           ]}
         >
-          <Text style={styles.albumCaptionText}>{caption}</Text>
+          <Text style={msgStyles.albumCaptionText}>{caption}</Text>
           <MessageTimeStatus time={time} status={status} isMe={isMe} compact />
         </View>
       ) : null}
@@ -278,6 +284,19 @@ export function ChatScreen() {
   const route = useRoute<ChatRoute>();
   const isFocused = useIsFocused();
   const { chatId, focusMessageId, startSearch } = route.params;
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => buildChatScreenStyles(themeColors), [themeColors]);
+  const authorOpts = useMemo(() => ({ accentColor: themeColors.accent }), [themeColors.accent]);
+  const getMessageAuthorPresentationThemed = useCallback(
+    (message: Message, cid: string, uid: string | null) =>
+      getMessageAuthorPresentation(message, cid, uid, authorOpts),
+    [authorOpts]
+  );
+  const getMessageAuthorNameThemed = useCallback(
+    (message: Message, cid: string, uid: string | null) =>
+      getMessageAuthorName(message, cid, uid, authorOpts),
+    [authorOpts]
+  );
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const { play, pause, stop, setPlaybackRate } = useVoicePlayerControls();
   const { currentVoiceUri, status: voiceStatus } = useVoicePlayerState();
@@ -358,7 +377,7 @@ export function ChatScreen() {
 
   const replyToMessage = replyToMessageId ? messageById.get(replyToMessageId) ?? null : null;
   const replyAuthorName = replyToMessage
-    ? getMessageAuthorName(replyToMessage, chatId, currentUserId)
+    ? getMessageAuthorNameThemed(replyToMessage, chatId, currentUserId)
     : null;
   const activeMenuMessage = menuState ? messageById.get(menuState.messageId) ?? null : null;
   const selectionMode = selectedMessageIds.length > 0;
@@ -405,7 +424,7 @@ export function ChatScreen() {
     );
   }, [currentVoiceUri, messages]);
   const activeVoiceAuthor = activeVoiceMessage
-    ? getMessageAuthorName(activeVoiceMessage, chatId, currentUserId)
+    ? getMessageAuthorNameThemed(activeVoiceMessage, chatId, currentUserId)
     : null;
   const activeVoiceProgress =
     voiceStatus.durationMs > 0 ? Math.min(voiceStatus.positionMs / voiceStatus.durationMs, 1) : 0;
@@ -429,7 +448,7 @@ export function ChatScreen() {
     );
   }, [activeVideoNote.messageId, activeVideoNote.uri, messageById, messages]);
   const activeVideoNoteAuthor = activeVideoNoteMessage
-    ? getMessageAuthorName(activeVideoNoteMessage, chatId, currentUserId)
+    ? getMessageAuthorNameThemed(activeVideoNoteMessage, chatId, currentUserId)
     : null;
   const activeVideoNoteVisible = !!(activeVideoNote.messageId && activeVideoNote.uri);
   const activeVideoNoteDurationLabel = formatPlaybackElapsedDuration(
@@ -1165,7 +1184,7 @@ export function ChatScreen() {
           );
         }
         if (currentChat?.chat_type === 'private') {
-          return getMessageAuthorName(message, chatId, currentUserId).trim();
+          return getMessageAuthorNameThemed(message, chatId, currentUserId).trim();
         }
         return message.sender_id;
       })();
@@ -1476,7 +1495,7 @@ export function ChatScreen() {
       if (!item.reply_to_id) return null;
       const replied = messageById.get(item.reply_to_id);
       const author = replied
-        ? getMessageAuthorName(replied, chatId, currentUserId)
+        ? getMessageAuthorNameThemed(replied, chatId, currentUserId)
         : 'Исходное сообщение';
       const text = replied
         ? buildReplyPreviewText(replied)
@@ -1511,8 +1530,8 @@ export function ChatScreen() {
           isMe={isMe}
           name={item.forwarded_from_name}
           avatarUri={avatarUri ?? undefined}
-          labelColor={isMe ? chatTheme.forwardHeaderMeSub : withAlpha(colors.accent, 0.72)}
-          titleColor={isMe ? chatTheme.forwardHeaderMe : colors.accent}
+          labelColor={isMe ? chatTheme.forwardHeaderMeSub : withAlpha(themeColors.accent, 0.72)}
+          titleColor={isMe ? chatTheme.forwardHeaderMe : themeColors.accent}
           onPress={() => handleForwardHeaderPress(item)}
         />
       );
@@ -1686,6 +1705,7 @@ export function ChatScreen() {
           isMe={isMe}
           time={formatTime(item.created_at)}
           status={item.status}
+          msgStyles={styles}
         />
       );
 
@@ -1944,8 +1964,8 @@ export function ChatScreen() {
           setContentRef={setMessageContentRef}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           formatTime={formatTime}
-          getMessageAuthorPresentation={getMessageAuthorPresentation}
-          getMessageAuthorName={getMessageAuthorName}
+          getMessageAuthorPresentation={getMessageAuthorPresentationThemed}
+          getMessageAuthorName={getMessageAuthorNameThemed}
           getDeletedPlaceholder={getDeletedPlaceholder}
           repliedVoiceBubbleWidth={REPLIED_VOICE_BUBBLE_WIDTH}
           chatTheme={chatTheme}
@@ -2022,7 +2042,7 @@ export function ChatScreen() {
                   <Feather
                     name="corner-up-right"
                     size={20}
-                    color={canForwardSelectedMessages ? colors.accent : '#A0A9B8'}
+                    color={canForwardSelectedMessages ? themeColors.accent : '#A0A9B8'}
                   />
                 </View>
                 <Text
@@ -2097,310 +2117,6 @@ export function ChatScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#E8F4D6' },
-  albumBubble: {
-    maxWidth: '100%',
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: 'transparent',
-  },
-  albumBubbleMe: {
-    alignSelf: 'flex-end',
-  },
-  albumBubbleOther: {
-    alignSelf: 'flex-start',
-  },
-  albumGridClip: {
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: '#D8DEE7',
-  },
-  albumRow: {
-    flexDirection: 'row',
-    gap: 1.5,
-  },
-  albumColumn: {
-    gap: 1.5,
-  },
-  albumGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 1.5,
-  },
-  albumTile: {
-    overflow: 'hidden',
-    backgroundColor: '#C8D0DC',
-  },
-  albumImage: {
-    width: '100%',
-    height: '100%',
-  },
-  albumVideoBadge: {
-    position: 'absolute',
-    left: 6,
-    bottom: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.68)',
-  },
-  albumVideoDuration: {
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  albumTimeOverlay: {
-    position: 'absolute',
-    right: 6,
-    bottom: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15,23,42,0.62)',
-  },
-  albumExtraOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.42)',
-  },
-  albumExtraText: {
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  albumCaptionWrap: {
-    paddingHorizontal: 10,
-    paddingTop: 7,
-    paddingBottom: 6,
-  },
-  albumCaptionMe: {
-    backgroundColor: colors.bubbleMe,
-  },
-  albumCaptionOther: {
-    backgroundColor: colors.bubbleOther,
-  },
-  albumCaptionText: {
-    fontSize: 15,
-    lineHeight: 20,
-    color: colors.textPrimary,
-  },
-  chatContentLayer: {
-    flex: 1,
-  },
-  messagesSkeletonOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  inputBarWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  selectionDockWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 14,
-    paddingTop: 8,
-  },
-  selectionDockRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingHorizontal: 4,
-  },
-  selectionDockAction: {
-    alignItems: 'center',
-    minWidth: 90,
-    paddingBottom: 2,
-  },
-  selectionDockActionLeft: {
-    alignSelf: 'flex-start',
-    marginLeft: 2,
-  },
-  selectionDockActionRight: {
-    alignSelf: 'flex-start',
-    marginRight: 2,
-  },
-  selectionDockActionPressed: {
-    opacity: 0.74,
-  },
-  selectionDockActionDisabled: {
-    opacity: 0.45,
-  },
-  selectionDockIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 9,
-    borderWidth: 1,
-    borderColor: 'rgba(248,251,255,0.95)',
-    backgroundColor: 'rgba(255,255,255,0.84)',
-  },
-  selectionDockDeleteCircle: {
-    borderColor: 'rgba(248,207,212,0.98)',
-  },
-  selectionDockForwardCircle: {
-    borderColor: 'rgba(198,222,255,0.98)',
-  },
-  selectionDockIconCircleDisabled: {
-    backgroundColor: 'rgba(231,236,243,0.96)',
-    shadowOpacity: 0,
-    elevation: 0,
-    borderColor: 'rgba(214,221,230,0.92)',
-  },
-  selectionDockActionLabel: {
-    marginTop: 9,
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '600',
-    color: '#163047',
-  },
-  selectionDockActionLabelDisabled: {
-    color: '#94A3B8',
-  },
-  messagePressable: {
-    width: '100%',
-  },
-  replyGestureContainer: {
-    width: '100%',
-    justifyContent: 'center',
-  },
-  replyGestureContent: {
-    width: '100%',
-  },
-  messageWrap: {
-    paddingHorizontal: 12,
-    marginVertical: 4,
-    width: '100%',
-  },
-  messageWrapMe: {
-    alignItems: 'flex-end',
-  },
-  messageWrapOther: {
-    alignItems: 'flex-start',
-  },
-  messageContentMeasure: {
-    flexShrink: 1,
-  },
-  messageContentHighlighted: {
-    borderRadius: 22,
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
-  bubble: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 16,
-    maxWidth: '82%',
-  },
-  bubbleMe: { backgroundColor: colors.bubbleMe },
-  bubbleOther: {
-    backgroundColor: colors.bubbleOther,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.bubbleOtherBorder,
-  },
-  bubbleContentRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  textContent: {
-    fontSize: 16,
-    lineHeight: 20,
-    color: '#000',
-    flexShrink: 1,
-  },
-  textContentMe: { color: '#fff' },
-  selectedBubble: {
-    borderWidth: 2,
-    borderColor: '#F28C28',
-    borderRadius: 18,
-  },
-  mediaStack: {
-    maxWidth: '82%',
-  },
-  repliedMediaBubble: {
-    maxWidth: '82%',
-    paddingHorizontal: 6,
-    paddingTop: 6,
-    paddingBottom: 4,
-    overflow: 'hidden',
-  },
-  repliedVoiceBubble: {
-    width: REPLIED_VOICE_BUBBLE_WIDTH,
-    maxWidth: '82%',
-  },
-  repliedMediaBubbleMe: {
-    backgroundColor: colors.bubbleMe,
-    ...bubbleRadius.mine,
-  },
-  repliedMediaBubbleOther: {
-    backgroundColor: colors.bubbleOther,
-    ...bubbleRadius.other,
-  },
-  deletedBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 16,
-    maxWidth: '82%',
-  },
-  deletedBubbleMe: {
-    backgroundColor: '#D8E8F9',
-  },
-  deletedBubbleOther: {
-    backgroundColor: '#ECEDEF',
-  },
-  deletedText: {
-    fontSize: 14,
-    lineHeight: 18,
-    color: '#4B5563',
-    fontStyle: 'italic',
-    flexShrink: 1,
-  },
-  deletedTextMe: {
-    color: '#426789',
-  },
-  replySwipeAction: {
-    position: 'absolute',
-    right: 16,
-    width: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  replySwipeIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: withAlpha(colors.accent, 0.14),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
-
-
 
 
 

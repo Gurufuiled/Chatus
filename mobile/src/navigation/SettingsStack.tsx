@@ -1,18 +1,20 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
+  AppearanceSettingsScreen,
   FeedbackComposeScreen,
   FeedbackListScreen,
   SettingsScreen,
   ServicesScreen,
 } from '../screens';
 import { MiniAppScreen } from '../screens/MiniAppScreen';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import type { SettingsStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<SettingsStackParamList>();
 
 export function SettingsStack() {
+  const { colors } = useTheme();
   return (
     <Stack.Navigator
       id={undefined as never}
@@ -28,6 +30,11 @@ export function SettingsStack() {
         name="SettingsMain"
         component={SettingsScreen}
         options={{ title: 'Настройки' }}
+      />
+      <Stack.Screen
+        name="Appearance"
+        component={AppearanceSettingsScreen}
+        options={{ title: 'Оформление', headerBackTitle: 'Назад' }}
       />
       <Stack.Screen
         name="Services"

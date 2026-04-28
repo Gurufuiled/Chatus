@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
@@ -6,7 +6,6 @@ import {
   Easing,
   Image,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -20,7 +19,11 @@ import Reanimated, {
   withSpring,
 } from 'react-native-reanimated';
 import { ProfileActionIcon, type ProfileActionIconName } from './ProfileActionIcon';
-import { colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import {
+  createChatProfileHeroStyles,
+  type ChatProfileHeroStyleSet,
+} from './chatProfileHero.styles';
 
 type ChatProfileHeroProps = {
   avatarUrl: string | null;
@@ -58,6 +61,8 @@ type QuickActionButtonProps = {
   onPress: () => void;
   buttonRef?: React.RefObject<View | null>;
   waveOnPress?: boolean;
+  styles: ChatProfileHeroStyleSet;
+  accentColor: string;
 };
 
 const HERO_COLLAPSED_SIZE = 108;
@@ -70,6 +75,8 @@ const QuickActionButton = React.memo(function QuickActionButton({
   onPress,
   buttonRef,
   waveOnPress = false,
+  styles,
+  accentColor,
 }: QuickActionButtonProps) {
   const filledAccent = Boolean(active && !iconOnlyActive);
   const waveAnimation = React.useRef(new RNAnimated.Value(0)).current;
@@ -146,7 +153,7 @@ const QuickActionButton = React.memo(function QuickActionButton({
           <ProfileActionIcon
             name={icon}
             size={20.5}
-            color={filledAccent ? '#FFFFFF' : colors.accent}
+            color={filledAccent ? '#FFFFFF' : accentColor}
             active={active}
           />
         </RNAnimated.View>
@@ -181,6 +188,8 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   onEditPress,
   moreButtonRef,
 }: ChatProfileHeroProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => createChatProfileHeroStyles(themeColors), [themeColors]);
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(isExpanded ? 1 : 0);
 
@@ -245,7 +254,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
           hitSlop={10}
           style={({ pressed }) => [styles.navBubble, pressed && styles.bubblePressed]}
         >
-          <Feather name="chevron-left" size={25} color={colors.textPrimary} />
+          <Feather name="chevron-left" size={25} color={themeColors.textPrimary} />
         </Pressable>
         <Pressable
           onPress={onEditPress}
@@ -292,6 +301,8 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
           <QuickActionButton
             icon="call"
             label="Звонок"
+            styles={styles}
+            accentColor={themeColors.accent}
             onPress={() => {
               void onStartCallPress();
             }}
@@ -299,6 +310,8 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
           <QuickActionButton
             icon="video"
             label="Видео"
+            styles={styles}
+            accentColor={themeColors.accent}
             onPress={() => {
               void onStartVideoCallPress();
             }}
@@ -308,12 +321,22 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
             label="Звук"
             active={isMuted}
             iconOnlyActive
+            styles={styles}
+            accentColor={themeColors.accent}
             onPress={onMutePress}
           />
-          <QuickActionButton icon="search" label="Поиск" onPress={onSearchPress} />
+          <QuickActionButton
+            icon="search"
+            label="Поиск"
+            styles={styles}
+            accentColor={themeColors.accent}
+            onPress={onSearchPress}
+          />
           <QuickActionButton
             icon="more"
             label="Ещё"
+            styles={styles}
+            accentColor={themeColors.accent}
             onPress={onMorePress}
             buttonRef={moreButtonRef}
             waveOnPress
@@ -322,7 +345,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
 
         {loading ? (
           <View style={styles.loaderRow}>
-            <ActivityIndicator size="small" color={colors.accent} />
+            <ActivityIndicator size="small" color={themeColors.accent} />
             <Text style={styles.loaderText}>Загружаем профиль...</Text>
           </View>
         ) : null}
@@ -331,172 +354,4 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
       </Reanimated.View>
     </Reanimated.View>
   );
-});
-
-const styles = StyleSheet.create({
-  heroCard: {
-    alignItems: 'center',
-    paddingTop: 24,
-    paddingBottom: 18,
-    backgroundColor: colors.chatBackground,
-    overflow: 'hidden',
-  },
-  topBar: {
-    width: '100%',
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    marginBottom: 2,
-  },
-  navBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha('#FFFFFF', 0.78),
-  },
-  editBubble: {
-    minWidth: 68,
-    height: 44,
-    paddingHorizontal: 16,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha('#FFFFFF', 0.86),
-  },
-  editBubbleText: {
-    fontSize: 17,
-    lineHeight: 20,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  bubblePressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.98 }],
-  },
-  avatarPressable: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  avatarPressablePressed: {
-    opacity: 0.96,
-  },
-  avatarFrame: {
-    width: HERO_COLLAPSED_SIZE,
-    height: HERO_COLLAPSED_SIZE,
-    borderRadius: 54,
-    marginBottom: 14,
-    overflow: 'hidden',
-    backgroundColor: withAlpha(colors.accent, 0.12),
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.95)',
-  },
-  avatarMedia: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarFallbackText: {
-    fontSize: 40,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  heroContent: {
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  name: {
-    fontSize: 24,
-    lineHeight: 28,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  status: {
-    marginTop: 4,
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  handle: {
-    marginTop: 6,
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.accent,
-    textAlign: 'center',
-  },
-  quickActionsRow: {
-    marginTop: 20,
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  quickAction: {
-    flex: 1,
-    height: 74,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: colors.inputBackgroundSolid,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-    shadowColor: '#89A8D8',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  quickActionPressed: {
-    opacity: 0.86,
-  },
-  quickActionActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  quickActionIconSlot: {
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickActionLabel: {
-    marginTop: 7,
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: colors.accent,
-    textAlign: 'center',
-  },
-  quickActionLabelActive: {
-    color: '#FFFFFF',
-  },
-  quickActionWave: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
-    backgroundColor: withAlpha(colors.accent, 0.18),
-  },
-  loaderRow: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  loaderText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  errorText: {
-    marginTop: 16,
-    fontSize: 14,
-    textAlign: 'center',
-    color: '#E05263',
-  },
 });

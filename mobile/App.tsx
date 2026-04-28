@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { CallProvider } from './src/contexts/CallContext';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { VoicePlayerProvider } from './src/contexts/VoicePlayerContext';
 import { WebSocketProvider } from './src/contexts/WebSocketProvider';
 import { BootstrapErrorBoundary } from './src/components/BootstrapErrorBoundary';
@@ -15,6 +16,7 @@ import { colors } from './src/theme/colors';
 import { InAppPushNotification } from './src/components/InAppPushNotification';
 import { initDatabase } from './src/services/DatabaseService';
 import { authService, type AuthSession } from './src/services/AuthService';
+import { uiStore } from './src/stores/uiStore';
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -23,7 +25,10 @@ export default function App() {
 
   useEffect(() => {
     initDatabase()
-      .then(() => authService.restoreSession())
+      .then(async () => {
+        await uiStore.getState().hydrateAppAppearance();
+        return authService.restoreSession();
+      })
       .then((session) => {
         setInitialSession(session);
         setIsReady(true);
@@ -63,24 +68,31 @@ export default function App() {
   return (
     <BootstrapErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <AuthProvider initialSession={initialSession}>
-            <WebSocketProvider>
-              <VoicePlayerProvider>
-                <CallProvider>
-                  <NavigationContainer linking={appLinking as never}>
-                    <RootNavigator />
-                    <InAppPushNotification />
-                    <StatusBar style="auto" />
-                  </NavigationContainer>
-                </CallProvider>
-              </VoicePlayerProvider>
-            </WebSocketProvider>
-          </AuthProvider>
-        </SafeAreaProvider>
+        <ThemeProvider>
+          <SafeAreaProvider>
+            <AuthProvider initialSession={initialSession}>
+              <WebSocketProvider>
+                <VoicePlayerProvider>
+                  <CallProvider>
+                    <NavigationContainer linking={appLinking as never}>
+                      <ThemedStatusBar />
+                      <RootNavigator />
+                      <InAppPushNotification />
+                    </NavigationContainer>
+                  </CallProvider>
+                </VoicePlayerProvider>
+              </WebSocketProvider>
+            </AuthProvider>
+          </SafeAreaProvider>
+        </ThemeProvider>
       </GestureHandlerRootView>
     </BootstrapErrorBoundary>
   );
+}
+
+function ThemedStatusBar() {
+  const { resolvedScheme } = useTheme();
+  return <StatusBar style={resolvedScheme === 'dark' ? 'light' : 'dark'} />;
 }
 
 const styles = StyleSheet.create({

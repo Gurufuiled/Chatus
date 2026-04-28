@@ -14,7 +14,6 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -48,7 +47,11 @@ import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
 import type { Message } from '../stores/types';
 import { uiStore } from '../stores/uiStore';
-import { colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import {
+  createChatProfileScreenStyles,
+  type ChatProfileScreenStyleSet,
+} from './chatProfileScreen.styles';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
 
@@ -266,10 +269,14 @@ function getFileExtension(fileName: string) {
 
 type ProfileInfoCardProps = {
   infoRows: InfoRow[];
+  styles: ChatProfileScreenStyleSet;
+  accentColor: string;
 };
 
 const ProfileInfoCard = React.memo(function ProfileInfoCard({
   infoRows,
+  styles,
+  accentColor,
 }: ProfileInfoCardProps) {
   if (infoRows.length === 0) return null;
 
@@ -284,7 +291,7 @@ const ProfileInfoCard = React.memo(function ProfileInfoCard({
             </View>
             {row.icon ? (
               <View style={styles.infoIconWrap}>
-                <Feather name={row.icon} size={16} color={colors.accent} />
+                <Feather name={row.icon} size={16} color={accentColor} />
               </View>
             ) : null}
           </View>
@@ -299,6 +306,11 @@ export function ChatProfileScreen() {
   const navigation = useNavigation<ChatProfileNavigation>();
   const route = useRoute<ChatProfileRoute>();
   const { chatId, userId, chatTitle } = route.params;
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(
+    () => createChatProfileScreenStyles(themeColors),
+    [themeColors],
+  );
   const { startCall } = useCall();
   const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<ApiUser | null>(null);
@@ -860,7 +872,11 @@ export function ChatProfileScreen() {
           moreButtonRef={moreButtonRef}
         />
 
-        <ProfileInfoCard infoRows={infoRows} />
+        <ProfileInfoCard
+          infoRows={infoRows}
+          styles={styles}
+          accentColor={themeColors.accent}
+        />
 
         <ChatProfileMediaSection
           activeTab={activeTab}
@@ -935,7 +951,7 @@ export function ChatProfileScreen() {
               value={firstNameDraft}
               onChangeText={setFirstNameDraft}
               placeholder="Имя"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={themeColors.textSecondary}
               style={styles.editInput}
               returnKeyType="next"
               autoFocus
@@ -945,7 +961,7 @@ export function ChatProfileScreen() {
               value={lastNameDraft}
               onChangeText={setLastNameDraft}
               placeholder="Фамилия"
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={themeColors.textSecondary}
               style={styles.editInput}
               returnKeyType="done"
               onSubmitEditing={() => {
@@ -966,130 +982,3 @@ export function ChatProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.chatBackground,
-  },
-  scrollContent: {
-    paddingBottom: 28,
-  },
-  infoCard: {
-    marginTop: 10,
-    marginHorizontal: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 24,
-    backgroundColor: colors.inputBackgroundSolid,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  infoRow: {
-    minHeight: 70,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  infoRowTextWrap: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  infoLabel: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  infoIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(colors.accent, 0.1),
-  },
-  infoDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
-  },
-  editScreen: {
-    flex: 1,
-    backgroundColor: colors.chatBackground,
-  },
-  editTopBar: {
-    minHeight: 74,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-  },
-  editNavPill: {
-    minWidth: 76,
-    height: 44,
-    paddingHorizontal: 15,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha('#FFFFFF', 0.86),
-  },
-  editNavPillPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.98 }],
-  },
-  editNavText: {
-    fontSize: 16,
-    lineHeight: 20,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  editDoneText: {
-    fontWeight: '700',
-  },
-  editAvatarWrap: {
-    alignItems: 'center',
-    marginTop: -10,
-    marginBottom: 28,
-  },
-  editAvatarFrame: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: withAlpha(colors.accent, 0.14),
-  },
-  editAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  editAvatarInitial: {
-    fontSize: 38,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  editFieldsCard: {
-    marginHorizontal: 28,
-    borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  editInput: {
-    minHeight: 58,
-    paddingHorizontal: 18,
-    paddingVertical: 0,
-    fontSize: 18,
-    color: colors.textPrimary,
-  },
-  editInputDivider: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 18,
-    backgroundColor: colors.separator,
-  },
-});
