@@ -23,7 +23,15 @@ import { VoiceRecorderService, type VoiceRecordingResult } from '../services/Voi
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
 import type { Message } from '../stores/types';
 import { ensureVideoThumbnailUri } from '../utils/videoThumbnail';
-import { InputAttachmentSheet } from './InputAttachmentSheet';
+import {
+  InputAttachmentSheet,
+  type GalleryItem,
+} from './InputAttachmentSheet';
+import {
+  clearAttachmentGalleryDiskCache,
+  readAttachmentGalleryDiskCache,
+  writeAttachmentGalleryDiskCache,
+} from '../services/attachmentGalleryDiskCache';
 import { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 import { buildReplyPreviewText, getReplyPreviewThumbnailUri } from './ReplyPreview';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
@@ -89,16 +97,11 @@ type AttachmentAction = {
   onPress: () => Promise<void>;
 };
 
-type GalleryItem = {
-  id: string;
-  kind: 'image' | 'video';
-  uri: string;
-  localUri?: string;
-  width?: number;
-  height?: number;
-  durationMs?: number;
-  fileName?: string;
-};
+/** Переживает размонтирование InputBar — без повторного MediaLibrary + N×getAssetInfoAsync при возврате в чат. */
+let sharedAttachmentGalleryCache: GalleryItem[] | null = null;
+let sharedAttachmentGalleryCachedAtMs = 0;
+
+const ATTACHMENT_GALLERY_CACHE_TTL_MS = 5 * 60 * 1000;
 
 type VoiceRecordMode = 'idle' | 'holding' | 'locked';
 type RecordingEntryMode = 'voice' | 'video';
@@ -651,7 +654,39 @@ export function InputBar({
   const loadGallery = useCallback(async () => {
     if (!onSendMedia) return;
 
-    setGalleryLoading(true);
+    const cacheAge = Date.now() - sharedAttachmentGalleryCachedAtMs;
+    if (
+      sharedAttachmentGalleryCache &&
+      sharedAttachmentGalleryCache.length > 0 &&
+      cacheAge >= 0 &&
+      cacheAge < ATTACHMENT_GALLERY_CACHE_TTL_MS
+    ) {
+      setGalleryItems(sharedAttachmentGalleryCache);
+      setGalleryDenied(false);
+      setGalleryLoading(false);
+      return;
+    }
+
+    // После выхода из приложения процесс обнуляется — читаем последний снимок с диска,
+    // чтобы не ждать MediaLibrary на «холодном» открытии скрепки.
+    let hydratedFromDisk = false;
+    try {
+      const diskItems = await readAttachmentGalleryDiskCache();
+      if (diskItems && diskItems.length > 0) {
+        setGalleryItems(diskItems);
+        setGalleryDenied(false);
+        setGalleryLoading(false);
+        sharedAttachmentGalleryCache = diskItems;
+        sharedAttachmentGalleryCachedAtMs = Date.now();
+        hydratedFromDisk = true;
+      }
+    } catch {
+      /* ignore */
+    }
+
+    if (!hydratedFromDisk) {
+      setGalleryLoading(true);
+    }
     try {
       const permission = await MediaLibrary.requestPermissionsAsync();
       const granted = permission.granted || permission.accessPrivileges === 'limited';
@@ -659,6 +694,9 @@ export function InputBar({
       if (!granted) {
         setGalleryDenied(true);
         setGalleryItems([]);
+        sharedAttachmentGalleryCache = null;
+        void clearAttachmentGalleryDiskCache();
+        setGalleryLoading(false);
         return;
       }
 
@@ -684,43 +722,48 @@ export function InputBar({
         fileName: asset.filename,
       }));
       setGalleryItems(mapped);
+      // Раньше loading держался до завершения всех getAssetInfoAsync (десятки вызовов подряд) —
+      // скелетон висел 5–8 с. Показываем сетку сразу по uri из getAssetsAsync.
+      setGalleryLoading(false);
 
-      // Resolve localUris in background batches so images render instantly via file:// paths
-      const BATCH = 12;
-      for (let start = 0; start < mapped.length; start += BATCH) {
-        const batch = mapped.slice(start, start + BATCH);
-        const infos = await Promise.all(
-          batch.map((item) =>
-            MediaLibrary.getAssetInfoAsync(item.id).catch(() => null)
-          )
-        );
-        setGalleryItems((prev) => {
-          const next = [...prev];
-          infos.forEach((info, i) => {
-            if (!info) return;
-            const localUri = info.localUri?.trim() || info.uri?.trim();
-            if (!localUri) return;
-            const idx = start + i;
-            if (idx < next.length) {
-              next[idx] = { ...next[idx], localUri };
-            }
-          });
-          return next;
+      // Уточняем file:// локальные пути для превью; без ожидания полной загрузки в UI.
+      const infos = await Promise.all(
+        mapped.map((item) =>
+          MediaLibrary.getAssetInfoAsync(item.id, {
+            shouldDownloadFromNetwork: false,
+          }).catch(() => null)
+        )
+      );
+      setGalleryItems((prev) => {
+        const next = [...prev];
+        infos.forEach((info, i) => {
+          if (!info) return;
+          const localUri = info.localUri?.trim() || info.uri?.trim();
+          if (!localUri) return;
+          if (i < next.length) {
+            next[i] = { ...next[i], localUri };
+          }
         });
-      }
+        sharedAttachmentGalleryCache = next;
+        sharedAttachmentGalleryCachedAtMs = Date.now();
+        void writeAttachmentGalleryDiskCache(next);
+        return next;
+      });
     } catch (err) {
       if (__DEV__) console.warn('[InputBar] loadGallery error:', err);
       setGalleryItems([]);
-    } finally {
+      sharedAttachmentGalleryCache = null;
+      void clearAttachmentGalleryDiskCache();
       setGalleryLoading(false);
     }
   }, [onSendMedia]);
 
   useEffect(() => {
-    if (showAttachmentSheet && onSendMedia) {
-      loadGallery();
-    }
-  }, [showAttachmentSheet, onSendMedia, loadGallery]);
+    if (!showAttachmentSheet || !onSendMedia) return;
+    // Повторное открытие: не дергаем MediaLibrary и десятки getAssetInfoAsync заново.
+    if (galleryItems.length > 0 && !galleryDenied) return;
+    loadGallery();
+  }, [showAttachmentSheet, onSendMedia, loadGallery, galleryItems.length, galleryDenied]);
 
   const handleToggleGalleryItem = useCallback((item: GalleryItem) => {
     setSelectedGalleryItems((current) => {

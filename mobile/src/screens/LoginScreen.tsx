@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../config';
 import { authService } from '../services/AuthService';
 import { PressScale } from '../components/PressScale';
@@ -302,7 +303,7 @@ export function LoginScreen({ onLogin }: Props) {
 
   if (loginUrl) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.loginWebSafe} edges={['top', 'bottom', 'left', 'right']}>
         <WebView
           source={{ uri: loginUrl }}
           style={styles.webview}
@@ -319,44 +320,52 @@ export function LoginScreen({ onLogin }: Props) {
             );
           }}
         />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ImageBackground source={AUTH_BG} resizeMode="cover" style={styles.background}>
-      <View style={styles.overlay} />
-      <BrandHeader />
-      <View style={styles.content}>
-        <View style={styles.buttonWrap}>
-          <PressScale
-            style={[styles.button, loading && styles.buttonPressed]}
-            pressedScale={0.96}
-            onPress={handleLoginPress}
-            disabled={loading}
-            accessibilityRole="button"
-            accessibilityLabel="Войти с помощью Loginus"
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.buttonText}>Войти с помощью Loginus</Text>
-            )}
-          </PressScale>
+    <View style={styles.rootFill}>
+      <ImageBackground source={AUTH_BG} resizeMode="cover" style={StyleSheet.absoluteFillObject}>
+        <View style={styles.overlay} />
+      </ImageBackground>
+      <SafeAreaView style={styles.welcomeSafe} edges={['top', 'bottom', 'left', 'right']} pointerEvents="box-none">
+        <BrandHeader />
+        <View style={styles.content}>
+          <View style={styles.buttonWrap}>
+            <PressScale
+              style={[styles.button, loading && styles.buttonPressed]}
+              pressedScale={0.96}
+              onPress={handleLoginPress}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Войти с помощью Loginus"
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Войти с помощью Loginus</Text>
+              )}
+            </PressScale>
+          </View>
         </View>
-      </View>
-    </ImageBackground>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  rootFill: {
     flex: 1,
+  },
+  welcomeSafe: {
+    flex: 1,
+  },
+  loginWebSafe: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   webview: {
-    flex: 1,
-  },
-  background: {
     flex: 1,
   },
   overlay: {

@@ -16,6 +16,8 @@ export interface MiniAppSession {
   expires_at: number;
   base_url: string;
   app_id: string;
+  /** Hosts the WebView may navigate to (app origin + OAuth IdP, etc.). */
+  allowed_hosts?: string[];
 }
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {

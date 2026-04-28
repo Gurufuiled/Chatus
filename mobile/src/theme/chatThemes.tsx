@@ -13,9 +13,9 @@ import {
 const DEFAULT_CHAT_BACKGROUND = require('../../chat/chat-bg.png');
 
 const CHAT_THEME_IMAGE_ASSETS = {
-  meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.png'),
-  frost: require('../assets/chat-themes/bg_snow_doodle.png'),
-  sunset: require('../assets/chat-themes/bg_holiday_doodle.png'),
+  meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.jpg'),
+  frost: require('../assets/chat-themes/bg_snow_doodle.jpg'),
+  sunset: require('../assets/chat-themes/bg_holiday_doodle.jpg'),
 } as const;
 
 export type ChatThemeId = 'default' | 'meadow' | 'frost' | 'sunset';

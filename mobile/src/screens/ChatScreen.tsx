@@ -89,6 +89,7 @@ import { formatMediaDuration, formatPlaybackElapsedDuration } from '../utils/med
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
+import { hideOthersMessageOnlyOnDevice } from '../services/locallyHiddenMessages';
 
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
 type ChatNavigation = NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
@@ -437,7 +438,7 @@ export function ChatScreen() {
   );
   const canDeleteSelectedMessages =
     selectedMessages.length > 0 &&
-    selectedMessages.every((message) => message.sender_id === currentUserId && message.is_deleted !== 1);
+    selectedMessages.every((message) => message.is_deleted !== 1);
   const forwardableSelectedMessages = useMemo(
     () => selectedMessagesSorted.filter((message) => canForwardMessage(message)),
     [selectedMessagesSorted]
@@ -1076,36 +1077,40 @@ export function ChatScreen() {
     [chatId, currentUserId, replyToMessageId]
   );
 
-  const confirmDeleteMessage = useCallback((message: Message) => {
-    if (message.sender_id !== currentUserId) {
+  const confirmDeleteMessage = useCallback(
+    (message: Message) => {
       closeMenu();
-      Alert.alert('Удаление недоступно', 'Сейчас можно удалить только свои сообщения.');
-      return;
-    }
-
-    closeMenu();
-    messageStore.getState().updateMessage(chatId, message.id, {
-      is_deleted: 1,
-      content: null,
-    });
-    if (pinnedMessageId === message.id && currentChat) {
-      chatStore.getState().updateChat({
-        ...currentChat,
-        pinned_message_id: null,
+      if (message.sender_id === currentUserId) {
+        messageStore.getState().updateMessage(chatId, message.id, {
+          is_deleted: 1,
+          content: null,
+        });
+        if (pinnedMessageId === message.id && currentChat) {
+          chatStore.getState().updateChat({
+            ...currentChat,
+            pinned_message_id: null,
+          });
+        }
+        TransportService.deleteMessage(chatId, message.id);
+        return;
+      }
+      void hideOthersMessageOnlyOnDevice({
+        chatId,
+        message,
+        currentChat,
+        pinnedMessageId,
       });
-    }
-    TransportService.deleteMessage(chatId, message.id);
-  }, [chatId, closeMenu, currentChat, currentUserId, pinnedMessageId]);
+    },
+    [chatId, closeMenu, currentChat, currentUserId, pinnedMessageId]
+  );
 
   const handleDeleteMessage = useCallback((message: Message) => {
-    if (message.sender_id !== currentUserId) {
+    if (message.is_deleted === 1) {
       closeMenu();
-      Alert.alert('Удаление недоступно', 'Сейчас можно удалить только свои сообщения.');
       return;
     }
-
     setMenuMode('deleteConfirm');
-  }, [chatId, closeMenu, currentChat, currentUserId, pinnedMessageId]);
+  }, [closeMenu]);
 
   const handlePinToggle = useCallback((message: Message) => {
     const nextPinnedId = pinnedMessageId === message.id ? null : message.id;
@@ -1299,41 +1304,65 @@ export function ChatScreen() {
 
   const handleDeleteSelectedMessages = useCallback(() => {
     if (!canDeleteSelectedMessages) {
-      Alert.alert('Удаление недоступно', 'Пока можно удалить только свои выбранные сообщения.');
+      Alert.alert('Удаление недоступно', 'Среди выбранных нет сообщений, которые можно убрать.');
       return;
     }
 
     const count = selectedMessages.length;
-    Alert.alert(
-      count > 1 ? 'Удалить выбранные сообщения?' : 'Удалить сообщение?',
-      count > 1
-        ? `Будет удалено ${count} сообщений из этого чата.`
-        : 'Сообщение исчезнет из этого чата.',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: () => {
+    const allMine = selectedMessages.every((m) => m.sender_id === currentUserId);
+    const onlyOthers = selectedMessages.every((m) => m.sender_id !== currentUserId);
+
+    const description = (() => {
+      if (allMine) {
+        return count > 1
+          ? `Будет удалено ${count} сообщений для всех участников чата.`
+          : 'Сообщение будет удалено для всех участников чата.';
+      }
+      if (onlyOthers) {
+        return count > 1
+          ? 'Чужие сообщения будут скрыты только на этом устройстве.'
+          : 'Сообщение будет скрыто только у вас на этом устройстве.';
+      }
+      return 'Ваши сообщения удалятся для всех; чужие — только скроются у вас.';
+    })();
+
+    Alert.alert(count > 1 ? 'Удалить выбранные сообщения?' : 'Удалить сообщение?', description, [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
             for (const message of selectedMessages) {
-              messageStore.getState().updateMessage(chatId, message.id, {
-                is_deleted: 1,
-                content: null,
-              });
-              if (pinnedMessageId === message.id && currentChat) {
-                chatStore.getState().updateChat({
-                  ...currentChat,
-                  pinned_message_id: null,
+              const chatSnapshot = chatStore.getState().chats.find((c) => c.id === chatId) ?? currentChat;
+              const pinId = chatSnapshot?.pinned_message_id ?? null;
+              if (message.sender_id === currentUserId) {
+                messageStore.getState().updateMessage(chatId, message.id, {
+                  is_deleted: 1,
+                  content: null,
+                });
+                if (pinId === message.id && chatSnapshot) {
+                  chatStore.getState().updateChat({
+                    ...chatSnapshot,
+                    pinned_message_id: null,
+                  });
+                }
+                TransportService.deleteMessage(chatId, message.id);
+              } else {
+                await hideOthersMessageOnlyOnDevice({
+                  chatId,
+                  message,
+                  currentChat: chatSnapshot,
+                  pinnedMessageId: pinId,
                 });
               }
-              TransportService.deleteMessage(chatId, message.id);
             }
             setSelectedMessageIds([]);
-          },
+          })();
         },
-      ]
-    );
-  }, [canDeleteSelectedMessages, chatId, currentChat, pinnedMessageId, selectedMessages]);
+      },
+    ]);
+  }, [canDeleteSelectedMessages, chatId, currentChat, currentUserId, selectedMessages]);
 
   const handleMenuAction = useCallback(async (key: MessageMenuActionKey) => {
     if (!activeMenuMessage) return;
@@ -1809,10 +1838,11 @@ export function ChatScreen() {
     if (!activeMenuMessage) return [];
 
     if (menuMode === 'deleteConfirm') {
+      const isOwn = activeMenuMessage.sender_id === currentUserId;
       return [
         {
           key: 'delete_confirm',
-          label: 'Удалить для всех',
+          label: isOwn ? 'Удалить для всех' : 'Удалить у себя',
           icon: null,
           color: '#E53935',
           disabled: false,
@@ -1840,7 +1870,7 @@ export function ChatScreen() {
       { key: 'delete', label: 'Удалить', icon: 'trash-2', color: '#E53935', disabled: false },
       { key: 'select', label: 'Выбрать', icon: 'check-circle', color: '#111827', disabled: false },
     ];
-  }, [activeMenuMessage, menuMode, pinnedMessageId]);
+  }, [activeMenuMessage, currentUserId, menuMode, pinnedMessageId]);
 
   return (
     <View style={[styles.container, { backgroundColor: chatTheme.canvasColor }]}>

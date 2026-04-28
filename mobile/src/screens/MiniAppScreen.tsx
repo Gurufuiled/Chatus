@@ -76,13 +76,22 @@ export function MiniAppScreen({ route, navigation }: Props) {
     [context],
   );
 
-  const allowedHost = useMemo(() => {
-    if (!session) return null;
-    try {
-      return new URL(session.base_url).host.toLowerCase();
-    } catch {
-      return null;
+  /** WebView may follow OAuth redirects to IdP (e.g. Loginus) — not only the mini-app origin. */
+  const loadAllowedHostSet = useMemo(() => {
+    const s = new Set<string>();
+    if (session) {
+      try {
+        s.add(new URL(session.base_url).host.toLowerCase());
+      } catch {
+        /* ignore */
+      }
+      for (const h of session.allowed_hosts ?? []) {
+        const t = h?.trim().toLowerCase();
+        if (t) s.add(t);
+      }
     }
+    s.add('loginus.startapus.com');
+    return s;
   }, [session]);
 
   const handleMessage = useCallback(
@@ -110,17 +119,16 @@ export function MiniAppScreen({ route, navigation }: Props) {
 
   const handleShouldLoad = useCallback(
     (request: { url: string }) => {
-      if (!allowedHost) return true;
       try {
         const url = new URL(request.url);
         if (url.protocol === 'about:' || url.protocol === 'data:') return true;
         if (url.protocol !== 'https:') return false;
-        return url.host.toLowerCase() === allowedHost;
+        return loadAllowedHostSet.has(url.host.toLowerCase());
       } catch {
         return false;
       }
     },
-    [allowedHost],
+    [loadAllowedHostSet],
   );
 
   if (error) {

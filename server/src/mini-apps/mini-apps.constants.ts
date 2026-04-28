@@ -10,6 +10,9 @@ export const SESSION_TOKEN_TTL_SECONDS = 60 * 15; // 15 min
 
 export const DEVELOPER_AGREEMENT_VERSION = '1.0';
 
+/** Mini-app WebView may navigate here for OAuth (must match client allowlist). */
+export const MINI_APP_DEFAULT_EXTRA_HOSTS = ['loginus.startapus.com'] as const;
+
 export const DEVELOPER_AGREEMENT_TEXT = [
   'Краткая оферта разработчика мини-приложений Chatus v1.0:',
   '1) Ваш контент не нарушает законы, не содержит вредоносного кода, фишинга, обмана и скама.',

@@ -4,6 +4,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import { SCHEMA_SQL, DB_VERSION } from '../db/schema';
+import { locallyHiddenMessageStore } from '../stores/locallyHiddenMessageStore';
 
 const DB_NAME = 'messenger.db';
 
@@ -294,6 +295,15 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
   await db.execAsync(SCHEMA_SQL);
   await ensureSchemaColumns(db);
   await db.runAsync('PRAGMA user_version = ' + DB_VERSION);
+
+  try {
+    const hiddenRows = await db.getAllAsync<{ chat_id: string; message_id: string }>(
+      'SELECT chat_id, message_id FROM locally_hidden_messages'
+    );
+    locallyHiddenMessageStore.getState().hydrate(hiddenRows);
+  } catch {
+    // table may be missing on very old builds — SCHEMA_SQL above creates it on next run
+  }
 
   dbInstance = db;
   return db;

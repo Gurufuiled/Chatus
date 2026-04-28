@@ -13,6 +13,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, NativeViewGestureHandler } from 'react-native-gesture-handler';
 import Reanimated, {
+  Extrapolation,
+  interpolate,
   runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -29,7 +31,7 @@ import {
   getCachedVideoThumbnailUri,
 } from '../utils/videoThumbnail';
 
-type GalleryItem = {
+export type GalleryItem = {
   id: string;
   kind: 'image' | 'video';
   uri: string;
@@ -37,6 +39,7 @@ type GalleryItem = {
   width?: number;
   height?: number;
   durationMs?: number;
+  fileName?: string;
 };
 
 type AttachmentAction = {
@@ -158,7 +161,6 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   const isExpanded = useSharedValue(false);
   const scrollY = useSharedValue(0);
   const dragStartH = useSharedValue(COLLAPSED_H);
-  const listPanOffset = useSharedValue(0);
 
   // --- JS state for close trigger ---
   const [shouldClose, setShouldClose] = React.useState(false);
@@ -235,50 +237,46 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
       }
     });
 
-  // Pan simultaneous with the FlatList native handler.
-  // Pulling down when at top of list drags the sheet down.
+  // Pan simultaneous with FlatList: at scroll top, same vertical mapping as header (Telegram-like).
   const listPan = Gesture.Pan()
     .simultaneousWithExternalGesture(nativeScrollRef)
     .onBegin(() => {
       dragStartH.value = sheetH.value;
-      listPanOffset.value = 0;
     })
     .onUpdate((e) => {
-      // Only pull the sheet down when the list is truly at the top
-      if (scrollY.value <= 2 && e.translationY > 0) {
-        if (listPanOffset.value === 0) {
-          listPanOffset.value = e.translationY;
-          dragStartH.value = sheetH.value;
-        }
-        const pullDown = e.translationY - listPanOffset.value;
-        if (pullDown > 0) {
-          sheetH.value = Math.max(0, dragStartH.value - pullDown);
-        }
-      } else {
-        listPanOffset.value = 0;
-        dragStartH.value = sheetH.value;
+      if (scrollY.value <= 2) {
+        const next = dragStartH.value - e.translationY;
+        sheetH.value = Math.max(0, Math.min(EXPANDED_H, next));
       }
     })
     .onEnd((e) => {
-      const vel = e.velocityY; // positive = downward
+      const vel = e.velocityY;
       const cur = sheetH.value;
-      
-      if (scrollY.value <= 2 && e.translationY > 0 && listPanOffset.value > 0) {
-        // Decide close vs collapse vs snap-back
-        if (vel > 400 || cur < COLLAPSED_H * 0.7) {
-          if (isExpanded.value) snapCollapse(); else snapClose();
+
+      if (scrollY.value <= 2) {
+        if (vel > 700 || cur < COLLAPSED_H * 0.55) {
+          snapClose();
+        } else if (!isExpanded.value && (cur > COLLAPSED_H + 60 || vel < -500)) {
+          snapExpand();
+        } else if (isExpanded.value && cur < EXPANDED_H - 60) {
+          snapCollapse();
+        } else if (isExpanded.value) {
+          snapExpand();
         } else {
-          if (isExpanded.value) snapExpand(); else snapCollapse();
+          snapCollapse();
         }
       } else {
-        // Not at top or wasn't pulling down: just snap to correct position
-        if (isExpanded.value) snapExpand(); else snapCollapse();
+        if (isExpanded.value) snapExpand();
+        else snapCollapse();
       }
-      listPanOffset.value = 0;
     });
 
   // --- Animated styles ---
   const sheetStyle = useAnimatedStyle(() => ({ height: sheetH.value }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(sheetH.value, [0, COLLAPSED_H], [0, 0.38], Extrapolation.CLAMP),
+  }));
 
   // --- Gallery helpers ---
   const selectedById = React.useMemo(() => {
@@ -305,7 +303,9 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
       <View style={styles.root}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+          <Reanimated.View pointerEvents="none" style={[styles.backdropFill, backdropStyle]} />
+        </Pressable>
 
         <Reanimated.View
           style={[
@@ -433,7 +433,10 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
 
 const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' },
+  backdropFill: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
   sheet: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 30,

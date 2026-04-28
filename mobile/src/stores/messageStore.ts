@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { filterHiddenMessages, locallyHiddenMessageStore } from './locallyHiddenMessageStore';
 import type { Message } from './types';
 
 type MessageState = {
@@ -31,16 +32,17 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
 
   setMessages: (chatId, messages) =>
     set((state) => {
+      const filteredIncoming = filterHiddenMessages(chatId, messages);
       const existing = state.messagesByChatId[chatId] ?? [];
       const now = Date.now();
       const OPTIMISTIC_TTL_MS = 2 * 60 * 1000;
-      const serverIds = new Set(messages.map((m) => m.id));
+      const serverIds = new Set(filteredIncoming.map((m) => m.id));
       const pendingLocalOnly = existing.filter((m) => {
         if (!(m.status === 'sending' || m.status === 'failed')) return false;
         if (!m.id.startsWith('temp-')) return false;
         if (serverIds.has(m.id)) return false;
         if (now - m.created_at > OPTIMISTIC_TTL_MS) return false;
-        const likelyServerTwin = messages.some(
+        const likelyServerTwin = filteredIncoming.some(
           (srv) =>
             srv.sender_id === m.sender_id &&
             srv.msg_type === m.msg_type &&
@@ -48,7 +50,8 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
         );
         return !likelyServerTwin;
       });
-      const merged = pendingLocalOnly.length > 0 ? [...pendingLocalOnly, ...messages] : messages;
+      const merged =
+        pendingLocalOnly.length > 0 ? [...pendingLocalOnly, ...filteredIncoming] : filteredIncoming;
       return {
         messagesByChatId: { ...state.messagesByChatId, [chatId]: merged },
       };
@@ -56,6 +59,7 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
 
   addMessage: (chatId, message) =>
     set((state) => {
+      if (locallyHiddenMessageStore.getState().isHidden(chatId, message.id)) return state;
       const existing = state.messagesByChatId[chatId] ?? [];
       if (existing.some((m) => m.id === message.id)) return state;
       return {
@@ -68,6 +72,7 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
 
   prependMessage: (chatId, message) =>
     set((state) => {
+      if (locallyHiddenMessageStore.getState().isHidden(chatId, message.id)) return state;
       const existing = state.messagesByChatId[chatId] ?? [];
       if (existing.some((m) => m.id === message.id)) return state;
       return {

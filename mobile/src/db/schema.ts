@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 10;
+export const DB_VERSION = 11;
 
 export const SCHEMA_SQL = `
 -- users
@@ -162,4 +162,13 @@ CREATE INDEX IF NOT EXISTS idx_media_upload ON media(upload_status) WHERE upload
 CREATE INDEX IF NOT EXISTS idx_sync_pending ON sync_queue(status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_sync_user_pending ON sync_queue(user_id, status, next_retry_at);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- Messages hidden only on this device (do not sync to server)
+CREATE TABLE IF NOT EXISTS locally_hidden_messages (
+  chat_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (chat_id, message_id)
+);
+CREATE INDEX IF NOT EXISTS idx_locally_hidden_chat ON locally_hidden_messages(chat_id);
 `;

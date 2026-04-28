@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   DEVELOPER_AGREEMENT_VERSION,
   INIT_PAYLOAD_TTL_SECONDS,
+  MINI_APP_DEFAULT_EXTRA_HOSTS,
   SESSION_TOKEN_TTL_SECONDS,
 } from './mini-apps.constants';
 
@@ -48,6 +49,8 @@ export interface SessionBundle {
   expires_at: number;
   base_url: string;
   app_id: string;
+  /** Hostnames the in-app WebView may load (OAuth redirects, CDN, etc.). */
+  allowed_hosts: string[];
 }
 
 export interface SessionTokenBundle {
@@ -69,6 +72,24 @@ function b64urlEncode(buf: Buffer | string): string {
 function b64urlDecode(str: string): Buffer {
   const padded = str + '==='.slice((str.length + 3) % 4);
   return Buffer.from(padded.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+}
+
+/** Merge app URL host + DB allowlist + shared OAuth hosts for WebView navigation policy. */
+function buildMiniAppAllowedHosts(baseUrl: string, dbHosts: string[]): string[] {
+  const set = new Set<string>();
+  try {
+    set.add(new URL(baseUrl).host.toLowerCase());
+  } catch {
+    /* ignore */
+  }
+  for (const h of dbHosts ?? []) {
+    const t = typeof h === 'string' ? h.trim().toLowerCase() : '';
+    if (t) set.add(t);
+  }
+  for (const h of MINI_APP_DEFAULT_EXTRA_HOSTS) {
+    set.add(h);
+  }
+  return [...set];
 }
 
 @Injectable()
@@ -240,6 +261,7 @@ export class MiniAppsService {
       expires_at: payload.exp,
       base_url: app.baseUrl,
       app_id: app.shortId,
+      allowed_hosts: buildMiniAppAllowedHosts(app.baseUrl, app.allowedHosts),
     };
   }
 
