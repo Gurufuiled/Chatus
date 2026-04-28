@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "android": {
     "minVersionCode": 1,
-    "latestVersionCode": 1,
+    "latestVersionCode": 2,
     "apkUrl": "https://github.com/Startupus-Team/chatus/releases/latest/download/app-release.apk"
   }
 }
