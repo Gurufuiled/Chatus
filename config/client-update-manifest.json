@@ -1,9 +1,10 @@
 {
-  "_readme": "Схема v1. Перед релизом APK поднимите latestVersionCode; minVersionCode — минимально допустимая сборка. apkUrl — имя файла в GitHub Release (совпадает с Gradle: chatus-release.apk, плагин withAndroidApkBasename).",
+  "_readme": "Схема v1. android.releaseTag + EXPO_PUBLIC_CLIENT_RELEASE_TAG в APK: при смене тега в манифесте — мягкое обновление без смены versionCode. minVersionCode — жёсткий минимум. latestVersionCode — fallback, если releaseTag в манифесте не задан.",
   "schemaVersion": 1,
   "android": {
     "minVersionCode": 1,
     "latestVersionCode": 3,
+    "releaseTag": "r2026-04-28-1",
     "apkUrl": "https://github.com/Startupus-Team/chatus/releases/latest/download/chatus-release.apk"
   }
 }

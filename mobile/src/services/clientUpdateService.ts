@@ -8,6 +8,8 @@ export type ClientUpdateAndroid = {
   minVersionCode: number;
   latestVersionCode: number;
   apkUrl: string;
+  /** Совпадает с EXPO_PUBLIC_CLIENT_RELEASE_TAG во встраиваемом APK — смена только её предлагает обновление без поднятия versionCode. */
+  releaseTag?: string;
 };
 
 export type ClientUpdateManifest = {
@@ -54,7 +56,22 @@ export function parseClientUpdateManifest(data: unknown): ClientUpdateManifest |
     const apkUrl = parseHttpsUrl(data.android.apkUrl);
     if (minVersionCode === null || latestVersionCode === null || !apkUrl) return null;
     if (minVersionCode > latestVersionCode) return null;
-    android = { minVersionCode, latestVersionCode, apkUrl };
+
+    let releaseTag: string | undefined;
+    if (data.android.releaseTag !== undefined) {
+      if (typeof data.android.releaseTag !== 'string') return null;
+      const raw = data.android.releaseTag.trim();
+      if (raw.length > 0) {
+        releaseTag = raw.length > 128 ? raw.slice(0, 128) : raw;
+      }
+    }
+
+    android = {
+      minVersionCode,
+      latestVersionCode,
+      apkUrl,
+      ...(releaseTag ? { releaseTag } : {}),
+    };
   }
 
   return {
@@ -73,10 +90,31 @@ export async function fetchClientUpdateManifest(url: string): Promise<ClientUpda
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[clientUpdate] manifest HTTP',
+          res.status,
+          res.statusText,
+          '—',
+          url,
+        );
+      }
+      return null;
+    }
     const json: unknown = await res.json();
-    return parseClientUpdateManifest(json);
-  } catch {
+    const parsed = parseClientUpdateManifest(json);
+    if (!parsed && __DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[clientUpdate] manifest JSON invalid or schema mismatch', url);
+    }
+    return parsed;
+  } catch (e) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[clientUpdate] manifest fetch failed', url, e);
+    }
     return null;
   } finally {
     clearTimeout(t);
@@ -104,7 +142,8 @@ export function getCurrentAndroidVersionCode(): number | null {
 
 export function evaluateAndroidUpdate(
   manifest: ClientUpdateManifest,
-  currentVersionCode: number
+  currentVersionCode: number,
+  embeddedReleaseTag: string
 ): { decision: AndroidUpdateDecision; apkUrl: string | null } {
   const a = manifest.android;
   if (!a) return { decision: 'none', apkUrl: null };
@@ -112,6 +151,16 @@ export function evaluateAndroidUpdate(
   if (currentVersionCode < a.minVersionCode) {
     return { decision: 'force', apkUrl: a.apkUrl };
   }
+
+  const manifestTag = a.releaseTag?.trim();
+  if (manifestTag) {
+    const embedded = embeddedReleaseTag.trim();
+    if (embedded !== manifestTag) {
+      return { decision: 'soft', apkUrl: a.apkUrl };
+    }
+    return { decision: 'none', apkUrl: null };
+  }
+
   if (currentVersionCode < a.latestVersionCode) {
     return { decision: 'soft', apkUrl: a.apkUrl };
   }

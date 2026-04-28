@@ -19,7 +19,8 @@ type PublicEnvKey =
   /** `true` — не вызывать проверку обновлений даже при заданном URL. */
   | 'EXPO_PUBLIC_CLIENT_UPDATE_DISABLED'
   /** `true` — в __DEV__ тоже запрашивать манифест (по умолчанию в dev проверка пропускается). */
-  | 'EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV';
+  | 'EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV'
+  | 'EXPO_PUBLIC_CLIENT_RELEASE_TAG';
 
 function readExpoPublic(key: PublicEnvKey): string | undefined {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
@@ -126,6 +127,12 @@ export const CLIENT_UPDATE_DISABLED =
 
 export const CLIENT_UPDATE_CHECK_IN_DEV =
   readExpoPublic('EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV') === 'true';
+
+/**
+ * Метка релиза APK, вшитая при сборке. Должна совпадать с `android.releaseTag` в client-update-manifest.json
+ * (не обязана совпадать с versionCode). Смена метки в манифесте = предложение обновить без поднятия versionCode.
+ */
+export const CLIENT_RELEASE_TAG = (readExpoPublic('EXPO_PUBLIC_CLIENT_RELEASE_TAG') || '').trim();
 
 export const OAUTH_REDIRECT_URI = 'messenger://auth/callback';
 

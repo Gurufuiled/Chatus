@@ -1339,7 +1339,7 @@ export function InputBar({
               </Text>
             </View>
             <Pressable style={styles.previewRemoveButton} onPress={() => setPendingMedia(null)}>
-              <Feather name="x" size={16} color="#6B7280" />
+              <Feather name="x" size={16} color={themeColors.iconMuted} />
             </Pressable>
           </View>
         ) : null}
@@ -1392,7 +1392,7 @@ export function InputBar({
                     onPress={onCancelReply}
                     style={styles.replyComposerClose}
                   >
-                    <Feather name="x" size={18} color="#9AA4B2" />
+                    <Feather name="x" size={18} color={themeColors.iconMuted} />
                   </Pressable>
                 </View>
               </View>
@@ -1512,9 +1512,9 @@ function createInputBarStyles(themeColors: ThemeColors) {
   previewCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E3E8EF',
+    backgroundColor: themeColors.inputBackgroundSolid,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: themeColors.separator,
     borderRadius: 18,
     padding: 10,
     marginBottom: 8,
@@ -1529,7 +1529,7 @@ function createInputBarStyles(themeColors: ThemeColors) {
     height: 56,
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: '#EEF2F7',
+    backgroundColor: themeColors.placeholderBg,
   },
   previewImage: {
     width: '100%',
@@ -1559,26 +1559,26 @@ function createInputBarStyles(themeColors: ThemeColors) {
   previewTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#111827',
+    color: themeColors.textPrimary,
   },
   previewSubtitle: {
     marginTop: 2,
     fontSize: 12,
-    color: '#6B7280',
+    color: themeColors.textSecondary,
   },
   previewRemoveButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F8FAFD',
+    backgroundColor: themeColors.inputBackground,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E6EBF2',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: themeColors.separator,
   },
   replyComposerWrap: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEF1F5',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: themeColors.separator,
   },
   replyComposerInline: {
     flexDirection: 'row',
@@ -1587,13 +1587,13 @@ function createInputBarStyles(themeColors: ThemeColors) {
     paddingLeft: 12,
     paddingRight: 8,
     paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
   },
   replyComposerAccent: {
     width: 3,
     alignSelf: 'stretch',
     borderRadius: 999,
-    backgroundColor: '#4B9DFF',
+    backgroundColor: themeColors.accent,
     marginRight: 10,
   },
   replyComposerCopy: {
@@ -1605,19 +1605,19 @@ function createInputBarStyles(themeColors: ThemeColors) {
     height: 34,
     borderRadius: 10,
     marginRight: 10,
-    backgroundColor: '#EEF2F7',
+    backgroundColor: themeColors.placeholderBg,
   },
   replyComposerAuthor: {
     fontSize: 14,
     lineHeight: 17,
     fontWeight: '700',
-    color: '#3497FF',
+    color: themeColors.accent,
   },
   replyComposerText: {
     marginTop: 1,
     fontSize: 13,
     lineHeight: 17,
-    color: '#202327',
+    color: themeColors.textPrimary,
   },
   replyComposerClose: {
     width: 34,

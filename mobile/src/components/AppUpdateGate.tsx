@@ -4,6 +4,7 @@ import * as Linking from 'expo-linking';
 
 import { useTheme } from '../contexts/ThemeContext';
 import {
+  CLIENT_RELEASE_TAG,
   CLIENT_UPDATE_CHECK_IN_DEV,
   CLIENT_UPDATE_DISABLED,
   CLIENT_UPDATE_MANIFEST_URL,
@@ -25,13 +26,39 @@ export function AppUpdateGate() {
   const [apkUrl, setApkUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (CLIENT_UPDATE_DISABLED) return;
-    if (!CLIENT_UPDATE_MANIFEST_URL?.trim()) return;
+    if (CLIENT_UPDATE_DISABLED) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[AppUpdateGate] skip: EXPO_PUBLIC_CLIENT_UPDATE_DISABLED');
+      }
+      return;
+    }
+    if (!CLIENT_UPDATE_MANIFEST_URL?.trim()) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[AppUpdateGate] skip: EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL пустой');
+      }
+      return;
+    }
     if (Platform.OS !== 'android') return;
-    if (__DEV__ && !CLIENT_UPDATE_CHECK_IN_DEV) return;
+    if (__DEV__ && !CLIENT_UPDATE_CHECK_IN_DEV) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[AppUpdateGate] skip в __DEV__: задай EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV=true в .env или собери release',
+      );
+      return;
+    }
 
     const current = getCurrentAndroidVersionCode();
-    if (current === null) return;
+    if (current === null) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[AppUpdateGate] skip: versionCode недоступен (Expo Go?); используй dev/release APK',
+        );
+      }
+      return;
+    }
 
     let cancelled = false;
 
@@ -41,8 +68,19 @@ export function AppUpdateGate() {
         if (!cancelled) setMode('idle');
         return;
       }
-      const { decision, apkUrl: url } = evaluateAndroidUpdate(manifest, current);
+      const { decision, apkUrl: url } = evaluateAndroidUpdate(manifest, current, CLIENT_RELEASE_TAG);
       if (cancelled) return;
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[AppUpdateGate]', {
+          currentVersionCode: current,
+          embeddedReleaseTag: CLIENT_RELEASE_TAG || '(пусто)',
+          manifestReleaseTag: manifest.android?.releaseTag ?? '(нет)',
+          min: manifest.android?.minVersionCode,
+          latest: manifest.android?.latestVersionCode,
+          decision,
+        });
+      }
       if (decision === 'force' && url) {
         setApkUrl(url);
         setMode('force');

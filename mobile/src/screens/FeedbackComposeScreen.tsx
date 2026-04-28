@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,9 +18,10 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as MediaLibrary from 'expo-media-library';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InputAttachmentSheet } from '../components/InputAttachmentSheet';
+import { useTheme } from '../contexts/ThemeContext';
 import { apiUpload } from '../services/apiClient';
 import { createFeedback } from '../services/feedbackService';
-import { colors } from '../theme/colors';
+import type { ThemeColors } from '../theme/palettes';
 import type { SettingsStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'FeedbackCompose'>;
@@ -48,6 +49,8 @@ function inferMimeTypeFromFileName(fileName: string | undefined): string {
 
 export function FeedbackComposeScreen({ navigation, route }: Props) {
   const { kind } = route.params;
+  const { colors } = useTheme();
+  const styles = useMemo(() => createFeedbackComposeStyles(colors), [colors]);
   const title = kind === 'bug' ? 'Сообщить о баге' : 'Предложение';
   const insets = useSafeAreaInsets();
 
@@ -290,97 +293,99 @@ export function FeedbackComposeScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.chatBackground },
-  scroll: { padding: 16, paddingBottom: 24 },
-  label: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 8 },
-  input: {
-    backgroundColor: colors.inputBackgroundSolid,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.textPrimary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-    marginBottom: 16,
-  },
-  bodyInput: { minHeight: 200 },
-  inlinePreview: {
-    alignSelf: 'stretch',
-    marginBottom: 8,
-    height: 200,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-    backgroundColor: colors.inputBackground,
-  },
-  inlinePreviewImg: { width: '100%', height: '100%' },
-  inlinePreviewRemove: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
-    backgroundColor: colors.chatBackground,
-  },
-  galleryFooterBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: colors.inputBackgroundSolid,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  galleryFooterLabel: { fontSize: 15, fontWeight: '600', color: colors.accent },
-  sendFooterBtn: {
-    flex: 1,
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  sendFooterBtnDisabled: { opacity: 0.75 },
-  sendFooterText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  toastOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingBottom: 120,
-    zIndex: 50,
-  },
-  toastPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(33,33,33,0.92)',
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  toastText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-});
+function createFeedbackComposeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    flex: { flex: 1, backgroundColor: colors.chatBackground },
+    scroll: { padding: 16, paddingBottom: 24 },
+    label: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginBottom: 8 },
+    input: {
+      backgroundColor: colors.inputBackgroundSolid,
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 16,
+      color: colors.textPrimary,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.separator,
+      marginBottom: 16,
+    },
+    bodyInput: { minHeight: 200 },
+    inlinePreview: {
+      alignSelf: 'stretch',
+      marginBottom: 8,
+      height: 200,
+      borderRadius: 12,
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.separator,
+      backgroundColor: colors.inputBackground,
+    },
+    inlinePreviewImg: { width: '100%', height: '100%' },
+    inlinePreviewRemove: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    footer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.chatBackground,
+    },
+    galleryFooterBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 12,
+      backgroundColor: colors.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.separator,
+    },
+    galleryFooterLabel: { fontSize: 15, fontWeight: '600', color: colors.accent },
+    sendFooterBtn: {
+      flex: 1,
+      backgroundColor: colors.accent,
+      paddingVertical: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+    },
+    sendFooterBtnDisabled: { opacity: 0.75 },
+    sendFooterText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    toastOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+      paddingBottom: 120,
+      zIndex: 50,
+    },
+    toastPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: 'rgba(33,33,33,0.92)',
+      paddingHorizontal: 22,
+      paddingVertical: 14,
+      borderRadius: 14,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      elevation: 8,
+    },
+    toastText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  });
+}

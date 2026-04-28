@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,9 +14,10 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from '@expo/vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { resolveMediaUrl } from '../config';
 import { fetchFeedbackList, type FeedbackEntry } from '../services/feedbackService';
-import { colors } from '../theme/colors';
+import type { ThemeColors } from '../theme/palettes';
 import type { SettingsStackParamList } from '../navigation/types';
 import { FEEDBACK_INBOX_HANDLE, isFeedbackInboxViewer } from '../utils/feedbackInbox';
 
@@ -34,6 +35,8 @@ function formatListDate(ms: number): string {
 }
 
 export function FeedbackListScreen({ navigation, route }: Props) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createFeedbackListStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
   const imageBoxHeight = Math.min(480, Math.round(windowHeight * 0.4));
 
@@ -123,7 +126,7 @@ export function FeedbackListScreen({ navigation, route }: Props) {
         </View>
       );
     },
-    [imageBoxHeight, inbox],
+    [imageBoxHeight, inbox, styles],
   );
 
   if (loading && items.length === 0) {
@@ -181,67 +184,69 @@ export function FeedbackListScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.chatBackground },
-  list: { flex: 1 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  inboxHint: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 4,
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  listContent: { padding: 16, paddingBottom: 24, gap: 10 },
-  card: {
-    backgroundColor: colors.inputBackgroundSolid,
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  cardAuthor: { fontSize: 13, color: colors.accent, marginTop: 4 },
-  cardImageWrap: {
-    width: '100%',
-    marginTop: 10,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: colors.inputBackground,
-  },
-  cardImage: {
-    width: '100%',
-    height: '100%',
-  },
-  cardBody: { fontSize: 15, color: colors.textPrimary, marginTop: 10, lineHeight: 21 },
-  cardMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 10 },
-  empty: { textAlign: 'center', color: colors.textSecondary, marginTop: 24, paddingHorizontal: 24 },
-  errorBox: { padding: 16, alignItems: 'center', gap: 8 },
-  errorText: { color: '#C62828', textAlign: 'center' },
-  retryBtn: { padding: 8 },
-  retryText: { color: colors.accent, fontWeight: '600' },
-  bottomBar: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
-    backgroundColor: colors.chatBackground,
-  },
-  composeCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  composeCtaPressed: { opacity: 0.92 },
-  composeCtaText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-});
+function createFeedbackListStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.chatBackground },
+    list: { flex: 1 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    inboxHint: {
+      marginHorizontal: 16,
+      marginTop: 12,
+      marginBottom: 4,
+      fontSize: 13,
+      color: colors.textSecondary,
+      lineHeight: 18,
+    },
+    listContent: { padding: 16, paddingBottom: 24, gap: 10 },
+    card: {
+      backgroundColor: colors.inputBackgroundSolid,
+      borderRadius: 12,
+      padding: 14,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.separator,
+    },
+    cardTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+    cardAuthor: { fontSize: 13, color: colors.accent, marginTop: 4 },
+    cardImageWrap: {
+      width: '100%',
+      marginTop: 10,
+      borderRadius: 10,
+      overflow: 'hidden',
+      backgroundColor: colors.inputBackground,
+    },
+    cardImage: {
+      width: '100%',
+      height: '100%',
+    },
+    cardBody: { fontSize: 15, color: colors.textPrimary, marginTop: 10, lineHeight: 21 },
+    cardMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 10 },
+    empty: { textAlign: 'center', color: colors.textSecondary, marginTop: 24, paddingHorizontal: 24 },
+    errorBox: { padding: 16, alignItems: 'center', gap: 8 },
+    errorText: { color: '#C62828', textAlign: 'center' },
+    retryBtn: { padding: 8 },
+    retryText: { color: colors.accent, fontWeight: '600' },
+    bottomBar: {
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.chatBackground,
+    },
+    composeCta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      backgroundColor: colors.accent,
+      paddingVertical: 14,
+      borderRadius: 14,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      elevation: 3,
+    },
+    composeCtaPressed: { opacity: 0.92 },
+    composeCtaText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  });
+}
