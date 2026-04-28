@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * После локальной сборки release APK: создаёт / обновляет GitHub Release и прикрепляет app-release.apk.
+ * После локальной сборки release APK: создаёт / обновляет GitHub Release и прикрепляет chatus-release.apk.
  *
  * Требуется токен GitHub с правом на Contents (репозиторий):
  *   set GITHUB_TOKEN=ghp_...   (Windows)
@@ -11,7 +11,7 @@
  *
  * Примеры (из корня репозитория):
  *   node scripts/upload-apk-github.mjs v1.0.2
- *   node scripts/upload-apk-github.mjs v1.0.2 --apk mobile/android/app/build/outputs/apk/release/app-release.apk
+ *   node scripts/upload-apk-github.mjs v1.0.2 --apk mobile/android/app/build/outputs/apk/release/chatus-release.apk
  */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -117,7 +117,7 @@ async function main() {
   if (getReleaseRes.ok) {
     const r = await getReleaseRes.json();
     releaseId = r.id;
-    console.log(`Release ${tag} уже есть (id ${releaseId}). Заменяю app-release.apk...`);
+    console.log(`Release ${tag} уже есть (id ${releaseId}). Заменяю chatus-release.apk...`);
   } else if (getReleaseRes.status === 404) {
     const createRes = await fetch(`${base}/releases`, {
       method: 'POST',
@@ -143,7 +143,7 @@ async function main() {
   const relGet = await fetch(`${base}/releases/${releaseId}`, { headers: ghHeaders(token) });
   const rel = await relGet.json();
   const assets = rel.assets || [];
-  const targetName = 'app-release.apk';
+  const targetName = 'chatus-release.apk';
   for (const a of assets) {
     if (a.name === targetName) {
       const del = await fetch(
@@ -154,7 +154,7 @@ async function main() {
         const t = await del.text();
         throw new Error(`Удалить старый asset не удалось: ${del.status} ${t}`);
       }
-      console.log('Старый app-release.apk удалён.');
+      console.log('Старый chatus-release.apk удалён.');
     }
   }
 

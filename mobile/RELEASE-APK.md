@@ -52,7 +52,7 @@ npx expo run:android --variant release
 
 APK обычно лежит в:
 
-`mobile/android/app/build/outputs/apk/release/app-release.apk`
+`mobile/android/app/build/outputs/apk/release/chatus-release.apk`
 
 Первый раз может понадобиться:
 
