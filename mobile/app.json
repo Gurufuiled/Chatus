@@ -47,7 +47,7 @@
     ],
     "name": "Chatus",
     "slug": "chatus",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/chatus_icon.png",
     "userInterfaceStyle": "light",
@@ -75,7 +75,7 @@
       }
     },
     "android": {
-      "versionCode": 3,
+      "versionCode": 4,
       "icon": "./assets/chatus_icon.png",
       "intentFilters": [
         {

@@ -20,11 +20,14 @@ import { searchUsers } from '../services/profileService';
 import { createOrFindChat } from '../services/chatService';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
+import { uiStore } from '../stores/uiStore';
 import type { ApiUser } from '../services/AuthService';
+import type { Chat } from '../stores/types';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createContactsScreenStyles } from './contactsScreen.styles';
+import { formatContactPresenceSubtitle } from '../utils/presenceFormat';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -32,6 +35,38 @@ type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Contacts'>,
   NativeStackNavigationProp<ChatsStackParamList>
 >;
+
+type ContactFromChatRow = {
+  chat: Chat;
+  peerId: string;
+  title: string;
+  avatarUrl: string | null | undefined;
+  sortTime: number;
+};
+
+function buildContactsFromChats(chats: Chat[], currentUserId: string | null): ContactFromChatRow[] {
+  if (!currentUserId) return [];
+  const rows: ContactFromChatRow[] = [];
+  for (const chat of chats) {
+    if (chat.chat_type !== 'private') continue;
+    const peerMember = chat.members?.find((m) => m.user_id !== currentUserId);
+    const peerId = peerMember?.user_id;
+    if (!peerId) continue;
+    const user = peerMember?.user;
+    const sortTime = chat.last_message_at ?? chat.updated_at ?? 0;
+    const title =
+      chat.local_contact_name?.trim() ||
+      chat.peer_display_name?.trim() ||
+      user?.display_name?.trim() ||
+      (user?.handle ? `@${user.handle}` : null) ||
+      user?.username?.trim() ||
+      'Контакт';
+    const avatarUrl = user?.avatar_url ?? chat.avatar_url;
+    rows.push({ chat, peerId, title, avatarUrl, sortTime });
+  }
+  rows.sort((a, b) => b.sortTime - a.sortTime);
+  return rows;
+}
 
 export function ContactsScreen() {
   const { colors: themeColors } = useTheme();
@@ -44,10 +79,20 @@ export function ContactsScreen() {
   const searchIdRef = useRef(0);
 
   const currentUserId = authStore((s) => s.user?.id ?? null);
+  const chats = chatStore((s) => s.chats);
+  const presenceByUserId = uiStore((s) => s.presenceByUserId);
+
+  const contactsFromChats = useMemo(
+    () => buildContactsFromChats(chats, currentUserId),
+    [chats, currentUserId]
+  );
+
   const filteredResults = useMemo(
     () => (currentUserId ? results.filter((u) => u.id !== currentUserId) : results),
     [results, currentUserId]
   );
+
+  const isSearchMode = query.trim().length > 0;
 
   const performSearch = useCallback(async (q: string) => {
     const trimmed = q.trim();
@@ -87,6 +132,16 @@ export function ContactsScreen() {
     return () => clearTimeout(timer);
   }, [query, performSearch]);
 
+  const openChat = useCallback(
+    (chatId: string, chatTitle: string) => {
+      navigation.navigate('Chats', {
+        screen: 'Chat',
+        params: { chatId, chatTitle },
+      });
+    },
+    [navigation]
+  );
+
   const handleStartChat = useCallback(
     async (user: ApiUser) => {
       if (!user?.id?.trim()) return;
@@ -115,7 +170,7 @@ export function ContactsScreen() {
     [navigation]
   );
 
-  const renderItem = ({ item }: { item: ApiUser }) => {
+  const renderSearchItem = ({ item }: { item: ApiUser }) => {
     const avatarUrl = resolveAvatarUrl(item.avatar_url);
     const displayName = item.display_name || item.username || 'Unknown';
     const handle = item.handle ? `@${item.handle}` : '';
@@ -153,12 +208,59 @@ export function ContactsScreen() {
     );
   };
 
+  const renderContactFromChat = ({ item }: { item: ContactFromChatRow }) => {
+    const { chat, peerId, title, avatarUrl: rawAvatar } = item;
+    const peerMember = chat.members?.find((m) => m.user_id === peerId);
+    const presence = presenceByUserId[peerId] ?? {
+      is_online: peerMember?.user?.is_online ?? false,
+      last_seen: peerMember?.user?.last_seen ?? undefined,
+    };
+    const subtitle = formatContactPresenceSubtitle(
+      Boolean(presence.is_online),
+      presence.last_seen ?? peerMember?.user?.last_seen ?? null
+    );
+    const resolvedAvatar = resolveAvatarUrl(rawAvatar ?? null);
+
+    return (
+      <Pressable
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+        onPress={() => openChat(chat.id, title)}
+      >
+        {resolvedAvatar ? (
+          <Image source={{ uri: resolvedAvatar }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarPlaceholderText}>{(title || '?')[0].toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={styles.info}>
+          <Text style={styles.displayName} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={styles.presenceSubtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        </View>
+      </Pressable>
+    );
+  };
+
   const searchG = TELEGRAM_PROFILE_GLYPHS.search;
+
+  const listEmpty = isSearchMode ? (
+    <View style={styles.empty}>
+      <Text style={styles.emptyText}>Пользователи не найдены</Text>
+    </View>
+  ) : (
+    <View style={styles.empty}>
+      <Text style={styles.emptyText}>Нет личных чатов. Найдите человека по имени или @нику.</Text>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
       <View style={styles.searchRow}>
-        <View style={styles.searchIconSlot} accessibilityLabel="Search">
+        <View style={styles.searchIconSlot} accessibilityLabel="Поиск">
           <TelegramGlyph
             d={searchG.d}
             fillRule={searchG.fillRule}
@@ -168,7 +270,7 @@ export function ContactsScreen() {
         </View>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by name or @handle"
+          placeholder="Поиск по имени или @нику"
           placeholderTextColor={themeColors.placeholder}
           value={query}
           onChangeText={setQuery}
@@ -176,26 +278,22 @@ export function ContactsScreen() {
           autoCorrect={false}
         />
       </View>
-      {loading ? (
+      {isSearchMode && loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={themeColors.accent} />
         </View>
       ) : (
         <FlatList
-          data={filteredResults}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          ListEmptyComponent={
-            query.trim() ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>No users found</Text>
-              </View>
-            ) : (
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>Search by name or @handle</Text>
-              </View>
-            )
+          data={isSearchMode ? filteredResults : contactsFromChats}
+          keyExtractor={(item) =>
+            isSearchMode ? (item as ApiUser).id : (item as ContactFromChatRow).chat.id
           }
+          renderItem={({ item }) =>
+            isSearchMode
+              ? renderSearchItem({ item: item as ApiUser })
+              : renderContactFromChat({ item: item as ContactFromChatRow })
+          }
+          ListEmptyComponent={listEmpty}
         />
       )}
     </View>

@@ -74,6 +74,11 @@ export function createContactsScreenStyles(c: ThemeColors) {
       color: c.textSecondary,
       marginTop: 2,
     },
+    presenceSubtitle: {
+      fontSize: 13,
+      color: c.textSecondary,
+      marginTop: 2,
+    },
     empty: {
       padding: 24,
       alignItems: 'center',
