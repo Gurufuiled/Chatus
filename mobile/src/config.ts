@@ -13,7 +13,13 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_USE_MOCKS'
   | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID'
   /** Plain hostname or IPv4 — physical iPhone cannot reach Mac `localhost`; set LAN IP when using http://localhost in EXPO_PUBLIC_API_URL. */
-  | 'EXPO_PUBLIC_IOS_DEV_HOST';
+  | 'EXPO_PUBLIC_IOS_DEV_HOST'
+  /** JSON манифест с versionCode и apkUrl (например raw.githubusercontent.com/.../docs/client-update-manifest.json). Пусто — проверка отключена. */
+  | 'EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL'
+  /** `true` — не вызывать проверку обновлений даже при заданном URL. */
+  | 'EXPO_PUBLIC_CLIENT_UPDATE_DISABLED'
+  /** `true` — в __DEV__ тоже запрашивать манифест (по умолчанию в dev проверка пропускается). */
+  | 'EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV';
 
 function readExpoPublic(key: PublicEnvKey): string | undefined {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
@@ -111,6 +117,15 @@ export function getSignalingUrl(): string {
 }
 
 export const LOGINUS_CLIENT_ID = readExpoPublic('EXPO_PUBLIC_LOGINUS_CLIENT_ID') || '';
+
+/** URL JSON-манифеста клиентских обновлений (Android APK до Play). */
+export const CLIENT_UPDATE_MANIFEST_URL = readExpoPublic('EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL') || '';
+
+export const CLIENT_UPDATE_DISABLED =
+  readExpoPublic('EXPO_PUBLIC_CLIENT_UPDATE_DISABLED') === 'true';
+
+export const CLIENT_UPDATE_CHECK_IN_DEV =
+  readExpoPublic('EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV') === 'true';
 
 export const OAUTH_REDIRECT_URI = 'messenger://auth/callback';
 

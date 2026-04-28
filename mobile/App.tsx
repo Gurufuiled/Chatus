@@ -14,6 +14,7 @@ import { BootstrapErrorBoundary } from './src/components/BootstrapErrorBoundary'
 import { RootNavigator } from './src/navigation';
 import { colors } from './src/theme/colors';
 import { InAppPushNotification } from './src/components/InAppPushNotification';
+import { AppUpdateGate } from './src/components/AppUpdateGate';
 import { initDatabase } from './src/services/DatabaseService';
 import { authService, type AuthSession } from './src/services/AuthService';
 import { uiStore } from './src/stores/uiStore';
@@ -78,6 +79,7 @@ export default function App() {
                       <ThemedStatusBar />
                       <RootNavigator />
                       <InAppPushNotification />
+                      <AppUpdateGate />
                     </NavigationContainer>
                   </CallProvider>
                 </VoicePlayerProvider>
