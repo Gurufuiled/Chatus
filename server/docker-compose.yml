@@ -31,8 +31,9 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      # Корень репозитория: в образ кладём config/client-update-manifest.json для GET /client-update-manifest.json
+      context: ..
+      dockerfile: server/Dockerfile
     restart: unless-stopped
     ports:
       - '${PORT:-4000}:4000'

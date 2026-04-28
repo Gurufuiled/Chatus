@@ -1,0 +1,25 @@
+# Контекст сборки API: корень монорепозитория (server/docker-compose: context: ..)
+# Исключаем тяжёлое и лишнее; server/src, server/prisma, config/client-update-manifest.json попадают в контекст.
+
+.git
+**/.env
+**/.env.*
+!**/.env.example
+
+mobile
+rust
+target
+.expo
+.specstory
+.cursor
+docs
+steps
+Improvements
+obsidian-vault
+*.md
+
+server/node_modules
+server/dist
+server/uploads
+server/coverage
+server/test

@@ -1,4 +1,5 @@
 # NestJS API + Prisma (HTTP 4000, WS 4001, signaling 4002)
+# Собирать из корня репозитория: docker compose в каталоге server/ (context: ..).
 FROM node:22-bookworm-slim
 
 WORKDIR /app
@@ -7,13 +8,14 @@ RUN apt-get update -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
-COPY prisma ./prisma/
+COPY server/package.json server/package-lock.json ./
+COPY server/prisma ./prisma/
 
 RUN npm ci
 
-COPY tsconfig.json tsconfig.build.json nest-cli.json ./
-COPY src ./src/
+COPY server/tsconfig.json server/tsconfig.build.json server/nest-cli.json ./
+COPY server/src ./src/
+COPY config/client-update-manifest.json ./client-update-manifest.json
 
 RUN npx prisma generate && npm run build
 
