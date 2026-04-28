@@ -3,12 +3,12 @@ import { useEvent, useEventListener } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { getThumbnailAsync } from 'expo-video-thumbnails';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, Pressable } from 'react-native-gesture-handler';
 import {
   Dimensions,
   Image as RNImage,
   type ImageStyle,
-  Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -1218,6 +1218,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
             surfaceType="textureView"
             useExoShutter={false}
             onFirstFrameRender={() => setHasRenderedFrame(true)}
+            pointerEvents={Platform.OS === 'android' ? 'none' : 'auto'}
           />
         ) : null}
 

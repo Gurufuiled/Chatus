@@ -185,7 +185,10 @@ export function VideoNoteRecorder({
         if (__DEV__) {
           console.warn('[VideoNoteRecorder] stop recording error:', err);
         }
-        Alert.alert('Ошибка', 'Не удалось сохранить видеокружок.');
+        Alert.alert(
+          'Ошибка',
+          'Не удалось сохранить видеокружок. Попробуй записать короче или перезапусти приложение и отправь снова.'
+        );
       } finally {
         finishingRef.current = false;
         setIsPreparing(false);
@@ -422,6 +425,7 @@ export function VideoNoteRecorder({
               accessibilityRole="button"
               accessibilityLabel="Отправить видеокружок"
               disabled={!isRecording || isPreparing}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
               onPress={handleSend}
               style={({ pressed }) => [
                 styles.sendButton,
