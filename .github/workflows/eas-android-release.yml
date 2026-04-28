@@ -1,0 +1,123 @@
+# Сборка Android APK через EAS и публикация в GitHub Releases.
+#
+# Требования:
+#   Secrets → EXPO_TOKEN — токен доступа Expo (Access tokens).
+#
+#   Variables (Repository → Settings → Secrets and variables → Actions → Variables):
+#     EXPO_PUBLIC_API_URL                    — прод API, например http://host:4000/api
+#     EXPO_PUBLIC_LOGINUS_CLIENT_ID          — OAuth client id
+#     EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL — URL raw JSON (опционально; иначе клиент не проверяет обновления)
+#
+# Как выпустить билд:
+#   1. Подними version / android.versionCode в mobile/app.json при необходимости.
+#   2. Обнови config/client-update-manifest.json (latestVersionCode и т.д.) и запушь в main отдельным коммитом.
+#   3. Создай и отправь тег: git tag v1.0.1 && git push origin v1.0.1
+#
+# В Release появится файл app-release.apk (имя совпадает с примером в client-update-manifest.json).
+#
+name: EAS Android APK → GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eas-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      MOBILE_ENV: production
+      EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+      EXPO_PUBLIC_LOGINUS_CLIENT_ID: ${{ vars.EXPO_PUBLIC_LOGINUS_CLIENT_ID }}
+      EXPO_PUBLIC_USE_MOCKS: 'false'
+      EXPO_PUBLIC_USE_EMULATOR: 'false'
+      EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL: ${{ vars.EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL }}
+      EXPO_PUBLIC_CLIENT_UPDATE_DISABLED: 'false'
+      EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV: 'false'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Expo token
+        run: |
+          if [ -z "${EXPO_TOKEN}" ]; then
+            echo "::error::Добавь секрет EXPO_TOKEN (Expo → Access tokens)."
+            exit 1
+          fi
+
+      - name: Check production variables
+        run: |
+          if [ -z "${EXPO_PUBLIC_API_URL}" ] || [ -z "${EXPO_PUBLIC_LOGINUS_CLIENT_ID}" ]; then
+            echo "::error::Задай Variables: EXPO_PUBLIC_API_URL и EXPO_PUBLIC_LOGINUS_CLIENT_ID в настройках репозитория (Actions → Variables)."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: EAS build (Android, production APK)
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          npx eas-cli@latest build \
+            --platform android \
+            --profile production \
+            --non-interactive \
+            --wait \
+            --json > ../eas-build.json
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const root = path.resolve(process.cwd(), '..');
+          const raw = fs.readFileSync(path.join(root, 'eas-build.json'), 'utf8').trim();
+          let data;
+          try {
+            data = JSON.parse(raw);
+          } catch {
+            const m = raw.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+            if (!m) {
+              console.error('Could not parse eas-build.json:', raw.slice(0, 3000));
+              process.exit(1);
+            }
+            data = JSON.parse(m[0]);
+          }
+          const row = Array.isArray(data) ? data[0] : (data.build ?? data);
+          const url =
+            row?.artifacts?.applicationArchiveUrl ??
+            row?.artifacts?.buildUrl ??
+            row?.artifacts?.url;
+          if (!url || typeof url !== 'string') {
+            console.error('No artifact URL in build JSON:', JSON.stringify(row?.artifacts ?? {}, null, 2));
+            process.exit(1);
+          }
+          fs.writeFileSync(path.join(root, 'eas-apk-url.txt'), url, 'utf8');
+          NODE
+          curl -fL --retry 3 --retry-delay 5 -o ../app-release.apk "$(tr -d '\n' < ../eas-apk-url.txt)"
+          ls -la ../app-release.apk
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Chatus ${{ github.ref_name }}
+          files: app-release.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
