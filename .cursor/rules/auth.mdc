@@ -1,0 +1,65 @@
+---
+description: Авторизация через Loginus OAuth 2.0
+globs: ["rust-core/src/auth/**", "mobile/src/screens/auth/**", "mobile/src/bridge/**", "rust-core/src/core.rs", "rust-core/src/db/**", "rust-core/uniffi/**"]
+alwaysApply: false
+---
+
+# Авторизация — Loginus OAuth 2.0
+
+## Провайдер и flow
+- Провайдер: `https://loginus.startapus.com`
+- Протокол: OAuth 2.0 Authorization Code Flow
+- Scopes: `openid email profile organizations roles permissions`
+- Важно: `client_secret` хранится только на backend.
+
+## Основной принцип
+- Мобильное приложение (RN + Rust Core) не обменивает `code -> token` напрямую с Loginus.
+- Мобильное приложение отправляет `code` на наш backend.
+- Backend делает обмен с Loginus, получает userinfo, создает/находит пользователя, выдает наш JWT.
+
+## Обязательные backend endpoints
+- `POST /api/auth/loginus`
+  - вход: `{ code, redirect_uri }`
+  - выход: `{ access_token, refresh_token, expires_at, user, loginus_token? }`
+- `POST /api/auth/refresh`
+  - вход: `{ refresh_token }`
+  - выход: `{ access_token, refresh_token, expires_at }`
+- `POST /api/auth/logout`
+  - инвалидирует текущую сессию (если поддерживается backend).
+
+## Rust Core требования
+1. Хранить сессию в SQLite (`auth_session`, одна строка с `id=1`).
+2. Иметь `AuthService` с методами:
+   - `get_login_url()`
+   - `login_with_code(code)`
+   - `restore_session()`
+   - `logout()`
+   - refresh/accessor методы для токена и текущего пользователя
+3. В `MessengerCore`:
+   - не подключать WS до успешной авторизации;
+   - после login/restore поднимать WS, event loop и sync;
+   - при `401` пытаться refresh, при провале вызывать `on_auth_expired`.
+
+## React Native требования
+- Экран логина открывает WebView по URL из Rust (`getLoginUrl()`).
+- Перехватывает redirect: `messenger://auth/callback?code=...`.
+- Вызывает `messenger.loginWithCode(code)`.
+- При успехе переводит пользователя в основную навигацию.
+- При ошибке отображает понятный UX (Alert/loader/retry).
+
+## Deep linking
+- `scheme`: `messenger`
+- callback URI: `messenger://auth/callback`
+- Android intent filter для `auth/callback`.
+
+## Безопасность
+- Никогда не логировать `access_token`, `refresh_token`, `loginus_token`.
+- Не хранить `client_secret` в мобильном приложении.
+- Все auth-ошибки и refresh-failure должны приводить к корректному выходу в экран логина.
+
+## Минимальный checklist для PR
+- [ ] Login через Loginus WebView работает end-to-end
+- [ ] Сессия сохраняется и восстанавливается при перезапуске
+- [ ] Refresh токена работает
+- [ ] При refresh-failure вызывается `on_auth_expired`
+- [ ] WS и синхронизация стартуют только после успешной авторизации

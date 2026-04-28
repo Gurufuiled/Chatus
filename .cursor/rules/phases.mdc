@@ -1,0 +1,82 @@
+---
+description: Фазы разработки и текущий прогресс
+globs: ["**/*"]
+---
+
+# Фазы разработки
+
+## Текущая фаза: 0 (ОБНОВИ КОГДА ПРОДВИНЕШЬСЯ)
+
+## Порядок фаз (НЕ ПЕРЕПРЫГИВАТЬ!)
+
+### Фаза 0: Rust ↔ RN мост ⬜
+- [ ] Cargo проект с uniffi
+- [ ] Скрипты сборки Android/iOS
+- [ ] Минимальный Native Module в RN
+- [ ] ping() из RN → Rust → "pong" в UI
+- [ ] Контрольная точка: мост работает
+
+### Фаза 1: Rust БД + модели ⬜
+- [ ] Все модели (User, Chat, Message, Media)
+- [ ] schema.rs со всеми таблицами
+- [ ] Database singleton с WAL mode
+- [ ] Все DAO с CRUD операциями
+- [ ] cargo test проходит для всех DAO
+- [ ] UDL обновлён, биндинги генерируются
+- [ ] Контрольная точка: RN вызывает get_chats()
+
+### Фаза 2: Rust сеть (HTTP + WebSocket) ⬜
+- [ ] HttpClient (login, chats, messages, search, upload)
+- [ ] WebSocketService (connect, send, events, reconnect)
+- [ ] Repositories (ChatRepo, MessageRepo, UserRepo)
+- [ ] MessengerCore с event loop
+- [ ] CoreCallback (Rust → RN)
+- [ ] Контрольная точка: текст через WS работает
+
+### Фаза 3: RN UI + подключение к Rust ⬜
+- [ ] messengerBridge.ts
+- [ ] Zustand stores (thin)
+- [ ] LoginScreen
+- [ ] ChatListScreen
+- [ ] ChatScreen (текст)
+- [ ] ContactsScreen (поиск)
+- [ ] Контрольная точка: текстовый чат работает
+
+### Фаза 4: ~~P2P~~ — не в продукте
+Доставка сообщений через **WebSocket сервера** и локальная очередь офлайна (см. `TransportService`). Signaling WS (:4002) остаётся для **звонков WebRTC**.
+
+### Фаза 5: Голосовые ⬜
+- [ ] useVoiceRecorder (RN, expo-audio)
+- [ ] Rust: send_voice, приём, хранение
+- [ ] useVoicePlayer (RN)
+- [ ] VoiceBubble (waveform UI)
+- [ ] InputBar: hold-to-record
+- [ ] Контрольная точка: голосовые работают
+
+### Фаза 6: Видео-кружки ⬜
+- [ ] useVideoNoteRecorder (RN, expo-camera)
+- [ ] Rust: send_video_note, приём, хранение
+- [ ] VideoNoteBubble (круглый UI)
+- [ ] Запись с превью
+- [ ] Контрольная точка: кружки работают
+
+### Фаза 7: Медиа + Синхронизация ⬜
+- [ ] Фото (image picker + сжатие + отправка)
+- [ ] Файлы (document picker + отправка)
+- [ ] SyncEngine (очередь, retry, backoff)
+- [ ] MediaCacheManager (LRU, 500MB лимит)
+- [ ] Full sync при подключении
+- [ ] Контрольная точка: offline-first работает
+
+### Фаза 8: Telegram UI ⬜
+- [ ] Цветовая схема Telegram
+- [ ] Баблы с хвостиками
+- [ ] Анимации (Reanimated)
+- [ ] Typing indicator
+- [ ] Статусы сообщений (галочки)
+- [ ] Контрольная точка: выглядит как Telegram
+
+## Правило
+Каждая фаза ДОЛЖНА быть завершена и закоммичена
+прежде чем начинать следующую.
+git commit -m "phase-N: description"
