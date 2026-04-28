@@ -19,7 +19,8 @@
     "adb:reverse:emulator": "adb -s emulator-5554 reverse tcp:8081 tcp:8081 && adb -s emulator-5554 reverse tcp:4000 tcp:4000 && adb -s emulator-5554 reverse tcp:4001 tcp:4001 && adb -s emulator-5554 reverse tcp:4002 tcp:4002",
     "adb:reverse:device": "adb -s eq4xhqrs6d5dbeeu reverse tcp:8081 tcp:8081 && adb -s eq4xhqrs6d5dbeeu reverse tcp:4000 tcp:4000 && adb -s eq4xhqrs6d5dbeeu reverse tcp:4001 tcp:4001 && adb -s eq4xhqrs6d5dbeeu reverse tcp:4002 tcp:4002",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "release:github": "node ../scripts/upload-apk-github.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
