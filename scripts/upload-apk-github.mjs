@@ -82,6 +82,7 @@ function parseArgs() {
 
 function defaultApkPath(root) {
   const candidates = [
+    path.join(root, 'mobile', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'chatus-release.apk'),
     path.join(root, 'mobile', 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
     path.join(root, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
   ];
