@@ -16,6 +16,9 @@ type SkeletonProps = {
   style?: StyleProp<ViewStyle>;
   /** Для уменьшения ре-рендеров в больших списках можно отключить анимацию. */
   animated?: boolean;
+  /** Кастомные цвета (например под тёмную галерею). По умолчанию светлая сетка. */
+  baseColor?: string;
+  highlightColor?: string;
 };
 
 const BASE_COLOR = '#E6E8EC';
@@ -27,8 +30,12 @@ export function Skeleton({
   radius = 8,
   style,
   animated = true,
+  baseColor,
+  highlightColor,
 }: SkeletonProps) {
   const progress = React.useRef(new Animated.Value(0)).current;
+  const base = baseColor ?? BASE_COLOR;
+  const hi = highlightColor ?? HIGHLIGHT_COLOR;
 
   React.useEffect(() => {
     if (!animated) return;
@@ -55,9 +62,9 @@ export function Skeleton({
   const backgroundColor = animated
     ? progress.interpolate({
         inputRange: [0, 1],
-        outputRange: [BASE_COLOR, HIGHLIGHT_COLOR],
+        outputRange: [base, hi],
       })
-    : BASE_COLOR;
+    : base;
 
   return (
     <Animated.View

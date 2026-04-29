@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import { Skeleton } from './Skeleton';
 
 /**
@@ -8,12 +9,19 @@ import { Skeleton } from './Skeleton';
  */
 
 export function GallerySkeletonGrid({ rows = 4 }: { rows?: number }) {
+  const { colors } = useTheme();
   const cells = rows * 3;
   return (
     <View style={styles.grid} pointerEvents="none">
       {Array.from({ length: cells }).map((_, i) => (
         <View key={i} style={styles.cellOuter}>
-          <Skeleton width="100%" height="100%" radius={10} />
+          <Skeleton
+            width="100%"
+            height="100%"
+            radius={10}
+            baseColor={colors.placeholderBg}
+            highlightColor={colors.inputBackgroundSolid}
+          />
         </View>
       ))}
     </View>

@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import { Animated, Dimensions, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ResolvedColorScheme, ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 
 export type AnchoredMenuState = {
   top: number;
@@ -36,6 +39,94 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
+function createAnchoredMenuStyles(c: ThemeColors, scheme: ResolvedColorScheme) {
+  const shadow = withAlpha('#000000', scheme === 'dark' ? 0.45 : 0.12);
+  return StyleSheet.create({
+    root: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 50,
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: scheme === 'dark' ? withAlpha('#000000', 0.4) : withAlpha('#0F172A', 0.06),
+    },
+    cardShell: {
+      position: 'absolute',
+    },
+    arrow: {
+      position: 'absolute',
+      width: 18,
+      height: 18,
+      borderRadius: 6,
+      transform: [{ rotate: '45deg' }],
+      backgroundColor: c.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+      ...Platform.select({
+        ios: {
+          shadowColor: shadow,
+          shadowOpacity: 0.2,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 3 },
+        },
+        android: {
+          elevation: 0,
+        },
+        default: {},
+      }),
+    },
+    arrowTop: {
+      top: -6,
+    },
+    arrowBottom: {
+      bottom: -6,
+    },
+    card: {
+      overflow: 'hidden',
+      borderRadius: 24,
+      backgroundColor: c.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+      ...Platform.select({
+        ios: {
+          shadowColor: shadow,
+          shadowOpacity: scheme === 'dark' ? 0.35 : 0.12,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+        },
+        android: {
+          elevation: scheme === 'dark' ? 8 : 2,
+        },
+        default: {},
+      }),
+    },
+    cardTint: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: scheme === 'dark' ? withAlpha('#FFFFFF', 0.03) : withAlpha('#FFFFFF', 0.06),
+    },
+    item: {
+      minHeight: 52,
+      paddingHorizontal: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    itemPressed: {
+      backgroundColor: c.rowPressed,
+    },
+    itemBorder: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+    },
+    itemLabel: {
+      flex: 1,
+      fontSize: 16,
+      fontWeight: '500',
+    },
+  });
+}
+
 export function AnchoredPopoverMenu({
   menu,
   animation,
@@ -47,6 +138,12 @@ export function AnchoredPopoverMenu({
   horizontalAlign = 'center',
   verticalAlign = 'below',
 }: AnchoredPopoverMenuProps) {
+  const { colors, resolvedScheme } = useTheme();
+  const styles = useMemo(
+    () => createAnchoredMenuStyles(colors, resolvedScheme),
+    [colors, resolvedScheme],
+  );
+
   if (!menu || items.length === 0) {
     return null;
   }
@@ -77,12 +174,10 @@ export function AnchoredPopoverMenu({
   const backdropOpacity = useMemo(
     () =>
       animation.interpolate({
-        // Let the dim layer disappear almost immediately on close
-        // while keeping the card itself softly animated.
         inputRange: [0, 0.72, 1],
         outputRange: [0, 0, 1],
       }),
-    [animation]
+    [animation],
   );
 
   const cardStyle = useMemo(
@@ -106,7 +201,7 @@ export function AnchoredPopoverMenu({
         },
       ],
     }),
-    [animation]
+    [animation],
   ) as any;
 
   return (
@@ -144,11 +239,11 @@ export function AnchoredPopoverMenu({
                 pressed && styles.itemPressed,
               ]}
             >
-              <Text style={[styles.itemLabel, { color: item.color ?? '#111827' }]}>
+              <Text style={[styles.itemLabel, { color: item.color ?? colors.textPrimary }]}>
                 {item.label}
               </Text>
               {item.icon ? (
-                <Feather name={item.icon as never} size={18} color={item.color ?? '#111827'} />
+                <Feather name={item.icon as never} size={18} color={item.color ?? colors.textPrimary} />
               ) : null}
             </Pressable>
           ))}
@@ -157,86 +252,3 @@ export function AnchoredPopoverMenu({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.028)',
-  },
-  cardShell: {
-    position: 'absolute',
-  },
-  arrow: {
-    position: 'absolute',
-    width: 18,
-    height: 18,
-    borderRadius: 6,
-    transform: [{ rotate: '45deg' }],
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0F172A',
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-      },
-      android: {
-        elevation: 0,
-      },
-      default: {},
-    }),
-  },
-  arrowTop: {
-    top: -6,
-  },
-  arrowBottom: {
-    bottom: -6,
-  },
-  card: {
-    overflow: 'hidden',
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.84)',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0F172A',
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
-      },
-      android: {
-        elevation: 0,
-      },
-      default: {},
-    }),
-  },
-  cardTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(250,252,255,0.36)',
-  },
-  item: {
-    minHeight: 52,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  itemPressed: {
-    backgroundColor: 'rgba(77,141,255,0.09)',
-  },
-  itemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(226, 232, 240, 0.92)',
-  },
-  itemLabel: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-});

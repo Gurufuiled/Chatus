@@ -24,6 +24,9 @@ import Reanimated, {
   Easing,
 } from 'react-native-reanimated';
 import { Image } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { GallerySkeletonGrid } from './GallerySkeletonGrid';
 import {
@@ -65,11 +68,188 @@ type InputAttachmentSheetProps = {
   onRunAttachmentAction: (action: () => Promise<void>) => void;
 };
 
-function SheetActionIcon({ tone }: { tone: AttachmentAction['tone'] }) {
+function createAttachmentSheetStyles(c: ThemeColors) {
+  const shadow = withAlpha('#000000', 0.35);
+  return StyleSheet.create({
+    root: { flex: 1, justifyContent: 'flex-end' },
+    backdropFill: { flex: 1, backgroundColor: '#000000' },
+    sheet: {
+      backgroundColor: c.inputBackgroundSolid,
+      borderTopLeftRadius: 30,
+      borderTopRightRadius: 30,
+      overflow: 'hidden',
+      shadowColor: shadow,
+      shadowOpacity: 0.22,
+      shadowRadius: 28,
+      shadowOffset: { width: 0, height: -10 },
+      elevation: 12,
+    },
+    handleArea: { paddingTop: 8 },
+    handlePill: {
+      alignSelf: 'center',
+      width: 38,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: c.separator,
+      marginBottom: 4,
+    },
+    sheetHeader: {
+      height: 52,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      gap: 10,
+    },
+    headerCircle: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.rowPressed,
+    },
+    selectedPill: {
+      height: 42,
+      minWidth: 58,
+      paddingHorizontal: 12,
+      borderRadius: 21,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      backgroundColor: c.accent,
+    },
+    selectedPillText: { fontSize: 16, fontWeight: '800', color: c.textSecondaryMuted },
+    titlePill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    sheetTitle: { fontSize: 17, fontWeight: '800', color: c.textPrimary },
+    flex: { flex: 1 },
+    galleryGrid: { paddingBottom: 78 },
+    galleryRow: { gap: 1, marginBottom: 1 },
+    galleryCellOuter: { flex: 1 },
+    galleryCell: { aspectRatio: 1, overflow: 'hidden', backgroundColor: c.placeholderBg },
+    galleryImage: { width: '100%', height: '100%' },
+    galleryVideoFallback: {
+      flex: 1,
+      backgroundColor: c.chatBackground,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    galleryVideoOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: withAlpha(c.textPrimary, 0.06),
+    },
+    galleryVideoBadge: {
+      position: 'absolute',
+      right: 7,
+      bottom: 7,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 7,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: withAlpha('#000000', 0.62),
+    },
+    galleryVideoPlayIcon: { marginLeft: 1 },
+    galleryVideoBadgeText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
+    selectCircle: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.7,
+      borderColor: withAlpha('#FFFFFF', 0.9),
+      backgroundColor: withAlpha('#000000', 0.32),
+    },
+    selectCircleSelected: { borderColor: c.accent, backgroundColor: c.accent },
+    selectCircleText: { fontSize: 13, fontWeight: '800', color: c.textSecondaryMuted },
+    galleryPlaceholder: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 26,
+    },
+    galleryHint: { fontSize: 15, lineHeight: 21, color: c.textSecondary, textAlign: 'center' },
+    bottomAccessory: { position: 'absolute', left: 16, right: 16 },
+    modeDock: {
+      minHeight: 58,
+      borderRadius: 22,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      backgroundColor: c.composerSurface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+      shadowColor: shadow,
+      shadowOpacity: 0.18,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 7,
+    },
+    modeAction: {
+      minWidth: 72,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 16,
+    },
+    modeActionActive: { backgroundColor: withAlpha(c.accent, 0.14) },
+    modeActionLabel: { marginTop: 3, fontSize: 12, fontWeight: '700', color: c.textSecondary },
+    modeActionLabelActive: { color: c.accent },
+    captionBar: {
+      minHeight: 56,
+      borderRadius: 24,
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      paddingLeft: 15,
+      paddingRight: 7,
+      paddingVertical: 7,
+      backgroundColor: c.composerSurface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+      shadowColor: shadow,
+      shadowOpacity: 0.18,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 8,
+    },
+    captionInput: {
+      flex: 1,
+      maxHeight: 92,
+      minHeight: 42,
+      paddingTop: 11,
+      paddingBottom: 9,
+      paddingHorizontal: 0,
+      fontSize: 16,
+      lineHeight: 20,
+      color: c.textPrimary,
+    },
+    sendBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      marginLeft: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.accent,
+    },
+  });
+}
+
+type AttachmentSheetStyles = ReturnType<typeof createAttachmentSheetStyles>;
+
+function SheetActionIcon({ tone, iconColor }: { tone: AttachmentAction['tone']; iconColor: string }) {
   if (tone === 'video') {
-    return <MaterialCommunityIcons name="play-circle-outline" size={21} color="#5F6875" />;
+    return <MaterialCommunityIcons name="play-circle-outline" size={21} color={iconColor} />;
   }
-  return <Feather name="file-text" size={19} color="#5F6875" />;
+  return <Feather name="file-text" size={19} color={iconColor} />;
 }
 
 const AnimatedFlatList = Reanimated.createAnimatedComponent(
@@ -81,10 +261,14 @@ const GalleryCell = React.memo(function GalleryCell({
   item,
   selectedIndex,
   onToggle,
+  styles,
+  iconMuted,
 }: {
   item: GalleryItem;
   selectedIndex: number | null;
   onToggle: (item: GalleryItem) => void;
+  styles: AttachmentSheetStyles;
+  iconMuted: string;
 }) {
   const [thumbnailUri, setThumbnailUri] = React.useState(() =>
     item.kind === 'video' ? getCachedVideoThumbnailUri(item.uri) ?? '' : ''
@@ -114,7 +298,7 @@ const GalleryCell = React.memo(function GalleryCell({
           <Image source={{ uri: previewUri }} style={styles.galleryImage} resizeMode="cover" />
         ) : (
           <View style={styles.galleryVideoFallback}>
-            <MaterialCommunityIcons name="movie-open-play-outline" size={28} color="#FFFFFF" />
+            <MaterialCommunityIcons name="movie-open-play-outline" size={28} color={iconMuted} />
           </View>
         )}
         {item.kind === 'video' ? (
@@ -155,6 +339,8 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   onRunAttachmentAction,
 }: InputAttachmentSheetProps) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = React.useMemo(() => createAttachmentSheetStyles(colors), [colors]);
 
   // --- Shared values ---
   const sheetH = useSharedValue(COLLAPSED_H);
@@ -293,9 +479,11 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
         item={item}
         selectedIndex={selectedById.get(item.id) ?? null}
         onToggle={onToggleGalleryItem}
+        styles={styles}
+        iconMuted={colors.iconMuted}
       />
     ),
-    [selectedById, onToggleGalleryItem],
+    [selectedById, onToggleGalleryItem, styles, colors.iconMuted],
   );
 
   const hasSelection = selectedItems.length > 0;
@@ -320,12 +508,12 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
               <View style={styles.handlePill} />
               <View style={styles.sheetHeader}>
                 <Pressable style={styles.headerCircle} onPress={onClose} hitSlop={8}>
-                  <Feather name="x" size={24} color="#111827" />
+                  <Feather name="x" size={24} color={colors.textPrimary} />
                 </Pressable>
 
                 {hasSelection ? (
                   <View style={styles.selectedPill}>
-                    <Feather name="check" size={16} color="#FFFFFF" />
+                    <Feather name="check" size={16} color={colors.textSecondaryMuted} />
                     <Text style={styles.selectedPillText}>{selectedItems.length}</Text>
                   </View>
                 ) : null}
@@ -335,7 +523,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                 </View>
 
                 <Pressable style={styles.headerCircle} hitSlop={8}>
-                  <Feather name="more-horizontal" size={24} color="#111827" />
+                  <Feather name="more-horizontal" size={24} color={colors.textPrimary} />
                 </Pressable>
               </View>
             </View>
@@ -398,18 +586,18 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                   value={captionValue}
                   onChangeText={onCaptionChange}
                   placeholder="Добавить подпись..."
-                  placeholderTextColor="#8B95A1"
+                  placeholderTextColor={colors.placeholder}
                   style={styles.captionInput}
                   multiline
                 />
                 <Pressable style={styles.sendBtn} onPress={onSendSelected}>
-                  <Feather name="send" size={20} color="#FFFFFF" />
+                  <Feather name="send" size={20} color={colors.textSecondaryMuted} />
                 </Pressable>
               </View>
             ) : (
               <View style={styles.modeDock}>
                 <View style={[styles.modeAction, styles.modeActionActive]}>
-                  <MaterialCommunityIcons name="image-multiple" size={22} color="#4B8FEA" />
+                  <MaterialCommunityIcons name="image-multiple" size={22} color={colors.accent} />
                   <Text style={[styles.modeActionLabel, styles.modeActionLabelActive]}>Галерея</Text>
                 </View>
                 {attachmentActions.map((action) => (
@@ -418,7 +606,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                     style={styles.modeAction}
                     onPress={() => onRunAttachmentAction(action.onPress)}
                   >
-                    <SheetActionIcon tone={action.tone} />
+                    <SheetActionIcon tone={action.tone} iconColor={colors.iconMuted} />
                     <Text style={styles.modeActionLabel}>{action.title}</Text>
                   </Pressable>
                 ))}
@@ -429,126 +617,4 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
       </View>
     </Modal>
   );
-});
-
-const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  backdropFill: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: -10 },
-    elevation: 12,
-  },
-  handleArea: { paddingTop: 8 },
-  handlePill: {
-    alignSelf: 'center',
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(15,23,42,0.14)',
-    marginBottom: 4,
-  },
-  sheetHeader: {
-    height: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  headerCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(248,250,252,0.96)',
-  },
-  selectedPill: {
-    height: 42,
-    minWidth: 58,
-    paddingHorizontal: 12,
-    borderRadius: 21,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    backgroundColor: '#5A86DF',
-  },
-  selectedPillText: { fontSize: 16, fontWeight: '800', color: '#FFFFFF' },
-  titlePill: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetTitle: { fontSize: 17, fontWeight: '800', color: '#111827' },
-  flex: { flex: 1 },
-  galleryGrid: { paddingBottom: 78 },
-  galleryRow: { gap: 1, marginBottom: 1 },
-  galleryCellOuter: { flex: 1 },
-  galleryCell: { aspectRatio: 1, overflow: 'hidden', backgroundColor: '#D8DEE7' },
-  galleryImage: { width: '100%', height: '100%' },
-  galleryVideoFallback: {
-    flex: 1, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center',
-  },
-  galleryVideoOverlay: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.12)',
-  },
-  galleryVideoBadge: {
-    position: 'absolute', right: 7, bottom: 7, flexDirection: 'row',
-    alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 4,
-    borderRadius: 999, backgroundColor: 'rgba(15,23,42,0.72)',
-  },
-  galleryVideoPlayIcon: { marginLeft: 1 },
-  galleryVideoBadgeText: { fontSize: 11, fontWeight: '800', color: '#FFFFFF' },
-  selectCircle: {
-    position: 'absolute', top: 8, right: 8, width: 24, height: 24, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.7, borderColor: 'rgba(255,255,255,0.95)',
-    backgroundColor: 'rgba(15,23,42,0.08)',
-  },
-  selectCircleSelected: { borderColor: '#5A86DF', backgroundColor: '#5A86DF' },
-  selectCircleText: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
-  galleryPlaceholder: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 26,
-  },
-  galleryHint: { fontSize: 15, lineHeight: 21, color: '#6B7280', textAlign: 'center' },
-  bottomAccessory: { position: 'absolute', left: 16, right: 16 },
-  modeDock: {
-    minHeight: 58, borderRadius: 22, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 6,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 }, elevation: 7,
-  },
-  modeAction: {
-    minWidth: 72, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16,
-  },
-  modeActionActive: { backgroundColor: 'rgba(75,143,234,0.1)' },
-  modeActionLabel: { marginTop: 3, fontSize: 12, fontWeight: '700', color: '#4B5563' },
-  modeActionLabelActive: { color: '#4B8FEA' },
-  captionBar: {
-    minHeight: 56, borderRadius: 24, flexDirection: 'row', alignItems: 'flex-end',
-    paddingLeft: 15, paddingRight: 7, paddingVertical: 7,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    shadowColor: '#0F172A', shadowOpacity: 0.16, shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 }, elevation: 8,
-  },
-  captionInput: {
-    flex: 1, maxHeight: 92, minHeight: 42, paddingTop: 11, paddingBottom: 9,
-    paddingHorizontal: 0, fontSize: 16, lineHeight: 20, color: '#111827',
-  },
-  sendBtn: {
-    width: 42, height: 42, borderRadius: 21, marginLeft: 8,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: '#5A86DF',
-  },
 });

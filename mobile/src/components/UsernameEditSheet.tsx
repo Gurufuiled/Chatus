@@ -23,16 +23,19 @@ import Feather from '@expo/vector-icons/Feather';
 
 const HANDLE_REGEX = /^[a-zA-Z0-9_]{5,32}$/;
 
-function createStyles(c: ThemeColors) {
+function createStyles(c: ThemeColors, maxSheetHeight: number) {
   return StyleSheet.create({
-    overlay: {
+    overlayRoot: {
       flex: 1,
       justifyContent: 'flex-end',
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: withAlpha('#000000', 0.45),
     },
     sheet: {
       width: '100%',
-      maxHeight: Dimensions.get('window').height * 0.92,
+      maxHeight: maxSheetHeight,
       borderTopLeftRadius: 14,
       borderTopRightRadius: 14,
       backgroundColor: c.inputBackgroundSolid,
@@ -122,7 +125,10 @@ export type UsernameEditSheetProps = {
 export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: UsernameEditSheetProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const winH = Dimensions.get('window').height;
+  const sheetLiftY = winH * 0.15;
+  const maxSheetH = Math.min(winH, winH * 0.92 + sheetLiftY);
+  const styles = useMemo(() => createStyles(colors, maxSheetH), [colors, maxSheetH]);
   const slide = useRef(new Animated.Value(0)).current;
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -138,9 +144,10 @@ export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: 
       return;
     }
     const h = Dimensions.get('window').height;
+    const lift = h * 0.15;
     slide.setValue(h * 0.35);
     Animated.spring(slide, {
-      toValue: 0,
+      toValue: -lift,
       useNativeDriver: true,
       tension: 68,
       friction: 12,
@@ -149,8 +156,9 @@ export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: 
 
   const dismissAnimated = useCallback(
     (then: () => void) => {
+      const h = Dimensions.get('window').height;
       Animated.timing(slide, {
-        toValue: Dimensions.get('window').height * 0.45,
+        toValue: h * 0.5,
         duration: 220,
         useNativeDriver: true,
       }).start(({ finished }) => {
@@ -197,7 +205,8 @@ export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: 
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Pressable style={styles.overlay} onPress={onBackdrop}>
+        <View style={styles.overlayRoot} pointerEvents="box-none">
+          <Pressable style={styles.backdrop} onPress={onBackdrop} accessibilityRole="button" />
           <Animated.View
             style={[
               styles.sheet,
@@ -207,7 +216,7 @@ export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: 
               },
             ]}
           >
-            <Pressable onPress={(e) => e.stopPropagation()}>
+            <View>
               <View style={styles.headerRow}>
                 <Pressable style={styles.pill} onPress={() => dismissAnimated(onClose)}>
                   <Text style={styles.pillText}>Отмена</Text>
@@ -260,9 +269,9 @@ export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: 
                   <Text style={styles.link}>https://t.me/{trimmed || 'username'}</Text>
                 </Pressable>
               </ScrollView>
-            </Pressable>
+            </View>
           </Animated.View>
-        </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

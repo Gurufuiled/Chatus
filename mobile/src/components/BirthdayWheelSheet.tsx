@@ -70,9 +70,12 @@ function formatHeaderRu(y: number, m: number, d: number): string {
 
 function createStyles(c: ThemeColors) {
   return StyleSheet.create({
-    overlay: {
+    overlayRoot: {
       flex: 1,
       justifyContent: 'flex-end',
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: 'rgba(0,0,0,0.45)',
     },
     sheet: {
@@ -139,10 +142,10 @@ function WheelColumn({ data, selectedIndex, onChangeIndex, listRef, dim, listKey
   const onMomentum = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = e.nativeEvent.contentOffset.y;
-      const raw = Math.round(y / ITEM_H);
-      const idx = Math.max(0, Math.min(data.length - 1, raw));
-      if (idx !== raw) {
-        listRef.current?.scrollToOffset({ offset: idx * ITEM_H, animated: true });
+      const idx = Math.max(0, Math.min(data.length - 1, Math.round(y / ITEM_H)));
+      const target = idx * ITEM_H;
+      if (Math.abs(y - target) > 0.5) {
+        listRef.current?.scrollToOffset({ offset: target, animated: true });
       }
       onChangeIndex(idx);
     },
@@ -180,9 +183,13 @@ function WheelColumn({ data, selectedIndex, onChangeIndex, listRef, dim, listKey
       data={[...data]}
       keyExtractor={(item, i) => `${item}-${i}`}
       renderItem={renderItem}
+      style={{ flex: 1 }}
       showsVerticalScrollIndicator={false}
       snapToInterval={ITEM_H}
+      snapToAlignment="start"
       decelerationRate="fast"
+      nestedScrollEnabled
+      scrollEventThrottle={16}
       contentContainerStyle={{ paddingTop: PAD, paddingBottom: PAD }}
       onMomentumScrollEnd={onMomentum}
       onScrollEndDrag={onScrollEndDrag}
@@ -339,14 +346,15 @@ export function BirthdayWheelSheet({ visible, valueYmd, onClose, onApply }: Birt
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onBackdrop}>
-      <Pressable style={styles.overlay} onPress={onBackdrop}>
+      <View style={styles.overlayRoot} pointerEvents="box-none">
+        <Pressable style={styles.backdrop} onPress={onBackdrop} accessibilityRole="button" />
         <Animated.View
           style={[
             styles.sheet,
             { paddingBottom: Math.max(insets.bottom, 12) + 8, transform: [{ translateY: slide }] },
           ]}
         >
-          <Pressable onPress={(e) => e.stopPropagation()}>
+          <View>
             <View style={styles.header}>
               <Text style={styles.headerTitle}>День рождения</Text>
               <Text style={styles.headerValue} numberOfLines={1}>
@@ -385,9 +393,9 @@ export function BirthdayWheelSheet({ visible, valueYmd, onClose, onApply }: Birt
             <Pressable style={styles.deleteBtn} onPress={onDelete}>
               <Text style={styles.deleteText}>Удалить день рождения</Text>
             </Pressable>
-          </Pressable>
+          </View>
         </Animated.View>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
