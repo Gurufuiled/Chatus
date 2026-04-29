@@ -18,8 +18,8 @@ import { MessageTimeStatus } from './MessageTimeStatus';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const MAX_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 320);
-const MAX_BUBBLE_HEIGHT = Math.min(SCREEN_HEIGHT * 0.5, 380);
+const MAX_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.68, 300);
+const MAX_BUBBLE_HEIGHT = Math.min(SCREEN_HEIGHT * 0.48, 360);
 const MIN_PORTRAIT_WIDTH = 154;
 const DEFAULT_PLACEHOLDER_SIZE = {
   width: Math.min(MAX_BUBBLE_WIDTH, 192),
@@ -328,8 +328,8 @@ export function ImageBubble({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
     maxWidth: '100%',
     alignSelf: 'flex-start',
   },
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     overflow: 'hidden',
-    borderRadius: 14,
+    borderRadius: 12,
     position: 'relative',
   },
   imageWrapperMe: {

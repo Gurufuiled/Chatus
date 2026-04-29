@@ -30,7 +30,7 @@ import { MessageTimeStatus } from './MessageTimeStatus';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const MAX_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 320);
+const MAX_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.68, 300);
 const MAX_BUBBLE_HEIGHT = Math.min(SCREEN_HEIGHT * 0.48, 360);
 const MIN_PORTRAIT_WIDTH = 154;
 const DEFAULT_VIDEO_SIZE = {
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
   },
   videoWrapper: {
     overflow: 'hidden',
-    borderRadius: 11,
+    borderRadius: 10,
     position: 'relative',
     backgroundColor: '#0B1020',
   },

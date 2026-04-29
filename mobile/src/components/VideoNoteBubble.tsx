@@ -38,6 +38,7 @@ import {
 } from '../utils/mediaDuration';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { OutgoingBubbleGradientShell } from './OutgoingBubbleViewportGradient';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const COLLAPSED_SIZE = Math.min(SCREEN_WIDTH * 0.58, 228);
@@ -58,6 +59,8 @@ const SCRUB_RING_INSET = 8;
 const PLAYBACK_UI_TICK_MS = 180;
 const SCRUB_THUMB_SIZE = 18;
 const CENTER_PLAY_TAP_EXCLUSION_RADIUS = 44;
+/** Тонкое кольцо экранного градиента вокруг кружка (тёмная тема), без квадратной обёртки MeBubbleChrome. */
+const OUTGOING_SCREEN_GRADIENT_RING_PX = 3;
 const generatedThumbnailCache = new Map<string, string>();
 const posterImageStyle: ImageStyle = {
   ...StyleSheet.absoluteFillObject,
@@ -300,6 +303,9 @@ export interface VideoNoteBubbleProps {
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
   reactionAccentColor?: string;
+  /** Свои сообщения + тёмная тема default: круглое кольцо градиента вместо квадратного MeBubbleChrome. */
+  viewportOutgoingGradient?: boolean;
+  scrollTick?: number;
 }
 
 function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
@@ -321,7 +327,9 @@ function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
     prev.registerPlaybackState === next.registerPlaybackState &&
     prev.inlineReactions === next.inlineReactions &&
     prev.allowMessageReactions === next.allowMessageReactions &&
-    prev.onToggleInlineReaction === next.onToggleInlineReaction
+    prev.onToggleInlineReaction === next.onToggleInlineReaction &&
+    prev.viewportOutgoingGradient === next.viewportOutgoingGradient &&
+    prev.scrollTick === next.scrollTick
   );
 }
 
@@ -342,9 +350,15 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   allowMessageReactions,
   onToggleInlineReaction,
   reactionAccentColor,
+  bubbleMeColor: _bubbleMeColor,
+  outgoingMetaColor: _outgoingMetaColor,
+  outgoingAccentColor: _outgoingAccentColor,
+  viewportOutgoingGradient = false,
+  scrollTick = 0,
 }: VideoNoteBubbleProps) {
   const generatedNoteId = React.useId();
   const noteId = messageId ?? generatedNoteId;
+  const useOutgoingGradientRing = Boolean(isMe && viewportOutgoingGradient);
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
   const [generatedThumbnailUri, setGeneratedThumbnailUri] = React.useState(() => {
@@ -848,10 +862,44 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const slotStyle = useAnimatedStyle(() => {
     const size = interpolate(progress.value, [0, 1], [COLLAPSED_SIZE, EXPANDED_SIZE]);
     const marginVertical = interpolate(progress.value, [0, 1], [0, 12]);
+    const footprint = useOutgoingGradientRing ? size + OUTGOING_SCREEN_GRADIENT_RING_PX * 2 : size;
     return {
-      width: size,
+      width: footprint,
       height: size + META_ROW_HEIGHT + META_ROW_GAP,
       marginVertical,
+    };
+  }, [useOutgoingGradientRing]);
+
+  const ringOuterStyle = useAnimatedStyle(() => {
+    const size = interpolate(progress.value, [0, 1], [COLLAPSED_SIZE, EXPANDED_SIZE]);
+    const outer = size + OUTGOING_SCREEN_GRADIENT_RING_PX * 2;
+    const shadowOpacity = interpolate(progress.value, [0, 1], [0.18, 0.28]);
+    const shadowRadius = interpolate(progress.value, [0, 1], [8, 18]);
+    return {
+      width: outer,
+      height: outer,
+      borderRadius: outer / 2,
+      overflow: 'hidden' as const,
+      shadowColor: '#0F172A',
+      shadowOpacity,
+      shadowRadius,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: interpolate(progress.value, [0, 1], [4, 8]),
+    };
+  });
+
+  const ringHoleStyle = useAnimatedStyle(() => {
+    const size = interpolate(progress.value, [0, 1], [COLLAPSED_SIZE, EXPANDED_SIZE]);
+    const inset = OUTGOING_SCREEN_GRADIENT_RING_PX;
+    return {
+      position: 'absolute' as const,
+      top: inset,
+      left: inset,
+      width: size,
+      height: size,
+      borderRadius: size / 2,
+      overflow: 'hidden' as const,
+      backgroundColor: '#0B1020',
     };
   });
 
@@ -1195,6 +1243,79 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const posterUri = normalizedThumbnailUri || generatedThumbnailUri;
   const showPoster = posterUri.length > 0 && (!isPlayerMounted || !hasRenderedFrame);
 
+  const circleInner = (
+    <>
+      {showPoster ? (
+        <Image source={{ uri: posterUri }} style={posterImageStyle} contentFit="cover" cachePolicy="disk" />
+      ) : null}
+
+      {isPlayerMounted ? (
+        <VideoView
+          player={player}
+          style={styles.video}
+          nativeControls={false}
+          contentFit="cover"
+          surfaceType="textureView"
+          useExoShutter={false}
+          onFirstFrameRender={() => setHasRenderedFrame(true)}
+          pointerEvents={Platform.OS === 'android' ? 'none' : 'auto'}
+        />
+      ) : null}
+
+      <Reanimated.View pointerEvents="none" style={[styles.centerBadge, centerBadgeStyle]}>
+        <View style={styles.centerPlayGlyph} />
+      </Reanimated.View>
+
+      {isExpanded ? (
+        <View pointerEvents="none" style={styles.scrubRingWrap}>
+          <Svg width={scrubRingSize} height={scrubRingSize}>
+            <Circle
+              cx={scrubRingSize / 2}
+              cy={scrubRingSize / 2}
+              r={scrubRingRadius}
+              stroke="rgba(255,255,255,0.28)"
+              strokeWidth={SCRUB_RING_TRACK_STROKE_WIDTH}
+              fill="none"
+            />
+            <AnimatedCircle
+              cx={scrubRingSize / 2}
+              cy={scrubRingSize / 2}
+              r={scrubRingRadius}
+              stroke="rgba(0,0,0,0.18)"
+              strokeWidth={SCRUB_RING_PROGRESS_SHADOW_WIDTH}
+              strokeLinecap="round"
+              strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
+              animatedProps={progressArcAnimatedProps}
+              fill="none"
+              rotation={-90}
+              originX={scrubRingSize / 2}
+              originY={scrubRingSize / 2}
+            />
+            <AnimatedCircle
+              cx={scrubRingSize / 2}
+              cy={scrubRingSize / 2}
+              r={scrubRingRadius}
+              stroke="rgba(255,255,255,0.82)"
+              strokeWidth={SCRUB_RING_PROGRESS_STROKE_WIDTH}
+              strokeLinecap="round"
+              strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
+              animatedProps={progressArcAnimatedProps}
+              fill="none"
+              rotation={-90}
+              originX={scrubRingSize / 2}
+              originY={scrubRingSize / 2}
+            />
+          </Svg>
+          {showPausedPlayOverlay ? (
+            <Reanimated.View style={[styles.scrubThumb, scrubThumbAnimatedStyle]}>
+              <View style={styles.scrubThumbDot} />
+            </Reanimated.View>
+          ) : null}
+        </View>
+      ) : null}
+    </>
+  );
+
   const pressableContent = (
     <Pressable
       accessibilityRole="button"
@@ -1202,78 +1323,16 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       onPress={handlePress}
       style={styles.pressable}
     >
-      <Reanimated.View
-        style={[styles.circle, circleStyle]}
-      >
-        {showPoster ? (
-          <Image source={{ uri: posterUri }} style={posterImageStyle} contentFit="cover" cachePolicy="disk" />
-        ) : null}
-
-        {isPlayerMounted ? (
-          <VideoView
-            player={player}
-            style={styles.video}
-            nativeControls={false}
-            contentFit="cover"
-            surfaceType="textureView"
-            useExoShutter={false}
-            onFirstFrameRender={() => setHasRenderedFrame(true)}
-            pointerEvents={Platform.OS === 'android' ? 'none' : 'auto'}
-          />
-        ) : null}
-
-        <Reanimated.View pointerEvents="none" style={[styles.centerBadge, centerBadgeStyle]}>
-          <View style={styles.centerPlayGlyph} />
+      {useOutgoingGradientRing ? (
+        <Reanimated.View style={ringOuterStyle}>
+          <OutgoingBubbleGradientShell scrollTick={scrollTick} style={StyleSheet.absoluteFillObject}>
+            {null}
+          </OutgoingBubbleGradientShell>
+          <Reanimated.View style={ringHoleStyle}>{circleInner}</Reanimated.View>
         </Reanimated.View>
-
-        {isExpanded ? (
-          <View pointerEvents="none" style={styles.scrubRingWrap}>
-            <Svg width={scrubRingSize} height={scrubRingSize}>
-              <Circle
-                cx={scrubRingSize / 2}
-                cy={scrubRingSize / 2}
-                r={scrubRingRadius}
-                stroke="rgba(255,255,255,0.28)"
-                strokeWidth={SCRUB_RING_TRACK_STROKE_WIDTH}
-                fill="none"
-              />
-              <AnimatedCircle
-                cx={scrubRingSize / 2}
-                cy={scrubRingSize / 2}
-                r={scrubRingRadius}
-                stroke="rgba(0,0,0,0.18)"
-                strokeWidth={SCRUB_RING_PROGRESS_SHADOW_WIDTH}
-                strokeLinecap="round"
-                strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
-                animatedProps={progressArcAnimatedProps}
-                fill="none"
-                rotation={-90}
-                originX={scrubRingSize / 2}
-                originY={scrubRingSize / 2}
-              />
-              <AnimatedCircle
-                cx={scrubRingSize / 2}
-                cy={scrubRingSize / 2}
-                r={scrubRingRadius}
-                stroke="rgba(255,255,255,0.82)"
-                strokeWidth={SCRUB_RING_PROGRESS_STROKE_WIDTH}
-                strokeLinecap="round"
-                strokeDasharray={`${scrubRingCircumference} ${scrubRingCircumference}`}
-                animatedProps={progressArcAnimatedProps}
-                fill="none"
-                rotation={-90}
-                originX={scrubRingSize / 2}
-                originY={scrubRingSize / 2}
-              />
-            </Svg>
-            {showPausedPlayOverlay ? (
-              <Reanimated.View style={[styles.scrubThumb, scrubThumbAnimatedStyle]}>
-                <View style={styles.scrubThumbDot} />
-              </Reanimated.View>
-            ) : null}
-          </View>
-        ) : null}
-      </Reanimated.View>
+      ) : (
+        <Reanimated.View style={[styles.circle, circleStyle]}>{circleInner}</Reanimated.View>
+      )}
 
       <Reanimated.View pointerEvents="none" style={[styles.footerMeta, footerMetaStyle]}>
         <View style={styles.metaPill}>

@@ -1079,7 +1079,7 @@ const MessageRow = React.memo(function MessageRow({
               active
               scrollTick={scrollTick}
               fillColor={chatTheme.bubbleMe}
-              style={{ alignSelf: 'flex-end' }}
+              style={[{ alignSelf: 'flex-end' }, bubbleRadius.mine, { overflow: 'hidden' }]}
             >
               {voiceContent}
             </MeBubbleChrome>
@@ -1124,6 +1124,8 @@ const MessageRow = React.memo(function MessageRow({
           bubbleMeColor={meBubbleFill}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
+          viewportOutgoingGradient={!!isMe && useViewportOutgoingGradient && !replySnippet}
+          scrollTick={scrollTick}
           enableReplySwipe={canSwipe}
           onReplySwipe={onReply}
           inlineReactions={inlineReactionList}
@@ -1164,6 +1166,7 @@ const MessageRow = React.memo(function MessageRow({
                 showAuthorAvatar && styles.groupMessageSurface,
                 showAuthorAvatar && styles.groupRepliedMediaBubble,
                 bubbleRadius.mine,
+                { overflow: 'hidden' },
               ]}
             >
               {renderIncomingHeader()}
@@ -1196,18 +1199,7 @@ const MessageRow = React.memo(function MessageRow({
             showAuthorAvatar && styles.groupMessageSurface,
           ]}
         >
-          {isMe && useViewportOutgoingGradient ? (
-            <MeBubbleChrome
-              active
-              scrollTick={scrollTick}
-              fillColor={chatTheme.bubbleMe}
-              style={{ alignSelf: 'flex-end' }}
-            >
-              {videoContent}
-            </MeBubbleChrome>
-          ) : (
-            videoContent
-          )}
+          {videoContent}
         </View>
       );
     }
@@ -1408,7 +1400,7 @@ const MessageRow = React.memo(function MessageRow({
               active
               scrollTick={scrollTick}
               fillColor={chatTheme.bubbleMe}
-              style={{ alignSelf: 'flex-end' }}
+              style={[{ alignSelf: 'flex-end' }, bubbleRadius.mine, { overflow: 'hidden' }]}
             >
               {imageContent}
             </MeBubbleChrome>
@@ -1524,7 +1516,7 @@ const MessageRow = React.memo(function MessageRow({
               active
               scrollTick={scrollTick}
               fillColor={chatTheme.bubbleMe}
-              style={{ alignSelf: 'flex-end' }}
+              style={[{ alignSelf: 'flex-end' }, bubbleRadius.mine, { overflow: 'hidden' }]}
             >
               {videoContent}
             </MeBubbleChrome>
@@ -1581,7 +1573,11 @@ const MessageRow = React.memo(function MessageRow({
               active
               scrollTick={scrollTick}
               fillColor={chatTheme.bubbleMe}
-              style={{ alignSelf: 'flex-end', width: FILE_ROW_WIDTH, maxWidth: '100%' }}
+              style={[
+                { alignSelf: 'flex-end', width: FILE_ROW_WIDTH, maxWidth: '100%' },
+                bubbleRadius.mine,
+                { overflow: 'hidden' },
+              ]}
             >
               {fileBubbleEl}
             </MeBubbleChrome>

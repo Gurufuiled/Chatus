@@ -144,33 +144,6 @@ export function AnchoredPopoverMenu({
     [colors, resolvedScheme],
   );
 
-  if (!menu || items.length === 0) {
-    return null;
-  }
-
-  const screenWidth = Dimensions.get('window').width;
-  const screenHeight = Dimensions.get('window').height;
-  const anchorCenterX = menu.left + menu.width / 2;
-  const rawLeft =
-    horizontalAlign === 'start'
-      ? menu.left - 4
-      : horizontalAlign === 'end'
-        ? menu.left + menu.width - width + 4
-        : anchorCenterX - width / 2;
-  const cardLeft = clamp(rawLeft, MENU_EDGE_GAP, screenWidth - width - MENU_EDGE_GAP);
-  const estimatedCardHeight = items.length * 52 + 18;
-  const resolvedVerticalAlign =
-    verticalAlign === 'auto'
-      ? menu.top + menu.height + offsetY + estimatedCardHeight > screenHeight - MENU_EDGE_GAP
-        ? 'above'
-        : 'below'
-      : verticalAlign;
-  const cardTop =
-    resolvedVerticalAlign === 'above'
-      ? Math.max(MENU_EDGE_GAP, menu.top - estimatedCardHeight - offsetY)
-      : menu.top + menu.height + offsetY;
-  const arrowLeft = clamp(anchorCenterX - cardLeft - 9, 22, width - 30);
-
   const backdropOpacity = useMemo(
     () =>
       animation.interpolate({
@@ -203,6 +176,33 @@ export function AnchoredPopoverMenu({
     }),
     [animation],
   ) as any;
+
+  if (!menu || items.length === 0) {
+    return null;
+  }
+
+  const screenWidth = Dimensions.get('window').width;
+  const screenHeight = Dimensions.get('window').height;
+  const anchorCenterX = menu.left + menu.width / 2;
+  const rawLeft =
+    horizontalAlign === 'start'
+      ? menu.left - 4
+      : horizontalAlign === 'end'
+        ? menu.left + menu.width - width + 4
+        : anchorCenterX - width / 2;
+  const cardLeft = clamp(rawLeft, MENU_EDGE_GAP, screenWidth - width - MENU_EDGE_GAP);
+  const estimatedCardHeight = items.length * 52 + 18;
+  const resolvedVerticalAlign =
+    verticalAlign === 'auto'
+      ? menu.top + menu.height + offsetY + estimatedCardHeight > screenHeight - MENU_EDGE_GAP
+        ? 'above'
+        : 'below'
+      : verticalAlign;
+  const cardTop =
+    resolvedVerticalAlign === 'above'
+      ? Math.max(MENU_EDGE_GAP, menu.top - estimatedCardHeight - offsetY)
+      : menu.top + menu.height + offsetY;
+  const arrowLeft = clamp(anchorCenterX - cardLeft - 9, 22, width - 30);
 
   return (
     <View pointerEvents="box-none" style={styles.root}>
