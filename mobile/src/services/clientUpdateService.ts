@@ -152,13 +152,17 @@ export function evaluateAndroidUpdate(
     return { decision: 'force', apkUrl: a.apkUrl };
   }
 
+  /** Уже на актуальном или новее номере билда — не крутим «есть обновление» из‑за только releaseTag. */
+  if (currentVersionCode >= a.latestVersionCode) {
+    return { decision: 'none', apkUrl: null };
+  }
+
   const manifestTag = a.releaseTag?.trim();
   if (manifestTag) {
     const embedded = embeddedReleaseTag.trim();
     if (embedded !== manifestTag) {
       return { decision: 'soft', apkUrl: a.apkUrl };
     }
-    return { decision: 'none', apkUrl: null };
   }
 
   if (currentVersionCode < a.latestVersionCode) {

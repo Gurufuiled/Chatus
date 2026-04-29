@@ -75,7 +75,7 @@
       }
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "icon": "./assets/chatus_icon.png",
       "intentFilters": [
         {
