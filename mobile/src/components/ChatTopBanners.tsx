@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Reanimated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
-import { colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { AnimatedPlayPauseIcon } from './AnimatedPlayPauseIcon';
+
+/** Видеосообщения — отдельный акцент от голосового (accent), читаемый на светлой и тёмной плашке. */
+const VIDEO_NOTE_BRAND = '#8B5CF6';
 
 type ChatTopBannersProps = {
   selectionMode: boolean;
@@ -34,9 +39,271 @@ type ChatTopBannersProps = {
   searchInputRef: React.RefObject<TextInput | null>;
 };
 
+type ChatTopBannerStyles = ReturnType<typeof createChatTopBannerStyles>;
+
+function createChatTopBannerStyles(c: ThemeColors) {
+  const bannerSurface = withAlpha(c.inputBackgroundSolid, 0.96);
+  const bannerBorder = withAlpha(c.bubbleOtherBorder, 0.85);
+  const selectionSurface = withAlpha(c.inputBackgroundSolid, 0.92);
+  const selectionSurfacePrimary = withAlpha(c.header, 0.96);
+
+  return StyleSheet.create({
+    selectionBannerWrap: {
+      paddingHorizontal: 12,
+      paddingTop: 10,
+      paddingBottom: 4,
+    },
+    selectionBannerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    selectionPill: {
+      minHeight: 42,
+      paddingHorizontal: 18,
+      borderRadius: 22,
+      backgroundColor: selectionSurface,
+      borderWidth: 1,
+      borderColor: bannerBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 8,
+      shadowColor: '#000',
+      shadowOpacity: 0.12,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 3,
+    },
+    selectionPillPrimary: {
+      flex: 1,
+      backgroundColor: selectionSurfacePrimary,
+      borderColor: withAlpha(c.accent, 0.22),
+    },
+    selectionPillPressed: {
+      opacity: 0.82,
+    },
+    selectionPillIconAccent: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.accent,
+      shadowColor: c.accent,
+      shadowOpacity: 0.22,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+    },
+    selectionBannerText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.textPrimary,
+    },
+    selectionBannerAction: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.textSecondary,
+    },
+    voiceBannerWrap: {
+      paddingHorizontal: 10,
+      paddingTop: 8,
+      paddingBottom: 4,
+      zIndex: 10,
+    },
+    voiceBanner: {
+      height: 44,
+      borderRadius: 22,
+      paddingLeft: 8,
+      paddingRight: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: bannerSurface,
+      shadowColor: '#000',
+      shadowOpacity: 0.14,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 3,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: bannerBorder,
+      overflow: 'hidden',
+    },
+    videoNoteBanner: {
+      backgroundColor: withAlpha(c.inputBackgroundSolid, 0.98),
+    },
+    voiceBannerPlayButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.accent,
+      shadowColor: c.accent,
+      shadowOpacity: 0.2,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 2,
+    },
+    videoNotePlayButton: {
+      backgroundColor: VIDEO_NOTE_BRAND,
+      shadowColor: VIDEO_NOTE_BRAND,
+    },
+    voiceBannerTextWrap: {
+      flex: 1,
+      minWidth: 0,
+      marginLeft: 6,
+    },
+    voiceBannerAuthor: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: c.textPrimary,
+    },
+    voiceBannerSubtitle: {
+      marginTop: 1,
+      fontSize: 12,
+      color: c.textSecondary,
+    },
+    voiceBannerRateButton: {
+      minWidth: 42,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 6,
+      paddingVertical: 6,
+    },
+    voiceBannerRateText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: c.textSecondary,
+    },
+    videoNoteMetaBadge: {
+      minWidth: 54,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: withAlpha(VIDEO_NOTE_BRAND, 0.16),
+    },
+    videoNoteMetaBadgeText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: VIDEO_NOTE_BRAND,
+    },
+    voiceBannerCloseButton: {
+      width: 28,
+      height: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 2,
+    },
+    voiceBannerButtonPressed: {
+      opacity: 0.7,
+    },
+    voiceBannerProgressTrack: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: 2,
+      backgroundColor: withAlpha(c.accent, 0.14),
+    },
+    voiceBannerProgressFill: {
+      height: '100%',
+      backgroundColor: c.accent,
+    },
+    videoNoteProgressFill: {
+      backgroundColor: VIDEO_NOTE_BRAND,
+    },
+    pinnedBannerWrap: {
+      paddingHorizontal: 12,
+      paddingTop: 8,
+    },
+    pinnedBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: withAlpha(c.inputBackgroundSolid, 0.94),
+      borderRadius: 16,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: bannerBorder,
+    },
+    pinnedAccent: {
+      width: 3,
+      alignSelf: 'stretch',
+      borderRadius: 999,
+      backgroundColor: c.accent,
+      marginRight: 10,
+    },
+    pinnedContent: {
+      flex: 1,
+      minWidth: 0,
+    },
+    pinnedMainPressable: {
+      flex: 1,
+      minWidth: 0,
+    },
+    pinnedTitle: {
+      fontSize: 12,
+      lineHeight: 15,
+      fontWeight: '700',
+      color: c.accent,
+    },
+    pinnedText: {
+      marginTop: 2,
+      fontSize: 13,
+      lineHeight: 17,
+      color: c.textPrimary,
+    },
+    pinnedClose: {
+      width: 28,
+      height: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchBarRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      paddingBottom: 6,
+      backgroundColor: withAlpha(c.toolbar, 0.96),
+    },
+    searchBubble: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: 14,
+      paddingHorizontal: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: c.inputBackground,
+    },
+    searchInput: {
+      flex: 1,
+      paddingVertical: 0,
+      fontSize: 17,
+      color: c.textPrimary,
+    },
+    searchCancelButton: {
+      paddingVertical: 8,
+    },
+    searchCancelText: {
+      fontSize: 17,
+      fontWeight: '500',
+      color: c.accent,
+    },
+  });
+}
+
 type SelectionBannerProps = {
   selectedCount: number;
   onClearSelection: () => void;
+  st: ChatTopBannerStyles;
+  cancelIconColor: string;
 };
 
 type VoiceBannerProps = {
@@ -47,6 +314,8 @@ type VoiceBannerProps = {
   onToggleVoicePlayback: () => void;
   onCycleVoiceRate: () => void;
   onStopVoice: () => void;
+  st: ChatTopBannerStyles;
+  closeIconColor: string;
 };
 
 type VideoNoteBannerProps = {
@@ -56,12 +325,16 @@ type VideoNoteBannerProps = {
   activeVideoNoteDurationLabel: string;
   onToggleVideoNotePlayback: () => void;
   onStopVideoNote: () => void;
+  st: ChatTopBannerStyles;
+  closeIconColor: string;
 };
 
 type PinnedBannerProps = {
   pinnedMessageText: string;
   onPinnedPress: () => void;
   onPinnedClose: () => void;
+  st: ChatTopBannerStyles;
+  iconMuted: string;
 };
 
 type SearchBannerProps = {
@@ -69,6 +342,10 @@ type SearchBannerProps = {
   onSearchQueryChange: (value: string) => void;
   onCancelSearch: () => void;
   searchInputRef: React.RefObject<TextInput | null>;
+  st: ChatTopBannerStyles;
+  accent: string;
+  placeholderColor: string;
+  searchIconColor: string;
 };
 
 const selectionBannerEntering = FadeInDown.springify().damping(18).stiffness(220);
@@ -77,19 +354,21 @@ const selectionBannerExiting = FadeOutUp.duration(140);
 const SelectionBanner = React.memo(function SelectionBanner({
   selectedCount,
   onClearSelection,
+  st,
+  cancelIconColor,
 }: SelectionBannerProps) {
   return (
     <Reanimated.View
       entering={selectionBannerEntering}
       exiting={selectionBannerExiting}
-      style={styles.selectionBannerWrap}
+      style={st.selectionBannerWrap}
     >
-      <View style={styles.selectionBannerRow}>
-        <View style={[styles.selectionPill, styles.selectionPillPrimary]}>
-          <View style={styles.selectionPillIconAccent}>
+      <View style={st.selectionBannerRow}>
+        <View style={[st.selectionPill, st.selectionPillPrimary]}>
+          <View style={st.selectionPillIconAccent}>
             <Feather name="check" size={14} color="#FFFFFF" />
           </View>
-          <Text style={styles.selectionBannerText}>Выбрано {selectedCount}</Text>
+          <Text style={st.selectionBannerText}>Выбрано {selectedCount}</Text>
         </View>
 
         <Pressable
@@ -97,10 +376,10 @@ const SelectionBanner = React.memo(function SelectionBanner({
           accessibilityLabel="Отменить выбор сообщений"
           hitSlop={10}
           onPress={onClearSelection}
-          style={({ pressed }) => [styles.selectionPill, pressed && styles.selectionPillPressed]}
+          style={({ pressed }) => [st.selectionPill, pressed && st.selectionPillPressed]}
         >
-          <Feather name="x" size={15} color="#475569" />
-          <Text style={styles.selectionBannerAction}>Отмена</Text>
+          <Feather name="x" size={15} color={cancelIconColor} />
+          <Text style={st.selectionBannerAction}>Отмена</Text>
         </Pressable>
       </View>
     </Reanimated.View>
@@ -115,59 +394,45 @@ const VoiceBanner = React.memo(function VoiceBanner({
   onToggleVoicePlayback,
   onCycleVoiceRate,
   onStopVoice,
+  st,
+  closeIconColor,
 }: VoiceBannerProps) {
   return (
-    <View style={styles.voiceBannerWrap}>
-      <View style={styles.voiceBanner}>
+    <View style={st.voiceBannerWrap}>
+      <View style={st.voiceBanner}>
         <Pressable
           onPress={onToggleVoicePlayback}
-          style={({ pressed }) => [
-            styles.voiceBannerPlayButton,
-            pressed && styles.voiceBannerButtonPressed,
-          ]}
+          style={({ pressed }) => [st.voiceBannerPlayButton, pressed && st.voiceBannerButtonPressed]}
         >
-          <AnimatedPlayPauseIcon
-            isPlaying={activeVoiceIsPlaying}
-            size={16}
-            color="#FFFFFF"
-          />
+          <AnimatedPlayPauseIcon isPlaying={activeVoiceIsPlaying} size={16} color="#FFFFFF" />
         </Pressable>
 
-        <View style={styles.voiceBannerTextWrap}>
-          <Text numberOfLines={1} style={styles.voiceBannerAuthor}>
+        <View style={st.voiceBannerTextWrap}>
+          <Text numberOfLines={1} style={st.voiceBannerAuthor}>
             {activeVoiceAuthor ?? 'Голосовое сообщение'}
           </Text>
-          <Text numberOfLines={1} style={styles.voiceBannerSubtitle}>
+          <Text numberOfLines={1} style={st.voiceBannerSubtitle}>
             Голосовое сообщение
           </Text>
         </View>
 
         <Pressable
           onPress={onCycleVoiceRate}
-          style={({ pressed }) => [
-            styles.voiceBannerRateButton,
-            pressed && styles.voiceBannerButtonPressed,
-          ]}
+          style={({ pressed }) => [st.voiceBannerRateButton, pressed && st.voiceBannerButtonPressed]}
         >
-          <Text style={styles.voiceBannerRateText}>{activeVoiceRateLabel}</Text>
+          <Text style={st.voiceBannerRateText}>{activeVoiceRateLabel}</Text>
         </Pressable>
 
         <Pressable
           onPress={onStopVoice}
-          style={({ pressed }) => [
-            styles.voiceBannerCloseButton,
-            pressed && styles.voiceBannerButtonPressed,
-          ]}
+          style={({ pressed }) => [st.voiceBannerCloseButton, pressed && st.voiceBannerButtonPressed]}
         >
-          <Feather name="x" size={18} color="#8A94A6" />
+          <Feather name="x" size={18} color={closeIconColor} />
         </Pressable>
 
-        <View style={styles.voiceBannerProgressTrack}>
+        <View style={st.voiceBannerProgressTrack}>
           <View
-            style={[
-              styles.voiceBannerProgressFill,
-              { width: `${Math.max(activeVoiceProgress * 100, 0)}%` },
-            ]}
+            style={[st.voiceBannerProgressFill, { width: `${Math.max(activeVoiceProgress * 100, 0)}%` }]}
           />
         </View>
       </View>
@@ -182,53 +447,48 @@ const VideoNoteBanner = React.memo(function VideoNoteBanner({
   activeVideoNoteDurationLabel,
   onToggleVideoNotePlayback,
   onStopVideoNote,
+  st,
+  closeIconColor,
 }: VideoNoteBannerProps) {
   return (
-    <View style={styles.voiceBannerWrap}>
-      <View style={[styles.voiceBanner, styles.videoNoteBanner]}>
+    <View style={st.voiceBannerWrap}>
+      <View style={[st.voiceBanner, st.videoNoteBanner]}>
         <Pressable
           onPress={onToggleVideoNotePlayback}
           style={({ pressed }) => [
-            styles.voiceBannerPlayButton,
-            styles.videoNotePlayButton,
-            pressed && styles.voiceBannerButtonPressed,
+            st.voiceBannerPlayButton,
+            st.videoNotePlayButton,
+            pressed && st.voiceBannerButtonPressed,
           ]}
         >
-          <AnimatedPlayPauseIcon
-            isPlaying={activeVideoNoteIsPlaying}
-            size={16}
-            color="#FFFFFF"
-          />
+          <AnimatedPlayPauseIcon isPlaying={activeVideoNoteIsPlaying} size={16} color="#FFFFFF" />
         </Pressable>
 
-        <View style={styles.voiceBannerTextWrap}>
-          <Text numberOfLines={1} style={styles.voiceBannerAuthor}>
+        <View style={st.voiceBannerTextWrap}>
+          <Text numberOfLines={1} style={st.voiceBannerAuthor}>
             {activeVideoNoteAuthor ?? 'Видеосообщение'}
           </Text>
-          <Text numberOfLines={1} style={styles.voiceBannerSubtitle}>
+          <Text numberOfLines={1} style={st.voiceBannerSubtitle}>
             Видеосообщение
           </Text>
         </View>
 
-        <View style={styles.videoNoteMetaBadge}>
-          <Text style={styles.videoNoteMetaBadgeText}>{activeVideoNoteDurationLabel}</Text>
+        <View style={st.videoNoteMetaBadge}>
+          <Text style={st.videoNoteMetaBadgeText}>{activeVideoNoteDurationLabel}</Text>
         </View>
 
         <Pressable
           onPress={onStopVideoNote}
-          style={({ pressed }) => [
-            styles.voiceBannerCloseButton,
-            pressed && styles.voiceBannerButtonPressed,
-          ]}
+          style={({ pressed }) => [st.voiceBannerCloseButton, pressed && st.voiceBannerButtonPressed]}
         >
-          <Feather name="x" size={18} color="#8A94A6" />
+          <Feather name="x" size={18} color={closeIconColor} />
         </Pressable>
 
-        <View style={styles.voiceBannerProgressTrack}>
+        <View style={st.voiceBannerProgressTrack}>
           <View
             style={[
-              styles.voiceBannerProgressFill,
-              styles.videoNoteProgressFill,
+              st.voiceBannerProgressFill,
+              st.videoNoteProgressFill,
               { width: `${Math.max(activeVideoNoteProgress * 100, 0)}%` },
             ]}
           />
@@ -242,21 +502,23 @@ const PinnedBanner = React.memo(function PinnedBanner({
   pinnedMessageText,
   onPinnedPress,
   onPinnedClose,
+  st,
+  iconMuted,
 }: PinnedBannerProps) {
   return (
-    <View style={styles.pinnedBannerWrap}>
-      <View style={styles.pinnedBanner}>
-        <View style={styles.pinnedAccent} />
-        <Pressable onPress={onPinnedPress} style={styles.pinnedMainPressable}>
-          <View style={styles.pinnedContent}>
-            <Text style={styles.pinnedTitle}>Закрепленное сообщение</Text>
-            <Text numberOfLines={1} style={styles.pinnedText}>
+    <View style={st.pinnedBannerWrap}>
+      <View style={st.pinnedBanner}>
+        <View style={st.pinnedAccent} />
+        <Pressable onPress={onPinnedPress} style={st.pinnedMainPressable}>
+          <View style={st.pinnedContent}>
+            <Text style={st.pinnedTitle}>Закрепленное сообщение</Text>
+            <Text numberOfLines={1} style={st.pinnedText}>
               {pinnedMessageText}
             </Text>
           </View>
         </Pressable>
-        <Pressable hitSlop={10} onPress={onPinnedClose} style={styles.pinnedClose}>
-          <Feather name="x" size={16} color="#65717E" />
+        <Pressable hitSlop={10} onPress={onPinnedClose} style={st.pinnedClose}>
+          <Feather name="x" size={16} color={iconMuted} />
         </Pressable>
       </View>
     </View>
@@ -268,26 +530,30 @@ const SearchBanner = React.memo(function SearchBanner({
   onSearchQueryChange,
   onCancelSearch,
   searchInputRef,
+  st,
+  accent,
+  placeholderColor,
+  searchIconColor,
 }: SearchBannerProps) {
   return (
-    <View style={styles.searchBarRow}>
-      <View style={styles.searchBubble}>
-        <Feather name="search" size={17} color="#94A3B8" />
+    <View style={st.searchBarRow}>
+      <View style={st.searchBubble}>
+        <Feather name="search" size={17} color={searchIconColor} />
         <TextInput
           ref={searchInputRef}
           value={searchQuery}
           onChangeText={onSearchQueryChange}
           placeholder="Искать в чате"
-          placeholderTextColor="#A0AEC0"
-          style={styles.searchInput}
+          placeholderTextColor={placeholderColor}
+          style={st.searchInput}
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="none"
-          selectionColor={colors.accent}
+          selectionColor={accent}
         />
       </View>
-      <Pressable onPress={onCancelSearch} style={styles.searchCancelButton}>
-        <Text style={styles.searchCancelText}>Отмена</Text>
+      <Pressable onPress={onCancelSearch} style={st.searchCancelButton}>
+        <Text style={st.searchCancelText}>Отмена</Text>
       </Pressable>
     </View>
   );
@@ -322,9 +588,21 @@ export const ChatTopBanners = React.memo(
     onCancelSearch,
     searchInputRef,
   }: ChatTopBannersProps) {
+    const { colors: c } = useTheme();
+    const st = useMemo(() => createChatTopBannerStyles(c), [c]);
+
     if (selectionMode) {
-      return <SelectionBanner selectedCount={selectedCount} onClearSelection={onClearSelection} />;
+      return (
+        <SelectionBanner
+          selectedCount={selectedCount}
+          onClearSelection={onClearSelection}
+          st={st}
+          cancelIconColor={c.textSecondary}
+        />
+      );
     }
+
+    const closeIconColor = c.iconMuted;
 
     return (
       <>
@@ -337,6 +615,8 @@ export const ChatTopBanners = React.memo(
             onToggleVoicePlayback={onToggleVoicePlayback}
             onCycleVoiceRate={onCycleVoiceRate}
             onStopVoice={onStopVoice}
+            st={st}
+            closeIconColor={closeIconColor}
           />
         ) : null}
 
@@ -348,6 +628,8 @@ export const ChatTopBanners = React.memo(
             activeVideoNoteDurationLabel={activeVideoNoteDurationLabel}
             onToggleVideoNotePlayback={onToggleVideoNotePlayback}
             onStopVideoNote={onStopVideoNote}
+            st={st}
+            closeIconColor={closeIconColor}
           />
         ) : null}
 
@@ -356,6 +638,8 @@ export const ChatTopBanners = React.memo(
             pinnedMessageText={pinnedMessageText}
             onPinnedPress={onPinnedPress}
             onPinnedClose={onPinnedClose}
+            st={st}
+            iconMuted={c.iconMuted}
           />
         ) : null}
 
@@ -365,6 +649,10 @@ export const ChatTopBanners = React.memo(
             onSearchQueryChange={onSearchQueryChange}
             onCancelSearch={onCancelSearch}
             searchInputRef={searchInputRef}
+            st={st}
+            accent={c.accent}
+            placeholderColor={c.placeholder}
+            searchIconColor={c.textSecondary}
           />
         ) : null}
       </>
@@ -398,254 +686,3 @@ export const ChatTopBanners = React.memo(
     prev.onCancelSearch === next.onCancelSearch &&
     prev.searchInputRef === next.searchInputRef
 );
-
-const styles = StyleSheet.create({
-  selectionBannerWrap: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  selectionBannerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  selectionPill: {
-    minHeight: 42,
-    paddingHorizontal: 18,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.84)',
-    borderWidth: 1,
-    borderColor: 'rgba(223,230,240,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  selectionPillPrimary: {
-    flex: 1,
-    backgroundColor: 'rgba(248,252,255,0.94)',
-    borderColor: 'rgba(214,229,255,0.95)',
-  },
-  selectionPillPressed: {
-    opacity: 0.82,
-  },
-  selectionPillIconAccent: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  selectionBannerText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#142235',
-  },
-  selectionBannerAction: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  voiceBannerWrap: {
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 4,
-    zIndex: 10,
-  },
-  voiceBanner: {
-    height: 44,
-    borderRadius: 22,
-    paddingLeft: 8,
-    paddingRight: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(213,220,230,0.8)',
-    overflow: 'hidden',
-  },
-  videoNoteBanner: {
-    backgroundColor: 'rgba(255,255,255,0.98)',
-  },
-  voiceBannerPlayButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  videoNotePlayButton: {
-    backgroundColor: '#7C5CFF',
-    shadowColor: '#7C5CFF',
-  },
-  voiceBannerTextWrap: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 6,
-  },
-  voiceBannerAuthor: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  voiceBannerSubtitle: {
-    marginTop: 1,
-    fontSize: 12,
-    color: '#8A94A6',
-  },
-  voiceBannerRateButton: {
-    minWidth: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-  },
-  voiceBannerRateText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#7A8699',
-  },
-  videoNoteMetaBadge: {
-    minWidth: 54,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(colors.accent, 0.1),
-  },
-  videoNoteMetaBadgeText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  voiceBannerCloseButton: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
-  voiceBannerButtonPressed: {
-    opacity: 0.7,
-  },
-  voiceBannerProgressTrack: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 2,
-    backgroundColor: withAlpha(colors.accent, 0.12),
-  },
-  voiceBannerProgressFill: {
-    height: '100%',
-    backgroundColor: colors.accent,
-  },
-  videoNoteProgressFill: {
-    backgroundColor: '#7C5CFF',
-  },
-  pinnedBannerWrap: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-  },
-  pinnedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(210,224,235,0.9)',
-  },
-  pinnedAccent: {
-    width: 3,
-    alignSelf: 'stretch',
-    borderRadius: 999,
-    backgroundColor: colors.accent,
-    marginRight: 10,
-  },
-  pinnedContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-  pinnedMainPressable: {
-    flex: 1,
-    minWidth: 0,
-  },
-  pinnedTitle: {
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-  pinnedText: {
-    marginTop: 2,
-    fontSize: 13,
-    lineHeight: 17,
-    color: '#39414A',
-  },
-  pinnedClose: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 6,
-    backgroundColor: 'rgba(246,248,251,0.92)',
-  },
-  searchBubble: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#EEF2F6',
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 0,
-    fontSize: 17,
-    color: '#334155',
-  },
-  searchCancelButton: {
-    paddingVertical: 8,
-  },
-  searchCancelText: {
-    fontSize: 17,
-    fontWeight: '500',
-    color: colors.accent,
-  },
-});

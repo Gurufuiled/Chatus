@@ -341,7 +341,7 @@ function DiscussionMessageBubble({
   onReplyPreviewPress,
   st,
 }: DiscussionMessageBubbleProps) {
-  const { colors: c } = useTheme();
+  const { colors: c, resolvedScheme } = useTheme();
   const time = formatTime(item.created_at);
   const displayStatus =
     isMe && (item.status === 'delivered' || item.status === 'read')
@@ -361,9 +361,13 @@ function DiscussionMessageBubble({
         author={author}
         text={text}
         accentColor={isMe ? '#DFF2A8' : '#F28C28'}
-        backgroundColor={isMe ? '#6A9EFF' : '#F2F4D9'}
-        textColor={isMe ? 'rgba(255,255,255,0.88)' : '#5F6368'}
-        authorColor={isMe ? '#FFD08A' : '#D1782B'}
+        backgroundColor={
+          isMe ? '#6A9EFF' : resolvedScheme === 'dark' ? 'rgba(255,255,255,0.08)' : '#F2F4D9'
+        }
+        textColor={
+          isMe ? 'rgba(255,255,255,0.88)' : resolvedScheme === 'dark' ? c.textSecondary : '#5F6368'
+        }
+        authorColor={isMe ? '#FFD08A' : resolvedScheme === 'dark' ? c.accent : '#D1782B'}
         thumbnailUri={getReplyPreviewThumbnailUri(repliedMessage)}
         onPress={onReplyPreviewPress && item.reply_to_id ? () => onReplyPreviewPress(item.reply_to_id!) : undefined}
       />

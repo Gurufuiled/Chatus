@@ -61,6 +61,10 @@ import {
   useVideoNotePlayer,
 } from '../components/VideoNoteBubble';
 import {
+  MeBubbleChrome,
+  shouldUseDarkDefaultOutgoingBubbleGradient,
+} from '../components/OutgoingBubbleViewportGradient';
+import {
   useVoicePlayerControls,
   useVoicePlayerState,
 } from '../contexts/VoicePlayerContext';
@@ -68,7 +72,8 @@ import type { Message } from '../stores/types';
 import { useTheme } from '../contexts/ThemeContext';
 import { withAlpha } from '../theme/colors';
 import { buildChatScreenStyles, type ChatScreenStyleSet } from './chatScreen.styles';
-import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatThemeId } from '../theme/chatThemes';
+import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatTheme, type ChatThemeId } from '../theme/chatThemes';
+import { bubbleRadius } from '../theme/stylePrimitives';
 import {
   ChatBackgroundPattern,
   EMPTY_MESSAGES,
@@ -135,12 +140,26 @@ function MediaAlbumBubble({
   time,
   status,
   msgStyles,
+  chatTheme,
+  viewportOutgoingGradient,
+  scrollTick,
+  incomingCaptionBg,
+  incomingCaptionBorder,
+  incomingCaptionText,
+  incomingCaptionMeta,
 }: {
   message: Message;
   isMe: boolean;
   time: string;
   status: string;
   msgStyles: ChatScreenStyleSet;
+  chatTheme: ChatTheme;
+  viewportOutgoingGradient: boolean;
+  scrollTick: number;
+  incomingCaptionBg?: string;
+  incomingCaptionBorder?: string;
+  incomingCaptionText?: string;
+  incomingCaptionMeta?: string;
 }) {
   const media = (message.media ?? [])
     .filter((item) => item.remote_url?.trim())
@@ -221,10 +240,8 @@ function MediaAlbumBubble({
     );
   })();
 
-  return (
-    <View
-      style={[msgStyles.albumBubble, isMe ? msgStyles.albumBubbleMe : msgStyles.albumBubbleOther]}
-    >
+  const albumShell = (
+    <>
       <View style={[msgStyles.albumGridClip, { width: albumWidth }]}>
         {grid}
         {!caption ? (
@@ -244,13 +261,60 @@ function MediaAlbumBubble({
         <View
           style={[
             msgStyles.albumCaptionWrap,
-            isMe ? msgStyles.albumCaptionMe : msgStyles.albumCaptionOther,
+            isMe
+              ? viewportOutgoingGradient
+                ? [msgStyles.albumCaptionMe, { backgroundColor: 'transparent' }]
+                : [msgStyles.albumCaptionMe, { backgroundColor: chatTheme.bubbleMe }]
+              : [
+                  msgStyles.albumCaptionOther,
+                  incomingCaptionBg
+                    ? {
+                        backgroundColor: incomingCaptionBg,
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                        borderTopColor: incomingCaptionBorder ?? 'transparent',
+                      }
+                    : null,
+                ],
           ]}
         >
-          <Text style={msgStyles.albumCaptionText}>{caption}</Text>
-          <MessageTimeStatus time={time} status={status} isMe={isMe} compact />
+          <Text
+            style={[
+              msgStyles.albumCaptionText,
+              isMe ? { color: chatTheme.bubbleMeText } : null,
+              !isMe && incomingCaptionText ? { color: incomingCaptionText } : null,
+            ]}
+          >
+            {caption}
+          </Text>
+          <MessageTimeStatus
+            time={time}
+            status={status}
+            isMe={isMe}
+            compact
+            timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+            iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+          />
         </View>
       ) : null}
+    </>
+  );
+
+  if (isMe && viewportOutgoingGradient) {
+    return (
+      <MeBubbleChrome
+        active
+        scrollTick={scrollTick}
+        fillColor={chatTheme.bubbleMe}
+        style={[msgStyles.albumBubble, msgStyles.albumBubbleMe]}
+      >
+        {albumShell}
+      </MeBubbleChrome>
+    );
+  }
+
+  return (
+    <View style={[msgStyles.albumBubble, isMe ? msgStyles.albumBubbleMe : msgStyles.albumBubbleOther]}>
+      {albumShell}
     </View>
   );
 }
@@ -1493,6 +1557,12 @@ export function ChatScreen() {
   const renderMenuPreviewBody = useCallback((item: Message, forcedWidth?: number) => {
     const isMe = item.sender_id === currentUserId;
     const fixedWidthStyle = forcedWidth ? { width: forcedWidth, maxWidth: forcedWidth } : null;
+    const menuPreviewScrollTick = 0;
+    const usePreviewOutgoingGradient =
+      isMe &&
+      item.is_deleted !== 1 &&
+      shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
+    const meBubbleFill = usePreviewOutgoingGradient ? '#00000000' : chatTheme.bubbleMe;
 
     const renderReplySnippet = () => {
       if (!item.reply_to_id) return null;
@@ -1508,10 +1578,18 @@ export function ChatScreen() {
         <ReplyPreview
           author={author}
           text={text}
-          accentColor={isMe ? '#DFF2A8' : '#F28C28'}
-          backgroundColor={isMe ? '#6A9EFF' : '#F2F4D9'}
-          textColor={isMe ? 'rgba(255,255,255,0.88)' : '#5F6368'}
-          authorColor={isMe ? '#FFD08A' : '#D1782B'}
+          accentColor={isMe ? chatTheme.replyAccentMe : '#F28C28'}
+          backgroundColor={
+            isMe
+              ? chatTheme.replyBubbleMe
+              : resolvedScheme === 'dark'
+                ? 'rgba(255,255,255,0.08)'
+                : '#F2F4D9'
+          }
+          textColor={
+            isMe ? chatTheme.replyTextMe : resolvedScheme === 'dark' ? themeColors.textSecondary : '#5F6368'
+          }
+          authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
           thumbnailUri={getReplyPreviewThumbnailUri(replied)}
         />
       );
@@ -1547,9 +1625,10 @@ export function ChatScreen() {
             styles.deletedBubble,
             fixedWidthStyle,
             isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
+            isMe ? { backgroundColor: chatTheme.deletedBubbleMe } : null,
           ]}
         >
-          <Text style={[styles.deletedText, isMe && styles.deletedTextMe]}>
+          <Text style={[styles.deletedText, isMe && { color: chatTheme.deletedTextMe }]}>
             {getDeletedPlaceholder(isMe)}
           </Text>
           <MessageTimeStatus
@@ -1580,27 +1659,56 @@ export function ChatScreen() {
               status={item.status}
               navigation={navigation}
               chatTheme={chatTheme}
+              useViewportOutgoingGradient={usePreviewOutgoingGradient}
+              scrollTick={menuPreviewScrollTick}
             />
           </View>
         );
       }
 
       return (
-        <View style={[styles.bubble, fixedWidthStyle, isMe ? styles.bubbleMe : styles.bubbleOther]}>
-          {renderForwardHeader()}
-          {renderReplySnippet()}
-          <View style={styles.bubbleContentRow}>
-            <Text style={[styles.textContent, isMe && styles.textContentMe]}>
-              {displayContent}
-            </Text>
-            <MessageTimeStatus
-              time={formatTime(item.created_at)}
-              status={item.status}
-              isMe={isMe}
-              compact
-            />
+        isMe ? (
+          <MeBubbleChrome
+            active={usePreviewOutgoingGradient}
+            scrollTick={menuPreviewScrollTick}
+            fillColor={chatTheme.bubbleMe}
+            style={[
+              styles.bubble,
+              fixedWidthStyle,
+              !usePreviewOutgoingGradient ? styles.bubbleMe : null,
+            ]}
+          >
+            {renderForwardHeader()}
+            {renderReplySnippet()}
+            <View style={styles.bubbleContentRow}>
+              <Text style={[styles.textContent, styles.textContentMe, { color: chatTheme.bubbleMeText }]}>
+                {displayContent}
+              </Text>
+              <MessageTimeStatus
+                time={formatTime(item.created_at)}
+                status={item.status}
+                isMe={isMe}
+                compact
+                timeColor={chatTheme.bubbleMeMeta}
+                iconColor={chatTheme.bubbleMeMeta}
+              />
+            </View>
+          </MeBubbleChrome>
+        ) : (
+          <View style={[styles.bubble, fixedWidthStyle, styles.bubbleOther]}>
+            {renderForwardHeader()}
+            {renderReplySnippet()}
+            <View style={styles.bubbleContentRow}>
+              <Text style={[styles.textContent, isMe && styles.textContentMe]}>{displayContent}</Text>
+              <MessageTimeStatus
+                time={formatTime(item.created_at)}
+                status={item.status}
+                isMe={isMe}
+                compact
+              />
+            </View>
           </View>
-        </View>
+        )
       );
     }
 
@@ -1619,16 +1727,59 @@ export function ChatScreen() {
           status={item.status}
           embedded={!!replySnippet}
           header={forwardHeader}
+          bubbleMeColor={meBubbleFill}
+          outgoingTextColor={chatTheme.bubbleMeText}
+          outgoingMetaColor={chatTheme.bubbleMeMeta}
+          outgoingAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingDurationColor={!isMe ? themeColors.textSecondary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                styles.repliedVoiceBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+                fixedWidthStyle,
+              ]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {voiceContent}
+            </View>
+          );
+        }
+        if (usePreviewOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[styles.repliedMediaBubble, styles.repliedVoiceBubble, bubbleRadius.mine, fixedWidthStyle]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {voiceContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
               styles.repliedVoiceBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
               fixedWidthStyle,
             ]}
           >
@@ -1641,7 +1792,18 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
-          {voiceContent}
+          {isMe && usePreviewOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[{ alignSelf: 'flex-end' }, bubbleRadius.mine, { overflow: 'hidden' }]}
+            >
+              {voiceContent}
+            </MeBubbleChrome>
+          ) : (
+            voiceContent
+          )}
         </View>
       );
     }
@@ -1669,15 +1831,54 @@ export function ChatScreen() {
           embedded={!!replySnippet}
           header={forwardHeader}
           registerPlaybackState={false}
+          bubbleMeColor={meBubbleFill}
+          outgoingMetaColor={chatTheme.bubbleMeMeta}
+          outgoingAccentColor={chatTheme.bubbleMeAccent}
+          viewportOutgoingGradient={!!isMe && usePreviewOutgoingGradient && !replySnippet}
+          scrollTick={menuPreviewScrollTick}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+                fixedWidthStyle,
+              ]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {videoContent}
+            </View>
+          );
+        }
+        if (usePreviewOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[styles.repliedMediaBubble, bubbleRadius.mine, { overflow: 'hidden' }, fixedWidthStyle]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {videoContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
               fixedWidthStyle,
             ]}
           >
@@ -1690,7 +1891,18 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
-          {videoContent}
+          {isMe && usePreviewOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[{ alignSelf: 'flex-end' }, bubbleRadius.mine, { overflow: 'hidden' }]}
+            >
+              {videoContent}
+            </MeBubbleChrome>
+          ) : (
+            videoContent
+          )}
         </View>
       );
     }
@@ -1709,15 +1921,56 @@ export function ChatScreen() {
           time={formatTime(item.created_at)}
           status={item.status}
           msgStyles={styles}
+          chatTheme={chatTheme}
+          viewportOutgoingGradient={usePreviewOutgoingGradient}
+          scrollTick={menuPreviewScrollTick}
+          incomingCaptionBg={!isMe ? themeColors.bubbleOther : undefined}
+          incomingCaptionBorder={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingCaptionText={!isMe ? themeColors.textPrimary : undefined}
+          incomingCaptionMeta={!isMe ? themeColors.textSecondary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+                fixedWidthStyle,
+              ]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {albumContent}
+            </View>
+          );
+        }
+        if (usePreviewOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[styles.repliedMediaBubble, bubbleRadius.mine, fixedWidthStyle]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {albumContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
               fixedWidthStyle,
             ]}
           >
@@ -1754,15 +2007,55 @@ export function ChatScreen() {
           status={item.status}
           embedded={!!replySnippet}
           header={forwardHeader}
+          bubbleMeColor={meBubbleFill}
+          outgoingTextColor={chatTheme.bubbleMeText}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+                fixedWidthStyle,
+              ]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {imageContent}
+            </View>
+          );
+        }
+        if (usePreviewOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[styles.repliedMediaBubble, bubbleRadius.mine, fixedWidthStyle]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {imageContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
               fixedWidthStyle,
             ]}
           >
@@ -1775,7 +2068,18 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
-          {imageContent}
+          {isMe && usePreviewOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[{ alignSelf: 'flex-end' }, bubbleRadius.mine, { overflow: 'hidden' }]}
+            >
+              {imageContent}
+            </MeBubbleChrome>
+          ) : (
+            imageContent
+          )}
         </View>
       );
     }
@@ -1804,15 +2108,55 @@ export function ChatScreen() {
           status={item.status}
           embedded={!!replySnippet}
           header={forwardHeader}
+          bubbleMeColor={meBubbleFill}
+          outgoingTextColor={chatTheme.bubbleMeText}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+                fixedWidthStyle,
+              ]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {videoContent}
+            </View>
+          );
+        }
+        if (usePreviewOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[styles.repliedMediaBubble, bubbleRadius.mine, fixedWidthStyle]}
+            >
+              {renderForwardHeader()}
+              {replySnippet}
+              {videoContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
               fixedWidthStyle,
             ]}
           >
@@ -1825,7 +2169,18 @@ export function ChatScreen() {
 
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
-          {videoContent}
+          {isMe && usePreviewOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[{ alignSelf: 'flex-end' }, bubbleRadius.mine, { overflow: 'hidden' }]}
+            >
+              {videoContent}
+            </MeBubbleChrome>
+          ) : (
+            videoContent
+          )}
         </View>
       );
     }
@@ -1837,25 +2192,60 @@ export function ChatScreen() {
         rawFile.trim().length > 0
           ? resolveMediaUrl(rawFile) ?? rawFile
           : undefined;
+      const fileBubbleEl = (
+        <FileBubble
+          fileName={item.media[0].file_name ?? 'File'}
+          fileSize={item.media[0].file_size}
+          uri={fileUri}
+          isMe={isMe}
+          caption={item.content ?? undefined}
+          time={formatTime(item.created_at)}
+          status={item.status}
+          header={renderForwardHeader()}
+          bubbleMeColor={meBubbleFill}
+          outgoingTextColor={chatTheme.bubbleMeText}
+          outgoingMetaColor={chatTheme.bubbleMeMeta}
+          outgoingAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingFileNameColor={!isMe ? themeColors.textPrimary : undefined}
+          incomingSecondaryTextColor={!isMe ? themeColors.textSecondary : undefined}
+          incomingCaptionColor={!isMe ? themeColors.textPrimary : undefined}
+        />
+      );
+
       return (
         <View style={[styles.mediaStack, fixedWidthStyle]}>
           {replySnippet}
-          <FileBubble
-            fileName={item.media[0].file_name ?? 'File'}
-            fileSize={item.media[0].file_size}
-            uri={fileUri}
-            isMe={isMe}
-            caption={item.content ?? undefined}
-            time={formatTime(item.created_at)}
-            status={item.status}
-            header={renderForwardHeader()}
-          />
+          {isMe && usePreviewOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={menuPreviewScrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[{ alignSelf: 'flex-end', maxWidth: '100%' }, bubbleRadius.mine, { overflow: 'hidden' }]}
+            >
+              {fileBubbleEl}
+            </MeBubbleChrome>
+          ) : (
+            fileBubbleEl
+          )}
         </View>
       );
     }
 
     return null;
-  }, [chatId, chatTheme, currentUserId, handleForwardHeaderPress, messageById, navigation]);
+  }, [
+    chatId,
+    chatTheme,
+    currentUserId,
+    handleForwardHeaderPress,
+    messageById,
+    navigation,
+    resolvedScheme,
+    styles,
+    themeColors,
+  ]);
 
   const menuActions = useMemo<MenuAction[]>(() => {
     if (!activeMenuMessage) return [];

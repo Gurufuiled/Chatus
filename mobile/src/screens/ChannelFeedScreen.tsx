@@ -1695,6 +1695,9 @@ export function ChannelFeedScreen() {
             time={time}
             viewCount={item.view_count ?? 0}
             status={item.status}
+            incomingBubbleBackground={c.bubbleOther}
+            incomingBubbleBorderColor={c.bubbleOtherBorder}
+            incomingDurationColor={c.textSecondary}
           />
         );
       }
@@ -1734,6 +1737,9 @@ export function ChannelFeedScreen() {
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
               contentFit="cover"
               onOpenFullscreen={() => openChannelFeedMediaViewer(item, 0)}
+              incomingBubbleBackground={c.bubbleOther}
+              incomingBubbleBorderColor={c.bubbleOtherBorder}
+              incomingCaptionTextColor={c.textPrimary}
             />
             {hasCaption ? (
               <View style={styles.mediaCaptionBlock}>
@@ -1769,6 +1775,9 @@ export function ChannelFeedScreen() {
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
               onOpenFullscreen={() => openChannelFeedMediaViewer(item, 0)}
+              incomingBubbleBackground={c.bubbleOther}
+              incomingBubbleBorderColor={c.bubbleOtherBorder}
+              incomingCaptionTextColor={c.textPrimary}
             />
             {hasCaption ? (
               <View style={styles.mediaCaptionBlock}>
@@ -1794,6 +1803,11 @@ export function ChannelFeedScreen() {
             caption={item.content}
             time={time}
             status={item.status}
+            incomingBubbleBackground={c.bubbleOther}
+            incomingBubbleBorderColor={c.bubbleOtherBorder}
+            incomingFileNameColor={c.textPrimary}
+            incomingSecondaryTextColor={c.textSecondary}
+            incomingCaptionColor={c.textPrimary}
           />
         );
       }
@@ -2019,7 +2033,7 @@ export function ChannelFeedScreen() {
         </View>
       );
     },
-    [renderPostContent, renderPostExtrasPreview],
+    [renderPostContent, renderPostExtrasPreview, styles, c],
   );
 
   const lockedChannel = linkResolve?.channel;

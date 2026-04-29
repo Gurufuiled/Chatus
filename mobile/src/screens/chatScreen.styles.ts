@@ -233,7 +233,7 @@ export function buildChatScreenStyles(themeColors: ThemeColors) {
     textContent: {
       fontSize: 16,
       lineHeight: 20,
-      color: '#000',
+      color: themeColors.textPrimary,
       flexShrink: 1,
     },
     textContentMe: { color: '#fff' },
