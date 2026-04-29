@@ -284,7 +284,7 @@ export function ChatScreen() {
   const route = useRoute<ChatRoute>();
   const isFocused = useIsFocused();
   const { chatId, focusMessageId, startSearch } = route.params;
-  const { colors: themeColors } = useTheme();
+  const { colors: themeColors, resolvedScheme } = useTheme();
   const styles = useMemo(() => buildChatScreenStyles(themeColors), [themeColors]);
   const authorOpts = useMemo(() => ({ accentColor: themeColors.accent }), [themeColors.accent]);
   const getMessageAuthorPresentationThemed = useCallback(
@@ -346,7 +346,10 @@ export function ChatScreen() {
   }, [route.params.openThemePicker, navigation, chatThemeId]);
 
   const activeThemeId = isThemePickerVisible ? draftThemeId : chatThemeId;
-  const chatTheme = React.useMemo(() => getChatTheme(activeThemeId), [activeThemeId]);
+  const chatTheme = React.useMemo(
+    () => getChatTheme(activeThemeId, resolvedScheme),
+    [activeThemeId, resolvedScheme],
+  );
 
   const handleApplyTheme = useCallback(() => {
     uiStore.getState().setChatTheme(chatId, draftThemeId);

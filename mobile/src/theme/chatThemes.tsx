@@ -9,6 +9,8 @@ import {
   type ViewProps,
   type ViewStyle,
 } from 'react-native';
+import type { ResolvedColorScheme } from './palettes';
+import { useOptionalTheme, useTheme } from '../contexts/ThemeContext';
 
 const DEFAULT_CHAT_BACKGROUND = require('../../chat/chat-bg.png');
 
@@ -16,6 +18,8 @@ const CHAT_THEME_IMAGE_ASSETS = {
   meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.jpg'),
   frost: require('../assets/chat-themes/bg_snow_doodle.jpg'),
   sunset: require('../assets/chat-themes/bg_holiday_doodle.jpg'),
+  /** Тёмная тема приложения: «ночной doodle» по умолчанию для «Без темы». */
+  night: require('../assets/chat-themes/bg_night_doodle.png'),
 } as const;
 
 export type ChatThemeId = 'default' | 'meadow' | 'frost' | 'sunset';
@@ -139,16 +143,43 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
 
 export const CHAT_THEME_ORDER: ChatThemeId[] = ['default', 'meadow', 'frost', 'sunset'];
 
+/** «Без темы» при тёмной теме приложения — обои night doodle + палитра под тёмный фон. */
+const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
+  id: 'default',
+  name: 'Без темы',
+  bubbleMe: '#2B7FD6',
+  bubbleMeText: '#FFFFFF',
+  bubbleMeMeta: 'rgba(255,255,255,0.82)',
+  bubbleMeAccent: '#5CA8FF',
+  replyBubbleMe: '#3D6EA8',
+  replyAccentMe: '#C8E6FF',
+  replyTextMe: 'rgba(255,255,255,0.92)',
+  replyAuthorMe: '#FFD699',
+  forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+  forwardHeaderMe: 'rgba(255,255,255,0.95)',
+  deletedBubbleMe: '#2A3544',
+  deletedTextMe: 'rgba(255,255,255,0.65)',
+  canvasColor: '#141820',
+  wallpaperKind: 'asset-image',
+  wallpaperBase: '#141820',
+  wallpaperTint: 'rgba(255,255,255,0.035)',
+  wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.night,
+  previewBadge: '×',
+};
+
 export function isChatThemeId(value: string | null | undefined): value is ChatThemeId {
   return value === 'default' || value === 'meadow' || value === 'frost' || value === 'sunset';
 }
 
-export function getChatTheme(themeId: string | null | undefined): ChatTheme {
-  if (!themeId || !isChatThemeId(themeId)) {
-    return CHAT_THEMES.default;
+export function getChatTheme(
+  themeId: string | null | undefined,
+  resolvedScheme: ResolvedColorScheme = 'light',
+): ChatTheme {
+  const id: ChatThemeId = !themeId || !isChatThemeId(themeId) ? 'default' : themeId;
+  if (id === 'default' && resolvedScheme === 'dark') {
+    return DEFAULT_CHAT_THEME_DARK;
   }
-
-  return CHAT_THEMES[themeId];
+  return CHAT_THEMES[id];
 }
 
 function getChatWallpaperSource(theme: ChatTheme): ImageSourcePropType {
@@ -172,7 +203,9 @@ export function ChatWallpaper({
   pointerEvents = 'none',
   children,
 }: ChatWallpaperProps) {
-  const theme = getChatTheme(themeId);
+  const appTheme = useOptionalTheme();
+  const resolvedScheme = appTheme?.resolvedScheme ?? 'light';
+  const theme = getChatTheme(themeId, resolvedScheme);
   const source = getChatWallpaperSource(theme);
   const tintColor = preview ? 'rgba(255,255,255,0.005)' : theme.wallpaperTint;
 
@@ -208,7 +241,8 @@ export const ChatThemePreview = React.memo(function ChatThemePreview({
   themeId,
   selected,
 }: ChatThemePreviewProps) {
-  const theme = getChatTheme(themeId);
+  const { resolvedScheme } = useTheme();
+  const theme = getChatTheme(themeId, resolvedScheme);
   const source = getChatWallpaperSource(theme);
 
   return (

@@ -8,6 +8,7 @@ import {
   type ChatThemeId,
   getChatTheme,
 } from '../theme/chatThemes';
+import { useTheme } from '../contexts/ThemeContext';
 
 type ChatThemePickerModalProps = {
   visible: boolean;
@@ -25,6 +26,7 @@ export function ChatThemePickerModal({
   onClose,
 }: ChatThemePickerModalProps) {
   const insets = useSafeAreaInsets();
+  const { resolvedScheme } = useTheme();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -59,7 +61,7 @@ export function ChatThemePickerModal({
                   ]}
                   numberOfLines={1}
                 >
-                  {themeId === DEFAULT_CHAT_THEME_ID ? 'Без темы' : getChatTheme(themeId).name}
+                  {themeId === DEFAULT_CHAT_THEME_ID ? 'Без темы' : getChatTheme(themeId, resolvedScheme).name}
                 </Text>
               </Pressable>
             ))}
