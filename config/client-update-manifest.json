@@ -3,8 +3,8 @@
   "schemaVersion": 1,
   "android": {
     "minVersionCode": 1,
-    "latestVersionCode": 4,
-    "releaseTag": "1.0.3",
+    "latestVersionCode": 5,
+    "releaseTag": "1.0.4",
     "apkUrl": "https://github.com/Gurufuiled/Chatus/releases/latest/download/chatus-release.apk"
   }
 }
