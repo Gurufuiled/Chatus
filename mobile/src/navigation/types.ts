@@ -9,6 +9,8 @@ export type AuthStackParamList = {
 
 export type ChatsStackParamList = {
   ChatList: undefined;
+  ComposeMessage: undefined;
+  CreateContact: undefined;
   Chat: { chatId: string; chatTitle?: string; focusMessageId?: string; startSearch?: boolean; openThemePicker?: boolean };
   ChatProfile: { chatId: string; userId: string; chatTitle?: string };
   GroupProfile: { chatId: string; chatTitle?: string };
@@ -42,6 +44,8 @@ export type ChatsStackParamList = {
 
 export type SettingsStackParamList = {
   SettingsMain: undefined;
+  EditProfile: undefined;
+  MyProfile: undefined;
   Appearance: undefined;
   Services: undefined;
   MiniApp: { appId: string; title?: string };

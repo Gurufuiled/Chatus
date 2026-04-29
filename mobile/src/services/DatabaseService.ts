@@ -146,6 +146,21 @@ const SCHEMA_REPAIRS: Array<{ table: string; column: string; sql: string }> = [
     column: 'local_contact_name',
     sql: 'ALTER TABLE chats ADD COLUMN local_contact_name TEXT;',
   },
+  {
+    table: 'users',
+    column: 'last_name',
+    sql: 'ALTER TABLE users ADD COLUMN last_name TEXT;',
+  },
+  {
+    table: 'users',
+    column: 'bio',
+    sql: 'ALTER TABLE users ADD COLUMN bio TEXT;',
+  },
+  {
+    table: 'users',
+    column: 'birthday',
+    sql: 'ALTER TABLE users ADD COLUMN birthday INTEGER;',
+  },
 ];
 
 async function hasColumn(

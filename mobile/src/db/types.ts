@@ -7,6 +7,9 @@ export interface UserRow {
   username: string;
   handle: string | null;
   display_name: string | null;
+  last_name?: string | null;
+  bio?: string | null;
+  birthday?: number | null;
   avatar_url: string | null;
   avatar_local_path: string | null;
   phone: string | null;

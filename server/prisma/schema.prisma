@@ -92,8 +92,11 @@ model User {
   username     String?   @unique
   handle       String?   @unique @map("handle")
   displayName  String?   @map("display_name")
+  lastName     String?   @map("last_name")
   avatarUrl    String?   @map("avatar_url")
   phone        String?   @unique
+  bio          String?
+  birthday     DateTime? @db.Date
   isOnline     Boolean   @default(false) @map("is_online")
   lastSeen     DateTime? @map("last_seen")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -108,8 +111,28 @@ model User {
   developerProfile DeveloperProfile?
   feedbackEntries FeedbackEntry[]
   pushDevices     PushDevice[]
+  addressBookContacts AddressBookContact[] @relation("AddressBookOwner")
+  addressBookLinks    AddressBookContact[] @relation("AddressBookLinkedUser")
 
   @@map("users")
+}
+
+model AddressBookContact {
+  id           String   @id @default(uuid())
+  ownerUserId  String   @map("owner_user_id")
+  phone        String   @db.VarChar(40)
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
+  linkedUserId String?  @map("linked_user_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  owner      User  @relation("AddressBookOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  linkedUser User? @relation("AddressBookLinkedUser", fields: [linkedUserId], references: [id], onDelete: SetNull)
+
+  @@unique([ownerUserId, phone])
+  @@index([ownerUserId])
+  @@map("address_book_contacts")
 }
 
 model PushDevice {

@@ -21,9 +21,13 @@ function toPickerUser(
   partial: Partial<PickerUser> & {
     id: string;
     display_name?: string | null;
+    last_name?: string | null;
     username?: string | null;
     handle?: string | null;
     avatar_url?: string | null;
+    phone?: string | null;
+    bio?: string | null;
+    birthday?: number | null;
     is_online?: boolean;
     last_seen?: number | null;
     created_at?: number;
@@ -40,8 +44,11 @@ function toPickerUser(
     username: partial.username ?? null,
     handle: partial.handle ?? null,
     display_name: partial.display_name ?? null,
+    last_name: partial.last_name ?? null,
     avatar_url: partial.avatar_url ?? null,
     phone: partial.phone ?? null,
+    bio: partial.bio ?? null,
+    birthday: partial.birthday ?? null,
     is_online: Boolean(partial.is_online),
     last_seen: partial.last_seen ?? null,
     created_at: createdAt,
@@ -58,16 +65,28 @@ function mergeUsers(primary: PickerUser, fallback: PickerUser): PickerUser {
     display_name: hasValue(primary.display_name)
       ? primary.display_name
       : fallback.display_name,
+    last_name: hasValue(primary.last_name) ? primary.last_name : fallback.last_name,
     avatar_url: hasValue(primary.avatar_url) ? primary.avatar_url : fallback.avatar_url,
     phone: hasValue(primary.phone) ? primary.phone : fallback.phone,
+    bio: hasValue(primary.bio) ? primary.bio : fallback.bio,
+    birthday:
+      primary.birthday != null && primary.birthday > 0
+        ? primary.birthday
+        : fallback.birthday ?? null,
     last_seen: primary.last_seen ?? fallback.last_seen,
     created_at: primary.created_at || fallback.created_at || Date.now(),
     updated_at: Math.max(primary.updated_at || 0, fallback.updated_at || 0) || Date.now(),
   };
 }
 
-function getSortName(user: PickerUser) {
+/** Display/sort key for contact lists (exported for ComposeMessage alphabetical sections). */
+export function getContactSortName(user: PickerUser) {
+  const combined = [user.display_name?.trim(), user.last_name?.trim()]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
   return (
+    combined ||
     user.display_name?.trim() ||
     user.username?.trim() ||
     user.handle?.trim() ||
@@ -157,7 +176,7 @@ export function getGroupMemberPickerContacts(params: {
         return right.lastActivityAt - left.lastActivityAt;
       }
 
-      return getSortName(left.user).localeCompare(getSortName(right.user), undefined, {
+      return getContactSortName(left.user).localeCompare(getContactSortName(right.user), undefined, {
         sensitivity: 'base',
       });
     })

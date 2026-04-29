@@ -10,17 +10,22 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
+import { AddressBookService } from './address-book.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SearchUsersQueryDto } from './dto/search-users-query.dto';
+import { CreateAddressBookContactDto } from './dto/create-address-book-contact.dto';
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import type { User } from '@prisma/client';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly addressBookService: AddressBookService,
+  ) {}
 
   @Get('me')
   async getMe(@CurrentUser() user: User) {
@@ -39,6 +44,28 @@ export class UsersController {
     );
   }
 
+  @Get('me/contacts')
+  async listMyContacts(@CurrentUser() user: User) {
+    return this.addressBookService.list(user.id);
+  }
+
+  @Post('me/contacts')
+  async createMyContact(
+    @CurrentUser() user: User,
+    @Body() dto: CreateAddressBookContactDto,
+  ) {
+    return this.addressBookService.create(user.id, dto);
+  }
+
+  @Delete('me/contacts/:contactId')
+  async deleteMyContact(
+    @CurrentUser() user: User,
+    @Param('contactId') contactId: string,
+  ) {
+    await this.addressBookService.delete(user.id, contactId);
+    return { ok: true };
+  }
+
   @Get(':id')
   async getUserById(@Param('id') id: string) {
     return this.usersService.getUserById(id);
@@ -48,6 +75,9 @@ export class UsersController {
   async updateMe(@CurrentUser() user: User, @Body() dto: UpdateProfileDto) {
     return this.usersService.updateProfile(user.id, {
       display_name: dto.display_name,
+      last_name: dto.last_name,
+      bio: dto.bio,
+      birthday: dto.birthday,
       avatar_url: dto.avatar_url,
       handle: dto.handle,
     });

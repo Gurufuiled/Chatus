@@ -21,8 +21,11 @@ export interface ApiUser {
   username: string | null;
   handle: string | null;
   display_name: string | null;
+  last_name?: string | null;
   avatar_url: string | null;
   phone: string | null;
+  bio?: string | null;
+  birthday?: number | null;
   is_online: boolean;
   last_seen: number | null;
   created_at: number;
@@ -52,6 +55,9 @@ export function apiUserToUserRow(u: ApiUser): UserRow {
     username: u.username ?? '',
     handle: u.handle ?? null,
     display_name: u.display_name,
+    last_name: u.last_name ?? null,
+    bio: u.bio ?? null,
+    birthday: u.birthday ?? null,
     avatar_url: u.avatar_url,
     avatar_local_path: null,
     phone: u.phone,
@@ -69,8 +75,11 @@ function userRowToApiUser(r: UserRow): ApiUser {
     username: r.username,
     handle: r.handle ?? null,
     display_name: r.display_name,
+    last_name: r.last_name ?? null,
     avatar_url: r.avatar_url,
     phone: r.phone,
+    bio: r.bio ?? null,
+    birthday: r.birthday ?? null,
     is_online: r.is_online !== 0,
     last_seen: r.last_seen,
     created_at: r.created_at,

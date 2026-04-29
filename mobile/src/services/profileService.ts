@@ -8,8 +8,13 @@ import type { ApiUser } from './AuthService';
 
 export interface ProfileUpdateData {
   display_name?: string;
+  last_name?: string | null;
+  bio?: string | null;
+  /** ISO date YYYY-MM-DD or empty string to clear */
+  birthday?: string | null;
   avatar_url?: string;
-  handle?: string;
+  /** Set to null to clear handle on the server. */
+  handle?: string | null;
 }
 
 /** Fetch current user profile from GET /users/me. */

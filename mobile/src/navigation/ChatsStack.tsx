@@ -1,6 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import Feather from '@expo/vector-icons/Feather';
 import {
   ChannelAddAdminScreen,
   ChannelAdminPermissionsScreen,
@@ -21,7 +22,9 @@ import {
   ChatListScreen,
   ChatProfileScreen,
   ChatScreen,
+  ComposeMessageScreen,
   CreateChannelScreen,
+  CreateContactScreen,
   CreateGroupChatScreen,
   GroupProfileScreen,
 } from '../screens';
@@ -123,7 +126,35 @@ export function ChatsStack() {
         headerTitleAlign: 'center',
       }}
     >
-      <Stack.Screen name="ChatList" component={ChatListScreen} options={{ title: 'Чаты' }} />
+      <Stack.Screen
+        name="ChatList"
+        component={ChatListScreen}
+        options={({ navigation }) => ({
+          title: 'Чаты',
+          headerRight: () => (
+            <Pressable
+              accessibilityLabel="Написать сообщение"
+              onPress={() => navigation.navigate('ComposeMessage')}
+              hitSlop={12}
+              style={({ pressed }) => [{ paddingHorizontal: 4, opacity: pressed ? 0.65 : 1 }]}
+            >
+              <Feather name="edit-2" size={22} color={colors.textPrimary} />
+            </Pressable>
+          ),
+        })}
+      />
+
+      <Stack.Screen
+        name="ComposeMessage"
+        component={ComposeMessageScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen
+        name="CreateContact"
+        component={CreateContactScreen}
+        options={{ title: 'Новый контакт', headerBackTitle: 'Назад' }}
+      />
 
       <Stack.Screen
         name="Chat"

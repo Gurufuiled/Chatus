@@ -2,8 +2,10 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
   AppearanceSettingsScreen,
+  EditProfileScreen,
   FeedbackComposeScreen,
   FeedbackListScreen,
+  MyProfileScreen,
   SettingsScreen,
   ServicesScreen,
 } from '../screens';
@@ -30,6 +32,16 @@ export function SettingsStack() {
         name="SettingsMain"
         component={SettingsScreen}
         options={{ title: 'Настройки' }}
+      />
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="MyProfile"
+        component={MyProfileScreen}
+        options={{ title: 'Профиль', headerBackTitle: 'Назад' }}
       />
       <Stack.Screen
         name="Appearance"

@@ -71,8 +71,11 @@ export type MappedUser = {
   username: string | null;
   handle: string | null;
   display_name: string | null;
+  last_name: string | null;
   avatar_url: string | null;
   phone: string | null;
+  bio: string | null;
+  birthday: number | null;
   is_online: boolean;
   last_seen: number | null;
   created_at: number;
@@ -86,8 +89,11 @@ export function mapUser(user: User): MappedUser {
     username: user.username ?? null,
     handle: user.handle ?? null,
     display_name: user.displayName ?? null,
+    last_name: user.lastName ?? null,
     avatar_url: user.avatarUrl ?? null,
     phone: user.phone ?? null,
+    bio: user.bio ?? null,
+    birthday: dateToUnixMs(user.birthday),
     is_online: user.isOnline,
     last_seen: dateToUnixMs(user.lastSeen),
     created_at: dateToUnixMs(user.createdAt) ?? 0,

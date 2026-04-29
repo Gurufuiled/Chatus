@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,17 +8,15 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../contexts/AuthContext';
 import { authStore } from '../stores/authStore';
 import { authService, apiUserToUserRow } from '../services/AuthService';
 import { getProfile, updateProfile } from '../services/profileService';
 import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SettingsStackParamList } from '../navigation/types';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -28,8 +26,6 @@ import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createSettingsScreenStyles } from './settingsScreen.styles';
 
-const HANDLE_REGEX = /^[a-zA-Z0-9_]{5,32}$/;
-
 export function SettingsScreen() {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createSettingsScreenStyles(themeColors), [themeColors]);
@@ -38,15 +34,15 @@ export function SettingsScreen() {
     useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const [profile, setProfile] = useState<{
     display_name: string | null;
+    last_name: string | null;
     avatar_url: string | null;
     handle: string | null;
+    phone: string | null;
+    bio: string | null;
+    birthday: number | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState('');
-  const [handle, setHandle] = useState('');
-  const [savingDisplayName, setSavingDisplayName] = useState(false);
-  const [savingHandle, setSavingHandle] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
 
@@ -57,11 +53,13 @@ export function SettingsScreen() {
       const p = await getProfile();
       setProfile({
         display_name: p.display_name,
+        last_name: p.last_name ?? null,
         avatar_url: p.avatar_url,
         handle: p.handle,
+        phone: p.phone,
+        bio: p.bio ?? null,
+        birthday: p.birthday ?? null,
       });
-      setDisplayName(p.display_name ?? '');
-      setHandle(p.handle ?? '');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load profile');
     } finally {
@@ -69,9 +67,33 @@ export function SettingsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfile();
+    }, [loadProfile])
+  );
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <Pressable
+          onPress={() => navigation.navigate('EditProfile')}
+          style={({ pressed }) => ({
+            marginRight: 4,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 14,
+            backgroundColor: themeColors.inputBackgroundSolid,
+            opacity: pressed ? 0.75 : 1,
+          })}
+        >
+          <Text style={{ fontSize: 15, fontWeight: '600', color: themeColors.textPrimary }}>
+            Изм.
+          </Text>
+        </Pressable>
+      ),
+    });
+  }, [navigation, themeColors.inputBackgroundSolid, themeColors.textPrimary]);
 
   const syncAuthStore = useCallback((apiUser: Parameters<typeof apiUserToUserRow>[0]) => {
     const token = authStore.getState().accessToken;
@@ -108,65 +130,15 @@ export function SettingsScreen() {
     [syncAuthStore],
   );
 
-  const handleSaveDisplayName = useCallback(async () => {
-    const trimmed = displayName.trim();
-    if (trimmed === (profile?.display_name ?? '')) return;
-    setSavingDisplayName(true);
-    setError(null);
-    try {
-      const updated = await updateProfile({ display_name: trimmed || undefined });
-      setProfile((prev) => (prev ? { ...prev, display_name: updated.display_name } : null));
-      await authService.saveUserToLocal(updated);
-      syncAuthStore(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save display name');
-    } finally {
-      setSavingDisplayName(false);
-    }
-  }, [displayName, profile?.display_name, syncAuthStore]);
-
-  const handleSaveHandle = useCallback(async () => {
-    const trimmed = handle.trim().replace(/^@/, '');
-    if (trimmed === (profile?.handle ?? '')) return;
-    if (trimmed.length > 0) {
-      if (trimmed.length < 5 || trimmed.length > 32) {
-        setError('Handle must be 5-32 characters');
-        return;
-      }
-      if (!HANDLE_REGEX.test(trimmed)) {
-        setError('Handle can only contain letters, numbers, and underscores (no @, -, or spaces)');
-        return;
-      }
-    }
-    setSavingHandle(true);
-    setError(null);
-    try {
-      const updated = await updateProfile({ handle: trimmed || undefined });
-      setProfile((prev) => (prev ? { ...prev, handle: updated.handle } : null));
-      setHandle(updated.handle ?? '');
-      await authService.saveUserToLocal(updated);
-      syncAuthStore(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save handle');
-    } finally {
-      setSavingHandle(false);
-    }
-  }, [handle, profile?.handle, syncAuthStore]);
-
-  const handleValue = (profile?.handle ?? handle).trim().replace(/^@/, '');
-  const handleCopyHandle = useCallback(async () => {
-    if (!handleValue) {
-      Alert.alert('No handle to copy', 'Set a handle first, then copy it.');
-      return;
-    }
-    const toCopy = `@${handleValue}`;
-    await Clipboard.setStringAsync(toCopy);
-    Alert.alert('Copied', `${toCopy} copied to clipboard`);
-  }, [handleValue]);
-
   const avatarUrl = resolveAvatarUrl(profile?.avatar_url ?? user?.avatar_url);
-  const profileTitle = profile?.display_name?.trim() || user?.display_name?.trim() || 'Ваш профиль';
-  const profileHandleLabel = handleValue ? `@${handleValue}` : 'Нажмите на фото, чтобы изменить аватар';
+  const profileTitle =
+    [profile?.display_name?.trim(), profile?.last_name?.trim()].filter(Boolean).join(' ') ||
+    profile?.display_name?.trim() ||
+    user?.display_name?.trim() ||
+    'Ваш профиль';
+  const handleVal = profile?.handle?.trim().replace(/^@/, '') ?? '';
+  const phoneLine = profile?.phone?.trim() || '';
+  const handleLine = handleVal ? `@${handleVal}` : '';
 
   const showComingSoon = useCallback((title: string) => {
     Alert.alert('Скоро', `${title}: раздел будет подключен позже.`);
@@ -196,98 +168,48 @@ export function SettingsScreen() {
         )}
 
         <Text style={styles.sectionTitle}>Аккаунт</Text>
-        <View style={styles.profileCard}>
-          <Pressable
-            style={styles.profileHeader}
-            onPress={uploadingAvatar ? undefined : handleAvatarTap}
-            disabled={uploadingAvatar}
-          >
-            <View style={styles.avatarWrap}>
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarPlaceholderText}>
-                    {(profile?.display_name ?? user?.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
-                  </Text>
-                </View>
-              )}
-              {uploadingAvatar && (
-                <View style={styles.avatarOverlay}>
-                  <ActivityIndicator color="#fff" />
-                </View>
-              )}
-            </View>
-            <View style={styles.profileSummary}>
-              <Text style={styles.profileTitle}>{profileTitle}</Text>
-              <Text style={styles.profileSubtitle}>{profileHandleLabel}</Text>
-              <Text style={styles.profileHint}>Нажмите, чтобы изменить фото профиля</Text>
-            </View>
-          </Pressable>
-
-          <View style={styles.formCard}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Display name</Text>
-              <View style={styles.row}>
-                <TextInput
-                  style={styles.input}
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                  placeholder="Your name"
-                  placeholderTextColor={themeColors.placeholder}
-                  autoCapitalize="words"
-                />
-                <Pressable
-                  style={[styles.saveBtn, savingDisplayName && styles.saveBtnDisabled]}
-                  onPress={handleSaveDisplayName}
-                  disabled={savingDisplayName}
-                >
-                  {savingDisplayName ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.saveBtnText}>Save</Text>
-                  )}
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.fieldLast}>
-              <Text style={styles.label}>Handle</Text>
-              <View style={styles.row}>
-                <Text style={styles.handlePrefix}>@</Text>
-                <TextInput
-                  style={[styles.input, styles.handleInput]}
-                  value={handle.replace(/^@/, '')}
-                  onChangeText={(t) => setHandle(t.replace(/^@/, ''))}
-                  placeholder="handle"
-                  placeholderTextColor={themeColors.placeholder}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <Pressable
-                  style={[styles.saveBtn, savingHandle && styles.saveBtnDisabled]}
-                  onPress={handleSaveHandle}
-                  disabled={savingHandle}
-                >
-                  {savingHandle ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.saveBtnText}>Save</Text>
-                  )}
-                </Pressable>
-              </View>
-              <Pressable
-                style={[styles.copyBtn, !handleValue && styles.copyBtnDisabled]}
-                onPress={handleCopyHandle}
-                disabled={!handleValue}
-              >
-                <Text style={[styles.copyBtnText, !handleValue && styles.copyBtnTextDisabled]}>
-                  Copy handle
+        <Pressable
+          style={styles.profileHeroCard}
+          onPress={() => navigation.navigate('MyProfile')}
+        >
+          <View style={styles.profileHeroAvatarWrap}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.profileHeroAvatar} />
+            ) : (
+              <View style={styles.profileHeroAvatarPlaceholder}>
+                <Text style={styles.profileHeroAvatarText}>
+                  {(profile?.display_name ?? user?.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
                 </Text>
-              </Pressable>
-            </View>
+              </View>
+            )}
+            {uploadingAvatar && (
+              <View style={styles.profileHeroAvatarOverlay}>
+                <ActivityIndicator color={themeColors.textSecondaryMuted} />
+              </View>
+            )}
           </View>
-        </View>
+          <Text style={styles.profileHeroTitle}>{profileTitle}</Text>
+          <Text style={styles.profileHeroMeta} numberOfLines={2}>
+            {phoneLine && handleLine
+              ? `${phoneLine} · ${handleLine}`
+              : phoneLine || handleLine || ' '}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.changePhotoBtn,
+            pressed && { opacity: 0.85 },
+            uploadingAvatar && { opacity: 0.5 },
+          ]}
+          onPress={uploadingAvatar ? undefined : handleAvatarTap}
+          disabled={uploadingAvatar}
+        >
+          <MaterialCommunityIcons name="camera-plus-outline" size={22} color={themeColors.accent} />
+          <Text style={styles.changePhotoBtnText}>Изменить фотографию</Text>
+        </Pressable>
+
+        <View style={{ height: 8 }} />
 
         <Text style={styles.sectionTitle}>Настройки</Text>
         <View style={styles.settingsCard}>

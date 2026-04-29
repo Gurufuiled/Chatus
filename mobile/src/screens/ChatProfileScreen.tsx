@@ -103,8 +103,11 @@ function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
 }
 
 function buildDisplayName(profile: ApiUser | null, fallbackTitle: string) {
+  const first = profile?.display_name?.trim() ?? '';
+  const last = profile?.last_name?.trim() ?? '';
+  const combined = [first, last].filter(Boolean).join(' ').trim();
   return (
-    profile?.display_name?.trim() ||
+    combined ||
     profile?.username?.trim() ||
     fallbackTitle ||
     'Профиль'
@@ -255,6 +258,26 @@ function buildInfoRows(profile: ApiUser | null): InfoRow[] {
         ? `@${profile.handle.trim()}`
         : profile?.username?.trim() || 'Не указано',
       icon: 'at-sign',
+    });
+  }
+
+  if (profile?.birthday != null && profile.birthday > 0) {
+    rows.push({
+      id: 'birthday',
+      label: 'День рождения',
+      value: new Date(profile.birthday).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+    });
+  }
+
+  if (profile?.bio?.trim()) {
+    rows.push({
+      id: 'bio',
+      label: 'О себе',
+      value: profile.bio.trim(),
     });
   }
 

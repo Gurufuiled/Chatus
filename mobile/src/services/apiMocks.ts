@@ -338,13 +338,27 @@ const mockCurrentUser = {
   username: 'me',
   handle: 'myhandle',
   display_name: 'Me',
+  last_name: null,
+  bio: null,
+  birthday: null,
   avatar_url: null,
-  phone: null,
+  phone: '+7 900 000-00-00',
   is_online: true,
   last_seen: null,
   created_at: Date.now() - 86400000,
   updated_at: Date.now(),
 };
+
+const mockAddressBookContacts: Array<{
+  id: string;
+  owner_user_id: string;
+  phone: string;
+  first_name: string | null;
+  last_name: string | null;
+  linked_user_id: string | null;
+  created_at: number;
+  updated_at: number;
+}> = [];
 
 const mockUsers = [
   {
@@ -353,8 +367,11 @@ const mockUsers = [
     username: 'alice',
     handle: 'alice',
     display_name: 'Alice',
+    last_name: null,
+    bio: null,
+    birthday: null,
     avatar_url: null,
-    phone: null,
+    phone: '+79991234567',
     is_online: true,
     last_seen: null,
     created_at: Date.now() - 86400000,
@@ -590,6 +607,11 @@ export async function mockApiGet(path: string): Promise<Response> {
     return createMockResponse(msgs);
   }
 
+  // GET /users/me/contacts
+  if (path === '/users/me/contacts') {
+    return createMockResponse(mockAddressBookContacts);
+  }
+
   // GET /users/me
   if (path === '/users/me') {
     return createMockResponse(mockCurrentUser);
@@ -604,7 +626,10 @@ export async function mockApiGet(path: string): Promise<Response> {
       (u) =>
         (u.username?.toLowerCase().includes(q) ?? false) ||
         (u.display_name?.toLowerCase().includes(q) ?? false) ||
-        (u.handle?.toLowerCase().includes(q) ?? false)
+        (u.handle?.toLowerCase().includes(q) ?? false) ||
+        (u.phone && q.replace(/\D/g, '').length >= 4
+          ? u.phone.replace(/\D/g, '').includes(q.replace(/\D/g, ''))
+          : false)
     );
     return createMockResponse(filtered);
   }
@@ -640,11 +665,26 @@ export async function mockApiPatch(
 ): Promise<Response> {
   // PATCH /users/me
   if (path === '/users/me' && body && typeof body === 'object') {
-    const b = body as { display_name?: string; avatar_url?: string; handle?: string };
+    const b = body as {
+      display_name?: string;
+      avatar_url?: string;
+      handle?: string;
+      last_name?: string | null;
+      bio?: string | null;
+      birthday?: string | null;
+    };
     Object.assign(mockCurrentUser, {
       display_name: b.display_name ?? mockCurrentUser.display_name,
       avatar_url: b.avatar_url ?? mockCurrentUser.avatar_url,
       handle: b.handle ?? mockCurrentUser.handle,
+      last_name: b.last_name !== undefined ? b.last_name : mockCurrentUser.last_name,
+      bio: b.bio !== undefined ? b.bio : mockCurrentUser.bio,
+      birthday:
+        b.birthday === '' || b.birthday === null
+          ? null
+          : b.birthday !== undefined
+            ? new Date(`${b.birthday}T12:00:00.000Z`).getTime()
+            : mockCurrentUser.birthday,
       updated_at: Date.now(),
     });
     return createMockResponse(mockCurrentUser);
@@ -674,6 +714,31 @@ export async function mockApiPost(
   path: string,
   body?: unknown
 ): Promise<Response> {
+  if (path === '/users/me/contacts' && body && typeof body === 'object') {
+    const b = body as { phone?: string; first_name?: string; last_name?: string };
+    const phone = String(b.phone ?? '').trim();
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits.length < 6) {
+      return new Response(JSON.stringify({ message: 'phone is too short' }), { status: 400 });
+    }
+    const id = `mock-ab-${Date.now()}`;
+    const now = Date.now();
+    const linked =
+      mockUsers.find((u) => u.phone && u.phone.replace(/\D/g, '') === phoneDigits) ?? null;
+    const row = {
+      id,
+      owner_user_id: mockCurrentUser.id,
+      phone: phoneDigits,
+      first_name: b.first_name?.trim() ?? null,
+      last_name: b.last_name?.trim() ?? null,
+      linked_user_id: linked?.id ?? null,
+      created_at: now,
+      updated_at: now,
+    };
+    mockAddressBookContacts.push(row);
+    return createMockResponse(row);
+  }
+
   if (path === '/feedback' && body && typeof body === 'object') {
     const b = body as { type?: string; title?: string; body?: string; attachment_url?: string };
     const t = b.type === 'suggestion' ? 'suggestion' : 'bug';
@@ -1033,6 +1098,17 @@ export async function mockApiDelete(
   path: string,
   _init?: RequestInit,
 ): Promise<Response> {
+  const contactDel = path.match(/^\/users\/me\/contacts\/([^/]+)$/);
+  if (contactDel) {
+    const id = contactDel[1];
+    const idx = mockAddressBookContacts.findIndex((c) => c.id === id);
+    if (idx < 0) {
+      return new Response(JSON.stringify({ message: 'not found' }), { status: 404 });
+    }
+    mockAddressBookContacts.splice(idx, 1);
+    return createMockResponse({ ok: true });
+  }
+
   if (path === '/users/me/push-token') {
     return createMockResponse({ ok: true });
   }

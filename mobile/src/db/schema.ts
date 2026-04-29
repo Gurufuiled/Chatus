@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 11;
+export const DB_VERSION = 12;
 
 export const SCHEMA_SQL = `
 -- users
@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL,
   handle TEXT,
   display_name TEXT,
+  last_name TEXT,
+  bio TEXT,
+  birthday INTEGER,
   avatar_url TEXT,
   avatar_local_path TEXT,
   phone TEXT,
