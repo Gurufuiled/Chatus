@@ -38,6 +38,10 @@ export interface VoiceBubbleProps {
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
   reactionAccentColor?: string;
+  /** Тёмная тема приложения: фон/бордер чужого бабла (иначе из StyleSheet — светлые). */
+  incomingBubbleBackground?: string;
+  incomingBubbleBorderColor?: string;
+  incomingDurationColor?: string;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -127,6 +131,9 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.embedded === next.embedded &&
     prev.header === next.header &&
     prev.bubbleMeColor === next.bubbleMeColor &&
+    prev.incomingBubbleBackground === next.incomingBubbleBackground &&
+    prev.incomingBubbleBorderColor === next.incomingBubbleBorderColor &&
+    prev.incomingDurationColor === next.incomingDurationColor &&
     prev.outgoingTextColor === next.outgoingTextColor &&
     prev.outgoingMetaColor === next.outgoingMetaColor &&
     prev.outgoingAccentColor === next.outgoingAccentColor &&
@@ -155,6 +162,9 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   allowMessageReactions,
   onToggleInlineReaction,
   reactionAccentColor,
+  incomingBubbleBackground,
+  incomingBubbleBorderColor,
+  incomingDurationColor,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -248,6 +258,12 @@ export const VoiceBubble = React.memo(function VoiceBubble({
       style={[
         styles.container,
         embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+        !isMe && incomingBubbleBackground
+          ? {
+              backgroundColor: incomingBubbleBackground,
+              borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
+            }
+          : null,
         isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
       ]}
     >
@@ -304,7 +320,13 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           </Pressable>
 
           <View style={styles.metaRow}>
-            <Text style={[styles.duration, isMe && styles.durationMe]}>
+            <Text
+              style={[
+                styles.duration,
+                isMe && styles.durationMe,
+                !isMe && incomingDurationColor ? { color: incomingDurationColor } : null,
+              ]}
+            >
               {durationLabel}
             </Text>
             <View style={styles.metaRight}>

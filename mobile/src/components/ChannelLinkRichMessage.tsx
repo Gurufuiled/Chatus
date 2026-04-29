@@ -18,10 +18,12 @@ import {
 } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { resolveAvatarUrl } from '../config';
-import { colors, withAlpha } from '../theme/colors';
+import { withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import type { ChatTheme } from '../theme/chatThemes';
 import type { ParsedChannelDeepLink } from '../utils/channelDeepLink';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { MeBubbleChrome } from './OutgoingBubbleViewportGradient';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList>;
 
@@ -33,6 +35,9 @@ type Props = {
   status: string;
   navigation: Nav;
   chatTheme: ChatTheme;
+  /** Тёмная тема «Без темы»: градиент бабла по вертикали экрана (см. ChatMessageList). */
+  useViewportOutgoingGradient?: boolean;
+  scrollTick?: number;
 };
 
 export function ChannelLinkRichMessage({
@@ -43,7 +48,10 @@ export function ChannelLinkRichMessage({
   status,
   navigation,
   chatTheme,
+  useViewportOutgoingGradient = false,
+  scrollTick = 0,
 }: Props) {
+  const { colors: themeColors } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const bubbleLayout = React.useMemo(() => {
     const maxW = Math.min(windowWidth * 0.82, 340);
@@ -97,15 +105,15 @@ export function ChannelLinkRichMessage({
     }
   }, [navigation, parsed, resolved]);
 
-  const accent = isMe ? chatTheme.bubbleMeAccent : colors.accent;
+  const accent = isMe ? chatTheme.bubbleMeAccent : themeColors.accent;
   const bubbleBorder = isMe
     ? withAlpha(chatTheme.bubbleMeAccent, 0.32)
-    : colors.bubbleOtherBorder;
-  const bubbleBg = isMe ? chatTheme.bubbleMe : colors.bubbleOther;
-  const urlColor = isMe ? chatTheme.bubbleMeText : colors.link;
-  const titleColor = isMe ? chatTheme.bubbleMeText : colors.textPrimary;
-  const descColor = isMe ? chatTheme.bubbleMeMeta : '#4B5563';
-  const ctaDivider = isMe ? withAlpha(chatTheme.bubbleMeAccent, 0.38) : 'rgba(148,163,184,0.55)';
+    : themeColors.bubbleOtherBorder;
+  const bubbleBg = isMe ? chatTheme.bubbleMe : themeColors.bubbleOther;
+  const urlColor = isMe ? chatTheme.bubbleMeText : themeColors.link;
+  const titleColor = isMe ? chatTheme.bubbleMeText : themeColors.textPrimary;
+  const descColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
+  const ctaDivider = isMe ? withAlpha(chatTheme.bubbleMeAccent, 0.38) : 'rgba(148,163,184,0.35)';
 
   const title =
     resolved?.channel.name?.trim() ||
@@ -113,19 +121,8 @@ export function ChannelLinkRichMessage({
   const description = resolved?.channel.description?.trim() || ' ';
   const avatarUri = resolveAvatarUrl(resolved?.channel.avatar_url ?? null);
 
-  return (
-    <View
-      style={[
-        styles.bubble,
-        bubbleLayout,
-        isMe ? styles.bubbleAlignMe : styles.bubbleAlignOther,
-        {
-          backgroundColor: bubbleBg,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: bubbleBorder,
-        },
-      ]}
-    >
+  const inner = (
+    <>
       <Pressable onPress={openChannel}>
         <Text style={[styles.urlLine, { color: urlColor }]} numberOfLines={2}>
           {rawUrlLine}
@@ -186,6 +183,63 @@ export function ChannelLinkRichMessage({
           iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
         />
       </View>
+    </>
+  );
+
+  if (!isMe) {
+    return (
+      <View
+        style={[
+          styles.bubble,
+          bubbleLayout,
+          styles.bubbleAlignOther,
+          {
+            backgroundColor: bubbleBg,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: bubbleBorder,
+          },
+        ]}
+      >
+        {inner}
+      </View>
+    );
+  }
+
+  if (useViewportOutgoingGradient) {
+    return (
+      <MeBubbleChrome
+        active
+        scrollTick={scrollTick}
+        fillColor={chatTheme.bubbleMe}
+        style={[
+          styles.bubble,
+          bubbleLayout,
+          styles.bubbleAlignMe,
+          {
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: bubbleBorder,
+          },
+        ]}
+      >
+        {inner}
+      </MeBubbleChrome>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        styles.bubble,
+        bubbleLayout,
+        styles.bubbleAlignMe,
+        {
+          backgroundColor: bubbleBg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: bubbleBorder,
+        },
+      ]}
+    >
+      {inner}
     </View>
   );
 }

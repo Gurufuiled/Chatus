@@ -53,6 +53,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChannelLinkRichMessage } from './ChannelLinkRichMessage';
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ResolvedColorScheme } from '../theme/palettes';
+import {
+  MeBubbleChrome,
+  shouldUseDarkDefaultOutgoingBubbleGradient,
+} from './OutgoingBubbleViewportGradient';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
@@ -128,6 +134,12 @@ function MediaAlbumBubble({
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
+  viewportOutgoingGradient,
+  scrollTick,
+  incomingCaptionBg,
+  incomingCaptionBorder,
+  incomingCaptionText,
+  incomingCaptionMeta,
 }: {
   message: Message;
   isMe: boolean;
@@ -138,6 +150,13 @@ function MediaAlbumBubble({
   inlineReactions?: NonNullable<Message['reactions']>;
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
+  viewportOutgoingGradient: boolean;
+  scrollTick: number;
+  /** Цвета входящего бабла из темы приложения (тёмная тема). */
+  incomingCaptionBg?: string;
+  incomingCaptionBorder?: string;
+  incomingCaptionText?: string;
+  incomingCaptionMeta?: string;
 }) {
   const media = (message.media ?? [])
     .filter((item) => item.remote_url?.trim())
@@ -227,8 +246,8 @@ function MediaAlbumBubble({
     );
   })();
 
-  return (
-    <View style={[styles.albumBubble, isMe ? styles.albumBubbleMe : styles.albumBubbleOther]}>
+  const albumShell = (
+    <>
       <View style={[styles.albumGridClip, { width: ALBUM_BUBBLE_WIDTH }]}>
         {grid}
         {!caption ? (
@@ -249,14 +268,26 @@ function MediaAlbumBubble({
           style={[
             styles.albumCaptionWrap,
             isMe
-              ? [styles.albumCaptionMe, { backgroundColor: chatTheme.bubbleMe }]
-              : styles.albumCaptionOther,
+              ? viewportOutgoingGradient
+                ? [styles.albumCaptionMe, { backgroundColor: 'transparent' }]
+                : [styles.albumCaptionMe, { backgroundColor: chatTheme.bubbleMe }]
+              : [
+                  styles.albumCaptionOther,
+                  incomingCaptionBg
+                    ? {
+                        backgroundColor: incomingCaptionBg,
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                        borderTopColor: incomingCaptionBorder ?? 'transparent',
+                      }
+                    : null,
+                ],
           ]}
         >
           <Text
             style={[
               styles.albumCaptionText,
               isMe ? { color: chatTheme.bubbleMeText } : null,
+              !isMe && incomingCaptionText ? { color: incomingCaptionText } : null,
             ]}
           >
             {caption}
@@ -266,8 +297,8 @@ function MediaAlbumBubble({
             status={status}
             isMe={isMe}
             compact
-            timeColor={isMe ? chatTheme.bubbleMeMeta : undefined}
-            iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+            timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+            iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
           />
         </View>
       ) : null}
@@ -281,6 +312,25 @@ function MediaAlbumBubble({
           accentColor={chatTheme.bubbleMeAccent}
         />
       ) : null}
+    </>
+  );
+
+  if (isMe && viewportOutgoingGradient) {
+    return (
+      <MeBubbleChrome
+        active
+        scrollTick={scrollTick}
+        fillColor={chatTheme.bubbleMe}
+        style={[styles.albumBubble, styles.albumBubbleMe]}
+      >
+        {albumShell}
+      </MeBubbleChrome>
+    );
+  }
+
+  return (
+    <View style={[styles.albumBubble, isMe ? styles.albumBubbleMe : styles.albumBubbleOther]}>
+      {albumShell}
     </View>
   );
 }
@@ -487,6 +537,8 @@ type MessageRowProps = {
   repliedVoiceBubbleWidth: number;
   chatTheme: ChatTheme;
   navigation: NativeStackNavigationProp<ChatsStackParamList>;
+  resolvedScheme: ResolvedColorScheme;
+  scrollTick: number;
 };
 
 const AUTHOR_TAG_STYLES: Record<
@@ -542,6 +594,14 @@ function getAuthorTagStyle(color?: string | null) {
   return AUTHOR_TAG_STYLES.blue;
 }
 
+function messageRowUsesDarkDefaultOutgoingGradient(p: MessageRowProps): boolean {
+  return (
+    p.item.sender_id === p.currentUserId &&
+    p.item.is_deleted !== 1 &&
+    shouldUseDarkDefaultOutgoingBubbleGradient(p.chatTheme, p.resolvedScheme)
+  );
+}
+
 const MessageRow = React.memo(function MessageRow({
   item,
   chatId,
@@ -568,9 +628,17 @@ const MessageRow = React.memo(function MessageRow({
   repliedVoiceBubbleWidth,
   chatTheme,
   navigation,
+  resolvedScheme,
+  scrollTick,
 }: MessageRowProps) {
   const lastTapAtRef = useRef(0);
+  const { colors: themeColors } = useTheme();
   const isMe = item.sender_id === currentUserId;
+  const useViewportOutgoingGradient =
+    isMe &&
+    item.is_deleted !== 1 &&
+    shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
+  const meBubbleFill = useViewportOutgoingGradient ? '#00000000' : chatTheme.bubbleMe;
   const ownsInlineReplySwipe = item.msg_type === 'video_note';
   const shouldUseOuterReplySwipe = canSwipe && !ownsInlineReplySwipe;
   const authorPresentation = React.useMemo(
@@ -627,9 +695,17 @@ const MessageRow = React.memo(function MessageRow({
         author={author}
         text={text}
         accentColor={isMe ? chatTheme.replyAccentMe : '#F28C28'}
-        backgroundColor={isMe ? chatTheme.replyBubbleMe : '#F2F4D9'}
-        textColor={isMe ? chatTheme.replyTextMe : '#5F6368'}
-        authorColor={isMe ? chatTheme.replyAuthorMe : '#D1782B'}
+        backgroundColor={
+          isMe
+            ? chatTheme.replyBubbleMe
+            : resolvedScheme === 'dark'
+              ? 'rgba(255,255,255,0.08)'
+              : '#F2F4D9'
+        }
+        textColor={
+          isMe ? chatTheme.replyTextMe : resolvedScheme === 'dark' ? themeColors.textSecondary : '#5F6368'
+        }
+        authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
         thumbnailUri={replyThumbnailUri}
         onPress={onReplyPreviewPress ? () => onReplyPreviewPress(item.reply_to_id!) : undefined}
       />
@@ -649,10 +725,10 @@ const MessageRow = React.memo(function MessageRow({
 
     const labelColor = options?.forceLightText
       ? 'rgba(255,255,255,0.72)'
-      : isMe ? chatTheme.forwardHeaderMeSub : withAlpha(colors.accent, 0.72);
+      : isMe ? chatTheme.forwardHeaderMeSub : withAlpha(themeColors.accent, 0.72);
     const titleColor = options?.forceLightText
       ? '#FFFFFF'
-      : isMe ? chatTheme.forwardHeaderMe : colors.accent;
+      : isMe ? chatTheme.forwardHeaderMe : themeColors.accent;
 
     return (
       <ForwardHeader
@@ -751,15 +827,21 @@ const MessageRow = React.memo(function MessageRow({
           style={[
             styles.deletedBubble,
             showAuthorAvatar && styles.groupMessageSurface,
-            isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
-            isMe ? { backgroundColor: chatTheme.deletedBubbleMe } : null,
+            isMe ? styles.deletedBubbleMe : null,
+            isMe
+              ? { backgroundColor: chatTheme.deletedBubbleMe }
+              : {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
           ]}
         >
           <Text
             style={[
               styles.deletedText,
               isMe && styles.deletedTextMe,
-              isMe ? { color: chatTheme.deletedTextMe } : null,
+              isMe ? { color: chatTheme.deletedTextMe } : { color: themeColors.textSecondary },
             ]}
           >
             {getDeletedPlaceholder(isMe)}
@@ -769,8 +851,8 @@ const MessageRow = React.memo(function MessageRow({
             status={item.status}
             isMe={isMe}
             compact
-            timeColor={isMe ? chatTheme.bubbleMeMeta : undefined}
-            iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+            timeColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
+            iconColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
           />
         </View>
       );
@@ -799,6 +881,8 @@ const MessageRow = React.memo(function MessageRow({
               status={item.status}
               navigation={navigation}
               chatTheme={chatTheme}
+              useViewportOutgoingGradient={useViewportOutgoingGradient}
+              scrollTick={scrollTick}
             />
             {inlineReactionList?.length ? (
               <MessageReactionInline
@@ -813,13 +897,54 @@ const MessageRow = React.memo(function MessageRow({
         );
       }
 
+      if (!isMe) {
+        return (
+          <View
+            style={[
+              styles.bubble,
+              showAuthorAvatar && styles.groupMessageSurface,
+              styles.bubbleOther,
+              {
+                backgroundColor: themeColors.bubbleOther,
+                borderColor: themeColors.bubbleOtherBorder,
+              },
+            ]}
+          >
+            {renderIncomingHeader()}
+            {renderReplySnippet()}
+            <View style={styles.bubbleContentRow}>
+              <Text style={[styles.textContent, { color: themeColors.textPrimary }]}>{displayContent}</Text>
+              <MessageTimeStatus
+                time={formatTime(item.created_at)}
+                status={item.status}
+                isMe={isMe}
+                compact
+                timeColor={themeColors.textSecondary}
+                iconColor={themeColors.textSecondary}
+              />
+            </View>
+            {inlineReactionList?.length ? (
+              <MessageReactionInline
+                reactions={inlineReactionList}
+                isMe={isMe}
+                allowReactions={allowReactions}
+                onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+                accentColor={chatTheme.bubbleMeAccent}
+              />
+            ) : null}
+          </View>
+        );
+      }
+
       return (
-        <View
+        <MeBubbleChrome
+          active={useViewportOutgoingGradient}
+          scrollTick={scrollTick}
+          fillColor={chatTheme.bubbleMe}
           style={[
             styles.bubble,
             showAuthorAvatar && styles.groupMessageSurface,
-            isMe ? styles.bubbleMe : styles.bubbleOther,
-            isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+            !useViewportOutgoingGradient ? styles.bubbleMe : null,
           ]}
         >
           {renderIncomingHeader()}
@@ -828,8 +953,8 @@ const MessageRow = React.memo(function MessageRow({
             <Text
               style={[
                 styles.textContent,
-                isMe && styles.textContentMe,
-                isMe ? { color: chatTheme.bubbleMeText } : null,
+                styles.textContentMe,
+                { color: chatTheme.bubbleMeText },
               ]}
             >
               {displayContent}
@@ -837,22 +962,22 @@ const MessageRow = React.memo(function MessageRow({
             <MessageTimeStatus
               time={formatTime(item.created_at)}
               status={item.status}
-              isMe={isMe}
+              isMe
               compact
-              timeColor={isMe ? chatTheme.bubbleMeMeta : undefined}
-              iconColor={isMe ? chatTheme.bubbleMeMeta : undefined}
+              timeColor={chatTheme.bubbleMeMeta}
+              iconColor={chatTheme.bubbleMeMeta}
             />
           </View>
           {inlineReactionList?.length ? (
             <MessageReactionInline
               reactions={inlineReactionList}
-              isMe={isMe}
+              isMe
               allowReactions={allowReactions}
               onToggle={(emoji) => onToggleReaction(item.id, emoji)}
               accentColor={chatTheme.bubbleMeAccent}
             />
           ) : null}
-        </View>
+        </MeBubbleChrome>
       );
     }
 
@@ -871,7 +996,7 @@ const MessageRow = React.memo(function MessageRow({
           status={item.status}
           embedded={!!replySnippet}
           header={topHeader}
-          bubbleMeColor={chatTheme.bubbleMe}
+          bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
@@ -879,18 +1004,60 @@ const MessageRow = React.memo(function MessageRow({
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingDurationColor={!isMe ? themeColors.textSecondary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                { width: repliedVoiceBubbleWidth, maxWidth: showAuthorAvatar ? '100%' : '82%' },
+                showAuthorAvatar && styles.groupMessageSurface,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {voiceContent}
+            </View>
+          );
+        }
+        if (useViewportOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[
+                styles.repliedMediaBubble,
+                { width: repliedVoiceBubbleWidth, maxWidth: showAuthorAvatar ? '100%' : '82%' },
+                showAuthorAvatar && styles.groupMessageSurface,
+                bubbleRadius.mine,
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {voiceContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
               { width: repliedVoiceBubbleWidth, maxWidth: showAuthorAvatar ? '100%' : '82%' },
               showAuthorAvatar && styles.groupMessageSurface,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
-              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
             ]}
           >
             {renderIncomingHeader()}
@@ -907,7 +1074,18 @@ const MessageRow = React.memo(function MessageRow({
             showAuthorAvatar && styles.groupMessageSurface,
           ]}
         >
-          {voiceContent}
+          {isMe && useViewportOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={{ alignSelf: 'flex-end' }}
+            >
+              {voiceContent}
+            </MeBubbleChrome>
+          ) : (
+            voiceContent
+          )}
         </View>
       );
     }
@@ -943,7 +1121,7 @@ const MessageRow = React.memo(function MessageRow({
           status={item.status}
           embedded={!!replySnippet}
           header={topHeader}
-          bubbleMeColor={chatTheme.bubbleMe}
+          bubbleMeColor={meBubbleFill}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
           enableReplySwipe={canSwipe}
@@ -955,14 +1133,53 @@ const MessageRow = React.memo(function MessageRow({
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {videoContent}
+            </View>
+          );
+        }
+        if (useViewportOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                bubbleRadius.mine,
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {videoContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
               showAuthorAvatar && styles.groupMessageSurface,
               showAuthorAvatar && styles.groupRepliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
-              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
             ]}
           >
             {renderIncomingHeader()}
@@ -979,7 +1196,18 @@ const MessageRow = React.memo(function MessageRow({
             showAuthorAvatar && styles.groupMessageSurface,
           ]}
         >
-          {videoContent}
+          {isMe && useViewportOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={{ alignSelf: 'flex-end' }}
+            >
+              {videoContent}
+            </MeBubbleChrome>
+          ) : (
+            videoContent
+          )}
         </View>
       );
     }
@@ -1002,18 +1230,63 @@ const MessageRow = React.memo(function MessageRow({
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          viewportOutgoingGradient={useViewportOutgoingGradient}
+          scrollTick={scrollTick}
+          incomingCaptionBg={!isMe ? themeColors.bubbleOther : undefined}
+          incomingCaptionBorder={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingCaptionText={!isMe ? themeColors.textPrimary : undefined}
+          incomingCaptionMeta={!isMe ? themeColors.textSecondary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {albumContent}
+            </View>
+          );
+        }
+        if (useViewportOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                bubbleRadius.mine,
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {albumContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
               showAuthorAvatar && styles.groupMessageSurface,
               showAuthorAvatar && styles.groupRepliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
-              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
             ]}
           >
             {renderIncomingHeader()}
@@ -1054,24 +1327,66 @@ const MessageRow = React.memo(function MessageRow({
           status={item.status}
           embedded={!!replySnippet}
           header={topHeader}
-          bubbleMeColor={chatTheme.bubbleMe}
+          bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
           reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {imageContent}
+            </View>
+          );
+        }
+        if (useViewportOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                bubbleRadius.mine,
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {imageContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
               showAuthorAvatar && styles.groupMessageSurface,
               showAuthorAvatar && styles.groupRepliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
-              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
             ]}
           >
             {renderIncomingHeader()}
@@ -1088,7 +1403,18 @@ const MessageRow = React.memo(function MessageRow({
             showAuthorAvatar && styles.groupMessageSurface,
           ]}
         >
-          {imageContent}
+          {isMe && useViewportOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={{ alignSelf: 'flex-end' }}
+            >
+              {imageContent}
+            </MeBubbleChrome>
+          ) : (
+            imageContent
+          )}
         </View>
       );
     }
@@ -1117,24 +1443,66 @@ const MessageRow = React.memo(function MessageRow({
           status={item.status}
           embedded={!!replySnippet}
           header={topHeader}
-          bubbleMeColor={chatTheme.bubbleMe}
+          bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
           reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
         />
       );
 
       if (replySnippet) {
+        if (!isMe) {
+          return (
+            <View
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                styles.repliedMediaBubbleOther,
+                {
+                  backgroundColor: themeColors.bubbleOther,
+                  borderColor: themeColors.bubbleOtherBorder,
+                },
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {videoContent}
+            </View>
+          );
+        }
+        if (useViewportOutgoingGradient) {
+          return (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[
+                styles.repliedMediaBubble,
+                showAuthorAvatar && styles.groupMessageSurface,
+                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                bubbleRadius.mine,
+              ]}
+            >
+              {renderIncomingHeader()}
+              {replySnippet}
+              {videoContent}
+            </MeBubbleChrome>
+          );
+        }
         return (
           <View
             style={[
               styles.repliedMediaBubble,
               showAuthorAvatar && styles.groupMessageSurface,
               showAuthorAvatar && styles.groupRepliedMediaBubble,
-              isMe ? styles.repliedMediaBubbleMe : styles.repliedMediaBubbleOther,
-              isMe ? { backgroundColor: chatTheme.bubbleMe } : null,
+              styles.repliedMediaBubbleMe,
+              { backgroundColor: chatTheme.bubbleMe },
             ]}
           >
             {renderIncomingHeader()}
@@ -1151,7 +1519,18 @@ const MessageRow = React.memo(function MessageRow({
             showAuthorAvatar && styles.groupMessageSurface,
           ]}
         >
-          {videoContent}
+          {isMe && useViewportOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={{ alignSelf: 'flex-end' }}
+            >
+              {videoContent}
+            </MeBubbleChrome>
+          ) : (
+            videoContent
+          )}
         </View>
       );
     }
@@ -1163,6 +1542,32 @@ const MessageRow = React.memo(function MessageRow({
         rawFile.trim().length > 0
           ? resolveMediaUrl(rawFile) ?? rawFile
           : undefined;
+      const fileBubbleEl = (
+        <FileBubble
+          fileName={item.media[0].file_name ?? 'File'}
+          fileSize={item.media[0].file_size}
+          uri={fileUri}
+          isMe={isMe}
+          caption={item.content ?? undefined}
+          time={formatTime(item.created_at)}
+          status={item.status}
+          header={renderIncomingHeader()}
+          bubbleMeColor={meBubbleFill}
+          outgoingTextColor={chatTheme.bubbleMeText}
+          outgoingMetaColor={chatTheme.bubbleMeMeta}
+          outgoingAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={chatTheme.bubbleMeAccent}
+          inlineReactions={inlineReactionList}
+          allowMessageReactions={allowReactions}
+          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
+          incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
+          incomingFileNameColor={!isMe ? themeColors.textPrimary : undefined}
+          incomingSecondaryTextColor={!isMe ? themeColors.textSecondary : undefined}
+          incomingCaptionColor={!isMe ? themeColors.textPrimary : undefined}
+        />
+      );
+
       return (
         <View
           style={[
@@ -1171,24 +1576,18 @@ const MessageRow = React.memo(function MessageRow({
           ]}
         >
           {replySnippet}
-          <FileBubble
-            fileName={item.media[0].file_name ?? 'File'}
-            fileSize={item.media[0].file_size}
-            uri={fileUri}
-            isMe={isMe}
-            caption={item.content ?? undefined}
-            time={formatTime(item.created_at)}
-            status={item.status}
-            header={renderIncomingHeader()}
-            bubbleMeColor={chatTheme.bubbleMe}
-            outgoingTextColor={chatTheme.bubbleMeText}
-            outgoingMetaColor={chatTheme.bubbleMeMeta}
-            outgoingAccentColor={chatTheme.bubbleMeAccent}
-            reactionAccentColor={chatTheme.bubbleMeAccent}
-            inlineReactions={inlineReactionList}
-            allowMessageReactions={allowReactions}
-            onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
-          />
+          {isMe && useViewportOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={{ alignSelf: 'flex-end', width: FILE_ROW_WIDTH, maxWidth: '100%' }}
+            >
+              {fileBubbleEl}
+            </MeBubbleChrome>
+          ) : (
+            fileBubbleEl
+          )}
         </View>
       );
     }
@@ -1304,7 +1703,12 @@ const MessageRow = React.memo(function MessageRow({
     </ReplySwipeWrapper>
   );
 }, (prev, next) => {
+  const scrollOk =
+    prev.scrollTick === next.scrollTick ||
+    (!messageRowUsesDarkDefaultOutgoingGradient(prev) &&
+      !messageRowUsesDarkDefaultOutgoingGradient(next));
   return (
+    scrollOk &&
     prev.item === next.item &&
     prev.repliedMessage === next.repliedMessage &&
     prev.isGroupChat === next.isGroupChat &&
@@ -1316,6 +1720,7 @@ const MessageRow = React.memo(function MessageRow({
     prev.currentUserId === next.currentUserId &&
     prev.chatId === next.chatId &&
     prev.chatTheme === next.chatTheme &&
+    prev.resolvedScheme === next.resolvedScheme &&
     prev.getMessageAuthorPresentation === next.getMessageAuthorPresentation &&
     prev.onForwardHeaderPress === next.onForwardHeaderPress &&
     prev.onReplyPreviewPress === next.onReplyPreviewPress &&
@@ -1354,6 +1759,18 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   activeVideoNoteVisible,
 }: ChatMessageListProps) {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
+  const { resolvedScheme } = useTheme();
+  const [scrollTick, setScrollTick] = React.useState(0);
+  const lastScrollBumpAt = React.useRef(0);
+  const bumpScrollTickThrottled = React.useCallback(() => {
+    const now = Date.now();
+    if (now - lastScrollBumpAt.current < 48) return;
+    lastScrollBumpAt.current = now;
+    setScrollTick((t) => (t + 1) & 0xffff);
+  }, []);
+  const bumpScrollTickImmediate = React.useCallback(() => {
+    setScrollTick((t) => (t + 1) & 0xffff);
+  }, []);
 
   const messageByIdInternal = React.useMemo(() => {
     const m = new Map<string, Message>();
@@ -1405,6 +1822,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
       chatTheme={chatTheme}
       navigation={navigation}
+      resolvedScheme={resolvedScheme}
+      scrollTick={scrollTick}
     />
   ), [
     allowReactions,
@@ -1427,6 +1846,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     onReplyPreviewPress,
     onSwipeReply,
     repliedVoiceBubbleWidth,
+    resolvedScheme,
+    scrollTick,
     selectionMode,
     selectedMessageIdSet,
     setContentRef,
@@ -1442,6 +1863,10 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         data={messages}
         keyExtractor={keyExtractor}
         inverted
+        onScroll={bumpScrollTickThrottled}
+        onMomentumScrollEnd={bumpScrollTickImmediate}
+        onScrollEndDrag={bumpScrollTickImmediate}
+        scrollEventThrottle={48}
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
         removeClippedSubviews={!activeVideoNoteVisible}

@@ -21,6 +21,11 @@ export interface FileBubbleProps {
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
   reactionAccentColor?: string;
+  incomingBubbleBackground?: string;
+  incomingBubbleBorderColor?: string;
+  incomingFileNameColor?: string;
+  incomingSecondaryTextColor?: string;
+  incomingCaptionColor?: string;
 }
 
 function formatFileSize(bytes?: number): string | null {
@@ -73,6 +78,11 @@ export function FileBubble({
   allowMessageReactions,
   onToggleInlineReaction,
   reactionAccentColor,
+  incomingBubbleBackground,
+  incomingBubbleBorderColor,
+  incomingFileNameColor,
+  incomingSecondaryTextColor,
+  incomingCaptionColor,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
   const fileCaption = useMemo(
@@ -95,6 +105,12 @@ export function FileBubble({
       style={[
         styles.container,
         isMe ? styles.bubbleMe : styles.bubbleOther,
+        !isMe && incomingBubbleBackground
+          ? {
+              backgroundColor: incomingBubbleBackground,
+              borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
+            }
+          : null,
         isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
       ]}
     >
@@ -134,6 +150,7 @@ export function FileBubble({
               styles.fileName,
               isMe ? styles.fileNameMe : styles.fileNameOther,
               isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+              !isMe && incomingFileNameColor ? { color: incomingFileNameColor } : null,
             ]}
             numberOfLines={2}
             ellipsizeMode="tail"
@@ -148,6 +165,7 @@ export function FileBubble({
                   styles.fileSize,
                   isMe ? styles.fileSizeMe : styles.fileSizeOther,
                   isMe && outgoingMetaColor ? { color: outgoingMetaColor } : null,
+                  !isMe && incomingSecondaryTextColor ? { color: incomingSecondaryTextColor } : null,
                 ]}
               >
                 {sizeText ?? ' '}
@@ -158,8 +176,8 @@ export function FileBubble({
                   status={status ?? 'sent'}
                   isMe={isMe}
                   compact
-                  timeColor={isMe ? outgoingMetaColor : undefined}
-                  iconColor={isMe ? outgoingMetaColor : undefined}
+                  timeColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
+                  iconColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
                 />
               ) : null}
             </View>
@@ -173,6 +191,7 @@ export function FileBubble({
             styles.caption,
             isMe ? styles.captionMe : styles.captionOther,
             isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+            !isMe && incomingCaptionColor ? { color: incomingCaptionColor } : null,
           ]}
         >
           {fileCaption}

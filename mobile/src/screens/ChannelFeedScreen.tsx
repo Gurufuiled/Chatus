@@ -22,6 +22,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { BlurTargetView } from 'expo-blur';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useIsFocused } from '@react-navigation/native';
+import { useTheme } from '../contexts/ThemeContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ChatInputDock,
@@ -403,6 +404,7 @@ export function ChannelFeedScreen() {
   const navigation = useNavigation<Nav>();
   const isFocused = useIsFocused();
   const route = useRoute<Route>();
+  const { colors: themeMenuColors } = useTheme();
   const blurTargetRef = React.useRef<View | null>(null);
   const postContentRefs = React.useRef<Record<string, View | null>>({});
   const menuAnim = React.useRef(new Animated.Value(0)).current;
@@ -874,7 +876,7 @@ export function ChannelFeedScreen() {
           key: 'delete_cancel',
           label: 'Отмена',
           icon: null,
-          color: '#111827',
+          color: themeMenuColors.textPrimary,
           disabled: false,
           textOnly: true,
         },
@@ -889,10 +891,10 @@ export function ChannelFeedScreen() {
         key: 'reply',
         label: 'Ответить',
         icon: 'corner-left-up' as const,
-        color: '#111827',
+        color: themeMenuColors.textPrimary,
         disabled: false,
       },
-      { key: 'copy', label: 'Скопировать', icon: 'copy' as const, color: '#111827', disabled: false },
+      { key: 'copy', label: 'Скопировать', icon: 'copy' as const, color: themeMenuColors.textPrimary, disabled: false },
     ];
 
     if (showStaffPostActions) {
@@ -902,14 +904,14 @@ export function ChannelFeedScreen() {
           key: 'pin',
           label: isPinned ? 'Открепить' : 'Закрепить',
           icon: 'bookmark' as const,
-          color: '#111827',
+          color: themeMenuColors.textPrimary,
           disabled: false,
         },
         {
           key: 'forward',
           label: 'Переслать',
           icon: 'corner-up-right' as const,
-          color: canFwd ? '#111827' : '#9CA3AF',
+          color: canFwd ? themeMenuColors.textPrimary : themeMenuColors.iconMuted,
           disabled: !canFwd,
         },
         {
@@ -928,11 +930,11 @@ export function ChannelFeedScreen() {
         key: 'forward',
         label: 'Переслать',
         icon: 'corner-up-right' as const,
-        color: canFwd ? '#111827' : '#9CA3AF',
+        color: canFwd ? themeMenuColors.textPrimary : themeMenuColors.iconMuted,
         disabled: !canFwd,
       },
     ];
-  }, [activeMenuMessage, menuMode, pinnedMessageId, showStaffPostActions]);
+  }, [activeMenuMessage, menuMode, pinnedMessageId, showStaffPostActions, themeMenuColors]);
 
   const handlePinToggle = React.useCallback(
     (message: Message) => {

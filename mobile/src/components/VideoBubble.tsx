@@ -63,6 +63,9 @@ export interface VideoBubbleProps {
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
   reactionAccentColor?: string;
+  incomingBubbleBackground?: string;
+  incomingBubbleBorderColor?: string;
+  incomingCaptionTextColor?: string;
 }
 
 function computeDisplaySize(
@@ -417,6 +420,9 @@ export function VideoBubble({
   allowMessageReactions,
   onToggleInlineReaction,
   reactionAccentColor,
+  incomingBubbleBackground,
+  incomingBubbleBorderColor,
+  incomingCaptionTextColor,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -523,6 +529,12 @@ export function VideoBubble({
           styles.container,
           centered && styles.containerCentered,
           embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+          !isMe && incomingBubbleBackground
+            ? {
+                backgroundColor: incomingBubbleBackground,
+                borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
+              }
+            : null,
           isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
         ]}
       >
@@ -581,6 +593,7 @@ export function VideoBubble({
               styles.caption,
               isMe && styles.captionMe,
               isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+              !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
             ]}
           >
             {caption}

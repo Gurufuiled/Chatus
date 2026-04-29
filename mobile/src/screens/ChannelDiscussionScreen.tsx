@@ -70,6 +70,7 @@ import {
 import { resolveAvatarUrl } from '../config';
 import { TransportService } from '../services/TransportService';
 import { WebSocketService } from '../services/WebSocketService';
+import { useTheme } from '../contexts/ThemeContext';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelDiscussion'>;
 type DiscussionMenuActionKey = 'reply' | 'copy' | 'delete';
@@ -551,6 +552,7 @@ function parseCooldownSecondsFromApiError(message: string): number | null {
 
 export function ChannelDiscussionScreen() {
   const route = useRoute<Route>();
+  const { colors: themeMenuColors } = useTheme();
   const insets = useSafeAreaInsets();
   const animatedKeyboard = useAnimatedKeyboard();
   const blurTargetRef = React.useRef<View | null>(null);
@@ -733,15 +735,15 @@ export function ChannelDiscussionScreen() {
     if (menuMode === 'deleteConfirm') {
       return [
         { key: 'delete_confirm', label: 'Удалить для всех', icon: null, color: '#E53935', disabled: false, textOnly: true },
-        { key: 'delete_cancel', label: 'Отмена', icon: null, color: '#111827', disabled: false, textOnly: true },
+        { key: 'delete_cancel', label: 'Отмена', icon: null, color: themeMenuColors.textPrimary, disabled: false, textOnly: true },
       ];
     }
     return [
-      { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: '#111827', disabled: false },
-      { key: 'copy', label: 'Скопировать', icon: 'copy', color: '#111827', disabled: false },
+      { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: themeMenuColors.textPrimary, disabled: false },
+      { key: 'copy', label: 'Скопировать', icon: 'copy', color: themeMenuColors.textPrimary, disabled: false },
       { key: 'delete', label: 'Удалить', icon: 'trash-2', color: '#E53935', disabled: activeMenuMessage.sender_id !== currentUserId },
     ];
-  }, [activeMenuMessage, currentUserId, menuMode]);
+  }, [activeMenuMessage, currentUserId, menuMode, themeMenuColors]);
 
   const handleDeleteMessage = React.useCallback((message: Message) => {
     if (!thread) return;

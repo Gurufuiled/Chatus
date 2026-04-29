@@ -1875,7 +1875,7 @@ export function ChatScreen() {
           key: 'delete_cancel',
           label: 'Отмена',
           icon: null,
-          color: '#111827',
+          color: themeColors.textPrimary,
           disabled: false,
           textOnly: true,
         },
@@ -1886,14 +1886,20 @@ export function ChatScreen() {
     const canForward = canForwardMessage(activeMenuMessage);
 
     return [
-      { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: '#111827', disabled: false },
-      { key: 'copy', label: 'Скопировать', icon: 'copy', color: '#111827', disabled: false },
-      { key: 'pin', label: isPinned ? 'Открепить' : 'Закрепить', icon: 'bookmark', color: '#111827', disabled: false },
-      { key: 'forward', label: 'Переслать', icon: 'corner-up-right', color: canForward ? '#111827' : '#9CA3AF', disabled: !canForward },
+      { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: themeColors.textPrimary, disabled: false },
+      { key: 'copy', label: 'Скопировать', icon: 'copy', color: themeColors.textPrimary, disabled: false },
+      { key: 'pin', label: isPinned ? 'Открепить' : 'Закрепить', icon: 'bookmark', color: themeColors.textPrimary, disabled: false },
+      {
+        key: 'forward',
+        label: 'Переслать',
+        icon: 'corner-up-right',
+        color: canForward ? themeColors.textPrimary : themeColors.iconMuted,
+        disabled: !canForward,
+      },
       { key: 'delete', label: 'Удалить', icon: 'trash-2', color: '#E53935', disabled: false },
-      { key: 'select', label: 'Выбрать', icon: 'check-circle', color: '#111827', disabled: false },
+      { key: 'select', label: 'Выбрать', icon: 'check-circle', color: themeColors.textPrimary, disabled: false },
     ];
-  }, [activeMenuMessage, currentUserId, menuMode, pinnedMessageId]);
+  }, [activeMenuMessage, currentUserId, menuMode, pinnedMessageId, themeColors]);
 
   return (
     <View style={[styles.container, { backgroundColor: chatTheme.canvasColor }]}>

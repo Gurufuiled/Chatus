@@ -9,6 +9,8 @@ import {
   View,
 } from 'react-native';
 import type { Message } from '../stores/types';
+import { useTheme } from '../contexts/ThemeContext';
+import { withAlpha } from '../theme/colors';
 
 const MENU_WIDTH = 202;
 const MENU_EDGE_GAP = 12;
@@ -82,6 +84,9 @@ export function ChatContextMenuOverlay({
   renderMenuPreviewBody,
   showMenuCard = true,
 }: ChatContextMenuOverlayProps) {
+  const { colors: themeColors, resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
+
   if (!menuState) {
     return null;
   }
@@ -131,13 +136,26 @@ export function ChatContextMenuOverlay({
       ? { blurTarget: blurTargetRef }
       : {};
 
+  const reactionBarSurface = isDark
+    ? withAlpha(themeColors.inputBackgroundSolid, 0.96)
+    : 'rgba(255,255,255,0.96)';
+  const reactionCheckBg = isDark ? withAlpha(themeColors.accent, 0.42) : '#CDE0C0';
+  const menuCardSurface = isDark
+    ? withAlpha(themeColors.inputBackgroundSolid, 0.94)
+    : 'rgba(255,255,255,0.94)';
+  const menuCardBorder = isDark ? themeColors.composerBorder : 'rgba(255,255,255,0.84)';
+  const menuCardTint = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(250,252,255,0.22)';
+  const menuRowBorder = isDark ? themeColors.separator : '#ECEEF2';
+  const menuRowPressed = isDark ? themeColors.rowPressed : 'rgba(77,141,255,0.07)';
+  const blurTint = isDark ? 'dark' : 'light';
+
   return (
     <View pointerEvents="box-none" style={styles.menuOverlayRoot}>
       <Pressable style={styles.menuBackdrop} onPress={onClose}>
         <Animated.View style={[styles.menuBlurWrap, { opacity: backdropOpacity }]}>
           <BlurView
             intensity={100}
-            tint="default"
+            tint={blurTint}
             blurMethod="dimezisBlurView"
             blurReductionFactor={1}
             {...blurProps}
@@ -156,6 +174,8 @@ export function ChatContextMenuOverlay({
               left: reactionLeft,
               opacity: menuAnim,
               transform: [{ translateY: reactionTranslateY }, { scale: menuScale }],
+              backgroundColor: reactionBarSurface,
+              shadowOpacity: isDark ? 0.35 : 0.16,
             },
           ]}
         >
@@ -173,7 +193,7 @@ export function ChatContextMenuOverlay({
               </Text>
             </Pressable>
           ))}
-          <View style={styles.reactionCheck}>
+          <View style={[styles.reactionCheck, { backgroundColor: reactionCheckBg }]}>
             <Feather name="check" size={18} color="#FFFFFF" />
           </View>
         </Animated.View>
@@ -220,10 +240,12 @@ export function ChatContextMenuOverlay({
               left: menuLeft,
               opacity: menuAnim,
               transform: [{ translateY: menuTranslateY }, { scale: menuScale }],
+              backgroundColor: menuCardSurface,
+              borderColor: menuCardBorder,
             },
           ]}
         >
-          <View pointerEvents="none" style={styles.menuCardTint} />
+          <View pointerEvents="none" style={[styles.menuCardTint, { backgroundColor: menuCardTint }]} />
           {menuActions.map((action, index) => (
             <Pressable
               key={action.key}
@@ -232,8 +254,8 @@ export function ChatContextMenuOverlay({
                 styles.menuAction,
                 action.textOnly && styles.menuActionTextOnly,
                 action.disabled && styles.menuActionDisabled,
-                index < menuActions.length - 1 && styles.menuActionBorder,
-                pressed && !action.disabled && styles.menuActionPressed,
+                index < menuActions.length - 1 && [styles.menuActionBorder, { borderBottomColor: menuRowBorder }],
+                pressed && !action.disabled && { backgroundColor: menuRowPressed },
               ]}
               onPress={() => onMenuAction(action.key)}
             >
@@ -363,9 +385,6 @@ const styles = StyleSheet.create({
   },
   menuActionDisabled: {
     opacity: 0.55,
-  },
-  menuActionPressed: {
-    backgroundColor: 'rgba(77,141,255,0.07)',
   },
   menuActionLabel: {
     fontSize: 14,

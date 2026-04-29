@@ -50,6 +50,9 @@ export interface ImageBubbleProps {
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
   reactionAccentColor?: string;
+  incomingBubbleBackground?: string;
+  incomingBubbleBorderColor?: string;
+  incomingCaptionTextColor?: string;
 }
 
 function computeDisplaySize(
@@ -106,6 +109,9 @@ export function ImageBubble({
   allowMessageReactions,
   onToggleInlineReaction,
   reactionAccentColor,
+  incomingBubbleBackground,
+  incomingBubbleBorderColor,
+  incomingCaptionTextColor,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
@@ -189,6 +195,12 @@ export function ImageBubble({
           styles.container,
           centered && styles.containerCentered,
           embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+          !isMe && incomingBubbleBackground
+            ? {
+                backgroundColor: incomingBubbleBackground,
+                borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
+              }
+            : null,
           isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
         ]}
       >
@@ -264,6 +276,7 @@ export function ImageBubble({
               styles.caption,
               isMe && styles.captionMe,
               isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+              !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
             ]}
           >
             {caption}
