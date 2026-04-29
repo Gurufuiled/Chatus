@@ -2,12 +2,13 @@ import { Module } from '@nestjs/common';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { AddressBookService } from './address-book.service';
+import { PhoneChangeService } from './phone-change.service';
 import { PushModule } from '../push/push.module';
 
 @Module({
   imports: [PushModule],
   controllers: [UsersController],
-  providers: [UsersService, AddressBookService],
+  providers: [UsersService, AddressBookService, PhoneChangeService],
   exports: [UsersService],
 })
 export class UsersModule {}

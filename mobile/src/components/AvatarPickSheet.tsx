@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -16,6 +16,9 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { GallerySkeletonGrid } from './GallerySkeletonGrid';
 
 export type AvatarPickResult = {
@@ -44,14 +47,18 @@ function inferImageMime(fileName: string | undefined): string {
   return 'image/jpeg';
 }
 
+type SheetStyles = ReturnType<typeof createAvatarPickSheetStyles>;
+
 function PhotoCell({
   item,
   disabled,
   onPress,
+  styles,
 }: {
   item: PhotoItem;
   disabled?: boolean;
   onPress: (item: PhotoItem) => void;
+  styles: SheetStyles;
 }) {
   return (
     <View style={styles.cellOuter}>
@@ -60,6 +67,146 @@ function PhotoCell({
       </Pressable>
     </View>
   );
+}
+
+function createAvatarPickSheetStyles(c: ThemeColors) {
+  const shadow = withAlpha('#000000', 0.35);
+  return StyleSheet.create({
+    sheetRoot: {
+      flex: 1,
+      justifyContent: 'flex-end',
+    },
+    sheetBackdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: withAlpha('#000000', 0.45),
+    },
+    sheetCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      borderTopLeftRadius: 30,
+      borderTopRightRadius: 30,
+      paddingTop: 10,
+      overflow: 'hidden',
+      shadowColor: shadow,
+      shadowOpacity: 0.35,
+      shadowRadius: 22,
+      shadowOffset: { width: 0, height: -8 },
+      elevation: 10,
+    },
+    sheetHeader: {
+      minHeight: 58,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      gap: 10,
+    },
+    headerCircle: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.rowPressed,
+    },
+    titleBlock: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    sheetTitle: {
+      fontSize: 17,
+      lineHeight: 20,
+      fontWeight: '800',
+      color: c.textPrimary,
+    },
+    sheetSubtitle: {
+      textAlign: 'center',
+      fontSize: 13,
+      color: c.textSecondary,
+      fontWeight: '600',
+    },
+    headerSpacer: {
+      width: 42,
+      height: 42,
+    },
+    galleryPanel: {
+      flex: 1,
+    },
+    galleryList: {
+      flex: 1,
+    },
+    galleryGrid: {
+      paddingBottom: 78,
+    },
+    galleryRow: {
+      gap: 1,
+      marginBottom: 1,
+    },
+    cellOuter: {
+      flex: 1,
+    },
+    cell: {
+      aspectRatio: 1,
+      overflow: 'hidden',
+      backgroundColor: c.placeholderBg,
+    },
+    cellImage: {
+      width: '100%',
+      height: '100%',
+    },
+    skeletonWrap: {
+      flex: 1,
+      paddingTop: 4,
+    },
+    placeholder: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 26,
+    },
+    hint: {
+      fontSize: 15,
+      lineHeight: 21,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    bottomDock: {
+      position: 'absolute',
+      left: 16,
+      right: 16,
+    },
+    allPhotosBtn: {
+      minHeight: 54,
+      borderRadius: 22,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      paddingHorizontal: 16,
+      backgroundColor: c.buttonBackground,
+      shadowColor: shadow,
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 7,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+    },
+    allPhotosBtnPressed: {
+      opacity: 0.88,
+    },
+    allPhotosLabel: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: c.accent,
+    },
+  });
 }
 
 export type AvatarPickSheetProps = {
@@ -77,11 +224,14 @@ export type AvatarPickSheetProps = {
  */
 export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPickSheetProps) {
   const insets = useSafeAreaInsets();
-  const [expanded, setExpanded] = React.useState(false);
-  const [items, setItems] = React.useState<PhotoItem[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [denied, setDenied] = React.useState(false);
-  const [picking, setPicking] = React.useState(false);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createAvatarPickSheetStyles(colors), [colors]);
+
+  const [expanded, setExpanded] = useState(false);
+  const [items, setItems] = useState<PhotoItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [denied, setDenied] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   React.useEffect(() => {
     if (!visible) {
@@ -132,7 +282,7 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
             } catch {
               return p;
             }
-          })
+          }),
         );
         if (!cancelled) {
           setItems(enriched);
@@ -153,23 +303,22 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
     ? Math.round(Dimensions.get('window').height * 0.94)
     : Math.round(Dimensions.get('window').height * 0.66);
 
-  const handleGalleryScroll = React.useCallback(
+  const handleGalleryScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       if (!expanded && event.nativeEvent.contentOffset.y > 12) {
         setExpanded(true);
       }
     },
-    [expanded]
+    [expanded],
   );
 
-  const resolveAndPick = React.useCallback(
+  const resolveAndPick = useCallback(
     async (item: PhotoItem) => {
       if (picking) return;
       setPicking(true);
       try {
         const assetInfo = await MediaLibrary.getAssetInfoAsync(item.id).catch(() => null);
-        const uri =
-          assetInfo?.localUri?.trim() || assetInfo?.uri?.trim() || item.uri.trim();
+        const uri = assetInfo?.localUri?.trim() || assetInfo?.uri?.trim() || item.uri.trim();
         const name = assetInfo?.filename ?? item.fileName ?? 'avatar.jpg';
         const type = inferImageMime(name);
         const width = assetInfo?.width ?? item.width;
@@ -187,10 +336,10 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
         setPicking(false);
       }
     },
-    [onClose, onPick, picking]
+    [onClose, onPick, picking],
   );
 
-  const openSystemLibrary = React.useCallback(async () => {
+  const openSystemLibrary = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       return;
@@ -207,22 +356,18 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
     await onPick({
       uri: asset.uri,
       name: asset.fileName ?? 'avatar.jpg',
-      type: asset.mimeType ?? inferImageMime(asset.fileName),
+      type: asset.mimeType ?? inferImageMime(asset.fileName ?? undefined),
       width: asset.width,
       height: asset.height,
     });
   }, [onClose, onPick]);
 
-  const keyExtractor = React.useCallback((item: PhotoItem) => item.id, []);
-  const renderItem = React.useCallback(
+  const keyExtractor = useCallback((item: PhotoItem) => item.id, []);
+  const renderItem = useCallback(
     ({ item }: { item: PhotoItem }) => (
-      <PhotoCell
-        item={item}
-        disabled={picking}
-        onPress={(p) => void resolveAndPick(p)}
-      />
+      <PhotoCell item={item} disabled={picking} onPress={(p) => void resolveAndPick(p)} styles={styles} />
     ),
-    [picking, resolveAndPick]
+    [picking, resolveAndPick, styles],
   );
 
   return (
@@ -240,13 +385,13 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
         >
           <View style={styles.sheetHeader}>
             <Pressable style={styles.headerCircle} onPress={onClose} hitSlop={8}>
-              <Feather name="x" size={24} color="#111827" />
+              <Feather name="x" size={24} color={colors.textPrimary} />
             </Pressable>
 
             <Pressable style={styles.titleBlock} onPress={() => setExpanded((v) => !v)}>
               <View style={styles.titleRow}>
                 <Text style={styles.sheetTitle}>Недавние</Text>
-                <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color="#6B7280" />
+                <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
               </View>
               {subtitle ? <Text style={styles.sheetSubtitle}>{subtitle}</Text> : null}
             </Pressable>
@@ -260,9 +405,7 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
             </View>
           ) : denied ? (
             <View style={styles.placeholder}>
-              <Text style={styles.hint}>
-                Нужен доступ к фото, чтобы показать недавние снимки.
-              </Text>
+              <Text style={styles.hint}>Нужен доступ к фото, чтобы показать недавние снимки.</Text>
             </View>
           ) : items.length > 0 ? (
             <View style={styles.galleryPanel}>
@@ -299,7 +442,7 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
               onPress={() => void openSystemLibrary()}
               disabled={picking}
             >
-              <MaterialCommunityIcons name="folder-image" size={22} color="#4B8FEA" />
+              <MaterialCommunityIcons name="folder-image" size={22} color={colors.accent} />
               <Text style={styles.allPhotosLabel}>Все фото…</Text>
             </Pressable>
           </View>
@@ -308,140 +451,3 @@ export function AvatarPickSheet({ visible, onClose, onPick, subtitle }: AvatarPi
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  sheetRoot: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-  },
-  sheetCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    paddingTop: 10,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.16,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: -8 },
-    elevation: 10,
-  },
-  sheetHeader: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  headerCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(248,250,252,0.96)',
-  },
-  titleBlock: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  sheetTitle: {
-    fontSize: 17,
-    lineHeight: 20,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  sheetSubtitle: {
-    textAlign: 'center',
-    fontSize: 13,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  headerSpacer: {
-    width: 42,
-    height: 42,
-  },
-  galleryPanel: {
-    flex: 1,
-  },
-  galleryList: {
-    flex: 1,
-  },
-  galleryGrid: {
-    paddingBottom: 78,
-  },
-  galleryRow: {
-    gap: 1,
-    marginBottom: 1,
-  },
-  cellOuter: {
-    flex: 1,
-  },
-  cell: {
-    aspectRatio: 1,
-    overflow: 'hidden',
-    backgroundColor: '#D8DEE7',
-  },
-  cellImage: {
-    width: '100%',
-    height: '100%',
-  },
-  skeletonWrap: {
-    flex: 1,
-    paddingTop: 4,
-  },
-  placeholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 26,
-  },
-  hint: {
-    fontSize: 15,
-    lineHeight: 21,
-    color: '#6B7280',
-    textAlign: 'center',
-  },
-  bottomDock: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-  },
-  allPhotosBtn: {
-    minHeight: 54,
-    borderRadius: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 7,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(226,232,240,0.9)',
-  },
-  allPhotosBtnPressed: {
-    opacity: 0.92,
-  },
-  allPhotosLabel: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#4B8FEA',
-  },
-});

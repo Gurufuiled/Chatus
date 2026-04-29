@@ -14,13 +14,17 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Feather from '@expo/vector-icons/Feather';
 import type { SettingsStackParamList } from '../navigation/types';
 import { authStore } from '../stores/authStore';
-import { authService, apiUserToUserRow } from '../services/AuthService';
+import { authService, apiUserToUserRow, type ApiUser } from '../services/AuthService';
 import { getProfile, updateProfile } from '../services/profileService';
 import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
+import { BirthdayWheelSheet, formatBirthdayRowLabel } from '../components/BirthdayWheelSheet';
+import { ChangePhoneSheet } from '../components/ChangePhoneSheet';
+import { UsernameEditSheet } from '../components/UsernameEditSheet';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
 import { StyleSheet } from 'react-native';
@@ -136,6 +140,9 @@ export function EditProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
+  const [birthdaySheetOpen, setBirthdaySheetOpen] = useState(false);
+  const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
+  const [handleSheetOpen, setHandleSheetOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
@@ -151,6 +158,27 @@ export function EditProfileScreen() {
       authStore.getState().setSession(apiUserToUserRow(apiUser), token);
     }
   }, []);
+
+  const onPhoneChanged = useCallback(
+    async (u: ApiUser) => {
+      setPhone(u.phone ?? null);
+      await authService.saveUserToLocal(u);
+      syncAuthStore(u);
+      setPhoneSheetOpen(false);
+    },
+    [syncAuthStore],
+  );
+
+  const applyUsernameFromSheet = useCallback(
+    async (nextWithoutAt: string) => {
+      const t = nextWithoutAt.trim();
+      const updated = await updateProfile({ handle: t === '' ? null : t });
+      await authService.saveUserToLocal(updated);
+      syncAuthStore(updated);
+      setHandle((updated.handle ?? '').replace(/^@/, ''));
+    },
+    [syncAuthStore],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -315,38 +343,43 @@ export function EditProfileScreen() {
         </Text>
 
         <View style={[styles.card, { marginTop: 20 }]}>
-          <View style={styles.rowBetween}>
+          <Pressable
+            style={styles.rowBetween}
+            onPress={() => setBirthdaySheetOpen(true)}
+          >
             <Text style={styles.rowLabel}>День рождения</Text>
-            <TextInput
-              style={[styles.rowValue, { flex: 1, textAlign: 'right' }]}
-              value={birthday}
-              onChangeText={setBirthday}
-              placeholder="ГГГГ-ММ-ДД"
-              placeholderTextColor={colors.placeholder}
-            />
-          </View>
+            <Text style={[styles.rowValue, { flex: 1, textAlign: 'right' }]} numberOfLines={1}>
+              {formatBirthdayRowLabel(birthday)}
+            </Text>
+          </Pressable>
         </View>
         <Text style={styles.caption}>Ваш день рождения могут видеть только контакты.</Text>
 
         <View style={[styles.card, { marginTop: 20 }]}>
-          <View style={styles.rowBetween}>
+          <Pressable
+            style={styles.rowBetween}
+            onPress={() => setPhoneSheetOpen(true)}
+          >
             <Text style={styles.rowLabel}>Номер</Text>
-            <Text style={styles.rowValue} numberOfLines={1}>
-              {phone ?? '—'}
-            </Text>
-          </View>
-          <View style={[styles.rowBetween, { borderBottomWidth: 0 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', gap: 6 }}>
+              <Text style={styles.rowValue} numberOfLines={1}>
+                {phone ?? '—'}
+              </Text>
+              <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+            </View>
+          </Pressable>
+          <Pressable
+            style={[styles.rowBetween, { borderBottomWidth: 0 }]}
+            onPress={() => setHandleSheetOpen(true)}
+          >
             <Text style={styles.rowLabel}>Имя пользователя</Text>
-            <TextInput
-              style={[styles.rowValue, { flex: 1, textAlign: 'right', color: colors.textPrimary }]}
-              value={handle}
-              onChangeText={(t) => setHandle(t.replace(/^@/, ''))}
-              placeholder="handle"
-              placeholderTextColor={colors.placeholder}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', gap: 6 }}>
+              <Text style={styles.rowValue} numberOfLines={1}>
+                {handle.trim() ? `@${handle.trim()}` : 'не задано'}
+              </Text>
+              <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+            </View>
+          </Pressable>
         </View>
       </ScrollView>
 
@@ -355,6 +388,23 @@ export function EditProfileScreen() {
         onClose={() => setAvatarSheetVisible(false)}
         onPick={(pick) => void handleAvatarPicked(pick)}
         subtitle="Фото профиля"
+      />
+      <BirthdayWheelSheet
+        visible={birthdaySheetOpen}
+        valueYmd={birthday}
+        onClose={() => setBirthdaySheetOpen(false)}
+        onApply={(ymd) => setBirthday(ymd)}
+      />
+      <ChangePhoneSheet
+        visible={phoneSheetOpen}
+        onClose={() => setPhoneSheetOpen(false)}
+        onSuccess={(u) => void onPhoneChanged(u)}
+      />
+      <UsernameEditSheet
+        visible={handleSheetOpen}
+        initialHandle={handle}
+        onClose={() => setHandleSheetOpen(false)}
+        onApply={(h) => applyUsernameFromSheet(h)}
       />
     </KeyboardAvoidingView>
   );

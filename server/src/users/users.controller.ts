@@ -17,6 +17,9 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SearchUsersQueryDto } from './dto/search-users-query.dto';
 import { CreateAddressBookContactDto } from './dto/create-address-book-contact.dto';
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
+import { RequestPhoneChangeDto } from './dto/request-phone-change.dto';
+import { VerifyPhoneChangeDto } from './dto/verify-phone-change.dto';
+import { PhoneChangeService } from './phone-change.service';
 import type { User } from '@prisma/client';
 
 @Controller('users')
@@ -25,6 +28,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly addressBookService: AddressBookService,
+    private readonly phoneChangeService: PhoneChangeService,
   ) {}
 
   @Get('me')
@@ -64,6 +68,16 @@ export class UsersController {
   ) {
     await this.addressBookService.delete(user.id, contactId);
     return { ok: true };
+  }
+
+  @Post('me/phone/request')
+  async requestPhoneChange(@CurrentUser() user: User, @Body() dto: RequestPhoneChangeDto) {
+    return this.phoneChangeService.request(user.id, dto.new_phone);
+  }
+
+  @Post('me/phone/verify')
+  async verifyPhoneChange(@CurrentUser() user: User, @Body() dto: VerifyPhoneChangeDto) {
+    return this.phoneChangeService.verify(user.id, dto.session_id, dto.code);
   }
 
   @Get(':id')

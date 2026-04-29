@@ -113,8 +113,24 @@ model User {
   pushDevices     PushDevice[]
   addressBookContacts AddressBookContact[] @relation("AddressBookOwner")
   addressBookLinks    AddressBookContact[] @relation("AddressBookLinkedUser")
+  phoneChangeSessions PhoneChangeSession[]
 
   @@map("users")
+}
+
+/** OTP для смены телефона (SMS в проде подключается отдельно; код отдаётся в ответе только в dev). */
+model PhoneChangeSession {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  newPhone   String   @map("new_phone") @db.VarChar(32)
+  code       String   @db.VarChar(10)
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("phone_change_sessions")
 }
 
 model AddressBookContact {

@@ -349,6 +349,8 @@ const mockCurrentUser = {
   updated_at: Date.now(),
 };
 
+let mockPhoneChangeSession: { id: string; code: string; new_phone: string } | null = null;
+
 const mockAddressBookContacts: Array<{
   id: string;
   owner_user_id: string;
@@ -714,6 +716,50 @@ export async function mockApiPost(
   path: string,
   body?: unknown
 ): Promise<Response> {
+  if (path === '/users/me/phone/request' && body && typeof body === 'object') {
+    const b = body as { new_phone?: string };
+    const raw = String(b.new_phone ?? '').trim();
+    const d = raw.replace(/\D/g, '');
+    let e164 = '';
+    if (d.length === 11 && d.startsWith('7')) e164 = `+${d}`;
+    else if (d.length === 11 && d.startsWith('8')) e164 = `+7${d.slice(1)}`;
+    else if (d.length === 10 && d.startsWith('9')) e164 = `+7${d}`;
+    if (e164.length < 12) {
+      return new Response(JSON.stringify({ message: 'Invalid phone number' }), { status: 400 });
+    }
+    const norm = e164.replace(/\D/g, '');
+    const taken = mockUsers.some((u) => u.phone && u.phone.replace(/\D/g, '') === norm);
+    if (taken) {
+      return new Response(JSON.stringify({ message: 'Phone number is already in use' }), { status: 409 });
+    }
+    if (mockCurrentUser.phone && mockCurrentUser.phone.replace(/\D/g, '') === norm) {
+      return new Response(JSON.stringify({ message: 'This is already your phone number' }), { status: 400 });
+    }
+    mockPhoneChangeSession = {
+      id: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+      code: '424242',
+      new_phone: e164,
+    };
+    return createMockResponse({
+      session_id: mockPhoneChangeSession.id,
+      expires_at: Date.now() + 900000,
+      demo_code: mockPhoneChangeSession.code,
+    });
+  }
+
+  if (path === '/users/me/phone/verify' && body && typeof body === 'object') {
+    const b = body as { session_id?: string; code?: string };
+    if (!mockPhoneChangeSession || b.session_id !== mockPhoneChangeSession.id) {
+      return new Response(JSON.stringify({ message: 'Session not found' }), { status: 400 });
+    }
+    if ((b.code ?? '').replace(/\D/g, '') !== mockPhoneChangeSession.code) {
+      return new Response(JSON.stringify({ message: 'Wrong code' }), { status: 400 });
+    }
+    mockCurrentUser.phone = mockPhoneChangeSession.new_phone;
+    mockPhoneChangeSession = null;
+    return createMockResponse({ ...mockCurrentUser });
+  }
+
   if (path === '/users/me/contacts' && body && typeof body === 'object') {
     const b = body as { phone?: string; first_name?: string; last_name?: string };
     const phone = String(b.phone ?? '').trim();
