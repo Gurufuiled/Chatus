@@ -1,15 +1,34 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 import { resolveChannelByInvite, resolveChannelBySlug } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'ChannelLinkSlug' | 'ChannelLinkInvite'>;
 
+function createChannelLinkGateStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    center: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.chatBackground,
+      gap: 12,
+    },
+    hint: {
+      fontSize: 15,
+      color: c.textSecondary,
+    },
+  });
+}
+
 export function ChannelLinkGateScreen({ route, navigation }: Props) {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelLinkGateStyles(c), [c]);
   const ranRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -45,22 +64,8 @@ export function ChannelLinkGateScreen({ route, navigation }: Props) {
 
   return (
     <View style={styles.center}>
-      <ActivityIndicator size="large" color={colors.accent} />
+      <ActivityIndicator size="large" color={c.accent} />
       <Text style={styles.hint}>Открытие канала…</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.inputBackgroundSolid,
-    gap: 12,
-  },
-  hint: {
-    fontSize: 15,
-    color: colors.textSecondary,
-  },
-});

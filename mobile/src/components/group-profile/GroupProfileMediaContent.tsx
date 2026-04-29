@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   Alert,
@@ -13,8 +13,10 @@ import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
 } from '../../contexts/VoicePlayerContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { buildUiWaveform } from '../../services/waveformUtils';
-import { colors } from '../../theme/colors';
+import type { ThemeColors } from '../../theme/palettes';
+import { withAlpha } from '../../theme/stylePrimitives';
 import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
@@ -87,6 +89,231 @@ function useVideoPreviewUri(videoUri: string | null | undefined, preferredUri?: 
   return normalizedPreferredUri || generatedUri;
 }
 
+function createGroupProfileMediaStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    mediaGrid: {
+      marginTop: 14,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginHorizontal: -3,
+    },
+    mediaTile: {
+      width: '33.3333%',
+      aspectRatio: 1,
+      padding: 3,
+    },
+    mediaImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 12,
+      backgroundColor: c.placeholderBg,
+    },
+    mediaVideoFallback: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#0F172A',
+    },
+    mediaPlayBadge: {
+      position: 'absolute',
+      left: 12,
+      top: 12,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(15,23,42,0.62)',
+    },
+    mediaBadge: {
+      position: 'absolute',
+      right: 10,
+      bottom: 10,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: 'rgba(17, 24, 39, 0.6)',
+    },
+    mediaBadgeText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    stackSection: {
+      marginTop: 14,
+      gap: 10,
+    },
+    fileRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 74,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 22,
+      backgroundColor: c.inputBackgroundSolid,
+    },
+    fileBadge: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: withAlpha(c.accent, 0.12),
+      marginRight: 12,
+    },
+    fileBadgeText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: c.accent,
+    },
+    fileTextWrap: {
+      flex: 1,
+      minWidth: 0,
+    },
+    fileTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    fileSubtitle: {
+      marginTop: 4,
+      fontSize: 13,
+      color: c.textSecondary,
+    },
+    voiceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: 72,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 22,
+      backgroundColor: c.inputBackgroundSolid,
+    },
+    voicePlayButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.accent,
+      marginRight: 12,
+    },
+    voicePlayButtonActive: {
+      backgroundColor: c.link,
+    },
+    voicePlayButtonPressed: {
+      opacity: 0.84,
+    },
+    voicePlayIcon: {
+      marginLeft: 2,
+    },
+    voiceWaveWrap: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    voiceWaveTrack: {
+      height: 24,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
+    voiceBar: {
+      width: 3,
+      borderRadius: 999,
+    },
+    voiceMetaRow: {
+      marginTop: 6,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    voiceDuration: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.textPrimary,
+    },
+    voiceDate: {
+      fontSize: 13,
+      color: c.textSecondary,
+    },
+    videoNoteRowPressed: {
+      opacity: 0.86,
+    },
+    videoNoteThumbWrap: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      overflow: 'hidden',
+      marginRight: 12,
+      backgroundColor: c.buttonBackground,
+    },
+    videoNoteThumb: {
+      width: '100%',
+      height: '100%',
+    },
+    videoNoteThumbFallback: {
+      width: '100%',
+      height: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.iconMuted,
+    },
+    videoNoteThumbOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(15,23,42,0.24)',
+    },
+    videoNoteTextWrap: {
+      flex: 1,
+    },
+    videoNoteTitle: {
+      marginBottom: 5,
+      fontSize: 15,
+      fontWeight: '700',
+      color: c.textPrimary,
+    },
+    emptyCard: {
+      marginTop: 14,
+      borderRadius: 24,
+      backgroundColor: c.inputBackgroundSolid,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 24,
+      paddingVertical: 48,
+    },
+    emptyTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: c.textPrimary,
+    },
+    emptySubtitle: {
+      marginTop: 8,
+      fontSize: 14,
+      lineHeight: 20,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    rowPressed: {
+      opacity: 0.86,
+    },
+  });
+}
+
+type GroupProfileMediaStyles = ReturnType<typeof createGroupProfileMediaStyles>;
+
+const GroupProfileMediaStylesContext = createContext<GroupProfileMediaStyles | null>(null);
+
+function useGroupProfileMediaStyles(): GroupProfileMediaStyles {
+  const ctx = useContext(GroupProfileMediaStylesContext);
+  if (!ctx) {
+    throw new Error('Group profile media styles used outside GroupProfileMediaContent');
+  }
+  return ctx;
+}
+
 const GroupFileRow = React.memo(function GroupFileRow({
   item,
   onOpenFile,
@@ -96,6 +323,7 @@ const GroupFileRow = React.memo(function GroupFileRow({
   onOpenFile: (item: GroupFileItem) => void;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const styles = useGroupProfileMediaStyles();
   return (
     <Pressable
       onPress={() => onOpenFile(item)}
@@ -119,6 +347,7 @@ const GroupFileRow = React.memo(function GroupFileRow({
 });
 
 const MediaTilePreview = React.memo(function MediaTilePreview({ item }: { item: GroupMediaItem }) {
+  const styles = useGroupProfileMediaStyles();
   const generatedPreviewUri = useVideoPreviewUri(
     item.kind === 'video' ? item.uri : null,
     item.previewUri
@@ -143,6 +372,8 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
   item: GroupVoiceItem;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const styles = useGroupProfileMediaStyles();
+  const { colors: themeColors } = useTheme();
   const { play, pause } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(
     item.uri,
@@ -222,7 +453,9 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
                       styles.voiceBar,
                       {
                         height,
-                        backgroundColor: isFilled ? colors.accent : 'rgba(77,141,255,0.24)',
+                        backgroundColor: isFilled
+                          ? themeColors.accent
+                          : withAlpha(themeColors.accent, 0.24),
                       },
                     ]}
                   />
@@ -249,6 +482,7 @@ const GroupVideoNoteRow = React.memo(function GroupVideoNoteRow({
   onOpen: (item: GroupVoiceItem) => void;
   onOpenMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
+  const styles = useGroupProfileMediaStyles();
   const previewUri = useVideoPreviewUri(item.uri, item.thumbnailUri);
 
   return (
@@ -296,301 +530,101 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
   onOpenVideoNote,
   onOpenActionMenu,
 }: GroupProfileMediaContentProps) {
-  if (activeTab === 'media') {
-    if (mediaItems.length === 0) {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createGroupProfileMediaStyles(c), [c]);
+
+  const body = (() => {
+    if (activeTab === 'media') {
+      if (mediaItems.length === 0) {
+        return (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Пока нет медиа</Text>
+            <Text style={styles.emptySubtitle}>Фото и видео из группы появятся здесь.</Text>
+          </View>
+        );
+      }
+
       return (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Пока нет медиа</Text>
-          <Text style={styles.emptySubtitle}>Фото и видео из группы появятся здесь.</Text>
+        <View style={styles.mediaGrid}>
+          {mediaItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={() => onOpenMedia(index)}
+              onLongPress={(event) => onOpenActionMenu(item.id, event)}
+              delayLongPress={220}
+              style={({ pressed }) => [styles.mediaTile, pressed && styles.rowPressed]}
+            >
+              <MediaTilePreview item={item} />
+              {item.kind === 'video' ? (
+                <View style={styles.mediaPlayBadge}>
+                  <Feather name="play" size={14} color="#FFFFFF" style={styles.voicePlayIcon} />
+                </View>
+              ) : null}
+              {item.durationMs ? (
+                <View style={styles.mediaBadge}>
+                  <Text style={styles.mediaBadgeText}>{formatMediaDuration(item.durationMs)}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+          ))}
         </View>
       );
     }
 
-    return (
-      <View style={styles.mediaGrid}>
-        {mediaItems.map((item, index) => (
-          <Pressable
-            key={item.id}
-            onPress={() => onOpenMedia(index)}
-            onLongPress={(event) => onOpenActionMenu(item.id, event)}
-            delayLongPress={220}
-            style={({ pressed }) => [styles.mediaTile, pressed && styles.rowPressed]}
-          >
-            <MediaTilePreview item={item} />
-            {item.kind === 'video' ? (
-              <View style={styles.mediaPlayBadge}>
-                <Feather name="play" size={14} color="#FFFFFF" style={styles.voicePlayIcon} />
-              </View>
-            ) : null}
-            {item.durationMs ? (
-              <View style={styles.mediaBadge}>
-                <Text style={styles.mediaBadgeText}>{formatMediaDuration(item.durationMs)}</Text>
-              </View>
-            ) : null}
-          </Pressable>
-        ))}
-      </View>
-    );
-  }
+    if (activeTab === 'files') {
+      if (fileItems.length === 0) {
+        return (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Пока нет файлов</Text>
+            <Text style={styles.emptySubtitle}>Файлы из этой группы будут отображаться здесь.</Text>
+          </View>
+        );
+      }
 
-  if (activeTab === 'files') {
-    if (fileItems.length === 0) {
+      return (
+        <View style={styles.stackSection}>
+          {fileItems.map((item) => (
+            <GroupFileRow
+              key={item.id}
+              item={item}
+              onOpenFile={onOpenFile}
+              onOpenMenu={onOpenActionMenu}
+            />
+          ))}
+        </View>
+      );
+    }
+
+    if (voiceItems.length === 0) {
       return (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>Пока нет файлов</Text>
-          <Text style={styles.emptySubtitle}>Файлы из этой группы будут отображаться здесь.</Text>
+          <Text style={styles.emptyTitle}>Пока нет голосовых</Text>
+          <Text style={styles.emptySubtitle}>
+            Голосовые сообщения и видеосообщения группы будут здесь.
+          </Text>
         </View>
       );
     }
 
     return (
       <View style={styles.stackSection}>
-        {fileItems.map((item) => (
-          <GroupFileRow
-            key={item.id}
-            item={item}
-            onOpenFile={onOpenFile}
-            onOpenMenu={onOpenActionMenu}
-          />
-        ))}
+        {voiceItems.map((item) =>
+          item.kind === 'video_note' ? (
+            <GroupVideoNoteRow
+              key={item.id}
+              item={item}
+              onOpen={onOpenVideoNote}
+              onOpenMenu={onOpenActionMenu}
+            />
+          ) : (
+            <GroupVoiceRow key={item.id} item={item} onOpenMenu={onOpenActionMenu} />
+          )
+        )}
       </View>
     );
-  }
-
-  if (voiceItems.length === 0) {
-    return (
-      <View style={styles.emptyCard}>
-        <Text style={styles.emptyTitle}>Пока нет голосовых</Text>
-        <Text style={styles.emptySubtitle}>Голосовые сообщения и видеосообщения группы будут здесь.</Text>
-      </View>
-    );
-  }
+  })();
 
   return (
-    <View style={styles.stackSection}>
-      {voiceItems.map((item) =>
-        item.kind === 'video_note' ? (
-          <GroupVideoNoteRow
-            key={item.id}
-            item={item}
-            onOpen={onOpenVideoNote}
-            onOpenMenu={onOpenActionMenu}
-          />
-        ) : (
-          <GroupVoiceRow key={item.id} item={item} onOpenMenu={onOpenActionMenu} />
-        )
-      )}
-    </View>
+    <GroupProfileMediaStylesContext.Provider value={styles}>{body}</GroupProfileMediaStylesContext.Provider>
   );
-});
-
-const styles = StyleSheet.create({
-  mediaGrid: {
-    marginTop: 14,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -3,
-  },
-  mediaTile: {
-    width: '33.3333%',
-    aspectRatio: 1,
-    padding: 3,
-  },
-  mediaImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 12,
-    backgroundColor: '#DDE7F7',
-  },
-  mediaVideoFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0F172A',
-  },
-  mediaPlayBadge: {
-    position: 'absolute',
-    left: 12,
-    top: 12,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.62)',
-  },
-  mediaBadge: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(17, 24, 39, 0.6)',
-  },
-  mediaBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  stackSection: {
-    marginTop: 14,
-    gap: 10,
-  },
-  fileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 74,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-  },
-  fileBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(77,141,255,0.12)',
-    marginRight: 12,
-  },
-  fileBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.accent,
-  },
-  fileTextWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  fileTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  fileSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#8A93A3',
-  },
-  voiceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 72,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-  },
-  voicePlayButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-    marginRight: 12,
-  },
-  voicePlayButtonActive: {
-    backgroundColor: '#4C84E8',
-  },
-  voicePlayButtonPressed: {
-    opacity: 0.84,
-  },
-  voicePlayIcon: {
-    marginLeft: 2,
-  },
-  voiceWaveWrap: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  voiceWaveTrack: {
-    height: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  voiceBar: {
-    width: 3,
-    borderRadius: 999,
-  },
-  voiceMetaRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  voiceDuration: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  voiceDate: {
-    fontSize: 13,
-    color: '#8A93A3',
-  },
-  videoNoteRowPressed: {
-    opacity: 0.86,
-  },
-  videoNoteThumbWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginRight: 12,
-    backgroundColor: colors.buttonBackground,
-  },
-  videoNoteThumb: {
-    width: '100%',
-    height: '100%',
-  },
-  videoNoteThumbFallback: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.textSecondary,
-  },
-  videoNoteThumbOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.24)',
-  },
-  videoNoteTextWrap: {
-    flex: 1,
-  },
-  videoNoteTitle: {
-    marginBottom: 5,
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  emptyCard: {
-    marginTop: 14,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 48,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  emptySubtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
-    color: '#8A93A3',
-    textAlign: 'center',
-  },
-  rowPressed: {
-    opacity: 0.86,
-  },
 });

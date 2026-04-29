@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { resolveAvatarUrl } from '../../config';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme/palettes';
+import { withAlpha } from '../../theme/stylePrimitives';
 import type { GroupMember } from './groupProfile.types';
 
 type GroupParticipantsSectionProps = {
@@ -72,6 +74,9 @@ export const GroupParticipantsSection = React.memo(function GroupParticipantsSec
   onAddMembers,
   onOpenMemberMenu,
 }: GroupParticipantsSectionProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => createParticipantsStyles(themeColors), [themeColors]);
+
   return (
     <View style={styles.sectionCard}>
       {isOwner ? (
@@ -80,7 +85,7 @@ export const GroupParticipantsSection = React.memo(function GroupParticipantsSec
           style={({ pressed }) => [styles.addMemberButton, pressed && styles.cardPressed]}
         >
           <View style={styles.addMemberIconWrap}>
-            <Feather name="user-plus" size={18} color={colors.accent} />
+            <Feather name="user-plus" size={18} color={themeColors.accent} />
           </View>
           <Text style={styles.addMemberButtonText}>Добавить участников</Text>
         </Pressable>
@@ -163,12 +168,15 @@ export const GroupParticipantsSection = React.memo(function GroupParticipantsSec
   );
 });
 
-const styles = StyleSheet.create({
+function createParticipantsStyles(c: ThemeColors) {
+  return StyleSheet.create({
   sectionCard: {
     marginTop: 14,
     borderRadius: 26,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.inputBackgroundSolid,
     overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.separator,
   },
   addMemberButton: {
     flexDirection: 'row',
@@ -176,7 +184,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#DFE6EF',
+    borderBottomColor: c.separator,
   },
   addMemberIconWrap: {
     width: 34,
@@ -184,13 +192,13 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(77,141,255,0.12)',
+    backgroundColor: withAlpha(c.accent, 0.12),
     marginRight: 12,
   },
   addMemberButtonText: {
     fontSize: 17,
     fontWeight: '500',
-    color: colors.accent,
+    color: c.accent,
   },
   memberRow: {
     minHeight: 76,
@@ -199,10 +207,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E6EBF2',
+    borderBottomColor: c.separator,
   },
   memberRowPressed: {
-    backgroundColor: 'rgba(77,141,255,0.05)',
+    backgroundColor: c.rowPressed,
   },
   memberAvatar: {
     width: 48,
@@ -215,7 +223,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#C6D7F7',
+    backgroundColor: withAlpha(c.accent, 0.22),
   },
   memberAvatarFallbackText: {
     fontSize: 18,
@@ -236,12 +244,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 16,
     fontWeight: '600',
-    color: '#1F2937',
+    color: c.textPrimary,
   },
   memberStatus: {
     marginTop: 3,
     fontSize: 14,
-    color: '#9099A6',
+    color: c.textSecondary,
   },
   memberBadges: {
     marginLeft: 12,
@@ -264,5 +272,6 @@ const styles = StyleSheet.create({
   cardPressed: {
     opacity: 0.84,
   },
-});
+  });
+}
 

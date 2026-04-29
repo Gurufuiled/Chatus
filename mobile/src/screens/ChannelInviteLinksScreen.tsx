@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,8 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
 import { buildChannelInviteDeepLink } from '../config';
 import { ShareLinkToChatSheet } from '../components/ShareLinkToChatSheet';
 
@@ -25,6 +26,8 @@ type Route = RouteProp<ChatsStackParamList, 'ChannelInviteLinks'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelInviteLinks'>;
 
 export function ChannelInviteLinksScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelInviteLinksStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { channelId } = route.params;
@@ -65,7 +68,7 @@ export function ChannelInviteLinksScreen() {
   if (loading && !channel) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -85,7 +88,7 @@ export function ChannelInviteLinksScreen() {
           onPress={() => navigation.goBack()}
           style={({ pressed }) => [styles.headerCircle, pressed && styles.pressed]}
         >
-          <Feather name="chevron-left" size={22} color="#111827" />
+          <Feather name="chevron-left" size={22} color={c.textPrimary} />
         </Pressable>
         <Text style={styles.headerTitle}>Пригласительные ссылки</Text>
         <View style={styles.headerSpacer} />
@@ -111,7 +114,7 @@ export function ChannelInviteLinksScreen() {
               }
               style={({ pressed }) => [styles.moreBtn, pressed && styles.pressed]}
             >
-              <Feather name="more-horizontal" size={18} color="#6B7280" />
+              <Feather name="more-horizontal" size={18} color={c.iconMuted} />
             </Pressable>
           </View>
 
@@ -157,101 +160,104 @@ export function ChannelInviteLinksScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F0F0F5' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F0F5' },
-  muted: { color: colors.textSecondary, fontSize: 16 },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    backgroundColor: '#F7F7F8',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#D1D5DB',
-  },
-  headerCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: '#111827' },
-  headerSpacer: { width: 40 },
-  content: { padding: 16, paddingBottom: 40 },
-  intro: {
-    fontSize: 15,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 20,
-  },
-  sectionLabel: {
-    marginLeft: 8,
-    marginBottom: 8,
-    fontSize: 13,
-    color: '#6B7280',
-    letterSpacing: 0.5,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-  },
-  linkPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ECECEE',
-    borderRadius: 999,
-    paddingLeft: 14,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  linkText: { flex: 1, fontSize: 15, color: '#111827' },
-  moreBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#D1D5DB',
-    marginRight: 4,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  actionBtn: {
-    flex: 1,
-    backgroundColor: colors.accent,
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  actionBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
-  fullShare: {
-    marginTop: 10,
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  fullShareText: { color: colors.accent, fontWeight: '600', fontSize: 16 },
-  stats: {
-    marginTop: 12,
-    textAlign: 'center',
-    fontSize: 14,
-    color: '#9CA3AF',
-  },
-  footerHint: {
-    marginTop: 16,
-    marginHorizontal: 8,
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 19,
-  },
-  pressed: { opacity: 0.75 },
-  disabled: { opacity: 0.45 },
-});
+function createChannelInviteLinksStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.chatBackground },
+    muted: { color: c.textSecondary, fontSize: 16 },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 8,
+      paddingVertical: 10,
+      backgroundColor: c.header,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+    },
+    headerCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.inputBackgroundSolid,
+    },
+    headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: c.textPrimary },
+    headerSpacer: { width: 40 },
+    content: { padding: 16, paddingBottom: 40 },
+    intro: {
+      fontSize: 15,
+      color: c.textSecondary,
+      textAlign: 'center',
+      lineHeight: 21,
+      marginBottom: 20,
+    },
+    sectionLabel: {
+      marginLeft: 8,
+      marginBottom: 8,
+      fontSize: 13,
+      color: c.textSecondary,
+      letterSpacing: 0.5,
+    },
+    card: {
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 14,
+      padding: 14,
+    },
+    linkPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.inputBackground,
+      borderRadius: 999,
+      paddingLeft: 14,
+      paddingVertical: 10,
+      gap: 8,
+    },
+    linkText: { flex: 1, fontSize: 15, color: c.textPrimary },
+    moreBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.buttonBackground,
+      marginRight: 4,
+    },
+    actionsRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 14,
+    },
+    actionBtn: {
+      flex: 1,
+      backgroundColor: c.accent,
+      borderRadius: 10,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    actionBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
+    fullShare: {
+      marginTop: 10,
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    fullShareText: { color: c.accent, fontWeight: '600', fontSize: 16 },
+    stats: {
+      marginTop: 12,
+      textAlign: 'center',
+      fontSize: 14,
+      color: c.textSecondary,
+    },
+    footerHint: {
+      marginTop: 16,
+      marginHorizontal: 8,
+      fontSize: 14,
+      color: c.textSecondary,
+      lineHeight: 19,
+    },
+    pressed: { opacity: 0.75 },
+    disabled: { opacity: 0.45 },
+  });
+}
+

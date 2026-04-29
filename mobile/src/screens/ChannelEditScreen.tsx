@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,9 @@ import { apiUpload } from '../services/apiClient';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { resolveAvatarUrl } from '../config';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 
@@ -26,6 +28,8 @@ type Route = RouteProp<ChatsStackParamList, 'ChannelEdit'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelEdit'>;
 
 export function ChannelEditScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelEditStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { channelId } = route.params;
@@ -167,7 +171,7 @@ export function ChannelEditScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {!canEditAnything ? (
           <View style={styles.noRightsCard}>
-            <Feather name="lock" size={14} color="#92400E" />
+            <Feather name="lock" size={14} color={c.textSecondary} />
             <Text style={styles.noRightsText}>Недостаточно прав для редактирования канала.</Text>
           </View>
         ) : null}
@@ -237,71 +241,74 @@ export function ChannelEditScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F4F7FB' },
-  container: { flex: 1, backgroundColor: '#F4F7FB' },
-  content: { padding: 16, paddingBottom: 24 },
-  noRightsCard: {
-    borderRadius: 14,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  noRightsText: { color: '#92400E', fontWeight: '600', flex: 1 },
-  avatarButton: { alignItems: 'center', marginBottom: 18 },
-  avatarCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: '#FF6D6D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: '#FFFFFF', fontSize: 36, fontWeight: '700' },
-  avatarImage: { width: 84, height: 84, borderRadius: 42 },
-  avatarHint: { marginTop: 8, color: colors.accent, fontWeight: '600' },
-  disabledHint: { color: '#94A3B8' },
-  label: { marginBottom: 8, color: colors.textPrimary, fontWeight: '700' },
-  input: {
-    marginBottom: 14,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    color: colors.textPrimary,
-  },
-  description: { minHeight: 110, textAlignVertical: 'top' },
-  saveButton: {
-    marginTop: 8,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButtonPressed: { opacity: 0.88 },
-  saveButtonDisabled: { opacity: 0.6 },
-  saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
-  snackbarWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 14,
-    backgroundColor: 'rgba(239,246,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.35)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  snackbarText: { color: '#1E40AF', textAlign: 'center', fontWeight: '700' },
-});
+function createChannelEditStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    container: { flex: 1, backgroundColor: c.chatBackground },
+    content: { padding: 16, paddingBottom: 24 },
+    noRightsCard: {
+      borderRadius: 14,
+      backgroundColor: withAlpha('#F59E0B', 0.2),
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    noRightsText: { color: c.textPrimary, fontWeight: '600', flex: 1 },
+    avatarButton: { alignItems: 'center', marginBottom: 18 },
+    avatarCircle: {
+      width: 84,
+      height: 84,
+      borderRadius: 42,
+      backgroundColor: '#FF6D6D',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: { color: '#FFFFFF', fontSize: 36, fontWeight: '700' },
+    avatarImage: { width: 84, height: 84, borderRadius: 42 },
+    avatarHint: { marginTop: 8, color: c.accent, fontWeight: '600' },
+    disabledHint: { color: c.textSecondary },
+    label: { marginBottom: 8, color: c.textPrimary, fontWeight: '700' },
+    input: {
+      marginBottom: 14,
+      borderRadius: 14,
+      backgroundColor: c.inputBackgroundSolid,
+      paddingHorizontal: 12,
+      paddingVertical: 11,
+      color: c.textPrimary,
+    },
+    description: { minHeight: 110, textAlignVertical: 'top' },
+    saveButton: {
+      marginTop: 8,
+      height: 52,
+      borderRadius: 16,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    saveButtonPressed: { opacity: 0.88 },
+    saveButtonDisabled: { opacity: 0.6 },
+    saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
+    snackbarWrap: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 14,
+      backgroundColor: withAlpha(c.accent, 0.14),
+      borderWidth: 1,
+      borderColor: withAlpha(c.accent, 0.35),
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      shadowColor: c.accent,
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    snackbarText: { color: c.link, textAlign: 'center', fontWeight: '700' },
+  });
+}
+

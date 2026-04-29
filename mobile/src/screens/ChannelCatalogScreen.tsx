@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,24 +15,127 @@ import { fetchChannelCatalog } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import type { Chat } from '../stores/types';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { LoadErrorState } from '../components/LoadErrorState';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelCatalog'>;
+
+type ChannelCatalogStyles = ReturnType<typeof createChannelCatalogStyles>;
+
+function createChannelCatalogStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    row: {
+      minHeight: 76,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.inputBackgroundSolid,
+    },
+    rowPressed: {
+      backgroundColor: c.rowPressed,
+    },
+    avatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: {
+      color: '#FFFFFF',
+      fontSize: 20,
+      fontWeight: '700',
+    },
+    textWrap: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    title: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    subtitle: {
+      marginTop: 2,
+      fontSize: 14,
+      color: c.textSecondary,
+    },
+    separator: {
+      height: StyleSheet.hairlineWidth,
+      marginLeft: 80,
+      backgroundColor: c.separator,
+    },
+    loadingState: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.chatBackground,
+    },
+    emptyContainer: {
+      flexGrow: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      backgroundColor: c.chatBackground,
+    },
+    emptyState: {
+      alignItems: 'center',
+    },
+    emptyTitle: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    emptySubtitle: {
+      marginTop: 8,
+      fontSize: 14,
+      textAlign: 'center',
+      color: c.textSecondary,
+    },
+    refreshErrorBanner: {
+      marginHorizontal: 16,
+      marginTop: 8,
+      marginBottom: 4,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: withAlpha('#EF4444', 0.14),
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    refreshErrorText: {
+      flex: 1,
+      fontSize: 14,
+      color: '#DC2626',
+    },
+    refreshErrorRetry: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: c.accent,
+    },
+  });
+}
 
 function isPreviewRequired(channel: Chat) {
   return channel.access_type === 'paid' && channel.access_status !== 'active';
 }
 
-function ChannelAvatar({ title }: { title: string }) {
+function ChannelAvatar({ title, st }: { title: string; st: ChannelCatalogStyles }) {
   return (
-    <View style={styles.avatar}>
-      <Text style={styles.avatarText}>{(title.trim()[0] || 'К').toUpperCase()}</Text>
+    <View style={st.avatar}>
+      <Text style={st.avatarText}>{(title.trim()[0] || 'К').toUpperCase()}</Text>
     </View>
   );
 }
 
 export function ChannelCatalogScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelCatalogStyles(c), [c]);
   const navigation = useNavigation<Nav>();
   const catalog = channelStore((state) => state.catalog);
   const isLoading = channelStore((state) => state.isLoadingCatalog);
@@ -78,7 +181,7 @@ export function ChannelCatalogScreen() {
             })
           }
         >
-          <ChannelAvatar title={title} />
+          <ChannelAvatar title={title} st={styles} />
           <View style={styles.textWrap}>
             <Text style={styles.title} numberOfLines={1}>
               {title}
@@ -87,11 +190,11 @@ export function ChannelCatalogScreen() {
               {subtitle}
             </Text>
           </View>
-          {locked ? <Feather name="lock" size={16} color={colors.textSecondary} /> : null}
+          {locked ? <Feather name="lock" size={16} color={c.textSecondary} /> : null}
         </Pressable>
       );
     },
-    [navigation]
+    [navigation, styles, c]
   );
 
   if (loadError && catalog.length === 0 && !isLoading) {
@@ -101,19 +204,20 @@ export function ChannelCatalogScreen() {
   if (isLoading && catalog.length === 0) {
     return (
       <View style={styles.loadingState}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
   return (
     <FlatList
+      style={{ backgroundColor: c.chatBackground }}
       data={catalog}
       keyExtractor={(item) => item.id}
       renderItem={renderItem}
       refreshing={isLoading}
       onRefresh={() => void load()}
-      ItemSeparatorComponent={RowSeparator}
+      ItemSeparatorComponent={() => <View style={styles.separator} />}
       contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
       ListHeaderComponent={
         loadError && catalog.length > 0 ? (
@@ -135,101 +239,3 @@ export function ChannelCatalogScreen() {
   );
 }
 
-function RowSeparator() {
-  return <View style={styles.separator} />;
-}
-
-const styles = StyleSheet.create({
-  row: {
-    minHeight: 76,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  rowPressed: {
-    backgroundColor: colors.rowPressed,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#60A5FA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  textWrap: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  subtitle: {
-    marginTop: 2,
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 80,
-    backgroundColor: colors.separator,
-  },
-  loadingState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  emptyContainer: {
-    flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: colors.inputBackgroundSolid,
-  },
-  emptyState: {
-    alignItems: 'center',
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  emptySubtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    textAlign: 'center',
-    color: colors.textSecondary,
-  },
-  refreshErrorBanner: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 4,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(239,68,68,0.12)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  refreshErrorText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#B91C1C',
-  },
-  refreshErrorRetry: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.accent,
-  },
-});

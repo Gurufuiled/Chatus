@@ -168,19 +168,10 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
   return msg;
 }
 
+import { buildMessageListPreviewText } from '../utils/messageListPreview';
+
 function buildMessagePreview(msg: Message): string {
-  const maxLen = 100;
-  if (msg.msg_type === 'text' && msg.content) {
-    return msg.content.length <= maxLen ? msg.content : msg.content.slice(0, maxLen) + '...';
-  }
-  const placeholders: Record<string, string> = {
-    voice: 'Voice message',
-    image: 'Photo',
-    video_note: 'Video note',
-    video: 'Video',
-    file: msg.media?.[0]?.file_name ?? 'File',
-  };
-  return placeholders[msg.msg_type] ?? 'Message';
+  return buildMessageListPreviewText(msg);
 }
 
 function updateChatLastMessage(chatId: string, mapped: Message): void {

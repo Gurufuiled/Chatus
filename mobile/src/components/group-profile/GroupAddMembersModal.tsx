@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
@@ -15,7 +15,9 @@ import {
 } from 'react-native';
 import { resolveAvatarUrl } from '../../config';
 import type { ApiUser } from '../../services/AuthService';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme/palettes';
+import { withAlpha } from '../../theme/stylePrimitives';
 import { getDisplayName } from './groupProfile.utils';
 
 type GroupAddMembersModalProps = {
@@ -47,6 +49,8 @@ export function GroupAddMembersModal({
   onClose,
   onSubmit,
 }: GroupAddMembersModalProps) {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createGroupAddMembersStyles(c), [c]);
   const [keyboardInset, setKeyboardInset] = React.useState(0);
 
   React.useEffect(() => {
@@ -88,7 +92,7 @@ export function GroupAddMembersModal({
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Добавить участников</Text>
             <Pressable onPress={onClose} style={styles.sheetCloseButton}>
-              <Feather name="x" size={20} color={colors.textPrimary} />
+              <Feather name="x" size={20} color={c.textPrimary} />
             </Pressable>
           </View>
 
@@ -96,7 +100,7 @@ export function GroupAddMembersModal({
             value={query}
             onChangeText={onChangeQuery}
             placeholder="Поиск по имени или @handle"
-            placeholderTextColor="#8E97A4"
+            placeholderTextColor={c.placeholder}
             style={styles.sheetSearchInput}
             autoCapitalize="none"
             autoCorrect={false}
@@ -131,7 +135,7 @@ export function GroupAddMembersModal({
           >
             {memberSearchLoading ? (
               <View style={styles.centerState}>
-                <ActivityIndicator color={colors.accent} />
+                <ActivityIndicator color={c.accent} />
               </View>
             ) : visibleUsers.length === 0 ? (
               <View style={styles.centerState}>
@@ -206,7 +210,8 @@ export function GroupAddMembersModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createGroupAddMembersStyles(c: ThemeColors) {
+  return StyleSheet.create({
   modalRoot: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -218,7 +223,7 @@ const styles = StyleSheet.create({
   sheetCard: {
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.inputBackgroundSolid,
     paddingHorizontal: 18,
     paddingTop: 18,
     maxHeight: '78%',
@@ -232,7 +237,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#111827',
+    color: c.textPrimary,
   },
   sheetCloseButton: {
     width: 36,
@@ -240,17 +245,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F4F6FB',
+    backgroundColor: c.inputBackground,
   },
   sheetSearchInput: {
     height: 52,
     borderRadius: 18,
-    backgroundColor: '#F6F8FC',
+    backgroundColor: c.inputBackground,
     borderWidth: 1,
-    borderColor: 'rgba(205, 214, 228, 0.55)',
+    borderColor: c.composerBorder,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#1F2937',
+    color: c.textPrimary,
     marginBottom: 14,
   },
   selectedScroll: {
@@ -267,19 +272,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 38,
     borderRadius: 19,
-    backgroundColor: 'rgba(91, 141, 239, 0.12)',
+    backgroundColor: withAlpha(c.accent, 0.12),
   },
   memberChipText: {
     maxWidth: 148,
     fontSize: 14,
     fontWeight: '700',
-    color: colors.accent,
+    color: c.accent,
   },
   memberChipRemove: {
     marginLeft: 8,
     fontSize: 16,
     fontWeight: '700',
-    color: colors.accent,
+    color: c.accent,
   },
   sheetResults: {
     flex: 1,
@@ -291,7 +296,7 @@ const styles = StyleSheet.create({
   },
   emptySubtitle: {
     textAlign: 'center',
-    color: '#7A8493',
+    color: c.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -303,7 +308,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   searchResultRowSelected: {
-    backgroundColor: 'rgba(91, 141, 239, 0.08)',
+    backgroundColor: withAlpha(c.accent, 0.08),
   },
   searchResultAvatar: {
     width: 44,
@@ -318,12 +323,12 @@ const styles = StyleSheet.create({
     marginRight: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(91, 141, 239, 0.16)',
+    backgroundColor: withAlpha(c.accent, 0.16),
   },
   searchResultAvatarText: {
     fontSize: 18,
     fontWeight: '800',
-    color: colors.accent,
+    color: c.accent,
   },
   searchResultInfo: {
     flex: 1,
@@ -332,36 +337,36 @@ const styles = StyleSheet.create({
   searchResultName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#162236',
+    color: c.textPrimary,
   },
   searchResultHandle: {
     marginTop: 2,
     fontSize: 13,
-    color: '#7A8493',
+    color: c.textSecondary,
   },
   searchCheckbox: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: 'rgba(119, 132, 154, 0.4)',
+    borderColor: withAlpha(c.textSecondary, 0.45),
     alignItems: 'center',
     justifyContent: 'center',
   },
   searchCheckboxSelected: {
-    borderColor: colors.accent,
-    backgroundColor: 'rgba(91, 141, 239, 0.12)',
+    borderColor: c.accent,
+    backgroundColor: withAlpha(c.accent, 0.12),
   },
   searchCheckboxInner: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
   },
   primaryActionButton: {
     height: 54,
     borderRadius: 27,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 14,
@@ -378,4 +383,5 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.62,
   },
-});
+  });
+}

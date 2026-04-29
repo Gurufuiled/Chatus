@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Alert,
   Pressable,
@@ -14,13 +14,21 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelDiscussionSettings'>;
 
 /* ─── Toggle Row ─── */
 
+type DiscussionSettingsStyles = ReturnType<typeof createChannelDiscussionSettingsStyles>;
+
 function ToggleRow({
+  st,
+  accent,
+  trackOff,
+  thumbOff,
   icon,
   iconColor,
   label,
@@ -29,6 +37,10 @@ function ToggleRow({
   onValueChange,
   disabled,
 }: {
+  st: DiscussionSettingsStyles;
+  accent: string;
+  trackOff: string;
+  thumbOff: string;
   icon: React.ComponentProps<typeof Feather>['name'];
   iconColor: string;
   label: string;
@@ -38,21 +50,21 @@ function ToggleRow({
   disabled?: boolean;
 }) {
   return (
-    <View style={[styles.toggleRow, disabled && styles.toggleRowDisabled]}>
-      <View style={[styles.toggleIcon, { backgroundColor: withAlpha(iconColor, 0.14) }]}>
+    <View style={[st.toggleRow, disabled && st.toggleRowDisabled]}>
+      <View style={[st.toggleIcon, { backgroundColor: withAlpha(iconColor, 0.14) }]}>
         <Feather name={icon} size={17} color={iconColor} />
       </View>
-      <View style={styles.toggleBody}>
-        <Text style={styles.toggleLabel}>{label}</Text>
-        {sublabel ? <Text style={styles.toggleSublabel}>{sublabel}</Text> : null}
+      <View style={st.toggleBody}>
+        <Text style={st.toggleLabel}>{label}</Text>
+        {sublabel ? <Text style={st.toggleSublabel}>{sublabel}</Text> : null}
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ false: '#E5E7EB', true: withAlpha(colors.accent, 0.55) }}
-        thumbColor={value ? colors.accent : '#FAFAFA'}
-        ios_backgroundColor="#E5E7EB"
+        trackColor={{ false: trackOff, true: withAlpha(accent, 0.55) }}
+        thumbColor={value ? accent : thumbOff}
+        ios_backgroundColor={trackOff}
       />
     </View>
   );
@@ -61,6 +73,10 @@ function ToggleRow({
 /* ─── Screen ─── */
 
 export function ChannelDiscussionSettingsScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelDiscussionSettingsStyles(c), [c]);
+  const switchTrackOff = useMemo(() => withAlpha(c.textSecondary, 0.28), [c.textSecondary]);
+  const switchThumbOff = c.inputBackgroundSolid;
   const route = useRoute<Route>();
   const { channelId } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
@@ -186,8 +202,12 @@ export function ChannelDiscussionSettingsScreen() {
         <Text style={styles.sectionLabel}>КОММЕНТАРИИ</Text>
         <View style={styles.sectionCard}>
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon="message-square"
-            iconColor={colors.accent}
+            iconColor={c.accent}
             label="Откл. к новым постам"
             sublabel="Новые посты публикуются без комментариев"
             value={disableNew}
@@ -196,6 +216,10 @@ export function ChannelDiscussionSettingsScreen() {
           />
           <View style={styles.divider} />
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon="slash"
             iconColor="#EF4444"
             label="Откл. для всех постов"
@@ -219,6 +243,10 @@ export function ChannelDiscussionSettingsScreen() {
         <Text style={styles.sectionLabel}>ОГРАНИЧЕНИЯ КОНТЕНТА</Text>
         <View style={styles.sectionCard}>
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon="mic-off"
             iconColor="#8A6DF1"
             label="Запретить голосовые"
@@ -229,6 +257,10 @@ export function ChannelDiscussionSettingsScreen() {
           />
           <View style={styles.divider} />
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon="image"
             iconColor="#F59E0B"
             label="Запретить медиа"
@@ -263,7 +295,7 @@ export function ChannelDiscussionSettingsScreen() {
                 (!canEdit || cooldown <= 0) && styles.stepperBtnDisabled,
               ]}
             >
-              <Feather name="minus" size={18} color={colors.accent} />
+              <Feather name="minus" size={18} color={c.accent} />
             </Pressable>
             <View style={styles.stepperValueWrap}>
               <Text
@@ -284,7 +316,7 @@ export function ChannelDiscussionSettingsScreen() {
                 (!canEdit || cooldown >= 15) && styles.stepperBtnDisabled,
               ]}
             >
-              <Feather name="plus" size={18} color={colors.accent} />
+              <Feather name="plus" size={18} color={c.accent} />
             </Pressable>
           </View>
           <View style={styles.trackWrap}>
@@ -313,159 +345,156 @@ export function ChannelDiscussionSettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F2F4F8' },
-  container: { flex: 1 },
-  content: { paddingBottom: 40 },
+function createChannelDiscussionSettingsStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    container: { flex: 1 },
+    content: { paddingBottom: 40 },
 
-  /* Section */
-  sectionLabel: {
-    marginTop: 22,
-    marginBottom: 8,
-    marginLeft: 32,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
-    letterSpacing: 0.7,
-  },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
+    sectionLabel: {
+      marginTop: 22,
+      marginBottom: 8,
+      marginLeft: 32,
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.textSecondary,
+      letterSpacing: 0.7,
+    },
+    sectionCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      marginHorizontal: 16,
+      borderRadius: 16,
+      overflow: 'hidden',
+      shadowColor: c.textPrimary,
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 1,
+    },
 
-  /* Toggle row */
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  toggleIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggleRowDisabled: { opacity: 0.5 },
-  toggleBody: { flex: 1 },
-  toggleLabel: { fontSize: 15.5, color: colors.textPrimary, fontWeight: '600', lineHeight: 20 },
-  toggleSublabel: { marginTop: 2, fontSize: 12.5, color: colors.textSecondary, lineHeight: 17 },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
-    marginLeft: 64,
-  },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      gap: 12,
+    },
+    toggleIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    toggleRowDisabled: { opacity: 0.5 },
+    toggleBody: { flex: 1 },
+    toggleLabel: { fontSize: 15.5, color: c.textPrimary, fontWeight: '600', lineHeight: 20 },
+    toggleSublabel: { marginTop: 2, fontSize: 12.5, color: c.textSecondary, lineHeight: 17 },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: c.separator,
+      marginLeft: 64,
+    },
 
-  /* Notice */
-  noticeCard: {
-    marginTop: 8,
-    marginHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#FEF3C7',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#FCD34D',
-  },
-  noticeText: {
-    flex: 1,
-    color: '#92400E',
-    fontSize: 12.5,
-    lineHeight: 17,
-    fontWeight: '500',
-  },
+    noticeCard: {
+      marginTop: 8,
+      marginHorizontal: 16,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: withAlpha('#F59E0B', 0.18),
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withAlpha('#F59E0B', 0.35),
+    },
+    noticeText: {
+      flex: 1,
+      color: c.textPrimary,
+      fontSize: 12.5,
+      lineHeight: 17,
+      fontWeight: '500',
+    },
 
-  /* Stepper */
-  stepperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 4,
-    gap: 12,
-  },
-  stepperBody: { flex: 1 },
-  stepperLabel: { fontSize: 15.5, color: colors.textPrimary, fontWeight: '600', lineHeight: 20 },
-  stepperSublabel: { marginTop: 2, fontSize: 12.5, color: colors.textSecondary, lineHeight: 17 },
-  stepperControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    paddingTop: 10,
-    gap: 16,
-  },
-  stepperBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: withAlpha(colors.accent, 0.1),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperBtnPressed: { backgroundColor: withAlpha(colors.accent, 0.18) },
-  stepperBtnDisabled: { opacity: 0.35 },
-  stepperValueWrap: {
-    minWidth: 88,
-    alignItems: 'center',
-  },
-  stepperValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
-  stepperValueOff: { color: colors.textSecondary, fontWeight: '600' },
-  trackWrap: {
-    height: 4,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    justifyContent: 'center',
-  },
-  trackBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.inputBackground,
-    borderRadius: 2,
-  },
-  trackFill: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.accent,
-  },
+    stepperRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingTop: 14,
+      paddingBottom: 4,
+      gap: 12,
+    },
+    stepperBody: { flex: 1 },
+    stepperLabel: { fontSize: 15.5, color: c.textPrimary, fontWeight: '600', lineHeight: 20 },
+    stepperSublabel: { marginTop: 2, fontSize: 12.5, color: c.textSecondary, lineHeight: 17 },
+    stepperControls: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 16,
+      paddingBottom: 10,
+      paddingTop: 10,
+      gap: 16,
+    },
+    stepperBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: withAlpha(c.accent, 0.1),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepperBtnPressed: { backgroundColor: withAlpha(c.accent, 0.18) },
+    stepperBtnDisabled: { opacity: 0.35 },
+    stepperValueWrap: {
+      minWidth: 88,
+      alignItems: 'center',
+    },
+    stepperValue: { fontSize: 18, fontWeight: '700', color: c.textPrimary },
+    stepperValueOff: { color: c.textSecondary, fontWeight: '600' },
+    trackWrap: {
+      height: 4,
+      marginHorizontal: 20,
+      marginBottom: 16,
+      justifyContent: 'center',
+    },
+    trackBg: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: c.inputBackground,
+      borderRadius: 2,
+    },
+    trackFill: {
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: c.accent,
+    },
 
-  /* Hint */
-  hint: {
-    marginTop: 8,
-    marginHorizontal: 32,
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 19,
-  },
+    hint: {
+      marginTop: 8,
+      marginHorizontal: 32,
+      fontSize: 14,
+      color: c.textSecondary,
+      lineHeight: 19,
+    },
 
-  /* Snackbar */
-  snackbarWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 14,
-    backgroundColor: 'rgba(239,246,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.35)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  snackbarText: { color: '#1E40AF', textAlign: 'center', fontWeight: '700' },
-});
+    snackbarWrap: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 14,
+      backgroundColor: withAlpha(c.accent, 0.14),
+      borderWidth: 1,
+      borderColor: withAlpha(c.accent, 0.35),
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      shadowColor: c.accent,
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    snackbarText: { color: c.link, textAlign: 'center', fontWeight: '700' },
+  });
+}
+

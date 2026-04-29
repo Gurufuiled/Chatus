@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -40,7 +40,9 @@ import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
 import type { Message } from '../stores/types';
-import { bubbleRadius, colors } from '../theme/colors';
+import type { ThemeColors } from '../theme/palettes';
+import { bubbleRadius } from '../theme/colors';
+import { withAlpha } from '../theme/stylePrimitives';
 import { resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import {
@@ -104,12 +106,12 @@ const REPLY_SWIPE_MAX = 72;
 const AVATAR_SIZE = 36;
 const AVATAR_COLORS = ['#8B5CF6', '#EC4899', '#F97316', '#0EA5E9', '#10B981', '#EAB308'];
 
-function hashColor(id: string): string {
+function hashColor(id: string, accentFallback: string): string {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
     hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? colors.accent;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? accentFallback;
 }
 
 function getInitial(name: string | null | undefined): string {
@@ -121,13 +123,144 @@ function clampReplySwipe(value: number) {
   return Math.max(-REPLY_SWIPE_MAX, Math.min(0, value));
 }
 
+function createChannelDiscussionStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.chatBackground },
+    loading: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      backgroundColor: c.chatBackground,
+    },
+    listWrap: { flex: 1 },
+    listContent: { paddingHorizontal: 8, paddingTop: 8 },
+    row: {
+      width: '100%',
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 6,
+      marginBottom: 8,
+    },
+    rowOther: { justifyContent: 'flex-start' },
+    rowMe: { justifyContent: 'flex-end' },
+    avatar: {
+      width: AVATAR_SIZE,
+      height: AVATAR_SIZE,
+      borderRadius: AVATAR_SIZE / 2,
+      marginBottom: 2,
+    },
+    avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+    avatarInitial: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+    bubbleColumn: { maxWidth: '84%' },
+    bubbleColumnMe: { alignSelf: 'flex-end' },
+    bubbleColumnOther: { alignSelf: 'flex-start' },
+    textBubble: {
+      paddingHorizontal: 10,
+      paddingTop: 7,
+      paddingBottom: 7,
+      borderRadius: 16,
+    },
+    textBubbleOther: {
+      backgroundColor: c.bubbleOther,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.bubbleOtherBorder,
+      ...bubbleRadius.other,
+    },
+    textBubbleMe: { backgroundColor: c.bubbleMe, ...bubbleRadius.mine },
+    authorText: { fontSize: 13, fontWeight: '700', marginBottom: 1 },
+    textContentRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 6,
+    },
+    messageText: { color: c.textPrimary, fontSize: 16, lineHeight: 21, flexShrink: 1 },
+    deletedText: { color: c.textSecondary, fontSize: 14, fontStyle: 'italic' },
+    mediaWrap: { alignSelf: 'stretch' },
+    messageTextMe: { color: '#FFFFFF' },
+    reactionSummaryText: {
+      marginTop: 2,
+      color: c.textSecondary,
+      fontSize: 13,
+      fontWeight: '600',
+      paddingHorizontal: 4,
+    },
+    emptyText: {
+      marginTop: 30,
+      textAlign: 'center',
+      color: c.textSecondary,
+      fontWeight: '600',
+    },
+    originalPostWrap: {
+      marginBottom: 4,
+    },
+    originalPostAlign: {
+      alignItems: 'flex-start',
+    },
+    originalPostTextBubble: {
+      alignSelf: 'flex-start',
+      maxWidth: '82%',
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.bubbleOtherBorder,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      marginBottom: 6,
+    },
+    originalPostText: {
+      color: c.textPrimary,
+      fontSize: 16,
+      lineHeight: 22,
+    },
+    originalPostMeta: {
+      marginTop: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: 5,
+    },
+    originalPostMetaText: { color: c.textSecondary, fontSize: 12, fontWeight: '600' },
+    discussionDivider: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    discussionDividerLine: {
+      flex: 1,
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: withAlpha(c.textSecondary, 0.22),
+    },
+    discussionDividerText: { color: c.textSecondary, fontSize: 12, fontWeight: '600' },
+    inputBarWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'visible' },
+    replyGestureContainer: { width: '100%', position: 'relative', overflow: 'visible' },
+    replySwipeAction: { position: 'absolute', right: 10, top: '50%', marginTop: -16, zIndex: 2 },
+    replySwipeIconWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: withAlpha(c.inputBackgroundSolid, 0.94),
+      borderWidth: 1,
+      borderColor: withAlpha(c.accent, 0.35),
+    },
+  });
+}
+
+type ChannelDiscussionStyles = ReturnType<typeof createChannelDiscussionStyles>;
+
 type ReplySwipeWrapperProps = {
   enabled: boolean;
   onReply: () => void;
   children: React.ReactNode;
+  st: ChannelDiscussionStyles;
+  accent: string;
 };
 
-const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({ enabled, onReply, children }: ReplySwipeWrapperProps) {
+const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({
+  enabled,
+  onReply,
+  children,
+  st,
+  accent,
+}: ReplySwipeWrapperProps) {
   const translateX = useSharedValue(0);
   const hasTriggered = useSharedValue(false);
   const triggerPop = useSharedValue(0);
@@ -171,15 +304,15 @@ const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({ enabled, onRep
   });
 
   if (!enabled) {
-    return <View style={styles.replyGestureContainer}>{children}</View>;
+    return <View style={st.replyGestureContainer}>{children}</View>;
   }
 
   return (
     <GestureDetector gesture={gesture}>
-      <View style={styles.replyGestureContainer}>
-        <Reanimated.View style={[styles.replySwipeAction, iconStyle]}>
-          <View style={styles.replySwipeIconWrap}>
-            <Feather name="corner-left-up" size={18} color={colors.accent} />
+      <View style={st.replyGestureContainer}>
+        <Reanimated.View style={[st.replySwipeAction, iconStyle]}>
+          <View style={st.replySwipeIconWrap}>
+            <Feather name="corner-left-up" size={18} color={accent} />
           </View>
         </Reanimated.View>
         <Reanimated.View style={contentStyle}>{children}</Reanimated.View>
@@ -195,6 +328,7 @@ type DiscussionMessageBubbleProps = {
   setContentRef?: (node: View | null) => void;
   onLongPress?: () => void;
   onReplyPreviewPress?: (messageId: string) => void;
+  st: ChannelDiscussionStyles;
 };
 
 function DiscussionMessageBubble({
@@ -205,7 +339,9 @@ function DiscussionMessageBubble({
   setContentRef,
   onLongPress,
   onReplyPreviewPress,
+  st,
 }: DiscussionMessageBubbleProps) {
+  const { colors: c } = useTheme();
   const time = formatTime(item.created_at);
   const displayStatus =
     isMe && (item.status === 'delivered' || item.status === 'read')
@@ -240,9 +376,9 @@ function DiscussionMessageBubble({
   const content = (() => {
     if (item.is_deleted === 1) {
       return (
-        <View style={[styles.textBubble, isMe ? styles.textBubbleMe : styles.textBubbleOther]}>
+        <View style={[st.textBubble, isMe ? st.textBubbleMe : st.textBubbleOther]}>
           {replySnippet}
-          <Text style={styles.deletedText}>{isMe ? 'Вы удалили сообщение' : 'Сообщение удалено'}</Text>
+          <Text style={st.deletedText}>{isMe ? 'Вы удалили сообщение' : 'Сообщение удалено'}</Text>
           <MessageTimeStatus time={time} status={displayStatus} isMe={isMe} compact />
         </View>
       );
@@ -252,7 +388,7 @@ function DiscussionMessageBubble({
       const voiceUri =
         resolveVoiceMessageUri(item) ?? media.remote_url ?? `file://${item.id}`;
       return (
-        <View style={styles.mediaWrap}>
+        <View style={st.mediaWrap}>
           {replySnippet}
           <VoiceBubble
             uri={voiceUri}
@@ -276,7 +412,7 @@ function DiscussionMessageBubble({
         ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
         : undefined;
       return (
-        <View style={styles.mediaWrap}>
+        <View style={st.mediaWrap}>
           {replySnippet}
           <VideoNoteBubble
             messageId={item.id}
@@ -296,7 +432,7 @@ function DiscussionMessageBubble({
     if (item.msg_type === 'image' && media?.remote_url) {
       const imgUri = resolveMediaUrl(media.remote_url) ?? media.remote_url;
       return (
-        <View style={styles.mediaWrap}>
+        <View style={st.mediaWrap}>
           {replySnippet}
           <ImageBubble
             uri={imgUri}
@@ -318,7 +454,7 @@ function DiscussionMessageBubble({
         ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
         : undefined;
       return (
-        <View style={styles.mediaWrap}>
+        <View style={st.mediaWrap}>
           {replySnippet}
           <VideoBubble
             uri={vidUri}
@@ -343,7 +479,7 @@ function DiscussionMessageBubble({
           ? resolveMediaUrl(rawFile) ?? rawFile
           : undefined;
       return (
-        <View style={styles.mediaWrap}>
+        <View style={st.mediaWrap}>
           {replySnippet}
           <FileBubble
             fileName={media.file_name ?? item.content ?? 'File'}
@@ -359,13 +495,13 @@ function DiscussionMessageBubble({
     }
 
     return (
-      <View style={[styles.textBubble, isMe ? styles.textBubbleMe : styles.textBubbleOther]}>
+      <View style={[st.textBubble, isMe ? st.textBubbleMe : st.textBubbleOther]}>
         {replySnippet}
         {!isMe ? (
-          <Text style={[styles.authorText, { color: hashColor(item.sender_id) }]}>{item.sender_name || item.sender_id}</Text>
+          <Text style={[st.authorText, { color: hashColor(item.sender_id, c.accent) }]}>{item.sender_name || item.sender_id}</Text>
         ) : null}
-        <View style={styles.textContentRow}>
-          <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.content?.trim() || 'Сообщение'}</Text>
+        <View style={st.textContentRow}>
+          <Text style={[st.messageText, isMe && st.messageTextMe]}>{item.content?.trim() || 'Сообщение'}</Text>
           <MessageTimeStatus time={time} status={displayStatus} isMe={isMe} compact />
         </View>
       </View>
@@ -376,8 +512,8 @@ function DiscussionMessageBubble({
     <View
       ref={setContentRef}
       style={[
-        styles.bubbleColumn,
-        isMe ? styles.bubbleColumnMe : styles.bubbleColumnOther,
+        st.bubbleColumn,
+        isMe ? st.bubbleColumnMe : st.bubbleColumnOther,
         forcedWidth ? { width: Math.ceil(forcedWidth), maxWidth: Math.ceil(forcedWidth) } : null,
       ]}
     >
@@ -394,7 +530,7 @@ function DiscussionMessageBubble({
       ) : (
         content
       )}
-      {reactionSummary ? <Text style={styles.reactionSummaryText}>{reactionSummary}</Text> : null}
+      {reactionSummary ? <Text style={st.reactionSummaryText}>{reactionSummary}</Text> : null}
     </View>
   );
 }
@@ -407,7 +543,8 @@ function scaleMedia(media: NonNullable<Message['media']>[number] | undefined, ma
   return { width: Math.round(w * scale), height: Math.round(h * scale) };
 }
 
-function OriginalPostHeader({ post }: { post: Message | null }) {
+function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDiscussionStyles }) {
+  const { colors: themeIcon } = useTheme();
   const [originalMediaViewer, setOriginalMediaViewer] = React.useState<{
     items: MediaTile[];
     index: number;
@@ -433,8 +570,8 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
 
   return (
     <>
-    <View style={styles.originalPostWrap}>
-      <View style={styles.originalPostAlign}>
+    <View style={st.originalPostWrap}>
+      <View style={st.originalPostAlign}>
         {post.msg_type === 'image' && media?.remote_url ? (
           <ImageBubble
             uri={resolveMediaUrl(media.remote_url) ?? media.remote_url}
@@ -445,7 +582,7 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
             time={time}
             status={post.status}
             viewCount={post.view_count ?? 0}
-            resizeMode="cover"
+            contentFit="cover"
             onOpenFullscreen={openOriginalPostMediaViewer}
           />
         ) : null}
@@ -511,20 +648,20 @@ function OriginalPostHeader({ post }: { post: Message | null }) {
           />
         ) : null}
         {post.msg_type === 'text' || (!isVisualMedia && post.msg_type !== 'voice' && post.msg_type !== 'video_note' && post.msg_type !== 'file') ? (
-          <View style={styles.originalPostTextBubble}>
-            {text ? <Text style={styles.originalPostText}>{text}</Text> : null}
-            <View style={styles.originalPostMeta}>
-              <Feather name="eye" size={12} color="#6B7E8F" />
-              <Text style={styles.originalPostMetaText}>{post.view_count ?? 0}</Text>
-              <Text style={styles.originalPostMetaText}>{time}</Text>
+          <View style={st.originalPostTextBubble}>
+            {text ? <Text style={st.originalPostText}>{text}</Text> : null}
+            <View style={st.originalPostMeta}>
+              <Feather name="eye" size={12} color={themeIcon.textSecondary} />
+              <Text style={st.originalPostMetaText}>{post.view_count ?? 0}</Text>
+              <Text style={st.originalPostMetaText}>{time}</Text>
             </View>
           </View>
         ) : null}
       </View>
-      <View style={styles.discussionDivider}>
-        <View style={styles.discussionDividerLine} />
-        <Text style={styles.discussionDividerText}>Начало обсуждения</Text>
-        <View style={styles.discussionDividerLine} />
+      <View style={st.discussionDivider}>
+        <View style={st.discussionDividerLine} />
+        <Text style={st.discussionDividerText}>Начало обсуждения</Text>
+        <View style={st.discussionDividerLine} />
       </View>
     </View>
 
@@ -552,7 +689,8 @@ function parseCooldownSecondsFromApiError(message: string): number | null {
 
 export function ChannelDiscussionScreen() {
   const route = useRoute<Route>();
-  const { colors: themeMenuColors } = useTheme();
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelDiscussionStyles(c), [c]);
   const insets = useSafeAreaInsets();
   const animatedKeyboard = useAnimatedKeyboard();
   const blurTargetRef = React.useRef<View | null>(null);
@@ -564,8 +702,8 @@ export function ChannelDiscussionScreen() {
   const key = `${channelId}:${postId}`;
   const thread = channelStore((state) => state.discussionByKey[key]);
   const detailChannel = channelStore((state) => state.detailsById[channelId]?.channel);
-  const catalogChannel = channelStore((state) => state.catalog.find((c) => c.id === channelId));
-  const chatListChannel = chatStore((state) => state.chats.find((c) => c.id === channelId));
+  const catalogChannel = channelStore((state) => state.catalog.find((ch) => ch.id === channelId));
+  const chatListChannel = chatStore((state) => state.chats.find((ch) => ch.id === channelId));
   const currentUser = authStore((state) => state.user);
   const currentUserId = currentUser?.id ?? null;
 
@@ -735,15 +873,15 @@ export function ChannelDiscussionScreen() {
     if (menuMode === 'deleteConfirm') {
       return [
         { key: 'delete_confirm', label: 'Удалить для всех', icon: null, color: '#E53935', disabled: false, textOnly: true },
-        { key: 'delete_cancel', label: 'Отмена', icon: null, color: themeMenuColors.textPrimary, disabled: false, textOnly: true },
+        { key: 'delete_cancel', label: 'Отмена', icon: null, color: c.textPrimary, disabled: false, textOnly: true },
       ];
     }
     return [
-      { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: themeMenuColors.textPrimary, disabled: false },
-      { key: 'copy', label: 'Скопировать', icon: 'copy', color: themeMenuColors.textPrimary, disabled: false },
+      { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: c.textPrimary, disabled: false },
+      { key: 'copy', label: 'Скопировать', icon: 'copy', color: c.textPrimary, disabled: false },
       { key: 'delete', label: 'Удалить', icon: 'trash-2', color: '#E53935', disabled: activeMenuMessage.sender_id !== currentUserId },
     ];
-  }, [activeMenuMessage, currentUserId, menuMode, themeMenuColors]);
+  }, [activeMenuMessage, currentUserId, menuMode, c]);
 
   const handleDeleteMessage = React.useCallback((message: Message) => {
     if (!thread) return;
@@ -1030,13 +1168,18 @@ export function ChannelDiscussionScreen() {
     const replied = item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null;
 
     return (
-      <ReplySwipeWrapper enabled={thread?.can_comment === true && canSwipeReply(item)} onReply={() => setReplyToMessageId(item.id)}>
+      <ReplySwipeWrapper
+        enabled={thread?.can_comment === true && canSwipeReply(item)}
+        onReply={() => setReplyToMessageId(item.id)}
+        st={styles}
+        accent={c.accent}
+      >
         <View style={[styles.row, isMe ? styles.rowMe : styles.rowOther]}>
           {!isMe ? (
             avatarUri ? (
               <Reanimated.Image source={{ uri: avatarUri }} style={styles.avatar} />
             ) : (
-              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: hashColor(item.sender_id) }]}>
+              <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: hashColor(item.sender_id, c.accent) }]}>
                 <Text style={styles.avatarInitial}>{getInitial(avatarLabel)}</Text>
               </View>
             )
@@ -1045,6 +1188,7 @@ export function ChannelDiscussionScreen() {
             item={item}
             isMe={isMe}
             repliedMessage={replied}
+            st={styles}
             setContentRef={(node) => setContentRef(item.id, node)}
             onLongPress={() => openMessageMenu(item)}
             onReplyPreviewPress={(messageId) => {
@@ -1056,7 +1200,7 @@ export function ChannelDiscussionScreen() {
         </View>
       </ReplySwipeWrapper>
     );
-  }, [canSwipeReply, currentUserId, messageById, openMessageMenu, setContentRef, sortedMessages, thread?.can_comment]);
+  }, [canSwipeReply, c.accent, currentUserId, messageById, openMessageMenu, setContentRef, sortedMessages, styles, thread?.can_comment]);
 
   const renderMenuPreviewBody = React.useCallback((item: Message, forcedWidth?: number) => {
     const replied = item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null;
@@ -1066,9 +1210,10 @@ export function ChannelDiscussionScreen() {
         isMe={item.sender_id === currentUserId}
         repliedMessage={replied}
         forcedWidth={forcedWidth}
+        st={styles}
       />
     );
-  }, [currentUserId, messageById]);
+  }, [currentUserId, messageById, styles]);
 
   return (
     <View style={styles.container}>
@@ -1076,7 +1221,7 @@ export function ChannelDiscussionScreen() {
         <ChatBackgroundPattern />
 
         {loading && !thread && !loadError ? (
-          <View style={styles.loading}><ActivityIndicator size="large" color={colors.accent} /></View>
+          <View style={styles.loading}><ActivityIndicator size="large" color={c.accent} /></View>
         ) : loadError && !thread ? (
           <LoadErrorState message={loadError} onRetry={() => void load()} />
         ) : (
@@ -1090,7 +1235,7 @@ export function ChannelDiscussionScreen() {
             onRefresh={() => void load()}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[styles.listContent, { paddingBottom: (thread?.can_comment ? inputBarHeight : 16) + Math.max(insets.bottom, 8) }]}
-              ListHeaderComponent={<OriginalPostHeader post={thread?.post ?? null} />}
+              ListHeaderComponent={<OriginalPostHeader post={thread?.post ?? null} st={styles} />}
               ListEmptyComponent={!loading ? <Text style={styles.emptyText}>Комментариев пока нет</Text> : null}
             />
           </Reanimated.View>
@@ -1149,115 +1294,3 @@ export function ChannelDiscussionScreen() {
     </View>
   );
 }
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#E8F4D6' },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  listWrap: { flex: 1 },
-  listContent: { paddingHorizontal: 8, paddingTop: 8 },
-  row: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
-    marginBottom: 8,
-  },
-  rowOther: { justifyContent: 'flex-start' },
-  rowMe: { justifyContent: 'flex-end' },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    marginBottom: 2,
-  },
-  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  bubbleColumn: { maxWidth: '84%' },
-  bubbleColumnMe: { alignSelf: 'flex-end' },
-  bubbleColumnOther: { alignSelf: 'flex-start' },
-  textBubble: {
-    paddingHorizontal: 10,
-    paddingTop: 7,
-    paddingBottom: 7,
-    borderRadius: 16,
-  },
-  textBubbleOther: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.bubbleOtherBorder,
-    ...bubbleRadius.other,
-  },
-  textBubbleMe: { backgroundColor: colors.bubbleMe, ...bubbleRadius.mine },
-  authorText: { fontSize: 13, fontWeight: '700', marginBottom: 1 },
-  textContentRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  messageText: { color: '#000000', fontSize: 16, lineHeight: 21, flexShrink: 1 },
-  deletedText: { color: '#6B7280', fontSize: 14, fontStyle: 'italic' },
-  mediaWrap: { alignSelf: 'stretch' },
-  messageTextMe: { color: '#FFFFFF' },
-  reactionSummaryText: {
-    marginTop: 2,
-    color: '#5D6C7B',
-    fontSize: 13,
-    fontWeight: '600',
-    paddingHorizontal: 4,
-  },
-  emptyText: {
-    marginTop: 30,
-    textAlign: 'center',
-    color: '#6B7E8F',
-    fontWeight: '600',
-  },
-  originalPostWrap: {
-    marginBottom: 4,
-  },
-  originalPostAlign: {
-    alignItems: 'flex-start',
-  },
-  originalPostTextBubble: {
-    alignSelf: 'flex-start',
-    maxWidth: '82%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.12)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 6,
-  },
-  originalPostText: {
-    color: '#111827',
-    fontSize: 16,
-    lineHeight: 22,
-  },
-  originalPostMeta: {
-    marginTop: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 5,
-  },
-  originalPostMetaText: { color: '#6B7E8F', fontSize: 12, fontWeight: '600' },
-  discussionDivider: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  discussionDividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(0,0,0,0.16)',
-  },
-  discussionDividerText: { color: '#7B8794', fontSize: 12, fontWeight: '600' },
-  inputBarWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'visible' },
-  replyGestureContainer: { width: '100%', position: 'relative', overflow: 'visible' },
-  replySwipeAction: { position: 'absolute', right: 10, top: '50%', marginTop: -16, zIndex: 2 },
-  replySwipeIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderWidth: 1,
-    borderColor: 'rgba(77,141,255,0.3)',
-  },
-});

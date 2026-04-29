@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Alert,
   Pressable,
@@ -12,7 +12,9 @@ import Svg, { Path, Line as SvgLine, Circle } from 'react-native-svg';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import {
   formatMoney,
   formatPeriod,
@@ -25,7 +27,201 @@ import {
 type Route = RouteProp<ChatsStackParamList, 'ChannelMonetization'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelMonetization'>;
 
+type ChannelMonetStyles = ReturnType<typeof createChannelMonetizationStyles>;
+
+function createChannelMonetizationStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    container: { flex: 1 },
+    content: { paddingBottom: 40, paddingHorizontal: 16, paddingTop: 12 },
+    pressed: { opacity: 0.7 },
+
+    heroCard: {
+      borderRadius: 20,
+      padding: 20,
+      backgroundColor: c.inputBackgroundSolid,
+      alignItems: 'center',
+    },
+    heroLabel: { color: c.textSecondary, fontSize: 13, fontWeight: '500' },
+    heroValue: {
+      marginTop: 6,
+      fontSize: 32,
+      fontWeight: '700',
+      color: c.textPrimary,
+      letterSpacing: -0.5,
+    },
+    heroTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+    heroTrendText: { fontSize: 13, fontWeight: '600' },
+
+    kpiRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
+    kpiTile: {
+      flex: 1,
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 16,
+      padding: 14,
+      gap: 6,
+    },
+    kpiIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    kpiValue: { fontSize: 18, fontWeight: '700', color: c.textPrimary },
+    kpiLabel: { fontSize: 12, color: c.textSecondary },
+
+    sectionTitleRow: {
+      marginTop: 20,
+      marginBottom: 8,
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+    },
+    sectionTitle: { fontSize: 15, fontWeight: '600', color: c.textPrimary },
+    sectionAction: { fontSize: 14, color: c.accent, fontWeight: '500' },
+
+    card: {
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 16,
+      padding: 14,
+      overflow: 'hidden',
+    },
+
+    chartFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 6,
+    },
+    chartFooterLabel: { fontSize: 12, color: c.textSecondary },
+
+    legendRow: { flexDirection: 'row', gap: 16, marginTop: 4 },
+    legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    legendDot: { width: 8, height: 8, borderRadius: 4 },
+    legendText: { fontSize: 12, color: c.textSecondary },
+
+    tariffHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    tariffIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: '#F59E0B',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tariffPrice: { fontSize: 18, fontWeight: '700', color: c.textPrimary },
+    tariffPeriod: { fontSize: 14, fontWeight: '400', color: c.textSecondary },
+    tariffStatus: { marginTop: 2, fontSize: 12, color: '#16A34A' },
+    tariffDescription: { marginTop: 10, fontSize: 13, color: c.textSecondary, lineHeight: 18 },
+    trialBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      marginTop: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      backgroundColor: withAlpha(c.accent, 0.12),
+    },
+    trialBadgeText: { color: c.link, fontSize: 12, fontWeight: '600' },
+
+    subscriberRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 8,
+    },
+    subscriberAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    subscriberAvatarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+    subscriberName: { fontSize: 15, color: c.textPrimary, fontWeight: '500' },
+    subscriberMeta: { marginTop: 2, fontSize: 12, color: c.textSecondary },
+    statusPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 10,
+    },
+    statusDot: { width: 6, height: 6, borderRadius: 3 },
+    statusText: { fontSize: 11, fontWeight: '600' },
+
+    eventRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 8,
+    },
+    eventIconWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    eventTitle: { fontSize: 14, color: c.textPrimary, fontWeight: '500' },
+    eventSub: { marginTop: 1, fontSize: 12, color: c.textSecondary },
+    eventAmount: { fontSize: 14, fontWeight: '600' },
+
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: c.separator,
+      marginVertical: 2,
+    },
+    emptyText: {
+      fontSize: 13,
+      color: c.textSecondary,
+      textAlign: 'center',
+      paddingVertical: 12,
+    },
+
+    payoutRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    payoutLabel: { fontSize: 14, color: c.textPrimary },
+    payoutValue: { fontSize: 17, fontWeight: '700', color: c.textPrimary },
+    payoutSub: { fontSize: 14, color: c.textSecondary },
+    payoutButton: {
+      marginTop: 10,
+      backgroundColor: c.accent,
+      borderRadius: 12,
+      paddingVertical: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    payoutButtonPressed: { opacity: 0.8 },
+    payoutButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+
+    mockBanner: {
+      marginTop: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: 12,
+      backgroundColor: withAlpha(c.accent, 0.12),
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    mockBannerText: { color: c.link, fontSize: 12, flex: 1 },
+  });
+}
+
 export function ChannelMonetizationScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelMonetizationStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { channelId } = route.params;
@@ -109,12 +305,14 @@ export function ChannelMonetizationScreen() {
         {/* ─── KPI tiles ─── */}
         <View style={styles.kpiRow}>
           <KpiTile
+            st={styles}
             icon="users"
             color="#007AFF"
             label="Платных подписчиков"
             value={String(active_subscribers)}
           />
           <KpiTile
+            st={styles}
             icon="dollar-sign"
             color="#16A34A"
             label="Выручка, 30 дней"
@@ -123,12 +321,14 @@ export function ChannelMonetizationScreen() {
         </View>
         <View style={styles.kpiRow}>
           <KpiTile
+            st={styles}
             icon="log-out"
             color="#F59E0B"
             label="Отток, 30 дней"
             value={`${(churn_rate * 100).toFixed(1)}%`}
           />
           <KpiTile
+            st={styles}
             icon="credit-card"
             color="#5856D6"
             label="К выплате"
@@ -137,7 +337,7 @@ export function ChannelMonetizationScreen() {
         </View>
 
         {/* ─── Revenue chart ─── */}
-        <SectionTitle title="Выручка за 30 дней" />
+        <SectionTitle st={styles} title="Выручка за 30 дней" />
         <View style={styles.card}>
           <RevenueChart data={series_30d} />
           <View style={styles.chartFooter}>
@@ -151,17 +351,17 @@ export function ChannelMonetizationScreen() {
         </View>
 
         {/* ─── Subscribers chart ─── */}
-        <SectionTitle title="Прирост подписчиков" />
+        <SectionTitle st={styles} title="Прирост подписчиков" />
         <View style={styles.card}>
           <SubscribersBars data={series_30d} />
           <View style={styles.legendRow}>
-            <LegendDot color="#16A34A" label="Новые" />
-            <LegendDot color="#DC2626" label="Ушли" />
+            <LegendDot st={styles} color="#16A34A" label="Новые" />
+            <LegendDot st={styles} color="#DC2626" label="Ушли" />
           </View>
         </View>
 
         {/* ─── Tariff card ─── */}
-        <SectionTitle title="Тариф подписки" />
+        <SectionTitle st={styles} title="Тариф подписки" />
         <Pressable onPress={handleEditTariff} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
           <View style={styles.tariffHead}>
             <View style={styles.tariffIconWrap}>
@@ -176,12 +376,12 @@ export function ChannelMonetizationScreen() {
                 {tariff.enabled ? 'Подписка активна' : 'Подписка отключена'}
               </Text>
             </View>
-            <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+            <Feather name="chevron-right" size={18} color={c.textSecondary} />
           </View>
           <Text style={styles.tariffDescription}>{tariff.description}</Text>
           {tariff.trial_days > 0 ? (
             <View style={styles.trialBadge}>
-              <Feather name="gift" size={12} color="#1E40AF" />
+              <Feather name="gift" size={12} color={c.link} />
               <Text style={styles.trialBadgeText}>Пробный период: {tariff.trial_days} дн.</Text>
             </View>
           ) : null}
@@ -189,6 +389,7 @@ export function ChannelMonetizationScreen() {
 
         {/* ─── Subscribers preview ─── */}
         <SectionTitle
+          st={styles}
           title="Подписчики"
           action="Все"
           onAction={handleOpenSubscribers}
@@ -196,7 +397,7 @@ export function ChannelMonetizationScreen() {
         <View style={styles.card}>
           {subscribers.slice(0, 5).map((sub, index) => (
             <React.Fragment key={sub.id}>
-              <SubscriberRow subscriber={sub} currency={tariff.currency} price={tariff.price_cents} />
+              <SubscriberRow st={styles} subscriber={sub} currency={tariff.currency} price={tariff.price_cents} />
               {index < Math.min(subscribers.length, 5) - 1 ? <View style={styles.divider} /> : null}
             </React.Fragment>
           ))}
@@ -206,18 +407,18 @@ export function ChannelMonetizationScreen() {
         </View>
 
         {/* ─── Recent events ─── */}
-        <SectionTitle title="Последние события" />
+        <SectionTitle st={styles} title="Последние события" />
         <View style={styles.card}>
           {events.slice(0, 6).map((evt, index) => (
             <React.Fragment key={evt.id}>
-              <EventRow event={evt} currency={tariff.currency} />
+              <EventRow st={styles} event={evt} currency={tariff.currency} />
               {index < Math.min(events.length, 6) - 1 ? <View style={styles.divider} /> : null}
             </React.Fragment>
           ))}
         </View>
 
         {/* ─── Payout ─── */}
-        <SectionTitle title="Выплаты" />
+        <SectionTitle st={styles} title="Выплаты" />
         <View style={styles.card}>
           <View style={styles.payoutRow}>
             <Text style={styles.payoutLabel}>Доступно к выводу</Text>
@@ -240,7 +441,7 @@ export function ChannelMonetizationScreen() {
         </View>
 
         <View style={styles.mockBanner}>
-          <Feather name="info" size={14} color="#1E40AF" />
+          <Feather name="info" size={14} color={c.link} />
           <Text style={styles.mockBannerText}>
             Демо-режим. Реальные платежи появятся после подключения платёжного провайдера.
           </Text>
@@ -253,23 +454,25 @@ export function ChannelMonetizationScreen() {
 /* ─── Sub-components ─── */
 
 function KpiTile({
+  st,
   icon,
   color,
   label,
   value,
 }: {
+  st: ChannelMonetStyles;
   icon: React.ComponentProps<typeof Feather>['name'];
   color: string;
   label: string;
   value: string;
 }) {
   return (
-    <View style={styles.kpiTile}>
-      <View style={[styles.kpiIconWrap, { backgroundColor: color }]}>
+    <View style={st.kpiTile}>
+      <View style={[st.kpiIconWrap, { backgroundColor: color }]}>
         <Feather name={icon} size={14} color="#FFFFFF" />
       </View>
-      <Text style={styles.kpiValue}>{value}</Text>
-      <Text style={styles.kpiLabel} numberOfLines={2}>
+      <Text style={st.kpiValue}>{value}</Text>
+      <Text style={st.kpiLabel} numberOfLines={2}>
         {label}
       </Text>
     </View>
@@ -277,31 +480,33 @@ function KpiTile({
 }
 
 function SectionTitle({
+  st,
   title,
   action,
   onAction,
 }: {
+  st: ChannelMonetStyles;
   title: string;
   action?: string;
   onAction?: () => void;
 }) {
   return (
-    <View style={styles.sectionTitleRow}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={st.sectionTitleRow}>
+      <Text style={st.sectionTitle}>{title}</Text>
       {action ? (
         <Pressable onPress={onAction} hitSlop={8}>
-          <Text style={styles.sectionAction}>{action}</Text>
+          <Text style={st.sectionAction}>{action}</Text>
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+function LegendDot({ st, color, label }: { st: ChannelMonetStyles; color: string; label: string }) {
   return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Text style={styles.legendText}>{label}</Text>
+    <View style={st.legendItem}>
+      <View style={[st.legendDot, { backgroundColor: color }]} />
+      <Text style={st.legendText}>{label}</Text>
     </View>
   );
 }
@@ -407,10 +612,12 @@ function SubscribersBars({ data }: { data: RevenuePoint[] }) {
 }
 
 function SubscriberRow({
+  st,
   subscriber,
   currency,
   price,
 }: {
+  st: ChannelMonetStyles;
   subscriber: PaidSubscriber;
   currency: string;
   price: number;
@@ -430,41 +637,49 @@ function SubscriberRow({
       : 'Отменена';
 
   return (
-    <View style={styles.subscriberRow}>
-      <View style={styles.subscriberAvatar}>
-        <Text style={styles.subscriberAvatarText}>{initial}</Text>
+    <View style={st.subscriberRow}>
+      <View style={st.subscriberAvatar}>
+        <Text style={st.subscriberAvatarText}>{initial}</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.subscriberName} numberOfLines={1}>
+        <Text style={st.subscriberName} numberOfLines={1}>
           {subscriber.name}
         </Text>
-        <Text style={styles.subscriberMeta}>
+        <Text style={st.subscriberMeta}>
           С {formatDate(subscriber.since_ts)} · {formatMoney(price, currency)}
         </Text>
       </View>
-      <View style={[styles.statusPill, { backgroundColor: statusColor + '22' }]}>
-        <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-        <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+      <View style={[st.statusPill, { backgroundColor: statusColor + '22' }]}>
+        <View style={[st.statusDot, { backgroundColor: statusColor }]} />
+        <Text style={[st.statusText, { color: statusColor }]}>{statusLabel}</Text>
       </View>
     </View>
   );
 }
 
-function EventRow({ event, currency }: { event: MonetizationEvent; currency: string }) {
+function EventRow({
+  st,
+  event,
+  currency,
+}: {
+  st: ChannelMonetStyles;
+  event: MonetizationEvent;
+  currency: string;
+}) {
   const config = eventConfig(event.kind);
   return (
-    <View style={styles.eventRow}>
-      <View style={[styles.eventIconWrap, { backgroundColor: config.color + '22' }]}>
+    <View style={st.eventRow}>
+      <View style={[st.eventIconWrap, { backgroundColor: config.color + '22' }]}>
         <Feather name={config.icon} size={14} color={config.color} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.eventTitle}>{config.label}</Text>
-        <Text style={styles.eventSub}>
+        <Text style={st.eventTitle}>{config.label}</Text>
+        <Text style={st.eventSub}>
           {event.user_name} · {formatDate(event.ts)}
         </Text>
       </View>
       {event.amount_cents > 0 ? (
-        <Text style={[styles.eventAmount, { color: config.color }]}>
+        <Text style={[st.eventAmount, { color: config.color }]}>
           +{formatMoney(event.amount_cents, currency)}
         </Text>
       ) : null}
@@ -502,193 +717,3 @@ function formatDate(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
-
-/* ─── Styles ─── */
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F0F0F5' },
-  container: { flex: 1 },
-  content: { paddingBottom: 40, paddingHorizontal: 16, paddingTop: 12 },
-  pressed: { opacity: 0.7 },
-
-  heroCard: {
-    borderRadius: 20,
-    padding: 20,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-  },
-  heroLabel: { color: '#6B7280', fontSize: 13, fontWeight: '500' },
-  heroValue: {
-    marginTop: 6,
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#111827',
-    letterSpacing: -0.5,
-  },
-  heroTrendRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  heroTrendText: { fontSize: 13, fontWeight: '600' },
-
-  kpiRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  kpiTile: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    gap: 6,
-  },
-  kpiIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kpiValue: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  kpiLabel: { fontSize: 12, color: '#6B7280' },
-
-  sectionTitleRow: {
-    marginTop: 20,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-  },
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: '#111827' },
-  sectionAction: { fontSize: 14, color: colors.accent, fontWeight: '500' },
-
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
-    overflow: 'hidden',
-  },
-
-  chartFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  chartFooterLabel: { fontSize: 12, color: '#6B7280' },
-
-  legendRow: { flexDirection: 'row', gap: 16, marginTop: 4 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: { fontSize: 12, color: '#6B7280' },
-
-  tariffHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  tariffIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#F59E0B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tariffPrice: { fontSize: 18, fontWeight: '700', color: '#111827' },
-  tariffPeriod: { fontSize: 14, fontWeight: '400', color: '#6B7280' },
-  tariffStatus: { marginTop: 2, fontSize: 12, color: '#16A34A' },
-  tariffDescription: { marginTop: 10, fontSize: 13, color: '#374151', lineHeight: 18 },
-  trialBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    marginTop: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: '#EFF6FF',
-  },
-  trialBadgeText: { color: '#1E40AF', fontSize: 12, fontWeight: '600' },
-
-  subscriberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
-  },
-  subscriberAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  subscriberAvatarText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
-  subscriberName: { fontSize: 15, color: '#111827', fontWeight: '500' },
-  subscriberMeta: { marginTop: 2, fontSize: 12, color: '#6B7280' },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 11, fontWeight: '600' },
-
-  eventRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
-  },
-  eventIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventTitle: { fontSize: 14, color: '#111827', fontWeight: '500' },
-  eventSub: { marginTop: 1, fontSize: 12, color: '#6B7280' },
-  eventAmount: { fontSize: 14, fontWeight: '600' },
-
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E3E4E8',
-    marginVertical: 2,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    paddingVertical: 12,
-  },
-
-  payoutRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  payoutLabel: { fontSize: 14, color: '#111827' },
-  payoutValue: { fontSize: 17, fontWeight: '700', color: '#111827' },
-  payoutSub: { fontSize: 14, color: '#6B7280' },
-  payoutButton: {
-    marginTop: 10,
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  payoutButtonPressed: { opacity: 0.8 },
-  payoutButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-
-  mockBanner: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  mockBannerText: { color: '#1E40AF', fontSize: 12, flex: 1 },
-});

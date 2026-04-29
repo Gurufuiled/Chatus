@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,23 +13,136 @@ import {
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTheme } from '../contexts/ThemeContext';
+import { resolveAvatarUrl } from '../config';
 import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
+import { authStore } from '../stores/authStore';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { authStore } from '../stores/authStore';
-import { colors } from '../theme/colors';
-import { resolveAvatarUrl } from '../config';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelSettings'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelSettings'>;
 
-/* ─── Row Component ───
- * Non-interactive rows must use <View style={[...]}> — never pass a style *function* to View
- * (Pressable accepts it; View ignores it and breaks flexDirection: 'row').
- */
+type ChannelSettingsStyles = ReturnType<typeof createChannelSettingsStyles>;
+
+function createChannelSettingsStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    container: { flex: 1, backgroundColor: c.chatBackground },
+    content: { paddingBottom: 40 },
+    loadingWrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.chatBackground,
+    },
+    errorText: { color: c.textSecondary, fontSize: 16 },
+
+    channelCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      marginHorizontal: 16,
+      marginTop: 12,
+      borderRadius: 16,
+      padding: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    avatarCircle: {
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      backgroundColor: '#FF6D6D',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarImage: { width: 60, height: 60, borderRadius: 30 },
+    avatarText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
+    channelInfo: { flex: 1 },
+    channelName: { fontSize: 20, fontWeight: '600', color: c.textPrimary },
+    channelSub: { marginTop: 2, fontSize: 14, color: c.textSecondary },
+
+    sectionSeparator: { height: 16 },
+    sectionCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      marginHorizontal: 16,
+      borderRadius: 16,
+      overflow: 'hidden',
+    },
+
+    row: {
+      minHeight: 52,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      gap: 12,
+    },
+    rowPressed: { backgroundColor: c.rowPressed },
+    rowDisabled: { opacity: 0.55 },
+    rowIconWrap: {
+      width: 30,
+      height: 30,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowBody: { flex: 1, justifyContent: 'center' },
+    rowTitle: { fontSize: 17, color: c.textPrimary },
+    rowValue: { fontSize: 16, color: c.textSecondary, marginRight: 4 },
+    rowDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: c.separator,
+      marginLeft: 56,
+    },
+
+    permissionBanner: {
+      marginTop: 16,
+      marginHorizontal: 16,
+      borderRadius: 12,
+      backgroundColor: withAlpha('#F59E0B', 0.2),
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    permissionHint: { color: c.textPrimary, fontSize: 13, flex: 1 },
+
+    sectionCaption: {
+      marginTop: 6,
+      marginHorizontal: 20,
+      fontSize: 12,
+      color: c.textSecondary,
+      lineHeight: 16,
+    },
+
+    snackbarWrap: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 14,
+      backgroundColor: withAlpha(c.accent, 0.14),
+      borderWidth: 1,
+      borderColor: withAlpha(c.accent, 0.35),
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      shadowColor: c.accent,
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    snackbarText: { color: c.link, textAlign: 'center', fontWeight: '700' },
+  });
+}
 
 function SettingsRow({
+  st,
   icon,
   iconColor,
   title,
@@ -37,7 +150,10 @@ function SettingsRow({
   onPress,
   trailing,
   disabled,
+  accentFallback,
+  textSecondary,
 }: {
+  st: ChannelSettingsStyles;
   icon: React.ComponentProps<typeof Feather>['name'];
   iconColor?: string;
   title: string;
@@ -45,20 +161,22 @@ function SettingsRow({
   onPress?: () => void;
   trailing?: React.ReactNode;
   disabled?: boolean;
+  accentFallback: string;
+  textSecondary: string;
 }) {
   const isInteractive = !!onPress && !disabled;
   const content = (
     <>
-      <View style={[styles.rowIconWrap, { backgroundColor: iconColor ?? colors.accent }]}>
+      <View style={[st.rowIconWrap, { backgroundColor: iconColor ?? accentFallback }]}>
         <Feather name={icon} size={17} color="#FFFFFF" />
       </View>
-      <View style={styles.rowBody}>
-        <Text style={styles.rowTitle}>{title}</Text>
+      <View style={st.rowBody}>
+        <Text style={st.rowTitle}>{title}</Text>
       </View>
       {trailing ?? null}
-      {value ? <Text style={styles.rowValue}>{value}</Text> : null}
+      {value ? <Text style={st.rowValue}>{value}</Text> : null}
       {onPress && !trailing ? (
-        <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+        <Feather name="chevron-right" size={18} color={textSecondary} />
       ) : null}
     </>
   );
@@ -68,9 +186,9 @@ function SettingsRow({
       <Pressable
         onPress={onPress}
         style={({ pressed }) => [
-          styles.row,
-          pressed && styles.rowPressed,
-          disabled && styles.rowDisabled,
+          st.row,
+          pressed && st.rowPressed,
+          disabled && st.rowDisabled,
         ]}
       >
         {content}
@@ -78,22 +196,20 @@ function SettingsRow({
     );
   }
 
-  return (
-    <View style={[styles.row, disabled && styles.rowDisabled]}>{content}</View>
-  );
+  return <View style={[st.row, disabled && st.rowDisabled]}>{content}</View>;
 }
 
-function SectionSeparator() {
-  return <View style={styles.sectionSeparator} />;
+function SectionSeparator({ st }: { st: ChannelSettingsStyles }) {
+  return <View style={st.sectionSeparator} />;
 }
 
-function RowDivider() {
-  return <View style={styles.rowDivider} />;
+function RowDivider({ st }: { st: ChannelSettingsStyles }) {
+  return <View style={st.rowDivider} />;
 }
-
-/* ─── Main Screen ─── */
 
 export function ChannelSettingsScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelSettingsStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { channelId } = route.params;
@@ -145,7 +261,6 @@ export function ChannelSettingsScreen() {
   const title = channel?.name?.trim() || 'Канал';
   const initial = (title[0] || 'К').toUpperCase();
 
-  /* ─── Reactions toggle (inline) ─── */
   const [allowReactions, setAllowReactions] = React.useState(channel?.allow_reactions !== 0);
 
   React.useEffect(() => {
@@ -173,7 +288,7 @@ export function ChannelSettingsScreen() {
   if (loading && !detail) {
     return (
       <View style={styles.loadingWrap}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -195,7 +310,6 @@ export function ChannelSettingsScreen() {
   return (
     <View style={styles.screen}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* ─── Channel header card ─── */}
         <View style={styles.channelCard}>
           {avatarUrl ? (
             <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
@@ -212,11 +326,13 @@ export function ChannelSettingsScreen() {
           </View>
         </View>
 
-        <SectionSeparator />
+        <SectionSeparator st={styles} />
 
-        {/* ─── Section 1: Settings ─── */}
         <View style={styles.sectionCard}>
           <SettingsRow
+            st={styles}
+            accentFallback={c.accent}
+            textSecondary={c.textSecondary}
             icon="globe"
             iconColor="#007AFF"
             title="Тип канала"
@@ -227,8 +343,11 @@ export function ChannelSettingsScreen() {
               navigation.navigate('ChannelType', { channelId });
             }}
           />
-          <RowDivider />
+          <RowDivider st={styles} />
           <SettingsRow
+            st={styles}
+            accentFallback={c.accent}
+            textSecondary={c.textSecondary}
             icon="link"
             iconColor="#FF9500"
             title="Пригласительные ссылки"
@@ -239,8 +358,11 @@ export function ChannelSettingsScreen() {
               navigation.navigate('ChannelInviteLinks', { channelId });
             }}
           />
-          <RowDivider />
+          <RowDivider st={styles} />
           <SettingsRow
+            st={styles}
+            accentFallback={c.accent}
+            textSecondary={c.textSecondary}
             icon="message-circle"
             iconColor="#34C759"
             title="Обсуждение"
@@ -250,8 +372,11 @@ export function ChannelSettingsScreen() {
               navigation.navigate('ChannelDiscussionSettings', { channelId });
             }}
           />
-          <RowDivider />
+          <RowDivider st={styles} />
           <SettingsRow
+            st={styles}
+            accentFallback={c.accent}
+            textSecondary={c.textSecondary}
             icon="heart"
             iconColor="#FF3B30"
             title="Реакции"
@@ -268,9 +393,12 @@ export function ChannelSettingsScreen() {
 
         {isOwner ? (
           <>
-            <SectionSeparator />
+            <SectionSeparator st={styles} />
             <View style={styles.sectionCard}>
               <SettingsRow
+                st={styles}
+                accentFallback={c.accent}
+                textSecondary={c.textSecondary}
                 icon="trending-up"
                 iconColor="#16A34A"
                 title="Монетизация"
@@ -284,11 +412,13 @@ export function ChannelSettingsScreen() {
           </>
         ) : null}
 
-        <SectionSeparator />
+        <SectionSeparator st={styles} />
 
-        {/* ─── Section 2: Members ─── */}
         <View style={styles.sectionCard}>
           <SettingsRow
+            st={styles}
+            accentFallback={c.accent}
+            textSecondary={c.textSecondary}
             icon="shield"
             iconColor="#5856D6"
             title="Администраторы"
@@ -299,8 +429,11 @@ export function ChannelSettingsScreen() {
               navigation.navigate('ChannelMembers', { channelId, mode: 'admins' });
             }}
           />
-          <RowDivider />
+          <RowDivider st={styles} />
           <SettingsRow
+            st={styles}
+            accentFallback={c.accent}
+            textSecondary={c.textSecondary}
             icon="users"
             iconColor="#007AFF"
             title="Подписчики"
@@ -313,8 +446,11 @@ export function ChannelSettingsScreen() {
               navigation.navigate('ChannelMembers', { channelId, mode: 'subscribers' });
             }}
           />
-          <RowDivider />
+          <RowDivider st={styles} />
           <SettingsRow
+            st={styles}
+            accentFallback={c.accent}
+            textSecondary={c.textSecondary}
             icon="slash"
             iconColor="#FF9500"
             title="Чёрный список"
@@ -328,9 +464,9 @@ export function ChannelSettingsScreen() {
           />
         </View>
 
-        {(!canEdit || !canAdminOps || !canModerate) ? (
+        {!canEdit || !canAdminOps || !canModerate ? (
           <View style={styles.permissionBanner}>
-            <Feather name="lock" size={14} color="#92400E" />
+            <Feather name="lock" size={14} color={c.textSecondary} />
             <Text style={styles.permissionHint}>
               Некоторые разделы доступны в зависимости от ваших прав администратора.
             </Text>
@@ -346,116 +482,3 @@ export function ChannelSettingsScreen() {
     </View>
   );
 }
-
-/* ─── Styles ─── */
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F0F0F5' },
-  container: { flex: 1, backgroundColor: '#F0F0F5' },
-  content: { paddingBottom: 40 },
-  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F0F5' },
-  errorText: { color: colors.textSecondary, fontSize: 16 },
-
-  /* Channel header card */
-  channelCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FF6D6D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: { width: 60, height: 60, borderRadius: 30 },
-  avatarText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
-  channelInfo: { flex: 1 },
-  channelName: { fontSize: 20, fontWeight: '600', color: '#111827' },
-  channelSub: { marginTop: 2, fontSize: 14, color: '#6B7280' },
-
-  /* Section cards */
-  sectionSeparator: { height: 16 },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-
-  /* Rows */
-  row: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 12,
-  },
-  rowPressed: { backgroundColor: '#F5F6F8' },
-  rowDisabled: { opacity: 0.55 },
-  rowIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowBody: { flex: 1, justifyContent: 'center' },
-  rowTitle: { fontSize: 17, color: '#111827' },
-  rowValue: { fontSize: 16, color: '#8E8E93', marginRight: 4 },
-  rowDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E3E4E8',
-    marginLeft: 56,
-  },
-
-  /* Permission banner */
-  permissionBanner: {
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  permissionHint: { color: '#92400E', fontSize: 13, flex: 1 },
-
-  sectionCaption: {
-    marginTop: 6,
-    marginHorizontal: 20,
-    fontSize: 12,
-    color: '#8E8E93',
-    lineHeight: 16,
-  },
-
-  /* Snackbar */
-  snackbarWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 14,
-    backgroundColor: 'rgba(239,246,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.35)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  snackbarText: { color: '#1E40AF', textAlign: 'center', fontWeight: '700' },
-});

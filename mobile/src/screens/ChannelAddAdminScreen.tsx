@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,12 +23,164 @@ import {
 import { resolveAvatarUrl } from '../config';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelAddAdmin'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelAddAdmin'>;
 
+function createChannelAddAdminStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.chatBackground },
+    content: { padding: 12, paddingBottom: 24 },
+    search: {
+      margin: 12,
+      borderRadius: 12,
+      backgroundColor: c.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.composerBorder,
+      paddingHorizontal: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    searchInput: { flex: 1, minHeight: 42, color: c.textPrimary },
+    searchButton: {
+      paddingHorizontal: 10,
+      height: 30,
+      borderRadius: 8,
+      backgroundColor: withAlpha(c.accent, 0.12),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchButtonText: { color: c.accent, fontWeight: '700', fontSize: 12 },
+    loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    memberRow: {
+      backgroundColor: c.inputBackgroundSolid,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    memberRowPressed: { backgroundColor: c.rowPressed },
+    memberAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    memberAvatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: withAlpha(c.accent, 0.2) },
+    memberAvatarText: { color: '#FFFFFF', fontWeight: '700' },
+    memberText: { flex: 1, marginLeft: 10 },
+    memberName: { fontSize: 17, color: c.textPrimary, fontWeight: '600' },
+    memberSubtitle: { marginTop: 2, color: c.textSecondary },
+    selectedCard: {
+      borderRadius: 14,
+      backgroundColor: c.inputBackgroundSolid,
+      padding: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    changeButton: {
+      paddingHorizontal: 10,
+      height: 30,
+      borderRadius: 8,
+      backgroundColor: withAlpha(c.accent, 0.12),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    changeButtonText: { color: c.accent, fontWeight: '700', fontSize: 12 },
+    sectionLabel: { marginBottom: 8, color: c.textSecondary, fontSize: 12, fontWeight: '700' },
+    sectionCard: { backgroundColor: c.inputBackgroundSolid, borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      minHeight: 54,
+    },
+    sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+    sectionTitle: { color: c.textPrimary, fontSize: 16, fontWeight: '500' },
+    sectionCount: { color: c.textSecondary, fontSize: 14, fontWeight: '600' },
+    sectionItems: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.separator },
+    sectionItemRow: {
+      minHeight: 44,
+      paddingHorizontal: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+    },
+    sectionItemRowPressed: { backgroundColor: c.rowPressed },
+    sectionItemText: { color: c.textPrimary, fontSize: 14 },
+    singleRow: {
+      minHeight: 54,
+      borderRadius: 14,
+      backgroundColor: c.inputBackgroundSolid,
+      paddingHorizontal: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+    },
+    singleRowText: { color: c.textPrimary, fontSize: 17, fontWeight: '500', flex: 1, paddingRight: 10 },
+    addButton: {
+      marginTop: 4,
+      height: 50,
+      borderRadius: 16,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addButtonPressed: { opacity: 0.86 },
+    addButtonDisabled: { opacity: 0.62 },
+    addButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+    noRightsContainer: { flex: 1, padding: 16, justifyContent: 'center', backgroundColor: c.chatBackground },
+    noRightsCard: {
+      borderRadius: 14,
+      backgroundColor: withAlpha('#F59E0B', 0.2),
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    noRightsText: { color: c.textPrimary, fontWeight: '600', flex: 1 },
+    empty: { marginTop: 24, textAlign: 'center', color: c.textSecondary },
+    snackbarWrap: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 14,
+      backgroundColor: withAlpha(c.accent, 0.14),
+      borderWidth: 1,
+      borderColor: withAlpha(c.accent, 0.35),
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      shadowColor: c.accent,
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    snackbarText: { color: c.link, textAlign: 'center', fontWeight: '700' },
+  });
+}
+
+type AddAdminStyles = ReturnType<typeof createChannelAddAdminStyles>;
+
 type PermissionSectionProps = {
+  st: AddAdminStyles;
+  accent: string;
+  mutedIcon: string;
   title: string;
   value: boolean;
   expanded: boolean;
@@ -40,6 +192,9 @@ type PermissionSectionProps = {
 };
 
 function PermissionSection({
+  st,
+  accent,
+  mutedIcon,
   title,
   value,
   expanded,
@@ -50,29 +205,29 @@ function PermissionSection({
   items,
 }: PermissionSectionProps) {
   return (
-    <View style={styles.sectionCard}>
-      <View style={styles.sectionHeader}>
-        <Pressable onPress={onToggleExpand} style={styles.sectionHeaderLeft}>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          <Text style={styles.sectionCount}>{countLabel}</Text>
-          <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color="#6B7280" />
+    <View style={st.sectionCard}>
+      <View style={st.sectionHeader}>
+        <Pressable onPress={onToggleExpand} style={st.sectionHeaderLeft}>
+          <Text style={st.sectionTitle}>{title}</Text>
+          <Text style={st.sectionCount}>{countLabel}</Text>
+          <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={mutedIcon} />
         </Pressable>
         <Switch value={value} onValueChange={onToggleValue} />
       </View>
       {expanded ? (
-        <View style={styles.sectionItems}>
+        <View style={st.sectionItems}>
           {items.map((item) => (
             <Pressable
               key={item.id}
               onPress={() => onToggleItem(item.id)}
-              style={({ pressed }) => [styles.sectionItemRow, pressed && styles.sectionItemRowPressed]}
+              style={({ pressed }) => [st.sectionItemRow, pressed && st.sectionItemRowPressed]}
             >
               <Feather
                 name={item.enabled ? 'check-circle' : 'circle'}
                 size={16}
-                color={item.enabled ? '#2563EB' : '#9CA3AF'}
+                color={item.enabled ? accent : mutedIcon}
               />
-              <Text style={styles.sectionItemText}>{item.label}</Text>
+              <Text style={st.sectionItemText}>{item.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -81,19 +236,29 @@ function PermissionSection({
   );
 }
 
-function UserAvatar({ title, avatarUrl }: { title: string; avatarUrl?: string | null }) {
+function UserAvatar({
+  st,
+  title,
+  avatarUrl,
+}: {
+  st: AddAdminStyles;
+  title: string;
+  avatarUrl?: string | null;
+}) {
   const resolvedAvatar = resolveAvatarUrl(avatarUrl ?? null);
   if (resolvedAvatar) {
-    return <Image source={{ uri: resolvedAvatar }} style={styles.memberAvatarImage} />;
+    return <Image source={{ uri: resolvedAvatar }} style={st.memberAvatarImage} />;
   }
   return (
-    <View style={styles.memberAvatar}>
-      <Text style={styles.memberAvatarText}>{(title[0] || '?').toUpperCase()}</Text>
+    <View style={st.memberAvatar}>
+      <Text style={st.memberAvatarText}>{(title[0] || '?').toUpperCase()}</Text>
     </View>
   );
 }
 
 export function ChannelAddAdminScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelAddAdminStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { channelId, memberId, memberName } = route.params;
@@ -218,7 +383,7 @@ export function ChannelAddAdminScreen() {
     return (
       <View style={styles.noRightsContainer}>
         <View style={styles.noRightsCard}>
-          <Feather name="lock" size={16} color="#92400E" />
+          <Feather name="lock" size={16} color={c.textSecondary} />
           <Text style={styles.noRightsText}>Недостаточно прав для назначения администраторов.</Text>
         </View>
       </View>
@@ -230,7 +395,7 @@ export function ChannelAddAdminScreen() {
       {!selectedMember ? (
         <>
           <View style={styles.search}>
-            <Feather name="search" size={18} color={colors.textSecondary} />
+            <Feather name="search" size={18} color={c.textSecondary} />
             <TextInput
               value={query}
               onChangeText={setQuery}
@@ -244,7 +409,7 @@ export function ChannelAddAdminScreen() {
           </View>
           {loading ? (
             <View style={styles.loading}>
-              <ActivityIndicator size="large" color={colors.accent} />
+              <ActivityIndicator size="large" color={c.accent} />
             </View>
           ) : (
             <FlatList
@@ -257,7 +422,7 @@ export function ChannelAddAdminScreen() {
                     style={({ pressed }) => [styles.memberRow, pressed && styles.memberRowPressed]}
                     onPress={() => setSelectedMember(item)}
                   >
-                    <UserAvatar title={title} avatarUrl={item.user?.avatar_url} />
+                    <UserAvatar st={styles} title={title} avatarUrl={item.user?.avatar_url} />
                     <View style={styles.memberText}>
                       <Text style={styles.memberName}>{title}</Text>
                       <Text style={styles.memberSubtitle}>был(а) недавно</Text>
@@ -272,7 +437,7 @@ export function ChannelAddAdminScreen() {
       ) : (
         <View style={styles.content}>
           <View style={styles.selectedCard}>
-            <UserAvatar title={selectedTitle} avatarUrl={selectedMember?.user?.avatar_url} />
+            <UserAvatar st={styles} title={selectedTitle} avatarUrl={selectedMember?.user?.avatar_url} />
             <View style={styles.memberText}>
               <Text style={styles.memberName}>{selectedTitle}</Text>
               <Text style={styles.memberSubtitle}>был(а) недавно</Text>
@@ -285,6 +450,9 @@ export function ChannelAddAdminScreen() {
           <Text style={styles.sectionLabel}>ВОЗМОЖНОСТИ АДМИНИСТРАТОРА</Text>
 
           <PermissionSection
+            st={styles}
+            accent={c.accent}
+            mutedIcon={c.iconMuted}
             title="Изменение профиля канала"
             value={profileMaster}
             expanded={profileExpanded}
@@ -308,6 +476,9 @@ export function ChannelAddAdminScreen() {
           />
 
           <PermissionSection
+            st={styles}
+            accent={c.accent}
+            mutedIcon={c.iconMuted}
             title="Управление администраторами"
             value={adminsMaster}
             expanded={adminsExpanded}
@@ -363,145 +534,3 @@ export function ChannelAddAdminScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F7FB' },
-  content: { padding: 12, paddingBottom: 24 },
-  search: {
-    margin: 12,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#D1D5DB',
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  searchInput: { flex: 1, minHeight: 42, color: colors.textPrimary },
-  searchButton: {
-    paddingHorizontal: 10,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchButtonText: { color: colors.accent, fontWeight: '700', fontSize: 12 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  memberRow: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E7EB',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  memberRowPressed: { backgroundColor: '#F8FAFC' },
-  memberAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#60A5FA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  memberAvatarImage: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#DBEAFE' },
-  memberAvatarText: { color: '#FFFFFF', fontWeight: '700' },
-  memberText: { flex: 1, marginLeft: 10 },
-  memberName: { fontSize: 17, color: '#111827', fontWeight: '600' },
-  memberSubtitle: { marginTop: 2, color: '#6B7280' },
-  selectedCard: {
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  changeButton: {
-    paddingHorizontal: 10,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  changeButtonText: { color: colors.accent, fontWeight: '700', fontSize: 12 },
-  sectionLabel: { marginBottom: 8, color: '#6B7280', fontSize: 12, fontWeight: '700' },
-  sectionCard: { backgroundColor: '#FFFFFF', borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    minHeight: 54,
-  },
-  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  sectionTitle: { color: '#111827', fontSize: 16, fontWeight: '500' },
-  sectionCount: { color: '#4B5563', fontSize: 14, fontWeight: '600' },
-  sectionItems: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5E7EB' },
-  sectionItemRow: {
-    minHeight: 44,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E7EB',
-  },
-  sectionItemRowPressed: { backgroundColor: '#F8FAFC' },
-  sectionItemText: { color: '#111827', fontSize: 14 },
-  singleRow: {
-    minHeight: 54,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  singleRowText: { color: '#111827', fontSize: 17, fontWeight: '500', flex: 1, paddingRight: 10 },
-  addButton: {
-    marginTop: 4,
-    height: 50,
-    borderRadius: 16,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonPressed: { opacity: 0.86 },
-  addButtonDisabled: { opacity: 0.62 },
-  addButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
-  noRightsContainer: { flex: 1, padding: 16, justifyContent: 'center', backgroundColor: '#F4F7FB' },
-  noRightsCard: {
-    borderRadius: 14,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  noRightsText: { color: '#92400E', fontWeight: '600', flex: 1 },
-  empty: { marginTop: 24, textAlign: 'center', color: colors.textSecondary },
-  snackbarWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 14,
-    backgroundColor: 'rgba(239,246,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.35)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  snackbarText: { color: '#1E40AF', textAlign: 'center', fontWeight: '700' },
-});

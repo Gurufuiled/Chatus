@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
@@ -11,7 +11,9 @@ import {
   View,
 } from 'react-native';
 import { resolveAvatarUrl } from '../../config';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme/palettes';
+import { withAlpha } from '../../theme/stylePrimitives';
 import {
   getGroupMemberTagOption,
   GROUP_MEMBER_TAG_OPTIONS,
@@ -42,6 +44,8 @@ export function GroupMemberTagModal({
   onClose,
   onSave,
 }: GroupMemberTagModalProps) {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createGroupMemberTagStyles(c), [c]);
   const previewOption = getGroupMemberTagOption(tagColorDraft);
   const avatarUri = resolveAvatarUrl(member?.user?.avatar_url ?? null);
   const displayName = member ? getDisplayNameFromMember(member) : '';
@@ -53,7 +57,7 @@ export function GroupMemberTagModal({
         <View style={styles.tagModalCard}>
           <View style={styles.tagModalHeader}>
             <Pressable onPress={onClose} style={styles.tagModalCloseButton}>
-              <Feather name="x" size={22} color="#1F2937" />
+              <Feather name="x" size={22} color={c.textPrimary} />
             </Pressable>
             <Text style={styles.tagModalTitle}>Тег участника</Text>
             <View style={styles.tagModalHeaderSpacer} />
@@ -100,18 +104,18 @@ export function GroupMemberTagModal({
           ) : null}
 
           <View style={styles.tagInputWrap}>
-            <Feather name="tag" size={18} color={colors.accent} />
+            <Feather name="tag" size={18} color={c.accent} />
             <TextInput
               value={tagDraft}
               onChangeText={onChangeTag}
               placeholder="Новый тег"
-              placeholderTextColor="#A0A9B7"
+              placeholderTextColor={c.placeholder}
               style={styles.tagInput}
               maxLength={40}
             />
             {tagDraft.trim().length > 0 ? (
               <Pressable onPress={() => onChangeTag('')} style={styles.tagInputClearButton}>
-                <Feather name="x-circle" size={18} color="#9AA5B5" />
+                <Feather name="x-circle" size={18} color={c.iconMuted} />
               </Pressable>
             ) : null}
           </View>
@@ -157,7 +161,8 @@ export function GroupMemberTagModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createGroupMemberTagStyles(c: ThemeColors) {
+  return StyleSheet.create({
   centerModalRoot: {
     flex: 1,
     justifyContent: 'center',
@@ -169,7 +174,7 @@ const styles = StyleSheet.create({
   },
   tagModalCard: {
     borderRadius: 28,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.inputBackgroundSolid,
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 20,
@@ -191,12 +196,12 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F4F6FB',
+    backgroundColor: c.inputBackground,
   },
   tagModalTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#111827',
+    color: c.textPrimary,
   },
   tagModalHeaderSpacer: {
     width: 36,
@@ -205,10 +210,10 @@ const styles = StyleSheet.create({
   tagPreviewCard: {
     minHeight: 112,
     borderRadius: 24,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: c.inputBackgroundSolid,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(197, 206, 223, 0.45)',
+    borderColor: c.composerBorder,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 18,
@@ -232,12 +237,12 @@ const styles = StyleSheet.create({
     marginRight: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: withAlpha(c.inputBackgroundSolid, 0.92),
   },
   tagPreviewAvatarText: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#1F2937',
+    color: c.textPrimary,
   },
   tagPreviewTextWrap: {
     flex: 1,
@@ -253,13 +258,13 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 16,
     fontWeight: '700',
-    color: '#243043',
+    color: c.textPrimary,
   },
   tagPreviewCurrentTag: {
     marginLeft: 'auto',
     fontSize: 13,
     fontWeight: '600',
-    color: '#8E97A6',
+    color: c.textSecondary,
   },
   tagPreviewBadge: {
     maxWidth: 120,
@@ -267,7 +272,7 @@ const styles = StyleSheet.create({
   tagPreviewLine: {
     height: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(148, 163, 184, 0.16)',
+    backgroundColor: withAlpha(c.iconMuted, 0.22),
     marginBottom: 8,
   },
   tagPreviewLineShort: {
@@ -290,9 +295,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 18,
-    backgroundColor: '#F6F8FC',
+    backgroundColor: c.inputBackground,
     borderWidth: 1,
-    borderColor: 'rgba(198, 208, 224, 0.55)',
+    borderColor: c.composerBorder,
     paddingHorizontal: 14,
     height: 54,
   },
@@ -301,7 +306,7 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 17,
     fontWeight: '600',
-    color: '#223046',
+    color: c.textPrimary,
     paddingVertical: 0,
   },
   tagInputClearButton: {
@@ -319,12 +324,12 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F6F8FC',
+    backgroundColor: c.inputBackground,
     borderWidth: 1,
-    borderColor: 'rgba(205, 214, 229, 0.5)',
+    borderColor: c.composerBorder,
   },
   tagColorButtonSelected: {
-    borderColor: colors.accent,
+    borderColor: c.accent,
     transform: [{ scale: 1.04 }],
   },
   tagColorSwatch: {
@@ -335,13 +340,13 @@ const styles = StyleSheet.create({
   tagHint: {
     fontSize: 14,
     lineHeight: 20,
-    color: '#6E788A',
+    color: c.textSecondary,
     marginBottom: 16,
   },
   primaryActionButton: {
     height: 54,
     borderRadius: 27,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -360,4 +365,5 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.62,
   },
-});
+  });
+}

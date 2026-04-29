@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
@@ -6,11 +6,15 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelAdmin'>;
 
 export function ChannelAdminScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelAdminStyles(c), [c]);
   const route = useRoute<Route>();
   const { channelId } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
@@ -81,7 +85,7 @@ export function ChannelAdminScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {!canEdit ? (
           <View style={styles.noRightsCard}>
-            <Feather name="lock" size={14} color="#92400E" />
+            <Feather name="lock" size={14} color={c.textSecondary} />
             <Text style={styles.noRightsText}>Недостаточно прав для изменения настроек канала.</Text>
           </View>
         ) : null}
@@ -152,104 +156,107 @@ export function ChannelAdminScreen() {
 
 
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F4F7FB' },
-  container: {
-    flex: 1,
-    backgroundColor: '#F4F7FB',
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 24,
-  },
-  noRightsCard: {
-    borderRadius: 14,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  noRightsText: {
-    color: '#92400E',
-    fontWeight: '600',
-    flex: 1,
-  },
-  label: {
-    marginBottom: 8,
-    color: colors.textPrimary,
-    fontWeight: '700',
-  },
-  input: {
-    marginBottom: 16,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: colors.textPrimary,
-  },
-  textArea: {
-    minHeight: 110,
-    textAlignVertical: 'top',
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 12,
-  },
-  rowDisabled: { opacity: 0.65 },
-  rowLabel: {
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
-  statsCard: {
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    marginTop: 4,
-  },
-  statsLine: {
-    color: colors.textPrimary,
-    lineHeight: 22,
-  },
-  button: {
-    marginTop: 16,
-    borderRadius: 18,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-  },
-  buttonPressed: { opacity: 0.9 },
-  buttonDisabled: { opacity: 0.45 },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  snackbarWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 14,
-    backgroundColor: 'rgba(239,246,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.35)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  snackbarText: { color: '#1E40AF', textAlign: 'center', fontWeight: '700' },
-});
+function createChannelAdminStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    container: {
+      flex: 1,
+      backgroundColor: c.chatBackground,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 24,
+    },
+    noRightsCard: {
+      borderRadius: 14,
+      backgroundColor: withAlpha('#F59E0B', 0.2),
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      marginBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    noRightsText: {
+      color: c.textPrimary,
+      fontWeight: '600',
+      flex: 1,
+    },
+    label: {
+      marginBottom: 8,
+      color: c.textPrimary,
+      fontWeight: '700',
+    },
+    input: {
+      marginBottom: 16,
+      borderRadius: 16,
+      backgroundColor: c.inputBackgroundSolid,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      color: c.textPrimary,
+    },
+    textArea: {
+      minHeight: 110,
+      textAlignVertical: 'top',
+    },
+    row: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+      marginBottom: 12,
+    },
+    rowDisabled: { opacity: 0.65 },
+    rowLabel: {
+      color: c.textPrimary,
+      fontWeight: '600',
+    },
+    statsCard: {
+      borderRadius: 18,
+      backgroundColor: c.inputBackgroundSolid,
+      padding: 16,
+      marginTop: 4,
+    },
+    statsLine: {
+      color: c.textPrimary,
+      lineHeight: 22,
+    },
+    button: {
+      marginTop: 16,
+      borderRadius: 18,
+      height: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.accent,
+    },
+    buttonPressed: { opacity: 0.9 },
+    buttonDisabled: { opacity: 0.45 },
+    buttonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    snackbarWrap: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 14,
+      backgroundColor: withAlpha(c.accent, 0.14),
+      borderWidth: 1,
+      borderColor: withAlpha(c.accent, 0.35),
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      shadowColor: c.accent,
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    snackbarText: { color: c.link, textAlign: 'center', fontWeight: '700' },
+  });
+}
+

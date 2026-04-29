@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,8 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { fetchChannelDetail, updateChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
 import { buildChannelInviteDeepLink, buildChannelSlugDeepLink } from '../config';
 import { ShareLinkToChatSheet } from '../components/ShareLinkToChatSheet';
 
@@ -29,6 +30,8 @@ const SLUG_REGEX = /^[a-z0-9_]*$/;
 const SLUG_PREFIX = 'chatus://c/';
 
 export function ChannelTypeScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelTypeStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { channelId } = route.params;
@@ -142,7 +145,7 @@ export function ChannelTypeScreen() {
           style={({ pressed }) => [styles.headerBtn, pressed && styles.headerBtnPressed]}
         >
           {saving ? (
-            <ActivityIndicator size="small" color={colors.accent} />
+            <ActivityIndicator size="small" color={c.accent} />
           ) : (
             <Text style={[styles.headerBtnText, styles.headerBtnDone]}>Готово</Text>
           )}
@@ -158,7 +161,7 @@ export function ChannelTypeScreen() {
             style={({ pressed }) => [styles.radioRow, pressed && styles.radioRowPressed]}
           >
             {isPublic ? (
-              <Feather name="check" size={20} color={colors.accent} />
+              <Feather name="check" size={20} color={c.accent} />
             ) : (
               <View style={styles.radioEmpty} />
             )}
@@ -171,7 +174,7 @@ export function ChannelTypeScreen() {
             style={({ pressed }) => [styles.radioRow, pressed && styles.radioRowPressed]}
           >
             {!isPublic ? (
-              <Feather name="check" size={20} color={colors.accent} />
+              <Feather name="check" size={20} color={c.accent} />
             ) : (
               <View style={styles.radioEmpty} />
             )}
@@ -274,139 +277,141 @@ export function ChannelTypeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F0F0F5' },
-  container: { flex: 1 },
-  content: { paddingBottom: 40 },
+function createChannelTypeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    container: { flex: 1 },
+    content: { paddingBottom: 40 },
 
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F7F7F8',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#D1D5DB',
-  },
-  headerBtn: { paddingVertical: 4, paddingHorizontal: 4 },
-  headerBtnPressed: { opacity: 0.6 },
-  headerBtnText: { fontSize: 17, color: colors.accent },
-  headerBtnDone: { fontWeight: '600' },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: '#111827' },
+    headerBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: c.header,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+    },
+    headerBtn: { paddingVertical: 4, paddingHorizontal: 4 },
+    headerBtnPressed: { opacity: 0.6 },
+    headerBtnText: { fontSize: 17, color: c.accent },
+    headerBtnDone: { fontWeight: '600' },
+    headerTitle: { fontSize: 17, fontWeight: '600', color: c.textPrimary },
 
-  sectionLabel: {
-    marginTop: 20,
-    marginBottom: 8,
-    marginLeft: 32,
-    fontSize: 13,
-    color: '#6B7280',
-    letterSpacing: 0.5,
-  },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
+    sectionLabel: {
+      marginTop: 20,
+      marginBottom: 8,
+      marginLeft: 32,
+      fontSize: 13,
+      color: c.textSecondary,
+      letterSpacing: 0.5,
+    },
+    sectionCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      marginHorizontal: 16,
+      borderRadius: 14,
+      overflow: 'hidden',
+    },
 
-  radioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  radioRowPressed: { backgroundColor: '#F5F6F8' },
-  rowPressed: { opacity: 0.85 },
-  radioEmpty: { width: 20 },
-  radioLabel: { fontSize: 17, color: '#111827' },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#E3E4E8',
-    marginLeft: 48,
-  },
+    radioRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      gap: 12,
+    },
+    radioRowPressed: { backgroundColor: c.rowPressed },
+    rowPressed: { opacity: 0.85 },
+    radioEmpty: { width: 20 },
+    radioLabel: { fontSize: 17, color: c.textPrimary },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: c.separator,
+      marginLeft: 48,
+    },
 
-  hint: {
-    marginTop: 8,
-    marginHorizontal: 32,
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 19,
-  },
-  hintSmall: {
-    marginTop: 6,
-    marginHorizontal: 32,
-    fontSize: 13,
-    color: '#9CA3AF',
-    lineHeight: 18,
-  },
+    hint: {
+      marginTop: 8,
+      marginHorizontal: 32,
+      fontSize: 14,
+      color: c.textSecondary,
+      lineHeight: 19,
+    },
+    hintSmall: {
+      marginTop: 6,
+      marginHorizontal: 32,
+      fontSize: 13,
+      color: c.textSecondary,
+      lineHeight: 18,
+    },
 
-  slugCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  slugPrefix: { fontSize: 16, color: '#6B7280' },
-  slugInput: {
-    flex: 1,
-    fontSize: 17,
-    color: '#111827',
-    padding: 0,
-  },
-  slugClear: { marginLeft: 8 },
-  slugClearCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#C7C7CC',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  slugErrorText: {
-    marginTop: 6,
-    marginHorizontal: 32,
-    fontSize: 14,
-    color: '#EF4444',
-  },
+    slugCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      marginHorizontal: 16,
+      marginTop: 16,
+      borderRadius: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    slugPrefix: { fontSize: 16, color: c.textSecondary },
+    slugInput: {
+      flex: 1,
+      fontSize: 17,
+      color: c.textPrimary,
+      padding: 0,
+    },
+    slugClear: { marginLeft: 8 },
+    slugClearCircle: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      backgroundColor: c.iconMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    slugErrorText: {
+      marginTop: 6,
+      marginHorizontal: 32,
+      fontSize: 14,
+      color: '#EF4444',
+    },
 
-  invitePill: {
-    marginHorizontal: 14,
-    marginTop: 14,
-    backgroundColor: '#ECECEE',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  invitePillText: { fontSize: 16, color: '#111827' },
-  shareFullBtn: {
-    marginHorizontal: 14,
-    marginTop: 12,
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  shareFullBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
-  inviteActions: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  secondaryBtn: {
-    flex: 1,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.accent,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { color: colors.accent, fontWeight: '600', fontSize: 15 },
+    invitePill: {
+      marginHorizontal: 14,
+      marginTop: 14,
+      backgroundColor: c.inputBackground,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    invitePillText: { fontSize: 16, color: c.textPrimary },
+    shareFullBtn: {
+      marginHorizontal: 14,
+      marginTop: 12,
+      backgroundColor: c.accent,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    shareFullBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
+    inviteActions: {
+      flexDirection: 'row',
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    secondaryBtn: {
+      flex: 1,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.accent,
+      borderRadius: 10,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
+    secondaryBtnText: { color: c.accent, fontWeight: '600', fontSize: 15 },
+  });
+}
 
-});

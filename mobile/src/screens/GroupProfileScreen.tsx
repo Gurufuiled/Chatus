@@ -60,7 +60,7 @@ import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import type { Chat, Message } from '../stores/types';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import {
   filterGroupMemberPickerUsers,
@@ -349,6 +349,20 @@ async function persistChatLocally(chat: Chat) {
 }
 
 export function GroupProfileScreen() {
+  const { colors: themeColors, resolvedScheme } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        screen: {
+          flex: 1,
+          backgroundColor: themeColors.chatBackground,
+        },
+        scrollContent: {
+          paddingHorizontal: 14,
+        },
+      }),
+    [themeColors]
+  );
   const route = useRoute<GroupProfileRoute>();
   const navigation = useNavigation<GroupProfileNavigation>();
   const insets = useSafeAreaInsets();
@@ -1071,10 +1085,10 @@ export function GroupProfileScreen() {
         key: 'show-in-chat',
         label: 'Показать в чате',
         icon: 'message-circle',
-        color: colors.textPrimary,
+        color: themeColors.textPrimary,
       },
     ],
-    []
+    [themeColors.textPrimary]
   );
 
   const handleActionMenuAction = useCallback(
@@ -1098,7 +1112,7 @@ export function GroupProfileScreen() {
         key: 'write',
         label: 'Написать',
         icon: 'message-circle',
-        color: colors.textPrimary,
+        color: themeColors.textPrimary,
       },
     ];
 
@@ -1107,7 +1121,7 @@ export function GroupProfileScreen() {
         key: 'tag',
         label: 'Добавить тег участника',
         icon: 'tag',
-        color: colors.textPrimary,
+        color: themeColors.textPrimary,
       });
 
       if (selectedMemberForMenu.role !== 'owner') {
@@ -1121,7 +1135,7 @@ export function GroupProfileScreen() {
     }
 
     return items;
-  }, [currentUserId, isOwner, selectedMemberForMenu]);
+  }, [currentUserId, isOwner, selectedMemberForMenu, themeColors.textPrimary]);
 
   const resolvedMemberMenuItems = useMemo(
     () =>
@@ -1284,7 +1298,7 @@ export function GroupProfileScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle={resolvedScheme === 'dark' ? 'light-content' : 'dark-content'} />
 
 
       <Animated.ScrollView
@@ -1455,13 +1469,3 @@ export function GroupProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.chatBackground,
-  },
-  scrollContent: {
-    paddingHorizontal: 14,
-  },
-});

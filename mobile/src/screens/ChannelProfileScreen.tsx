@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,7 +28,9 @@ import { ChatDao } from '../db';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { buildChannelInviteDeepLink, buildChannelSlugDeepLink, resolveAvatarUrl } from '../config';
 import { LoadErrorState } from '../components/LoadErrorState';
 import { ChannelUnsubscribeConfirmModal } from '../components/ChannelUnsubscribeConfirmModal';
@@ -64,32 +66,249 @@ function extractPreviewMediaUri(message: Message): string | null {
   return null;
 }
 
+function createChannelProfileStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: c.chatBackground },
+    container: { flex: 1, backgroundColor: c.chatBackground },
+    content: { paddingHorizontal: 12, paddingBottom: 24 },
+    loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.chatBackground },
+    errorText: { color: c.textSecondary, fontSize: 16 },
+    headerCard: {
+      backgroundColor: c.inputBackground,
+      borderRadius: 16,
+      paddingTop: 18,
+      paddingBottom: 18,
+      alignItems: 'center',
+      marginBottom: 10,
+      position: 'relative',
+    },
+    backButton: {
+      position: 'absolute',
+      top: 10,
+      left: 12,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: c.inputBackgroundSolid,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2,
+    },
+    backButtonPressed: { opacity: 0.75 },
+    editPill: {
+      position: 'absolute',
+      top: 10,
+      right: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 18,
+      paddingHorizontal: 12,
+      height: 36,
+      zIndex: 2,
+    },
+    editPillPressed: { opacity: 0.82 },
+    editPlus: { color: c.accent, fontWeight: '800', fontSize: 18, marginTop: -1 },
+    editText: { color: c.textPrimary, fontSize: 17, fontWeight: '600' },
+    avatarPressable: {
+      alignSelf: 'center',
+    },
+    avatarPressablePressed: {
+      opacity: 0.92,
+    },
+    avatarAnimatedWrap: {
+      alignSelf: 'center',
+    },
+    avatarFrame: {
+      overflow: 'hidden',
+    },
+    avatarMedia: {
+      width: '100%',
+      height: '100%',
+    },
+    avatarLetterWrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarText: { color: '#FFFFFF', fontSize: 42, fontWeight: '700' },
+    title: { marginTop: 10, fontSize: 34, lineHeight: 40, color: c.textPrimary, fontWeight: '500' },
+    subtitle: { marginTop: 2, color: c.textSecondary, fontSize: 16 },
+    subscriberToolbar: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: 8,
+      marginBottom: 10,
+    },
+    subscriberToolbarPill: {
+      flex: 1,
+      minWidth: 0,
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      shadowColor: '#0F172A',
+      shadowOpacity: 0.06,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+    },
+    subscriberToolbarPillPressed: {
+      opacity: 0.88,
+    },
+    subscriberToolbarPillDisabled: {
+      opacity: 0.55,
+    },
+    subscriberToolbarLabel: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: c.accent,
+      textAlign: 'center',
+    },
+    infoCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 18,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      marginBottom: 10,
+    },
+    infoLabel: { fontSize: 15, color: c.textSecondary, textTransform: 'lowercase' },
+    infoLink: { marginTop: 2, fontSize: 20, color: c.link, fontWeight: '500' },
+    infoText: { marginTop: 2, fontSize: 18, lineHeight: 24, color: c.textPrimary },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: c.separator, marginVertical: 10 },
+    menuCard: { backgroundColor: c.inputBackgroundSolid, borderRadius: 18, overflow: 'hidden', marginBottom: 10 },
+    row: {
+      minHeight: 62,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 14,
+    },
+    rowPressed: { backgroundColor: c.rowPressed },
+    rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    rowTitle: { color: c.textPrimary, fontSize: 18 },
+    rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    rowValue: { color: c.textSecondary, fontSize: 16, fontWeight: '500' },
+    mediaCard: {
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 18,
+      paddingHorizontal: 12,
+      paddingTop: 14,
+      paddingBottom: 14,
+      overflow: 'hidden',
+    },
+    mediaSectionTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: c.textPrimary,
+      marginBottom: 10,
+      paddingHorizontal: 4,
+    },
+    mediaEmptyText: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: c.textSecondary,
+      paddingHorizontal: 4,
+      paddingBottom: 4,
+    },
+    mediaGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      marginHorizontal: -3,
+    },
+    mediaTile: {
+      width: '33.3333%',
+      aspectRatio: 1,
+      padding: 3,
+    },
+    mediaTilePressed: { opacity: 0.88 },
+    mediaPlayBadge: {
+      position: 'absolute',
+      left: 15,
+      top: 15,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(15,23,42,0.62)',
+    },
+    mediaPlayIcon: { marginLeft: 2 },
+    mediaDurationBadge: {
+      position: 'absolute',
+      right: 10,
+      bottom: 10,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: 'rgba(16,24,40,0.6)',
+    },
+    mediaDurationText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    snackbarWrap: {
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 14,
+      backgroundColor: withAlpha(c.accent, 0.14),
+      borderWidth: 1,
+      borderColor: withAlpha(c.accent, 0.35),
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      shadowColor: c.accent,
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 4,
+    },
+    snackbarText: { color: c.link, textAlign: 'center', fontWeight: '700' },
+  });
+}
+
+type ChannelProfileStyles = ReturnType<typeof createChannelProfileStyles>;
+
 function Row({
+  st,
+  accent,
+  muted,
   icon,
   title,
   value,
   onPress,
 }: {
+  st: ChannelProfileStyles;
+  accent: string;
+  muted: string;
   icon: React.ComponentProps<typeof Feather>['name'];
   title: string;
   value?: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-      <View style={styles.rowLeft}>
-        <Feather name={icon} size={18} color={colors.accent} />
-        <Text style={styles.rowTitle}>{title}</Text>
+    <Pressable onPress={onPress} style={({ pressed }) => [st.row, pressed && st.rowPressed]}>
+      <View style={st.rowLeft}>
+        <Feather name={icon} size={18} color={accent} />
+        <Text style={st.rowTitle}>{title}</Text>
       </View>
-      <View style={styles.rowRight}>
-        {value ? <Text style={styles.rowValue}>{value}</Text> : null}
-        <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+      <View style={st.rowRight}>
+        {value ? <Text style={st.rowValue}>{value}</Text> : null}
+        <Feather name="chevron-right" size={18} color={muted} />
       </View>
     </Pressable>
   );
 }
 
 export function ChannelProfileScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelProfileStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -311,7 +530,7 @@ export function ChannelProfileScreen() {
   if (loading && !detail) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
@@ -368,7 +587,7 @@ export function ChannelProfileScreen() {
             onPress={() => navigation.goBack()}
             style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
           >
-            <Feather name="chevron-left" size={24} color="#111827" />
+            <Feather name="chevron-left" size={24} color={c.textPrimary} />
           </Pressable>
 
           {canOpenEdit ? (
@@ -395,7 +614,7 @@ export function ChannelProfileScreen() {
                   style={[
                     styles.avatarFrame,
                     heroAvatarFrameStyle,
-                    !channelHeroAvatarUrl ? { backgroundColor: '#FF6D6D' } : null,
+                    !channelHeroAvatarUrl ? { backgroundColor: c.accent } : null,
                   ]}
                 >
                   {channelHeroAvatarUrl ? (
@@ -429,7 +648,7 @@ export function ChannelProfileScreen() {
               <Feather
                 name={isChannelNotificationsMuted ? 'bell' : 'bell-off'}
                 size={22}
-                color={colors.accent}
+                color={c.accent}
               />
               <Text style={styles.subscriberToolbarLabel}>
                 {isChannelNotificationsMuted ? 'Звук' : 'Без звука'}
@@ -445,9 +664,9 @@ export function ChannelProfileScreen() {
               ]}
             >
               {leaveBusy ? (
-                <ActivityIndicator size="small" color={colors.accent} />
+                <ActivityIndicator size="small" color={c.accent} />
               ) : (
-                <Feather name="log-out" size={22} color={colors.accent} />
+                <Feather name="log-out" size={22} color={c.accent} />
               )}
               <Text style={styles.subscriberToolbarLabel}>Покинуть</Text>
             </Pressable>
@@ -480,6 +699,9 @@ export function ChannelProfileScreen() {
         {showManagementMenu ? (
           <View style={styles.menuCard}>
             <Row
+              st={styles}
+              accent={c.accent}
+              muted={c.textSecondary}
               icon="shield"
               title="Администраторы"
               value={String(
@@ -492,6 +714,9 @@ export function ChannelProfileScreen() {
             />
             <View style={styles.divider} />
             <Row
+              st={styles}
+              accent={c.accent}
+              muted={c.textSecondary}
               icon="users"
               title="Подписчики"
               value={String(channel.subscriber_count ?? 0)}
@@ -504,6 +729,9 @@ export function ChannelProfileScreen() {
             />
             <View style={styles.divider} />
             <Row
+              st={styles}
+              accent={c.accent}
+              muted={c.textSecondary}
               icon="sliders"
               title="Настройки канала"
               onPress={() => {
@@ -574,208 +802,3 @@ export function ChannelProfileScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F0F0F5' },
-  container: { flex: 1, backgroundColor: '#F0F0F5' },
-  content: { paddingHorizontal: 12, paddingBottom: 24 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F0F5' },
-  errorText: { color: colors.textSecondary, fontSize: 16 },
-  headerCard: {
-    backgroundColor: '#EAEAF0',
-    borderRadius: 16,
-    paddingTop: 18,
-    paddingBottom: 18,
-    alignItems: 'center',
-    marginBottom: 10,
-    position: 'relative',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 10,
-    left: 12,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  backButtonPressed: { opacity: 0.75 },
-  editPill: {
-    position: 'absolute',
-    top: 10,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    height: 36,
-    zIndex: 2,
-  },
-  editPillPressed: { opacity: 0.82 },
-  editPlus: { color: colors.accent, fontWeight: '800', fontSize: 18, marginTop: -1 },
-  editText: { color: '#111827', fontSize: 17, fontWeight: '600' },
-  avatarPressable: {
-    alignSelf: 'center',
-  },
-  avatarPressablePressed: {
-    opacity: 0.92,
-  },
-  avatarAnimatedWrap: {
-    alignSelf: 'center',
-  },
-  avatarFrame: {
-    overflow: 'hidden',
-  },
-  avatarMedia: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarLetterWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: '#FFFFFF', fontSize: 42, fontWeight: '700' },
-  title: { marginTop: 10, fontSize: 34, lineHeight: 40, color: '#111827', fontWeight: '500' },
-  subtitle: { marginTop: 2, color: '#6B7280', fontSize: 16 },
-  subscriberToolbar: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 8,
-    marginBottom: 10,
-  },
-  subscriberToolbarPill: {
-    flex: 1,
-    minWidth: 0,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  subscriberToolbarPillPressed: {
-    opacity: 0.88,
-  },
-  subscriberToolbarPillDisabled: {
-    opacity: 0.55,
-  },
-  subscriberToolbarLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.accent,
-    textAlign: 'center',
-  },
-  infoCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 10,
-  },
-  infoLabel: { fontSize: 15, color: '#4B5563', textTransform: 'lowercase' },
-  infoLink: { marginTop: 2, fontSize: 20, color: '#2563EB', fontWeight: '500' },
-  infoText: { marginTop: 2, fontSize: 18, lineHeight: 24, color: '#111827' },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#D1D5DB', marginVertical: 10 },
-  menuCard: { backgroundColor: '#FFFFFF', borderRadius: 18, overflow: 'hidden', marginBottom: 10 },
-  row: {
-    minHeight: 62,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-  },
-  rowPressed: { backgroundColor: '#F8F9FC' },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  rowTitle: { color: '#111827', fontSize: 18 },
-  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  rowValue: { color: '#6B7280', fontSize: 16, fontWeight: '500' },
-  mediaCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingTop: 14,
-    paddingBottom: 14,
-    overflow: 'hidden',
-  },
-  mediaSectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 10,
-    paddingHorizontal: 4,
-  },
-  mediaEmptyText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textSecondary,
-    paddingHorizontal: 4,
-    paddingBottom: 4,
-  },
-  mediaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -3,
-  },
-  mediaTile: {
-    width: '33.3333%',
-    aspectRatio: 1,
-    padding: 3,
-  },
-  mediaTilePressed: { opacity: 0.88 },
-  mediaPlayBadge: {
-    position: 'absolute',
-    left: 15,
-    top: 15,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.62)',
-  },
-  mediaPlayIcon: { marginLeft: 2 },
-  mediaDurationBadge: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(16,24,40,0.6)',
-  },
-  mediaDurationText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  snackbarWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 14,
-    backgroundColor: 'rgba(239,246,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.35)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    shadowColor: '#1D4ED8',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-  },
-  snackbarText: { color: '#1E40AF', textAlign: 'center', fontWeight: '700' },
-});

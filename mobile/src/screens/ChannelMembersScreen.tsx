@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,13 +25,17 @@ import {
 } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { resolveAvatarUrl } from '../config';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelMembers'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelMembers'>;
 
 export function ChannelMembersScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelMembersStyles(c), [c]);
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { channelId, mode } = route.params;
@@ -94,12 +98,12 @@ export function ChannelMembersScreen() {
                   pressed && styles.addAdminButtonPressed,
                 ]}
               >
-                <Feather name="plus" size={18} color={colors.accent} />
+                <Feather name="plus" size={18} color={c.accent} />
               </Pressable>
             )
           : undefined,
     });
-  }, [canAddAdmins, channelId, mode, navigation]);
+  }, [canAddAdmins, channelId, mode, navigation, styles, c.accent]);
 
   const refreshChannelDetail = React.useCallback(async () => {
     const next = await fetchChannelDetail(channelId);
@@ -203,7 +207,7 @@ export function ChannelMembersScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.search}>
-        <Feather name="search" size={18} color={colors.textSecondary} />
+        <Feather name="search" size={18} color={c.textSecondary} />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -224,7 +228,7 @@ export function ChannelMembersScreen() {
 
       {loading ? (
         <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.accent} />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <FlatList
@@ -293,9 +297,9 @@ export function ChannelMembersScreen() {
                   <Text style={styles.rowSubtitle}>{subtitle}</Text>
                 </View>
                 {busyUserId === item.user_id ? (
-                  <ActivityIndicator size="small" color={colors.accent} />
+                  <ActivityIndicator size="small" color={c.accent} />
                 ) : (
-                  <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+                  <Feather name="chevron-right" size={18} color={c.textSecondary} />
                 )}
               </Pressable>
             );
@@ -307,66 +311,69 @@ export function ChannelMembersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F7FB' },
-  search: {
-    margin: 12,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#D1D5DB',
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  searchInput: { flex: 1, minHeight: 42, color: colors.textPrimary },
-  searchButton: {
-    paddingHorizontal: 10,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchButtonText: { color: colors.accent, fontWeight: '700', fontSize: 12 },
-  addAdminButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addAdminButtonPressed: { opacity: 0.78 },
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-  },
-  rowPressed: { backgroundColor: '#F8FAFC' },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#60A5FA',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#DBEAFE',
-  },
-  avatarText: { color: '#FFFFFF', fontWeight: '700' },
-  rowText: { flex: 1, marginLeft: 10 },
-  rowTitle: { color: '#111827', fontSize: 16, fontWeight: '600' },
-  rowSubtitle: { marginTop: 2, color: '#6B7280', fontSize: 13 },
-  empty: { marginTop: 24, textAlign: 'center', color: colors.textSecondary },
-});
+function createChannelMembersStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.chatBackground },
+    search: {
+      margin: 12,
+      borderRadius: 12,
+      backgroundColor: c.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.composerBorder,
+      paddingHorizontal: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    searchInput: { flex: 1, minHeight: 42, color: c.textPrimary },
+    searchButton: {
+      paddingHorizontal: 10,
+      height: 30,
+      borderRadius: 8,
+      backgroundColor: withAlpha(c.accent, 0.12),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchButtonText: { color: c.accent, fontWeight: '700', fontSize: 12 },
+    addAdminButton: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: withAlpha(c.accent, 0.12),
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addAdminButtonPressed: { opacity: 0.78 },
+    loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+      backgroundColor: c.inputBackgroundSolid,
+    },
+    rowPressed: { backgroundColor: c.rowPressed },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarImage: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: withAlpha(c.accent, 0.2),
+    },
+    avatarText: { color: '#FFFFFF', fontWeight: '700' },
+    rowText: { flex: 1, marginLeft: 10 },
+    rowTitle: { color: c.textPrimary, fontSize: 16, fontWeight: '600' },
+    rowSubtitle: { marginTop: 2, color: c.textSecondary, fontSize: 13 },
+    empty: { marginTop: 24, textAlign: 'center', color: c.textSecondary },
+  });
+}
+

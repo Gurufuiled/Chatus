@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Animated as RNAnimated,
@@ -18,7 +18,9 @@ import Reanimated, {
   withSpring,
 } from 'react-native-reanimated';
 import { ProfileActionIcon } from '../ProfileActionIcon';
-import { colors, withAlpha } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
+import type { ThemeColors } from '../../theme/palettes';
+import { withAlpha } from '../../theme/stylePrimitives';
 
 type GroupProfileHeaderSectionProps = {
   isOwner: boolean;
@@ -79,6 +81,8 @@ export function GroupProfileHeaderSection({
   onSearch,
   onOpenMoreMenu,
 }: GroupProfileHeaderSectionProps) {
+  const { colors: themeColors } = useTheme();
+  const styles = useMemo(() => createGroupProfileHeaderStyles(themeColors), [themeColors]);
   const progress = useSharedValue(isExpanded ? 1 : 0);
 
   React.useEffect(() => {
@@ -142,7 +146,7 @@ export function GroupProfileHeaderSection({
               ]}
             >
               {saving ? (
-                <ActivityIndicator size="small" color={colors.textPrimary} />
+                <ActivityIndicator size="small" color={c.textPrimary} />
               ) : (
                 <Text style={[styles.pillButtonText, styles.primaryPillButtonText]}>
                   {isEditMode ? 'Готово' : 'Изм.'}
@@ -174,7 +178,7 @@ export function GroupProfileHeaderSection({
               )}
               {avatarUploading ? (
                 <View style={styles.avatarOverlay}>
-                  <ActivityIndicator color={colors.inputBackgroundSolid} />
+                  <ActivityIndicator color={c.inputBackgroundSolid} />
                 </View>
               ) : null}
             </Reanimated.View>
@@ -234,7 +238,7 @@ export function GroupProfileHeaderSection({
                   <ProfileActionIcon
                     name="sound"
                     size={20}
-                    color={colors.accent}
+                    color={c.accent}
                     active={isMuted}
                   />
                   <Text style={styles.actionButtonLabel}>Звук</Text>
@@ -244,7 +248,7 @@ export function GroupProfileHeaderSection({
                   onPress={onSearch}
                   style={({ pressed }) => [styles.actionButton, pressed && styles.cardPressed]}
                 >
-                  <ProfileActionIcon name="search" size={20} color={colors.accent} />
+                  <ProfileActionIcon name="search" size={20} color={c.accent} />
                   <Text style={styles.actionButtonLabel}>Поиск</Text>
                 </Pressable>
 
@@ -259,7 +263,7 @@ export function GroupProfileHeaderSection({
                       style={[styles.actionButtonWave, moreWaveStyle]}
                     />
                     <RNAnimated.View style={{ transform: [{ scale: moreIconScale }] }}>
-                      <ProfileActionIcon name="more" size={20} color={colors.accent} />
+                      <ProfileActionIcon name="more" size={20} color={c.accent} />
                     </RNAnimated.View>
                   </View>
                   <Text style={styles.actionButtonLabel}>Ещё</Text>
@@ -280,7 +284,8 @@ export function GroupProfileHeaderSection({
   );
 }
 
-const styles = StyleSheet.create({
+function createGroupProfileHeaderStyles(c: ThemeColors) {
+  return StyleSheet.create({
   topBarWrap: {
     marginBottom: 14,
   },
@@ -299,7 +304,7 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: c.inputBackgroundSolid,
     shadowColor: '#9EAAC0',
     shadowOpacity: 0.12,
     shadowRadius: 14,
@@ -307,12 +312,12 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   primaryPillButton: {
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: c.inputBackgroundSolid,
   },
   pillButtonText: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   primaryPillButtonText: {
     fontWeight: '700',
@@ -334,7 +339,7 @@ const styles = StyleSheet.create({
     height: HERO_COLLAPSED_SIZE,
     borderRadius: 58,
     overflow: 'hidden',
-    backgroundColor: withAlpha(colors.accent, 0.12),
+    backgroundColor: withAlpha(c.accent, 0.12),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.95)',
   },
@@ -346,12 +351,12 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
   },
   avatarFallbackText: {
     fontSize: 40,
     fontWeight: '800',
-    color: colors.inputBackgroundSolid,
+    color: c.inputBackgroundSolid,
   },
   avatarOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -365,7 +370,7 @@ const styles = StyleSheet.create({
   changePhotoText: {
     fontSize: 16,
     fontWeight: '500',
-    color: colors.accent,
+    color: c.accent,
   },
   heroTextSlot: {
     width: '100%',
@@ -380,13 +385,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 28,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textAlign: 'center',
   },
   groupSubtitle: {
     marginTop: 4,
     fontSize: 16,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
   },
   actionsSlot: {
@@ -405,9 +410,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 72,
     borderRadius: 20,
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: c.inputBackgroundSolid,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
+    borderColor: c.separator,
     shadowColor: '#A3AEC2',
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -427,18 +432,18 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: withAlpha(colors.accent, 0.82),
+    backgroundColor: withAlpha(c.accent, 0.82),
   },
   actionButtonLabel: {
     marginTop: 8,
     fontSize: 13,
     fontWeight: '600',
-    color: colors.accent,
+    color: c.accent,
   },
   descriptionCard: {
     marginTop: 16,
     borderRadius: 24,
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: c.inputBackgroundSolid,
     paddingHorizontal: 16,
     paddingVertical: 14,
     shadowColor: '#A3AEC2',
@@ -450,7 +455,7 @@ const styles = StyleSheet.create({
   descriptionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
@@ -458,25 +463,25 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 16,
     lineHeight: 22,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   editCard: {
     width: '100%',
     marginTop: 18,
     borderRadius: 24,
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: c.inputBackgroundSolid,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   nameInput: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingVertical: 8,
   },
   inputDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
+    backgroundColor: c.separator,
   },
   descriptionInput: {
     minHeight: 72,
@@ -484,10 +489,11 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     fontSize: 16,
     lineHeight: 22,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textAlignVertical: 'top',
   },
   cardPressed: {
     opacity: 0.84,
   },
-});
+  });
+}

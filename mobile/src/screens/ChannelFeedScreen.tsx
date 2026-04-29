@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import {
   ActivityIndicator,
@@ -52,7 +52,8 @@ import { messageStore } from '../stores/messageStore';
 import { canForwardMessage, TransportService } from '../services/TransportService';
 import { WebSocketService } from '../services/WebSocketService';
 import type { Message } from '../stores/types';
-import { bubbleRadius, colors } from '../theme/colors';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
 import type { MediaTile } from '../components/ChatProfileMediaSection';
 import { buildChannelPostMediaTiles, getVisualMediaKind } from '../utils/channelPostMediaTiles';
@@ -201,25 +202,433 @@ function resolveVisualMediaSize(
   };
 }
 
+
 type ChannelAlbumOptions = {
   visualMediaWidth?: number;
   onTilePress?: (index: number) => void;
+  /** Muted icon on album tile fallback (theme). */
+  mutedIcon?: string;
 };
 
+type ChannelFeedStyles = ReturnType<typeof createChannelFeedStyles>;
+
+function createChannelFeedStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.chatBackground,
+    },
+    listWrap: {
+      flex: 1,
+    },
+    inputBarWrap: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    loading: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.chatBackground,
+    },
+    list: {
+      paddingHorizontal: 8,
+      paddingTop: 8,
+    },
+    listWithoutComposer: {
+      paddingBottom: 24,
+    },
+    postWrap: {
+      marginBottom: 8,
+      width: '100%',
+      alignSelf: 'stretch',
+      alignItems: 'flex-start',
+    },
+    postBubble: {
+      maxWidth: '90%',
+      paddingHorizontal: 10,
+      paddingTop: 8,
+      paddingBottom: 8,
+      alignItems: 'flex-start',
+      backgroundColor: c.bubbleOther,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.bubbleOtherBorder,
+      borderRadius: 12,
+    },
+    postBubbleVisualMedia: {
+      alignSelf: 'flex-start',
+      alignItems: 'stretch',
+      paddingHorizontal: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
+      overflow: 'hidden',
+    },
+    postBubbleVoice: {
+      paddingHorizontal: 6,
+      paddingTop: 6,
+      paddingBottom: 6,
+    },
+    menuPreviewBubble: {
+      maxWidth: '90%',
+      paddingHorizontal: 10,
+      paddingTop: 8,
+      paddingBottom: 8,
+      alignItems: 'flex-start',
+      backgroundColor: c.bubbleOther,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.bubbleOtherBorder,
+      overflow: 'hidden',
+      borderRadius: 12,
+    },
+    mediaContentWrap: {
+      width: '100%',
+      alignSelf: 'stretch',
+      alignItems: 'center',
+    },
+    channelAlbumClip: {
+      borderRadius: 12,
+      overflow: 'hidden',
+      backgroundColor: c.placeholderBg,
+    },
+    channelAlbumRow: {
+      flexDirection: 'row',
+      gap: 1.5,
+    },
+    channelAlbumColumn: {
+      gap: 1.5,
+    },
+    channelAlbumGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 1.5,
+    },
+    channelAlbumTile: {
+      overflow: 'hidden',
+      backgroundColor: c.inputBackground,
+    },
+    channelAlbumTilePressed: {
+      opacity: 0.92,
+    },
+    channelAlbumImage: {
+      width: '100%',
+      height: '100%',
+    },
+    channelAlbumImageFallback: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.inputBackgroundSolid,
+    },
+    channelAlbumVideoBadge: {
+      position: 'absolute',
+      left: 6,
+      bottom: 6,
+      minHeight: 20,
+      borderRadius: 999,
+      paddingHorizontal: 7,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: 'rgba(15,23,42,0.68)',
+    },
+    channelAlbumVideoDuration: {
+      fontSize: 10,
+      lineHeight: 12,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    channelAlbumExtraOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(15,23,42,0.42)',
+    },
+    channelAlbumExtraText: {
+      fontSize: 22,
+      lineHeight: 26,
+      fontWeight: '800',
+      color: '#FFFFFF',
+    },
+    channelAlbumMetaOverlay: {
+      position: 'absolute',
+      right: 6,
+      bottom: 6,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: 'rgba(15, 23, 42, 0.52)',
+    },
+    channelAlbumMetaText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    postActionsRowMedia: {
+      alignSelf: 'stretch',
+      width: '100%',
+      paddingHorizontal: 10,
+      paddingBottom: 10,
+      marginTop: 4,
+    },
+    postActionsRowPreviewMedia: {
+      width: '100%',
+      alignSelf: 'stretch',
+      paddingHorizontal: 10,
+      marginRight: 0,
+      paddingRight: 10,
+    },
+    postText: {
+      color: c.textPrimary,
+      fontSize: 16,
+      lineHeight: 20,
+    },
+    mediaCaptionBlock: {
+      alignSelf: 'stretch',
+      paddingHorizontal: 10,
+      paddingTop: 4,
+    },
+    mediaCaptionText: {
+      color: c.textPrimary,
+      fontSize: 16,
+      lineHeight: 20,
+    },
+    mediaCaptionMetaRight: {
+      marginTop: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-end',
+    },
+    postFooter: {
+      alignSelf: 'flex-end',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 5,
+    },
+    footerMetric: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+    },
+    metaText: {
+      color: c.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    postActionsRow: {
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: withAlpha(c.textSecondary, 0.28),
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: 6,
+    },
+    discussionPill: {
+      minHeight: 32,
+      paddingHorizontal: 10,
+      borderRadius: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      gap: 5,
+      backgroundColor: withAlpha(c.inputBackgroundSolid, 0.92),
+      alignSelf: 'stretch',
+    },
+    discussionPillMedia: {
+      borderRadius: 0,
+      backgroundColor: 'transparent',
+      paddingHorizontal: 0,
+      justifyContent: 'flex-start',
+    },
+    discussionPillPressed: {
+      opacity: 0.82,
+    },
+    discussionPillPreview: {
+      width: '100%',
+      minHeight: 28,
+      paddingHorizontal: 0,
+      borderRadius: 0,
+      backgroundColor: 'transparent',
+      justifyContent: 'space-between',
+    },
+    discussionPreviewLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      marginLeft: 10,
+    },
+    discussionPreviewChevron: {
+      marginRight: 4,
+    },
+    discussionLink: {
+      color: c.accent,
+      fontSize: 12,
+      fontWeight: '700',
+      flexShrink: 0,
+    },
+    reactionSummaryRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 2,
+      paddingHorizontal: 2,
+    },
+    reactionSummaryText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textSecondary,
+    },
+    reactionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    reactionButton: {
+      borderRadius: 8,
+      paddingHorizontal: 0,
+      minHeight: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'transparent',
+    },
+    reactionButtonActive: {
+      backgroundColor: withAlpha(c.accent, 0.14),
+    },
+    reactionButtonPressed: {
+      opacity: 0.72,
+    },
+    reactionText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textSecondary,
+    },
+    emptyText: {
+      marginTop: 40,
+      textAlign: 'center',
+      color: c.textSecondary,
+      fontWeight: '600',
+    },
+    privateGateWrap: {
+      flex: 1,
+      paddingHorizontal: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    privateGateAvatar: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      marginBottom: 14,
+    },
+    privateGateAvatarPlaceholder: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      backgroundColor: c.iconMuted,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 14,
+    },
+    privateGateAvatarLetter: {
+      fontSize: 36,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    privateGateTitle: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: c.textPrimary,
+      textAlign: 'center',
+    },
+    privateGateDesc: {
+      marginTop: 8,
+      fontSize: 16,
+      color: c.textSecondary,
+      textAlign: 'center',
+      lineHeight: 22,
+    },
+    privateGateHint: {
+      marginTop: 16,
+      fontSize: 15,
+      color: c.textSecondary,
+      textAlign: 'center',
+      lineHeight: 21,
+    },
+    privateGateButton: {
+      marginTop: 22,
+      minWidth: 200,
+      paddingHorizontal: 28,
+      paddingVertical: 14,
+      borderRadius: 999,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    privateGateButtonPressed: { opacity: 0.88 },
+    privateGateButtonDisabled: { opacity: 0.65 },
+    privateGateButtonText: {
+      color: '#FFFFFF',
+      fontSize: 17,
+      fontWeight: '700',
+    },
+    subscribePillWrap: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+    },
+    subscribePill: {
+      paddingHorizontal: 28,
+      paddingVertical: 12,
+      borderRadius: 999,
+      backgroundColor: c.accent,
+      minWidth: 160,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOpacity: 0.12,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
+    },
+    subscribePillPressed: { opacity: 0.9 },
+    subscribePillDisabled: { opacity: 0.65 },
+    subscribePillText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '700',
+    },
+  });
+}
+
+
 /** Album tiles must load remote URLs without gallery permission — show fallback on failure instead of blank white. */
-function ChannelAlbumTileImage({ uri }: { uri: string }) {
+function ChannelAlbumTileImage({
+  uri,
+  st,
+  mutedIcon,
+}: {
+  uri: string;
+  st: ChannelFeedStyles;
+  mutedIcon: string;
+}) {
   const [failed, setFailed] = React.useState(false);
   if (failed) {
     return (
-      <View style={[styles.channelAlbumImage, styles.channelAlbumImageFallback]}>
-        <MaterialCommunityIcons name="image-off-outline" size={24} color="#68849A" />
+      <View style={[st.channelAlbumImage, st.channelAlbumImageFallback]}>
+        <MaterialCommunityIcons name="image-off-outline" size={24} color={mutedIcon} />
       </View>
     );
   }
   return (
     <Image
       source={{ uri }}
-      style={styles.channelAlbumImage}
+      style={st.channelAlbumImage}
       contentFit="cover"
       cachePolicy="disk"
       onError={() => setFailed(true)}
@@ -230,6 +639,7 @@ function ChannelAlbumTileImage({ uri }: { uri: string }) {
 function renderChannelMediaAlbum(
   item: Message,
   time: string,
+  st: ChannelFeedStyles,
   options?: ChannelAlbumOptions,
 ) {
   const media = (item.media ?? []).filter((entry) => entry.remote_url?.trim()).slice(0, 10);
@@ -244,6 +654,7 @@ function renderChannelMediaAlbum(
   const gap = 1.5;
   const caption = item.content?.trim() ?? '';
   const hasCaption = caption.length > 0;
+  const mutedIcon = options?.mutedIcon ?? '#9CA3AF';
 
   const renderTile = (mediaItem: VisualMediaItem, index: number, style: object) => {
     const kind = getVisualMediaKind(item, mediaItem);
@@ -257,18 +668,18 @@ function renderChannelMediaAlbum(
 
     const tileContent = (
       <>
-        <ChannelAlbumTileImage uri={uri} />
+        <ChannelAlbumTileImage uri={uri} st={st} mutedIcon={mutedIcon} />
         {kind === 'video' ? (
-          <View style={styles.channelAlbumVideoBadge}>
+          <View style={st.channelAlbumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
-            <Text style={styles.channelAlbumVideoDuration}>
+            <Text style={st.channelAlbumVideoDuration}>
               {formatMediaDuration(mediaItem.duration_ms ?? 0)}
             </Text>
           </View>
         ) : null}
         {showExtra ? (
-          <View style={styles.channelAlbumExtraOverlay}>
-            <Text style={styles.channelAlbumExtraText}>+{extraCount}</Text>
+          <View style={st.channelAlbumExtraOverlay}>
+            <Text style={st.channelAlbumExtraText}>+{extraCount}</Text>
           </View>
         ) : null}
       </>
@@ -280,9 +691,9 @@ function renderChannelMediaAlbum(
           key={`${mediaItem.remote_url}-${index}`}
           onPress={() => onTilePress(index)}
           style={({ pressed }) => [
-            styles.channelAlbumTile,
+            st.channelAlbumTile,
             style,
-            pressed && styles.channelAlbumTilePressed,
+            pressed && st.channelAlbumTilePressed,
           ]}
         >
           {tileContent}
@@ -291,7 +702,7 @@ function renderChannelMediaAlbum(
     }
 
     return (
-      <View key={`${mediaItem.remote_url}-${index}`} style={[styles.channelAlbumTile, style]}>
+      <View key={`${mediaItem.remote_url}-${index}`} style={[st.channelAlbumTile, style]}>
         {tileContent}
       </View>
     );
@@ -301,7 +712,7 @@ function renderChannelMediaAlbum(
     if (visibleMedia.length === 2) {
       const tileWidth = (albumWidth - gap) / 2;
       return (
-        <View style={styles.channelAlbumRow}>
+        <View style={st.channelAlbumRow}>
           {visibleMedia.map((mediaItem, index) =>
             renderTile(mediaItem, index, { width: tileWidth, height: albumWidth })
           )}
@@ -314,9 +725,9 @@ function renderChannelMediaAlbum(
       const rightWidth = albumWidth - sideWidth - gap;
       const halfHeight = (albumWidth - gap) / 2;
       return (
-        <View style={styles.channelAlbumRow}>
+        <View style={st.channelAlbumRow}>
           {renderTile(visibleMedia[0], 0, { width: sideWidth, height: albumWidth })}
-          <View style={[styles.channelAlbumColumn, { width: rightWidth }]}>
+          <View style={[st.channelAlbumColumn, { width: rightWidth }]}>
             {renderTile(visibleMedia[1], 1, { width: rightWidth, height: halfHeight })}
             {renderTile(visibleMedia[2], 2, { width: rightWidth, height: halfHeight })}
           </View>
@@ -327,7 +738,7 @@ function renderChannelMediaAlbum(
     const columns = 3;
     const tileWidth = (albumWidth - gap * (columns - 1)) / columns;
     return (
-      <View style={styles.channelAlbumGrid}>
+      <View style={st.channelAlbumGrid}>
         {visibleMedia.map((mediaItem, index) =>
           renderTile(mediaItem, index, { width: tileWidth, height: tileWidth })
         )}
@@ -337,31 +748,32 @@ function renderChannelMediaAlbum(
 
   return (
     <>
-      <View style={[styles.channelAlbumClip, { width: albumWidth }]}>
+      <View style={[st.channelAlbumClip, { width: albumWidth }]}>
         {grid}
         {!hasCaption ? (
-          <View style={styles.channelAlbumMetaOverlay}>
-            <View style={styles.footerMetric}>
+          <View style={st.channelAlbumMetaOverlay}>
+            <View style={st.footerMetric}>
               <Feather name="eye" size={13} color="#FFFFFF" />
-              <Text style={styles.channelAlbumMetaText}>{item.view_count ?? 0}</Text>
+              <Text style={st.channelAlbumMetaText}>{item.view_count ?? 0}</Text>
             </View>
-            <Text style={styles.channelAlbumMetaText}>{time}</Text>
+            <Text style={st.channelAlbumMetaText}>{time}</Text>
           </View>
         ) : null}
       </View>
       {hasCaption ? (
-        <View style={styles.mediaCaptionBlock}>
-          <Text style={styles.mediaCaptionText}>{caption}</Text>
-          <View style={styles.mediaCaptionMetaRight}>
-            <Feather name="eye" size={13} color="#68849A" />
-            <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
-            <Text style={styles.metaText}>{time}</Text>
+        <View style={st.mediaCaptionBlock}>
+          <Text style={st.mediaCaptionText}>{caption}</Text>
+          <View style={st.mediaCaptionMetaRight}>
+            <Feather name="eye" size={13} color={mutedIcon} />
+            <Text style={st.metaText}>{item.view_count ?? 0}</Text>
+            <Text style={st.metaText}>{time}</Text>
           </View>
         </View>
       ) : null}
     </>
   );
 }
+
 
 function buildOptimisticMessage({
   channelId,
@@ -401,10 +813,11 @@ function buildOptimisticMessage({
 }
 
 export function ChannelFeedScreen() {
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createChannelFeedStyles(c), [c]);
   const navigation = useNavigation<Nav>();
   const isFocused = useIsFocused();
   const route = useRoute<Route>();
-  const { colors: themeMenuColors } = useTheme();
   const blurTargetRef = React.useRef<View | null>(null);
   const postContentRefs = React.useRef<Record<string, View | null>>({});
   const menuAnim = React.useRef(new Animated.Value(0)).current;
@@ -415,7 +828,7 @@ export function ChannelFeedScreen() {
   const linkResolve = channelStore((state) => state.linkResolveByChannelId[channelId]);
   const feed = channelStore((state) => state.feedByChannelId[channelId] ?? EMPTY_FEED);
   const channelChat = chatStore(
-    React.useCallback((state) => state.chats.find((c) => c.id === channelId) ?? null, [channelId])
+    React.useCallback((state) => state.chats.find((chat) => chat.id === channelId) ?? null, [channelId])
   );
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const [loading, setLoading] = React.useState(feed.length === 0);
@@ -876,7 +1289,7 @@ export function ChannelFeedScreen() {
           key: 'delete_cancel',
           label: 'Отмена',
           icon: null,
-          color: themeMenuColors.textPrimary,
+          color: c.textPrimary,
           disabled: false,
           textOnly: true,
         },
@@ -891,10 +1304,10 @@ export function ChannelFeedScreen() {
         key: 'reply',
         label: 'Ответить',
         icon: 'corner-left-up' as const,
-        color: themeMenuColors.textPrimary,
+        color: c.textPrimary,
         disabled: false,
       },
-      { key: 'copy', label: 'Скопировать', icon: 'copy' as const, color: themeMenuColors.textPrimary, disabled: false },
+      { key: 'copy', label: 'Скопировать', icon: 'copy' as const, color: c.textPrimary, disabled: false },
     ];
 
     if (showStaffPostActions) {
@@ -904,14 +1317,14 @@ export function ChannelFeedScreen() {
           key: 'pin',
           label: isPinned ? 'Открепить' : 'Закрепить',
           icon: 'bookmark' as const,
-          color: themeMenuColors.textPrimary,
+          color: c.textPrimary,
           disabled: false,
         },
         {
           key: 'forward',
           label: 'Переслать',
           icon: 'corner-up-right' as const,
-          color: canFwd ? themeMenuColors.textPrimary : themeMenuColors.iconMuted,
+          color: canFwd ? c.textPrimary : c.iconMuted,
           disabled: !canFwd,
         },
         {
@@ -930,11 +1343,11 @@ export function ChannelFeedScreen() {
         key: 'forward',
         label: 'Переслать',
         icon: 'corner-up-right' as const,
-        color: canFwd ? themeMenuColors.textPrimary : themeMenuColors.iconMuted,
+        color: canFwd ? c.textPrimary : c.iconMuted,
         disabled: !canFwd,
       },
     ];
-  }, [activeMenuMessage, menuMode, pinnedMessageId, showStaffPostActions, themeMenuColors]);
+  }, [activeMenuMessage, menuMode, pinnedMessageId, showStaffPostActions, c]);
 
   const handlePinToggle = React.useCallback(
     (message: Message) => {
@@ -1260,9 +1673,10 @@ export function ChannelFeedScreen() {
       const time = formatTime(item.created_at);
 
       if (visualMediaCount > 1) {
-        return renderChannelMediaAlbum(item, time, {
+        return renderChannelMediaAlbum(item, time, styles, {
           visualMediaWidth: options?.visualMediaWidth,
           onTilePress: (idx) => openChannelFeedMediaViewer(item, idx),
+          mutedIcon: c.textSecondary,
         });
       }
 
@@ -1318,14 +1732,14 @@ export function ChannelFeedScreen() {
               time={hasCaption ? undefined : time}
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
-              resizeMode="cover"
+              contentFit="cover"
               onOpenFullscreen={() => openChannelFeedMediaViewer(item, 0)}
             />
             {hasCaption ? (
               <View style={styles.mediaCaptionBlock}>
                 <Text style={styles.mediaCaptionText}>{caption}</Text>
                 <View style={styles.mediaCaptionMetaRight}>
-                  <Feather name="eye" size={13} color="#68849A" />
+                  <Feather name="eye" size={13} color={c.textSecondary} />
                   <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
                   <Text style={styles.metaText}>{time}</Text>
                 </View>
@@ -1360,7 +1774,7 @@ export function ChannelFeedScreen() {
               <View style={styles.mediaCaptionBlock}>
                 <Text style={styles.mediaCaptionText}>{caption}</Text>
                 <View style={styles.mediaCaptionMetaRight}>
-                  <Feather name="eye" size={13} color="#68849A" />
+                  <Feather name="eye" size={13} color={c.textSecondary} />
                   <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
                   <Text style={styles.metaText}>{time}</Text>
                 </View>
@@ -1389,7 +1803,7 @@ export function ChannelFeedScreen() {
           <Text style={styles.postText}>{item.content || 'Публикация'}</Text>
           <View style={styles.postFooter}>
             <View style={styles.footerMetric}>
-              <Feather name="eye" size={13} color="#68849A" />
+              <Feather name="eye" size={13} color={c.textSecondary} />
               <Text style={styles.metaText}>{item.view_count ?? 0}</Text>
             </View>
             <Text style={styles.metaText}>{time}</Text>
@@ -1397,7 +1811,7 @@ export function ChannelFeedScreen() {
         </>
       );
     },
-    [openChannelFeedMediaViewer]
+    [openChannelFeedMediaViewer, styles, c]
   );
 
   const renderPostExtras = React.useCallback(
@@ -1419,7 +1833,7 @@ export function ChannelFeedScreen() {
                 })
               }
             >
-              <Feather name="message-circle" size={14} color={colors.accent} />
+              <Feather name="message-circle" size={14} color={c.accent} />
               <Text style={styles.discussionLink}>{item.comment_count ?? 0} комментариев</Text>
             </Pressable>
           ) : null}
@@ -1435,7 +1849,7 @@ export function ChannelFeedScreen() {
         </View>
       );
     },
-    [canComment, detail?.channel, channelId, navigation],
+    [canComment, detail?.channel, channelId, navigation, styles, c],
   );
 
   const renderPostExtrasPreview = React.useCallback(
@@ -1468,7 +1882,7 @@ export function ChannelFeedScreen() {
               }
             >
               <View style={styles.discussionPreviewLeft}>
-                <Feather name="message-circle" size={14} color={colors.accent} />
+                <Feather name="message-circle" size={14} color={c.accent} />
                 <Text style={styles.discussionLink}>
                   {item.comment_count ?? 0} комментариев
                 </Text>
@@ -1477,7 +1891,7 @@ export function ChannelFeedScreen() {
                 <Feather
                   name="chevron-right"
                   size={16}
-                  color={colors.accent}
+                  color={c.accent}
                   style={styles.discussionPreviewChevron}
                 />
               ) : null}
@@ -1495,7 +1909,7 @@ export function ChannelFeedScreen() {
         </View>
       );
     },
-    [canComment, detail?.channel, channelId, navigation],
+    [canComment, detail?.channel, channelId, navigation, styles, c],
   );
 
   const renderPost = React.useCallback(
@@ -1549,7 +1963,7 @@ export function ChannelFeedScreen() {
                       })
                     }
                   >
-                    <Feather name="message-circle" size={14} color={colors.accent} />
+                    <Feather name="message-circle" size={14} color={c.accent} />
                     {/* Без numberOfLines + flexShrink: иначе после возврата с профиля RN даёт тексту чуть меньшую ширину и режет хвост / «…» */}
                     <Text style={styles.discussionLink}>
                       {(item.comment_count ?? 0) > 0
@@ -1574,7 +1988,7 @@ export function ChannelFeedScreen() {
       </GestureDetector>
       );
     },
-    [canComment, detail?.channel, channelId, navigation, openPostInteractionMenu, renderPostContent, setPostContentRef]
+    [canComment, detail?.channel, channelId, navigation, openPostInteractionMenu, renderPostContent, setPostContentRef, styles, c]
   );
 
   const renderMenuPreviewBody = React.useCallback(
@@ -1658,7 +2072,7 @@ export function ChannelFeedScreen() {
         <LoadErrorState message={feedError} onRetry={() => void load()} />
       ) : loading && feed.length === 0 ? (
         <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.accent} />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       ) : (
         <Reanimated.View style={[styles.listWrap, listWrapAnimatedStyle]}>
@@ -1780,393 +2194,4 @@ export function ChannelFeedScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#DCE9D3',
-  },
-  listWrap: {
-    flex: 1,
-  },
-  inputBarWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  loading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  list: {
-    paddingHorizontal: 8,
-    paddingTop: 8,
-  },
-  listWithoutComposer: {
-    paddingBottom: 24,
-  },
-  postWrap: {
-    marginBottom: 8,
-    width: '100%',
-    alignSelf: 'stretch',
-    alignItems: 'flex-start',
-  },
-  postBubble: {
-    maxWidth: '90%',
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 8,
-    alignItems: 'flex-start',
-    backgroundColor: colors.bubbleOther,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.bubbleOtherBorder,
-    borderRadius: 12,
-  },
-  postBubbleVisualMedia: {
-    alignSelf: 'flex-start',
-    alignItems: 'stretch',
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 0,
-    overflow: 'hidden',
-  },
-  postBubbleVoice: {
-    paddingHorizontal: 6,
-    paddingTop: 6,
-    paddingBottom: 6,
-  },
-  menuPreviewBubble: {
-    maxWidth: '90%',
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 8,
-    alignItems: 'flex-start',
-    backgroundColor: colors.bubbleOther,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.bubbleOtherBorder,
-    overflow: 'hidden',
-    borderRadius: 12,
-  },
-  mediaContentWrap: {
-    width: '100%',
-    alignSelf: 'stretch',
-    alignItems: 'center',
-  },
-  channelAlbumClip: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#D8DEE7',
-  },
-  channelAlbumRow: {
-    flexDirection: 'row',
-    gap: 1.5,
-  },
-  channelAlbumColumn: {
-    gap: 1.5,
-  },
-  channelAlbumGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 1.5,
-  },
-  channelAlbumTile: {
-    overflow: 'hidden',
-    backgroundColor: '#C8D0DC',
-  },
-  channelAlbumTilePressed: {
-    opacity: 0.92,
-  },
-  channelAlbumImage: {
-    width: '100%',
-    height: '100%',
-  },
-  channelAlbumImageFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E8EDF3',
-  },
-  channelAlbumVideoBadge: {
-    position: 'absolute',
-    left: 6,
-    bottom: 6,
-    minHeight: 20,
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(15,23,42,0.68)',
-  },
-  channelAlbumVideoDuration: {
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  channelAlbumExtraOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.42)',
-  },
-  channelAlbumExtraText: {
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  channelAlbumMetaOverlay: {
-    position: 'absolute',
-    right: 6,
-    bottom: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15, 23, 42, 0.52)',
-  },
-  channelAlbumMetaText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  postActionsRowMedia: {
-    alignSelf: 'stretch',
-    width: '100%',
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-    marginTop: 4,
-  },
-  postActionsRowPreviewMedia: {
-    width: '100%',
-    alignSelf: 'stretch',
-    paddingHorizontal: 10,
-    marginRight: 0,
-    paddingRight: 10,
-  },
-  postText: {
-    color: '#000000',
-    fontSize: 16,
-    lineHeight: 20,
-  },
-  mediaCaptionBlock: {
-    alignSelf: 'stretch',
-    paddingHorizontal: 10,
-    paddingTop: 4,
-  },
-  mediaCaptionText: {
-    color: '#000000',
-    fontSize: 16,
-    lineHeight: 20,
-  },
-  mediaCaptionMetaRight: {
-    marginTop: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-end',
-  },
-  postFooter: {
-    alignSelf: 'flex-end',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 5,
-  },
-  footerMetric: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  metaText: {
-    color: '#68849A',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  postActionsRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(104,132,154,0.25)',
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 6,
-  },
-  discussionPill: {
-    minHeight: 32,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    alignSelf: 'stretch',
-  },
-  discussionPillMedia: {
-    borderRadius: 0,
-    backgroundColor: 'transparent',
-    paddingHorizontal: 0,
-    justifyContent: 'flex-start',
-  },
-  discussionPillPressed: {
-    opacity: 0.82,
-  },
-  discussionPillPreview: {
-    width: '100%',
-    minHeight: 28,
-    paddingHorizontal: 0,
-    borderRadius: 0,
-    backgroundColor: 'transparent',
-    justifyContent: 'space-between',
-  },
-  discussionPreviewLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginLeft: 10,
-  },
-  discussionPreviewChevron: {
-    marginRight: 4,
-  },
-  discussionLink: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: '700',
-    flexShrink: 0,
-  },
-  reactionSummaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 2,
-    paddingHorizontal: 2,
-  },
-  reactionSummaryText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  reactionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  reactionButton: {
-    borderRadius: 8,
-    paddingHorizontal: 0,
-    minHeight: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  reactionButtonActive: {
-    backgroundColor: 'rgba(87,151,238,0.12)',
-  },
-  reactionButtonPressed: {
-    opacity: 0.72,
-  },
-  reactionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  emptyText: {
-    marginTop: 40,
-    textAlign: 'center',
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  privateGateWrap: {
-    flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  privateGateAvatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    marginBottom: 14,
-  },
-  privateGateAvatarPlaceholder: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#94A3B8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  privateGateAvatarLetter: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  privateGateTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-    textAlign: 'center',
-  },
-  privateGateDesc: {
-    marginTop: 8,
-    fontSize: 16,
-    color: '#4B5563',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  privateGateHint: {
-    marginTop: 16,
-    fontSize: 15,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 21,
-  },
-  privateGateButton: {
-    marginTop: 22,
-    minWidth: 200,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 999,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  privateGateButtonPressed: { opacity: 0.88 },
-  privateGateButtonDisabled: { opacity: 0.65 },
-  privateGateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  subscribePillWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  subscribePill: {
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 999,
-    backgroundColor: colors.accent,
-    minWidth: 160,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  subscribePillPressed: { opacity: 0.9 },
-  subscribePillDisabled: { opacity: 0.65 },
-  subscribePillText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});
+
