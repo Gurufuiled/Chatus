@@ -21,7 +21,9 @@ import { createGroupChat } from '../services/chatService';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { ApiUser } from '../services/AuthService';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import {
   filterGroupMemberPickerUsers,
   getGroupMemberPickerContacts,
@@ -36,9 +38,215 @@ function getDisplayName(user: ApiUser) {
   return user.display_name || user.username || user.handle || 'Неизвестный пользователь';
 }
 
+function createCreateGroupChatStyles(c: ThemeColors) {
+  const chipBg = withAlpha(c.accent, 0.14);
+  const rowSelectedBg = withAlpha(c.accent, 0.1);
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.chatBackground,
+    },
+    formCard: {
+      marginHorizontal: 16,
+      marginTop: 16,
+      padding: 16,
+      borderRadius: 24,
+      backgroundColor: c.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.textSecondary,
+      marginBottom: 8,
+    },
+    input: {
+      height: 48,
+      borderRadius: 16,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.composerBorder,
+      backgroundColor: c.inputBackground,
+      paddingHorizontal: 16,
+      fontSize: 16,
+      color: c.textPrimary,
+      marginBottom: 14,
+    },
+    selectedScroll: {
+      marginBottom: 14,
+    },
+    selectedScrollContent: {
+      gap: 10,
+      paddingRight: 8,
+    },
+    memberChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      backgroundColor: chipBg,
+    },
+    memberChipPressed: {
+      opacity: 0.82,
+    },
+    memberChipText: {
+      maxWidth: 160,
+      fontSize: 14,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    memberChipRemove: {
+      fontSize: 18,
+      lineHeight: 18,
+      color: c.accent,
+      fontWeight: '700',
+    },
+    resultsCard: {
+      flex: 1,
+      marginHorizontal: 16,
+      marginTop: 14,
+      borderRadius: 24,
+      overflow: 'hidden',
+      backgroundColor: c.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+    },
+    resultsEmptyContent: {
+      flexGrow: 1,
+    },
+    centerState: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyState: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 28,
+    },
+    emptyTitle: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.textPrimary,
+      textAlign: 'center',
+    },
+    emptySubtitle: {
+      marginTop: 8,
+      fontSize: 14,
+      lineHeight: 20,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    resultRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+    },
+    resultRowPressed: {
+      backgroundColor: c.rowPressed,
+    },
+    resultRowSelected: {
+      backgroundColor: rowSelectedBg,
+    },
+    avatar: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+    },
+    avatarPlaceholder: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.accent,
+    },
+    avatarPlaceholderText: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    resultInfo: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    resultTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: c.textPrimary,
+    },
+    resultSubtitle: {
+      marginTop: 2,
+      fontSize: 14,
+      color: c.textSecondary,
+    },
+    checkbox: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: c.composerBorder,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.inputBackgroundSolid,
+    },
+    checkboxSelected: {
+      borderColor: c.accent,
+      backgroundColor: chipBg,
+    },
+    checkboxInner: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: c.accent,
+    },
+    footer: {
+      paddingHorizontal: 16,
+      paddingTop: 14,
+      paddingBottom: 18,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.separator,
+      backgroundColor: c.chatBackground,
+    },
+    createButton: {
+      height: 56,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.accent,
+      shadowColor: c.accent,
+      shadowOpacity: 0.22,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 3,
+    },
+    createButtonPressed: {
+      opacity: 0.9,
+      transform: [{ scale: 0.995 }],
+    },
+    createButtonDisabled: {
+      opacity: 0.7,
+    },
+    createButtonText: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: '#FFFFFF',
+    },
+  });
+}
+
 export function CreateGroupChatScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createCreateGroupChatStyles(c), [c]);
+
   const chats = chatStore((state) => state.chats);
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const [groupName, setGroupName] = useState('');
@@ -192,7 +400,7 @@ export function CreateGroupChatScreen() {
         </Pressable>
       );
     },
-    [selectedUserIds, toggleUser]
+    [selectedUserIds, styles, toggleUser]
   );
 
   return (
@@ -203,7 +411,7 @@ export function CreateGroupChatScreen() {
           value={groupName}
           onChangeText={setGroupName}
           placeholder="Введите название"
-          placeholderTextColor={colors.placeholder}
+          placeholderTextColor={c.placeholder}
           style={styles.input}
           maxLength={80}
         />
@@ -241,7 +449,7 @@ export function CreateGroupChatScreen() {
           value={query}
           onChangeText={setQuery}
           placeholder="Поиск по имени или @handle"
-          placeholderTextColor={colors.placeholder}
+          placeholderTextColor={c.placeholder}
           style={styles.input}
           autoCapitalize="none"
           autoCorrect={false}
@@ -251,7 +459,7 @@ export function CreateGroupChatScreen() {
       <View style={styles.resultsCard}>
         {loading ? (
           <View style={styles.centerState}>
-            <ActivityIndicator size="large" color={colors.accent} />
+            <ActivityIndicator size="large" color={c.accent} />
           </View>
         ) : (
           <FlatList
@@ -298,205 +506,3 @@ export function CreateGroupChatScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F8FC',
-  },
-  formCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#AAB7C8',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#526072',
-    marginBottom: 8,
-  },
-  input: {
-    height: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#D8E3F0',
-    backgroundColor: '#F7FAFE',
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: colors.textPrimary,
-    marginBottom: 14,
-  },
-  selectedScroll: {
-    marginBottom: 14,
-  },
-  selectedScrollContent: {
-    gap: 10,
-    paddingRight: 8,
-  },
-  memberChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#EAF3FF',
-  },
-  memberChipPressed: {
-    opacity: 0.82,
-  },
-  memberChipText: {
-    maxWidth: 160,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  memberChipRemove: {
-    fontSize: 18,
-    lineHeight: 18,
-    color: colors.accent,
-    fontWeight: '700',
-  },
-  resultsCard: {
-    flex: 1,
-    marginHorizontal: 16,
-    marginTop: 14,
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#AAB7C8',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
-  },
-  resultsEmptyContent: {
-    flexGrow: 1,
-  },
-  centerState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  resultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E7EDF5',
-  },
-  resultRowPressed: {
-    backgroundColor: '#F7FAFF',
-  },
-  resultRowSelected: {
-    backgroundColor: '#F1F7FF',
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-  },
-  avatarPlaceholder: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#5B8DEF',
-  },
-  avatarPlaceholderText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  resultInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  resultTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  resultSubtitle: {
-    marginTop: 2,
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#C6D3E3',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  checkboxSelected: {
-    borderColor: colors.accent,
-    backgroundColor: '#EAF3FF',
-  },
-  checkboxInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.accent,
-  },
-  footer: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 18,
-  },
-  createButton: {
-    height: 56,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-    shadowColor: '#4D8DFF',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 3,
-  },
-  createButtonPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.995 }],
-  },
-  createButtonDisabled: {
-    opacity: 0.7,
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-});

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,26 +21,268 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { createChannel } from '../services/channelService';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { colors, withAlpha } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'CreateChannel'>;
 
 const NAME_LIMIT = 64;
 const DESC_LIMIT = 255;
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.sectionLabel}>{children}</Text>;
+type CreateChannelStyles = ReturnType<typeof createCreateChannelStyles>;
+
+function createCreateChannelStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: c.chatBackground,
+    },
+    container: {
+      flex: 1,
+    },
+    content: {
+      paddingBottom: 120,
+    },
+
+    hero: {
+      alignItems: 'center',
+      paddingTop: 18,
+      paddingHorizontal: 24,
+      paddingBottom: 6,
+    },
+    avatar: {
+      width: 96,
+      height: 96,
+      borderRadius: 48,
+      backgroundColor: c.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: c.accent,
+      shadowOpacity: 0.35,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 6,
+    },
+    avatarText: {
+      color: '#FFFFFF',
+      fontSize: 38,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+    avatarBadge: {
+      position: 'absolute',
+      right: -2,
+      bottom: -2,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: c.toolbar,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 3,
+      borderColor: c.chatBackground,
+    },
+    heroTitle: {
+      marginTop: 14,
+      fontSize: 20,
+      fontWeight: '800',
+      color: c.textPrimary,
+    },
+    heroSubtitle: {
+      marginTop: 6,
+      textAlign: 'center',
+      fontSize: 13.5,
+      color: c.textSecondary,
+      lineHeight: 19,
+      maxWidth: 320,
+    },
+
+    sectionLabel: {
+      marginTop: 22,
+      marginBottom: 8,
+      marginHorizontal: 32,
+      fontSize: 12,
+      fontWeight: '700',
+      color: c.textSecondary,
+      letterSpacing: 0.7,
+    },
+    sectionCard: {
+      marginHorizontal: 16,
+      borderRadius: 16,
+      backgroundColor: c.inputBackgroundSolid,
+      overflow: 'hidden',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+    },
+    sectionDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: c.separator,
+      marginLeft: 64,
+    },
+
+    fieldRow: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    fieldHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 6,
+    },
+    fieldLabel: {
+      fontSize: 12.5,
+      fontWeight: '700',
+      color: c.textSecondary,
+      letterSpacing: 0.4,
+    },
+    fieldCounter: {
+      fontSize: 12,
+      color: c.textSecondary,
+      fontWeight: '600',
+    },
+    fieldInput: {
+      fontSize: 16,
+      color: c.textPrimary,
+      paddingVertical: 6,
+    },
+    fieldTextarea: {
+      minHeight: 72,
+      maxHeight: 160,
+      lineHeight: 22,
+    },
+
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      gap: 12,
+    },
+    toggleIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    toggleBody: {
+      flex: 1,
+    },
+    toggleTitle: {
+      fontSize: 15.5,
+      color: c.textPrimary,
+      fontWeight: '600',
+      lineHeight: 20,
+    },
+    toggleSubtitle: {
+      marginTop: 2,
+      fontSize: 12.5,
+      color: c.textSecondary,
+      lineHeight: 17,
+    },
+
+    priceRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      gap: 12,
+    },
+    priceField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.inputBackground,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      minWidth: 110,
+      justifyContent: 'flex-end',
+      gap: 4,
+    },
+    priceInput: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.textPrimary,
+      textAlign: 'right',
+      padding: 0,
+      minWidth: 64,
+    },
+    priceCurrency: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: c.textSecondary,
+    },
+
+    hint: {
+      marginTop: 8,
+      marginHorizontal: 32,
+      fontSize: 12.5,
+      color: c.textSecondary,
+      lineHeight: 18,
+    },
+
+    submitBar: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      backgroundColor: withAlpha(c.chatBackground, 0.94),
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.separator,
+    },
+    submitButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      height: 52,
+      borderRadius: 16,
+      backgroundColor: c.accent,
+      shadowColor: c.accent,
+      shadowOpacity: 0.32,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 6,
+    },
+    submitButtonPressed: {
+      opacity: 0.92,
+      transform: [{ scale: 0.995 }],
+    },
+    submitButtonDisabled: {
+      backgroundColor: c.disabled,
+      shadowOpacity: 0,
+      elevation: 0,
+    },
+    submitText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '800',
+      letterSpacing: 0.2,
+    },
+  });
 }
 
-function SectionCard({ children }: { children: React.ReactNode }) {
-  return <View style={styles.sectionCard}>{children}</View>;
+function SectionLabel({ children, st }: { children: React.ReactNode; st: CreateChannelStyles }) {
+  return <Text style={st.sectionLabel}>{children}</Text>;
 }
 
-function SectionDivider() {
-  return <View style={styles.sectionDivider} />;
+function SectionCard({ children, st }: { children: React.ReactNode; st: CreateChannelStyles }) {
+  return <View style={st.sectionCard}>{children}</View>;
+}
+
+function SectionDivider({ st }: { st: CreateChannelStyles }) {
+  return <View style={st.sectionDivider} />;
 }
 
 function ToggleRow({
+  st,
+  accent,
+  trackOff,
+  thumbOff,
   icon,
   iconColor,
   title,
@@ -48,6 +290,10 @@ function ToggleRow({
   value,
   onValueChange,
 }: {
+  st: CreateChannelStyles;
+  accent: string;
+  trackOff: string;
+  thumbOff: string;
   icon: React.ComponentProps<typeof Feather>['name'];
   iconColor: string;
   title: string;
@@ -56,20 +302,20 @@ function ToggleRow({
   onValueChange: (v: boolean) => void;
 }) {
   return (
-    <View style={styles.toggleRow}>
-      <View style={[styles.toggleIcon, { backgroundColor: withAlpha(iconColor, 0.14) }]}>
+    <View style={st.toggleRow}>
+      <View style={[st.toggleIcon, { backgroundColor: withAlpha(iconColor, 0.14) }]}>
         <Feather name={icon} size={17} color={iconColor} />
       </View>
-      <View style={styles.toggleBody}>
-        <Text style={styles.toggleTitle}>{title}</Text>
-        <Text style={styles.toggleSubtitle}>{subtitle}</Text>
+      <View style={st.toggleBody}>
+        <Text style={st.toggleTitle}>{title}</Text>
+        <Text style={st.toggleSubtitle}>{subtitle}</Text>
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: '#E5E7EB', true: withAlpha(colors.accent, 0.55) }}
-        thumbColor={value ? colors.accent : '#FAFAFA'}
-        ios_backgroundColor="#E5E7EB"
+        trackColor={{ false: trackOff, true: withAlpha(accent, 0.55) }}
+        thumbColor={value ? accent : thumbOff}
+        ios_backgroundColor={trackOff}
       />
     </View>
   );
@@ -78,6 +324,11 @@ function ToggleRow({
 export function CreateChannelScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { colors: c } = useTheme();
+  const styles = useMemo(() => createCreateChannelStyles(c), [c]);
+  const switchTrackOff = useMemo(() => withAlpha(c.textSecondary, 0.28), [c.textSecondary]);
+  const switchThumbOff = c.inputBackgroundSolid;
+
   const [name, setName] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [isPaid, setIsPaid] = React.useState(false);
@@ -147,7 +398,6 @@ export function CreateChannelScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initial}</Text>
@@ -161,9 +411,8 @@ export function CreateChannelScreen() {
           </Text>
         </View>
 
-        {/* Name + description */}
-        <SectionLabel>ОСНОВНОЕ</SectionLabel>
-        <SectionCard>
+        <SectionLabel st={styles}>ОСНОВНОЕ</SectionLabel>
+        <SectionCard st={styles}>
           <View style={styles.fieldRow}>
             <View style={styles.fieldHeader}>
               <Text style={styles.fieldLabel}>Название</Text>
@@ -176,12 +425,12 @@ export function CreateChannelScreen() {
               onChangeText={(next) => setName(next.slice(0, NAME_LIMIT))}
               style={styles.fieldInput}
               placeholder="Например, Ежедневные новости"
-              placeholderTextColor={colors.placeholder}
+              placeholderTextColor={c.placeholder}
               maxLength={NAME_LIMIT}
               returnKeyType="next"
             />
           </View>
-          <SectionDivider />
+          <SectionDivider st={styles} />
           <View style={styles.fieldRow}>
             <View style={styles.fieldHeader}>
               <Text style={styles.fieldLabel}>Описание</Text>
@@ -194,7 +443,7 @@ export function CreateChannelScreen() {
               onChangeText={(next) => setDescription(next.slice(0, DESC_LIMIT))}
               style={[styles.fieldInput, styles.fieldTextarea]}
               placeholder="О чём ваш канал"
-              placeholderTextColor={colors.placeholder}
+              placeholderTextColor={c.placeholder}
               maxLength={DESC_LIMIT}
               multiline
               textAlignVertical="top"
@@ -205,12 +454,15 @@ export function CreateChannelScreen() {
           Название будет отображаться в списке чатов и в шапке канала.
         </Text>
 
-        {/* Visibility */}
-        <SectionLabel>ДОСТУП</SectionLabel>
-        <SectionCard>
+        <SectionLabel st={styles}>ДОСТУП</SectionLabel>
+        <SectionCard st={styles}>
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon={isPrivate ? 'lock' : 'globe'}
-            iconColor={isPrivate ? '#8A6DF1' : colors.accent}
+            iconColor={isPrivate ? '#8A6DF1' : c.accent}
             title="Приватный канал"
             subtitle={
               isPrivate
@@ -220,8 +472,12 @@ export function CreateChannelScreen() {
             value={isPrivate}
             onValueChange={setIsPrivate}
           />
-          <SectionDivider />
+          <SectionDivider st={styles} />
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon="credit-card"
             iconColor="#F59E0B"
             title="Платная подписка"
@@ -231,7 +487,7 @@ export function CreateChannelScreen() {
           />
           {isPaid ? (
             <>
-              <SectionDivider />
+              <SectionDivider st={styles} />
               <View style={styles.priceRow}>
                 <View
                   style={[
@@ -258,10 +514,13 @@ export function CreateChannelScreen() {
           ) : null}
         </SectionCard>
 
-        {/* Interactions */}
-        <SectionLabel>ОБСУЖДЕНИЕ</SectionLabel>
-        <SectionCard>
+        <SectionLabel st={styles}>ОБСУЖДЕНИЕ</SectionLabel>
+        <SectionCard st={styles}>
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon="message-circle"
             iconColor="#10B981"
             title="Разрешить комментарии"
@@ -269,8 +528,12 @@ export function CreateChannelScreen() {
             value={allowComments}
             onValueChange={setAllowComments}
           />
-          <SectionDivider />
+          <SectionDivider st={styles} />
           <ToggleRow
+            st={styles}
+            accent={c.accent}
+            trackOff={switchTrackOff}
+            thumbOff={switchThumbOff}
             icon="heart"
             iconColor="#EF4444"
             title="Разрешить реакции"
@@ -284,7 +547,6 @@ export function CreateChannelScreen() {
         </Text>
       </ScrollView>
 
-      {/* Submit */}
       <View style={[styles.submitBar, { paddingBottom: 12 + insets.bottom }]}>
         <Pressable
           onPress={() => void handleCreate()}
@@ -309,245 +571,3 @@ export function CreateChannelScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F2F4F8',
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    paddingBottom: 120,
-  },
-
-  /* Hero */
-  hero: {
-    alignItems: 'center',
-    paddingTop: 18,
-    paddingHorizontal: 24,
-    paddingBottom: 6,
-  },
-  avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 38,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  avatarBadge: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#0F172A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#F2F4F8',
-  },
-  heroTitle: {
-    marginTop: 14,
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  heroSubtitle: {
-    marginTop: 6,
-    textAlign: 'center',
-    fontSize: 13.5,
-    color: colors.textSecondary,
-    lineHeight: 19,
-    maxWidth: 320,
-  },
-
-  /* Sections */
-  sectionLabel: {
-    marginTop: 22,
-    marginBottom: 8,
-    marginHorizontal: 32,
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
-    letterSpacing: 0.7,
-  },
-  sectionCard: {
-    marginHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  sectionDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
-    marginLeft: 64,
-  },
-
-  /* Text fields */
-  fieldRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  fieldHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  fieldLabel: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#6B7280',
-    letterSpacing: 0.4,
-  },
-  fieldCounter: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  fieldInput: {
-    fontSize: 16,
-    color: colors.textPrimary,
-    paddingVertical: 6,
-  },
-  fieldTextarea: {
-    minHeight: 72,
-    maxHeight: 160,
-    lineHeight: 22,
-  },
-
-  /* Toggle row */
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  toggleIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toggleBody: {
-    flex: 1,
-  },
-  toggleTitle: {
-    fontSize: 15.5,
-    color: colors.textPrimary,
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  toggleSubtitle: {
-    marginTop: 2,
-    fontSize: 12.5,
-    color: colors.textSecondary,
-    lineHeight: 17,
-  },
-
-  /* Price */
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  priceField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.inputBackground,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minWidth: 110,
-    justifyContent: 'flex-end',
-    gap: 4,
-  },
-  priceInput: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'right',
-    padding: 0,
-    minWidth: 64,
-  },
-  priceCurrency: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-
-  /* Hint */
-  hint: {
-    marginTop: 8,
-    marginHorizontal: 32,
-    fontSize: 12.5,
-    color: '#6B7280',
-    lineHeight: 18,
-  },
-
-  /* Submit */
-  submitBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    backgroundColor: 'rgba(242, 244, 248, 0.92)',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
-  },
-  submitButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: colors.accent,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.32,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  submitButtonPressed: {
-    opacity: 0.92,
-    transform: [{ scale: 0.995 }],
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#9CB6D8',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  submitText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-});
