@@ -6,9 +6,8 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server } from 'ws';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { PrismaService } from '../prisma/prisma.service';
 
 const SIGNALING_PORT = parseInt(process.env.SIGNALING_PORT ?? '4002', 10);
@@ -27,12 +26,11 @@ export class SignalingGateway
   server!: Server;
 
   private readonly userSockets = new Map<string, Set<AuthenticatedSocket>>();
+  private readonly log = new Logger(SignalingGateway.name);
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
-    @InjectPinoLogger(SignalingGateway.name)
-    private readonly log: PinoLogger,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -63,9 +61,11 @@ export class SignalingGateway
         this.userSockets.set(payload.sub, set);
       }
       set.add(client);
-      this.log.info({ userId: payload.sub }, 'User connected (signaling)');
+      this.log.log(`User connected (signaling) userId=${payload.sub}`);
     } catch (err) {
-      this.log.warn({ err }, 'Signaling connection rejected: invalid token or DB error');
+      this.log.warn(
+        `Signaling connection rejected: invalid token or DB error: ${err instanceof Error ? err.message : String(err)}`,
+      );
       client.close(4003, 'Invalid token');
     }
   }
@@ -79,7 +79,7 @@ export class SignalingGateway
       set.delete(client);
       if (set.size === 0) this.userSockets.delete(userId);
     }
-    this.log.info({ userId }, 'User disconnected (signaling)');
+    this.log.log(`User disconnected (signaling) userId=${userId}`);
   }
 
   private sendToUser(userId: string, data: string) {

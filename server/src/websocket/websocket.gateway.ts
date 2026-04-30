@@ -6,9 +6,8 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server } from 'ws';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessagesService } from '../messages/messages.service';
@@ -31,6 +30,8 @@ export class WebsocketGateway
   @WebSocketServer()
   server!: Server;
 
+  private readonly log = new Logger(WebsocketGateway.name);
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
@@ -39,8 +40,6 @@ export class WebsocketGateway
     private readonly channelsService: ChannelsService,
     private readonly realtimeService: RealtimeService,
     private readonly chatusFatherService: ChatusFatherService,
-    @InjectPinoLogger(WebsocketGateway.name)
-    private readonly log: PinoLogger,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -74,9 +73,11 @@ export class WebsocketGateway
       });
 
       this.broadcastPresence(payload.sub, true, now);
-      this.log.info({ userId: payload.sub }, 'User connected (WS)');
+      this.log.log(`User connected (WS) userId=${payload.sub}`);
     } catch (err) {
-      this.log.warn({ err }, 'WS connection rejected: invalid token or DB error');
+      this.log.warn(
+        `WS connection rejected: invalid token or DB error: ${err instanceof Error ? err.message : String(err)}`,
+      );
       client.close(4003, 'Invalid token');
     }
   }
@@ -95,11 +96,14 @@ export class WebsocketGateway
           data: { isOnline: false, lastSeen },
         })
         .catch((err) =>
-          this.log.error({ err, userId }, 'Failed to update user offline status'),
+          this.log.error(
+            `Failed to update user offline status userId=${userId}`,
+            err instanceof Error ? err.stack : String(err),
+          ),
         );
       this.broadcastPresence(userId, false, lastSeen);
     }
-    this.log.info({ userId }, 'User disconnected (WS)');
+    this.log.log(`User disconnected (WS) userId=${userId}`);
   }
 
   private broadcastPresence(userId: string, isOnline: boolean, lastSeen?: Date | number | null) {
@@ -159,7 +163,7 @@ export class WebsocketGateway
   ) {
     if (!client.userId) return;
     if (!payload || typeof payload !== 'object') {
-      this.log.warn({ userId: client.userId }, 'send_message: invalid payload');
+      this.log.warn(`send_message: invalid payload userId=${client.userId}`);
       return;
     }
     const {
@@ -180,8 +184,8 @@ export class WebsocketGateway
     const wsOpId = randomUUID();
     const contentLength = typeof content === 'string' ? content.length : 0;
 
-    this.log.info(
-      {
+    this.log.log(
+      `send_message start ${JSON.stringify({
         wsOpId,
         chatId,
         userId: client.userId,
@@ -189,14 +193,15 @@ export class WebsocketGateway
         contentLength,
         hasMedia: Boolean(media),
         clientTempId: clientTempId ?? undefined,
-      },
-      'send_message start',
+      })}`,
     );
 
     if (effectiveMsgType === 'text') {
       const c = content ?? '';
       if (typeof c !== 'string' || c.trim() === '') {
-        this.log.warn({ wsOpId, chatId, userId: client.userId }, 'send_message: content required for text');
+        this.log.warn(
+          `send_message: content required for text wsOpId=${wsOpId} chatId=${chatId} userId=${client.userId}`,
+        );
         return;
       }
     }
@@ -220,15 +225,14 @@ export class WebsocketGateway
         where: { chatId },
         select: { userId: true },
       });
-      this.log.info(
-        {
+      this.log.log(
+        `send_message broadcast ${JSON.stringify({
           wsOpId,
           messageId: message.id,
           chatId,
           memberCount: members.length,
           previewLen: message.content ? Math.min(80, message.content.length) : 0,
-        },
-        'send_message broadcast',
+        })}`,
       );
       const data = JSON.stringify({
         type: 'message',
@@ -260,8 +264,13 @@ export class WebsocketGateway
       }
     } catch (err) {
       this.log.error(
-        { err, wsOpId, chatId, userId: client.userId, msgType: effectiveMsgType },
-        'send_message failed',
+        `send_message failed ${JSON.stringify({
+          wsOpId,
+          chatId,
+          userId: client.userId,
+          msgType: effectiveMsgType,
+        })}`,
+        err instanceof Error ? err.stack : String(err),
       );
     }
   }
@@ -301,9 +310,14 @@ export class WebsocketGateway
           pinned_message_id: null,
         });
       }
-      this.log.info({ wsOpId, chatId, messageId, userId: client.userId }, 'delete_message ok');
+      this.log.log(
+        `delete_message ok ${JSON.stringify({ wsOpId, chatId, messageId, userId: client.userId })}`,
+      );
     } catch (err) {
-      this.log.error({ err, wsOpId, chatId, messageId, userId: client.userId }, 'delete_message failed');
+      this.log.error(
+        `delete_message failed ${JSON.stringify({ wsOpId, chatId, messageId, userId: client.userId })}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -328,9 +342,19 @@ export class WebsocketGateway
         chat_id: chat.id,
         pinned_message_id: chat.pinned_message_id,
       });
-      this.log.info({ wsOpId, chatId, userId: client.userId, pinnedMessageId: messageId ?? null }, 'pin_message ok');
+      this.log.log(
+        `pin_message ok ${JSON.stringify({
+          wsOpId,
+          chatId,
+          userId: client.userId,
+          pinnedMessageId: messageId ?? null,
+        })}`,
+      );
     } catch (err) {
-      this.log.error({ err, wsOpId, chatId, userId: client.userId }, 'pin_message failed');
+      this.log.error(
+        `pin_message failed ${JSON.stringify({ wsOpId, chatId, userId: client.userId })}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -361,7 +385,10 @@ export class WebsocketGateway
         if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
       });
     } catch (err) {
-      this.log.error({ err, wsOpId, chatId, userId: client.userId }, 'relay message failed');
+      this.log.error(
+        `relay message failed ${JSON.stringify({ wsOpId, chatId, userId: client.userId })}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -392,7 +419,10 @@ export class WebsocketGateway
         if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
       });
     } catch (err) {
-      this.log.error({ err, wsOpId, chatId, userId: client.userId }, 'typing relay failed');
+      this.log.error(
+        `typing relay failed ${JSON.stringify({ wsOpId, chatId, userId: client.userId })}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -434,8 +464,8 @@ export class WebsocketGateway
       members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
     } catch (err) {
       this.log.error(
-        { err, wsOpId, chatId, messageId, userId: client.userId, status },
-        'ack failed',
+        `ack failed ${JSON.stringify({ wsOpId, chatId, messageId, userId: client.userId, status })}`,
+        err instanceof Error ? err.stack : String(err),
       );
     }
   }
@@ -461,9 +491,14 @@ export class WebsocketGateway
         msg_type: payload.msg_type ?? 'text',
         media: payload.media,
       });
-      this.log.info({ wsOpId, channelId, userId: client.userId }, 'channel_publish_post ok');
+      this.log.log(
+        `channel_publish_post ok ${JSON.stringify({ wsOpId, channelId, userId: client.userId })}`,
+      );
     } catch (err) {
-      this.log.error({ err, wsOpId, channelId, userId: client.userId }, 'channel_publish_post failed');
+      this.log.error(
+        `channel_publish_post failed ${JSON.stringify({ wsOpId, channelId, userId: client.userId })}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -497,11 +532,23 @@ export class WebsocketGateway
           media: payload.media,
         },
       );
-      this.log.info({ wsOpId, channelId, postId, userId: client.userId }, 'discussion_send_message ok');
+      this.log.log(
+        `discussion_send_message ok ${JSON.stringify({
+          wsOpId,
+          channelId,
+          postId,
+          userId: client.userId,
+        })}`,
+      );
     } catch (err) {
       this.log.error(
-        { err, wsOpId, channelId, postId, userId: client.userId },
-        'discussion_send_message failed',
+        `discussion_send_message failed ${JSON.stringify({
+          wsOpId,
+          channelId,
+          postId,
+          userId: client.userId,
+        })}`,
+        err instanceof Error ? err.stack : String(err),
       );
     }
   }
@@ -533,11 +580,25 @@ export class WebsocketGateway
         type: 'message_reactions_updated',
         ...updated,
       });
-      this.log.info({ wsOpId, chatId, messageId, userId: client.userId, emoji }, 'toggle_reaction ok');
+      this.log.log(
+        `toggle_reaction ok ${JSON.stringify({
+          wsOpId,
+          chatId,
+          messageId,
+          userId: client.userId,
+          emoji,
+        })}`,
+      );
     } catch (err) {
       this.log.error(
-        { err, wsOpId, chatId, messageId, userId: client.userId, emoji },
-        'toggle_reaction failed',
+        `toggle_reaction failed ${JSON.stringify({
+          wsOpId,
+          chatId,
+          messageId,
+          userId: client.userId,
+          emoji,
+        })}`,
+        err instanceof Error ? err.stack : String(err),
       );
     }
   }
