@@ -6,8 +6,10 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server } from 'ws';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessagesService } from '../messages/messages.service';
 import { ChatsService } from '../chats/chats.service';
@@ -29,8 +31,6 @@ export class WebsocketGateway
   @WebSocketServer()
   server!: Server;
 
-  private readonly logger = new Logger(WebsocketGateway.name);
-
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
@@ -39,6 +39,8 @@ export class WebsocketGateway
     private readonly channelsService: ChannelsService,
     private readonly realtimeService: RealtimeService,
     private readonly chatusFatherService: ChatusFatherService,
+    @InjectPinoLogger(WebsocketGateway.name)
+    private readonly log: PinoLogger,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -47,7 +49,7 @@ export class WebsocketGateway
     const token = url.searchParams.get('token');
 
     if (!token) {
-      this.logger.warn('WS connection rejected: no token');
+      this.log.warn('WS connection rejected: no token');
       client.close(4001, 'Missing token');
       return;
     }
@@ -72,9 +74,9 @@ export class WebsocketGateway
       });
 
       this.broadcastPresence(payload.sub, true, now);
-      this.logger.log(`User ${payload.sub} connected (WS)`);
-    } catch {
-      this.logger.warn('WS connection rejected: invalid token');
+      this.log.info({ userId: payload.sub }, 'User connected (WS)');
+    } catch (err) {
+      this.log.warn({ err }, 'WS connection rejected: invalid token or DB error');
       client.close(4003, 'Invalid token');
     }
   }
@@ -93,14 +95,11 @@ export class WebsocketGateway
           data: { isOnline: false, lastSeen },
         })
         .catch((err) =>
-          this.logger.error(
-            `Failed to update user ${userId} offline status`,
-            err,
-          ),
+          this.log.error({ err, userId }, 'Failed to update user offline status'),
         );
       this.broadcastPresence(userId, false, lastSeen);
     }
-    this.logger.log(`User ${userId} disconnected (WS)`);
+    this.log.info({ userId }, 'User disconnected (WS)');
   }
 
   private broadcastPresence(userId: string, isOnline: boolean, lastSeen?: Date | number | null) {
@@ -160,7 +159,7 @@ export class WebsocketGateway
   ) {
     if (!client.userId) return;
     if (!payload || typeof payload !== 'object') {
-      this.logger.warn('send_message: invalid payload');
+      this.log.warn({ userId: client.userId }, 'send_message: invalid payload');
       return;
     }
     const {
@@ -177,13 +176,27 @@ export class WebsocketGateway
     } = payload;
     if (!chatId) return;
 
-    this.logger.log(`send_message received: chatId=${chatId} sender=${client.userId} content=${typeof content === 'string' ? content.slice(0, 50) : content} msgType=${msgType}`);
-
     const effectiveMsgType = msgType ?? 'text';
+    const wsOpId = randomUUID();
+    const contentLength = typeof content === 'string' ? content.length : 0;
+
+    this.log.info(
+      {
+        wsOpId,
+        chatId,
+        userId: client.userId,
+        msgType: effectiveMsgType,
+        contentLength,
+        hasMedia: Boolean(media),
+        clientTempId: clientTempId ?? undefined,
+      },
+      'send_message start',
+    );
+
     if (effectiveMsgType === 'text') {
       const c = content ?? '';
       if (typeof c !== 'string' || c.trim() === '') {
-        this.logger.warn('send_message: content required for text');
+        this.log.warn({ wsOpId, chatId, userId: client.userId }, 'send_message: content required for text');
         return;
       }
     }
@@ -207,7 +220,16 @@ export class WebsocketGateway
         where: { chatId },
         select: { userId: true },
       });
-      this.logger.log(`send_message broadcast: msgId=${message.id} content=${message.content?.slice(0, 50)} to ${members.length} members: ${members.map((member) => member.userId).join(',')}`);
+      this.log.info(
+        {
+          wsOpId,
+          messageId: message.id,
+          chatId,
+          memberCount: members.length,
+          previewLen: message.content ? Math.min(80, message.content.length) : 0,
+        },
+        'send_message broadcast',
+      );
       const data = JSON.stringify({
         type: 'message',
         message: {
@@ -229,15 +251,18 @@ export class WebsocketGateway
             content,
           );
           for (const reply of replies) {
-            const payload = JSON.stringify({ type: 'message', message: reply });
+            const fatherPayload = JSON.stringify({ type: 'message', message: reply });
             members.forEach(({ userId }) =>
-              this.realtimeService.sendToUser(userId, payload),
+              this.realtimeService.sendToUser(userId, fatherPayload),
             );
           }
         }
       }
     } catch (err) {
-      this.logger.warn(`send_message failed: ${err}`);
+      this.log.error(
+        { err, wsOpId, chatId, userId: client.userId, msgType: effectiveMsgType },
+        'send_message failed',
+      );
     }
   }
 
@@ -250,6 +275,7 @@ export class WebsocketGateway
     const { chat_id: chatId, message_id: messageId } = payload;
     if (!chatId || !messageId) return;
 
+    const wsOpId = randomUUID();
     try {
       const chatBeforeDelete = await this.prisma.chat.findUnique({
         where: { id: chatId },
@@ -275,8 +301,9 @@ export class WebsocketGateway
           pinned_message_id: null,
         });
       }
+      this.log.info({ wsOpId, chatId, messageId, userId: client.userId }, 'delete_message ok');
     } catch (err) {
-      this.logger.warn(`delete_message failed: ${err}`);
+      this.log.error({ err, wsOpId, chatId, messageId, userId: client.userId }, 'delete_message failed');
     }
   }
 
@@ -289,6 +316,7 @@ export class WebsocketGateway
     const { chat_id: chatId, message_id: messageId } = payload;
     if (!chatId) return;
 
+    const wsOpId = randomUUID();
     try {
       const chat = await this.chatsService.setPinnedMessage(
         chatId,
@@ -300,8 +328,9 @@ export class WebsocketGateway
         chat_id: chat.id,
         pinned_message_id: chat.pinned_message_id,
       });
+      this.log.info({ wsOpId, chatId, userId: client.userId, pinnedMessageId: messageId ?? null }, 'pin_message ok');
     } catch (err) {
-      this.logger.warn(`pin_message failed: ${err}`);
+      this.log.error({ err, wsOpId, chatId, userId: client.userId }, 'pin_message failed');
     }
   }
 
@@ -314,21 +343,26 @@ export class WebsocketGateway
     const { chat_id: chatId, message } = payload;
     if (!chatId || !message) return;
 
-    const members = await this.prisma.chatMember.findMany({
-      where: { chatId },
-      select: { userId: true },
-    });
-    if (!members.some((member) => member.userId === client.userId)) return;
+    const wsOpId = randomUUID();
+    try {
+      const members = await this.prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true },
+      });
+      if (!members.some((member) => member.userId === client.userId)) return;
 
-    const data = JSON.stringify({
-      type: 'message',
-      chat_id: chatId,
-      sender_id: client.userId,
-      message,
-    });
-    members.forEach(({ userId }) => {
-      if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
-    });
+      const data = JSON.stringify({
+        type: 'message',
+        chat_id: chatId,
+        sender_id: client.userId,
+        message,
+      });
+      members.forEach(({ userId }) => {
+        if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
+      });
+    } catch (err) {
+      this.log.error({ err, wsOpId, chatId, userId: client.userId }, 'relay message failed');
+    }
   }
 
   @SubscribeMessage('typing')
@@ -340,21 +374,26 @@ export class WebsocketGateway
     const { chat_id: chatId, is_typing: isTyping } = payload;
     if (!chatId) return;
 
-    const members = await this.prisma.chatMember.findMany({
-      where: { chatId },
-      select: { userId: true },
-    });
-    if (!members.some((member) => member.userId === client.userId)) return;
+    const wsOpId = randomUUID();
+    try {
+      const members = await this.prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true },
+      });
+      if (!members.some((member) => member.userId === client.userId)) return;
 
-    const data = JSON.stringify({
-      type: 'typing',
-      chat_id: chatId,
-      user_id: client.userId,
-      is_typing: isTyping,
-    });
-    members.forEach(({ userId }) => {
-      if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
-    });
+      const data = JSON.stringify({
+        type: 'typing',
+        chat_id: chatId,
+        user_id: client.userId,
+        is_typing: isTyping,
+      });
+      members.forEach(({ userId }) => {
+        if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
+      });
+    } catch (err) {
+      this.log.error({ err, wsOpId, chatId, userId: client.userId }, 'typing relay failed');
+    }
   }
 
   @SubscribeMessage('ack')
@@ -370,27 +409,35 @@ export class WebsocketGateway
     const { chat_id: chatId, message_id: messageId, status } = payload;
     if (!chatId || !messageId || !status) return;
 
-    const members = await this.prisma.chatMember.findMany({
-      where: { chatId },
-      select: { userId: true },
-    });
-    if (!members.some((member) => member.userId === client.userId)) return;
-    const updatedMessage = await this.messagesService.updateMessageStatus(
-      chatId,
-      messageId,
-      client.userId,
-      status,
-    );
-    const effectiveStatus = updatedMessage?.status ?? status;
+    const wsOpId = randomUUID();
+    try {
+      const members = await this.prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true },
+      });
+      if (!members.some((member) => member.userId === client.userId)) return;
+      const updatedMessage = await this.messagesService.updateMessageStatus(
+        chatId,
+        messageId,
+        client.userId,
+        status,
+      );
+      const effectiveStatus = updatedMessage?.status ?? status;
 
-    const data = JSON.stringify({
-      type: 'ack',
-      chat_id: chatId,
-      message_id: messageId,
-      user_id: client.userId,
-      status: effectiveStatus,
-    });
-    members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
+      const data = JSON.stringify({
+        type: 'ack',
+        chat_id: chatId,
+        message_id: messageId,
+        user_id: client.userId,
+        status: effectiveStatus,
+      });
+      members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
+    } catch (err) {
+      this.log.error(
+        { err, wsOpId, chatId, messageId, userId: client.userId, status },
+        'ack failed',
+      );
+    }
   }
 
   @SubscribeMessage('channel_publish_post')
@@ -407,14 +454,16 @@ export class WebsocketGateway
     const channelId = payload?.channel_id;
     if (!channelId) return;
 
+    const wsOpId = randomUUID();
     try {
       await this.channelsService.publishPost(channelId, client.userId, {
         content: payload.content ?? null,
         msg_type: payload.msg_type ?? 'text',
         media: payload.media,
       });
+      this.log.info({ wsOpId, channelId, userId: client.userId }, 'channel_publish_post ok');
     } catch (err) {
-      this.logger.warn(`channel_publish_post failed: ${err}`);
+      this.log.error({ err, wsOpId, channelId, userId: client.userId }, 'channel_publish_post failed');
     }
   }
 
@@ -435,6 +484,7 @@ export class WebsocketGateway
     const postId = payload?.post_id;
     if (!channelId || !postId) return;
 
+    const wsOpId = randomUUID();
     try {
       await this.channelsService.createDiscussionMessage(
         channelId,
@@ -447,8 +497,12 @@ export class WebsocketGateway
           media: payload.media,
         },
       );
+      this.log.info({ wsOpId, channelId, postId, userId: client.userId }, 'discussion_send_message ok');
     } catch (err) {
-      this.logger.warn(`discussion_send_message failed: ${err}`);
+      this.log.error(
+        { err, wsOpId, channelId, postId, userId: client.userId },
+        'discussion_send_message failed',
+      );
     }
   }
 
@@ -467,6 +521,7 @@ export class WebsocketGateway
     const emoji = payload?.emoji;
     if (!chatId || !messageId || !emoji) return;
 
+    const wsOpId = randomUUID();
     try {
       const updated = await this.messagesService.toggleReaction(
         chatId,
@@ -478,8 +533,12 @@ export class WebsocketGateway
         type: 'message_reactions_updated',
         ...updated,
       });
+      this.log.info({ wsOpId, chatId, messageId, userId: client.userId, emoji }, 'toggle_reaction ok');
     } catch (err) {
-      this.logger.warn(`toggle_reaction failed: ${err}`);
+      this.log.error(
+        { err, wsOpId, chatId, messageId, userId: client.userId, emoji },
+        'toggle_reaction failed',
+      );
     }
   }
 }

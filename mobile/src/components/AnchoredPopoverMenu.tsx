@@ -12,6 +12,8 @@ export type AnchoredMenuState = {
   height: number;
 } | null;
 
+type AnchoredMenuAnchor = NonNullable<AnchoredMenuState>;
+
 export type AnchoredPopoverMenuItem = {
   key: string;
   label: string;
@@ -127,7 +129,11 @@ function createAnchoredMenuStyles(c: ThemeColors, scheme: ResolvedColorScheme) {
   });
 }
 
-export function AnchoredPopoverMenu({
+type AnchoredPopoverMenuContentProps = Omit<AnchoredPopoverMenuProps, 'menu'> & {
+  menu: AnchoredMenuAnchor;
+};
+
+function AnchoredPopoverMenuContent({
   menu,
   animation,
   items,
@@ -137,7 +143,7 @@ export function AnchoredPopoverMenu({
   offsetY = DEFAULT_OFFSET_Y,
   horizontalAlign = 'center',
   verticalAlign = 'below',
-}: AnchoredPopoverMenuProps) {
+}: AnchoredPopoverMenuContentProps) {
   const { colors, resolvedScheme } = useTheme();
   const styles = useMemo(
     () => createAnchoredMenuStyles(colors, resolvedScheme),
@@ -176,10 +182,6 @@ export function AnchoredPopoverMenu({
     }),
     [animation],
   ) as any;
-
-  if (!menu || items.length === 0) {
-    return null;
-  }
 
   const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
@@ -251,4 +253,12 @@ export function AnchoredPopoverMenu({
       </Animated.View>
     </View>
   );
+}
+
+export function AnchoredPopoverMenu(props: AnchoredPopoverMenuProps) {
+  const { menu, items } = props;
+  if (!menu || items.length === 0) {
+    return null;
+  }
+  return <AnchoredPopoverMenuContent {...props} menu={menu} />;
 }

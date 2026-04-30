@@ -6,8 +6,9 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server } from 'ws';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { PrismaService } from '../prisma/prisma.service';
 
 const SIGNALING_PORT = parseInt(process.env.SIGNALING_PORT ?? '4002', 10);
@@ -25,12 +26,13 @@ export class SignalingGateway
   @WebSocketServer()
   server!: Server;
 
-  private readonly logger = new Logger(SignalingGateway.name);
   private readonly userSockets = new Map<string, Set<AuthenticatedSocket>>();
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    @InjectPinoLogger(SignalingGateway.name)
+    private readonly log: PinoLogger,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -39,7 +41,7 @@ export class SignalingGateway
     const token = url.searchParams.get('token');
 
     if (!token) {
-      this.logger.warn('Signaling connection rejected: no token');
+      this.log.warn('Signaling connection rejected: no token');
       client.close(4001, 'Missing token');
       return;
     }
@@ -61,9 +63,9 @@ export class SignalingGateway
         this.userSockets.set(payload.sub, set);
       }
       set.add(client);
-      this.logger.log(`User ${payload.sub} connected (signaling)`);
-    } catch {
-      this.logger.warn('Signaling connection rejected: invalid token');
+      this.log.info({ userId: payload.sub }, 'User connected (signaling)');
+    } catch (err) {
+      this.log.warn({ err }, 'Signaling connection rejected: invalid token or DB error');
       client.close(4003, 'Invalid token');
     }
   }
@@ -77,7 +79,7 @@ export class SignalingGateway
       set.delete(client);
       if (set.size === 0) this.userSockets.delete(userId);
     }
-    this.logger.log(`User ${userId} disconnected (signaling)`);
+    this.log.info({ userId }, 'User disconnected (signaling)');
   }
 
   private sendToUser(userId: string, data: string) {

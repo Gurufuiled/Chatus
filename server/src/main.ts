@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { existsSync, readFileSync } from 'node:fs';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { join } from 'path';
@@ -27,7 +28,10 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(app.get(Logger));
   app.useWebSocketAdapter(new WsAdapter(app));
 
   const expressApp = app.getHttpAdapter().getInstance();

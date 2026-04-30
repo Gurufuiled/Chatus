@@ -146,7 +146,7 @@ export function GroupProfileHeaderSection({
               ]}
             >
               {saving ? (
-                <ActivityIndicator size="small" color={c.textPrimary} />
+                <ActivityIndicator size="small" color={themeColors.textPrimary} />
               ) : (
                 <Text style={[styles.pillButtonText, styles.primaryPillButtonText]}>
                   {isEditMode ? 'Готово' : 'Изм.'}
@@ -178,7 +178,7 @@ export function GroupProfileHeaderSection({
               )}
               {avatarUploading ? (
                 <View style={styles.avatarOverlay}>
-                  <ActivityIndicator color={c.inputBackgroundSolid} />
+                  <ActivityIndicator color={themeColors.inputBackgroundSolid} />
                 </View>
               ) : null}
             </Reanimated.View>
@@ -238,7 +238,7 @@ export function GroupProfileHeaderSection({
                   <ProfileActionIcon
                     name="sound"
                     size={20}
-                    color={c.accent}
+                    color={themeColors.accent}
                     active={isMuted}
                   />
                   <Text style={styles.actionButtonLabel}>Звук</Text>
@@ -248,7 +248,7 @@ export function GroupProfileHeaderSection({
                   onPress={onSearch}
                   style={({ pressed }) => [styles.actionButton, pressed && styles.cardPressed]}
                 >
-                  <ProfileActionIcon name="search" size={20} color={c.accent} />
+                  <ProfileActionIcon name="search" size={20} color={themeColors.accent} />
                   <Text style={styles.actionButtonLabel}>Поиск</Text>
                 </Pressable>
 
@@ -263,7 +263,7 @@ export function GroupProfileHeaderSection({
                       style={[styles.actionButtonWave, moreWaveStyle]}
                     />
                     <RNAnimated.View style={{ transform: [{ scale: moreIconScale }] }}>
-                      <ProfileActionIcon name="more" size={20} color={c.accent} />
+                      <ProfileActionIcon name="more" size={20} color={themeColors.accent} />
                     </RNAnimated.View>
                   </View>
                   <Text style={styles.actionButtonLabel}>Ещё</Text>

@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AllExceptionsFilter } from './logging/all-exceptions.filter';
+import { LoggingModule } from './logging/logging.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -15,6 +18,7 @@ import { FeedbackModule } from './feedback/feedback.module';
 
 @Module({
   imports: [
+    LoggingModule,
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -28,6 +32,12 @@ import { FeedbackModule } from './feedback/feedback.module';
     SignalingModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_FILTER,
+      useClass: AllExceptionsFilter,
+    },
+  ],
 })
 export class AppModule {}
