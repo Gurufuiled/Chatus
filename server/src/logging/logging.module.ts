@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
 import type { Params } from 'nestjs-pino';
@@ -52,9 +52,11 @@ export function buildPinoParams(): Params {
   return { pinoHttp };
 }
 
-@Global()
+/** Тот же инстанс, что в imports — иначе Nest не реэкспортит провайдеры из forRoot (в т.ч. PinoLogger:*). */
+const pinoLoggerModule = LoggerModule.forRoot(buildPinoParams());
+
 @Module({
-  imports: [LoggerModule.forRoot(buildPinoParams())],
-  exports: [LoggerModule],
+  imports: [pinoLoggerModule],
+  exports: [pinoLoggerModule],
 })
 export class LoggingModule {}
