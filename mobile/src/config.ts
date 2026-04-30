@@ -20,7 +20,9 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_CLIENT_UPDATE_DISABLED'
   /** `true` — в __DEV__ тоже запрашивать манифест (по умолчанию в dev проверка пропускается). */
   | 'EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV'
-  | 'EXPO_PUBLIC_CLIENT_RELEASE_TAG';
+  | 'EXPO_PUBLIC_CLIENT_RELEASE_TAG'
+  /** Если задан — кнопка «Обновить» открывает этот URL вместо android.apkUrl из манифеста (удобно для Google Drive без коммита id в репо). */
+  | 'EXPO_PUBLIC_CLIENT_UPDATE_APK_URL';
 
 function readExpoPublic(key: PublicEnvKey): string | undefined {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
@@ -133,6 +135,11 @@ export const CLIENT_UPDATE_CHECK_IN_DEV =
  * (не обязана совпадать с versionCode). Смена метки в манифесте = предложение обновить без поднятия versionCode.
  */
 export const CLIENT_RELEASE_TAG = (readExpoPublic('EXPO_PUBLIC_CLIENT_RELEASE_TAG') || '').trim();
+
+/** Не пусто — переопределить ссылку на APK из манифеста (https, например прямая ссылка Google Drive). */
+export const CLIENT_UPDATE_APK_URL_OVERRIDE = (
+  readExpoPublic('EXPO_PUBLIC_CLIENT_UPDATE_APK_URL') || ''
+).trim();
 
 export const OAUTH_REDIRECT_URI = 'messenger://auth/callback';
 

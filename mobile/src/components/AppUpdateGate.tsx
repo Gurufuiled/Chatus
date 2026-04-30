@@ -5,6 +5,7 @@ import * as Linking from 'expo-linking';
 import { useTheme } from '../contexts/ThemeContext';
 import {
   CLIENT_RELEASE_TAG,
+  CLIENT_UPDATE_APK_URL_OVERRIDE,
   CLIENT_UPDATE_CHECK_IN_DEV,
   CLIENT_UPDATE_DISABLED,
   CLIENT_UPDATE_MANIFEST_URL,
@@ -70,6 +71,7 @@ export function AppUpdateGate() {
       }
       const { decision, apkUrl: url } = evaluateAndroidUpdate(manifest, current, CLIENT_RELEASE_TAG);
       if (cancelled) return;
+      const downloadUrl = (CLIENT_UPDATE_APK_URL_OVERRIDE || url || '').trim();
       if (__DEV__) {
         // eslint-disable-next-line no-console
         console.warn('[AppUpdateGate]', {
@@ -79,15 +81,16 @@ export function AppUpdateGate() {
           min: manifest.android?.minVersionCode,
           latest: manifest.android?.latestVersionCode,
           decision,
+          downloadUrlFrom: CLIENT_UPDATE_APK_URL_OVERRIDE ? 'env' : 'manifest',
         });
       }
-      if (decision === 'force' && url) {
-        setApkUrl(url);
+      if (decision === 'force' && downloadUrl) {
+        setApkUrl(downloadUrl);
         setMode('force');
         return;
       }
-      if (decision === 'soft' && url) {
-        setApkUrl(url);
+      if (decision === 'soft' && downloadUrl) {
+        setApkUrl(downloadUrl);
         setMode('soft');
         return;
       }

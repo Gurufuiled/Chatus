@@ -38,21 +38,32 @@ cp .env.production.example .env.production
 
 ### 1.1.2 APK с Google Drive (если с GitHub releases «скачка» глючит)
 
-Манифест уже отдаёт в приложение поле **`apkUrl`** — достаточно подставить туда **прямую** ссылку на файл, а не страницу «Просмотр» в браузере.
+Папка для хранения сборок: [Chatus на Google Drive](https://drive.google.com/drive/folders/1wZpsToMkPvc0CHscSF4GAe007jChzxaO).
 
-1. Залей `chatus-release.apk` на Google Диск.
-2. Правый клик → **Доступ** → «Все, у кого есть ссылка» (читатель) — иначе браузер на телефоне не скачает.
-3. Скопируй **ID файла** из ссылки вида  
-   `https://drive.google.com/file/d/FILE_ID_HERE/view`
-4. В **`config/client-update-manifest.json`** укажи:
+Манифест поддерживает два варианта ссылки на APK:
 
-   `https://drive.google.com/uc?export=download&id=FILE_ID_HERE`
+1. **`android.apkUrl`** — любой прямой `https://…` (как раньше).
+2. **`android.driveApkFileId`** — только **ID файла** (не папки). После загрузки `chatus-release.apk` в папку: открой **файл** в Drive → «Настроить доступ» → «Все, у кого есть ссылка» (читатель) → скопируй ссылку вида  
+   `https://drive.google.com/file/d/FILE_ID_HERE/view`  
+   и в **`config/client-update-manifest.json`** добавь:
 
-   Альтернатива (иногда стабильнее для больших файлов):
+   ```json
+   "driveApkFileId": "FILE_ID_HERE"
+   ```
 
-   `https://drive.usercontent.google.com/download?id=FILE_ID_HERE&export=download`
+   Если `driveApkFileId` задан, приложение соберёт ссылку вида  
+   `https://drive.google.com/uc?export=download&id=FILE_ID_HERE`  
+   и **игнорирует** `apkUrl` для кнопки скачивания (можно оставить `apkUrl` как запасной GitHub для документации).
 
-**Ограничения:** у Google для очень больших APK иногда показывается промежуточная страница «подтвердите скачивание» — пользователь в браузере нажимает «Скачать всё равно», после этого установка идёт как обычно. Если нужен полностью автоматический поток без страниц провайдера — надёжнее выложить APK на **свой сервер** (тот же VPS, отдельный путь под `application/vnd.android.package-archive`).
+**Не путать:** `1wZpsToMkPvc0CHscSF4GAe007jChzxaO` из URL **папки** (`/folders/…`) — это **не** `driveApkFileId`; скачивание по нему даст не APK.
+
+**Ограничения:** у Google для крупных файлов иногда показывается промежуточная страница «Подтвердить скачивание» — пользователь в браузере нажимает «Скачать всё равно». Для полностью автоматического потока без страниц провайдера — надёжнее раздавать APK **со своего VPS**.
+
+**Переопределение без push в git:** в **`mobile/.env.production`** можно задать полный URL:
+
+`EXPO_PUBLIC_CLIENT_UPDATE_APK_URL=https://drive.google.com/uc?export=download&id=FILE_ID`
+
+Тогда кнопка «Обновить» откроет его **вместо** `apkUrl` из манифеста (решение о том, *нужно ли* обновление, по-прежнему из манифеста). Пересобери release с `MOBILE_ENV=production`.
 
 После правки JSON сделай **`git push`** в ветку, с которой тянется `EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL` (например `main` на raw.githubusercontent.com).
 

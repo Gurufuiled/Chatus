@@ -1,5 +1,5 @@
 {
-  "_readme": "Схема v1. android.releaseTag + EXPO_PUBLIC_CLIENT_RELEASE_TAG в APK: при смене тега в манифесте — мягкое обновление без смены versionCode. minVersionCode — жёсткий минимум. latestVersionCode — fallback, если releaseTag в манифесте не задан. apkUrl — любой https (GitHub release, свой CDN, Google Drive прямая ссылка uc?id=… — см. mobile/RELEASE-APK.md).",
+  "_readme": "Схема v1. Папка со сборками (удобно хранить версии): https://drive.google.com/drive/folders/1wZpsToMkPvc0CHscSF4GAe007jChzxaO . Скачивание: либо android.apkUrl (любой https), либо android.driveApkFileId — ID именно ФАЙЛА apk из ссылки вида https://drive.google.com/file/d/FILE_ID/view (НЕ id папки из /folders/…). Если задан driveApkFileId, он заменяет apkUrl для кнопки «Обновить». releaseTag / versionCode — см. RELEASE-APK.md.",
   "schemaVersion": 1,
   "android": {
     "minVersionCode": 1,

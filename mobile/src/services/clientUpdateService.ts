@@ -12,6 +12,12 @@ export type ClientUpdateAndroid = {
   releaseTag?: string;
 };
 
+/** Прямая ссылка на бинарник в Google Drive по ID файла (не папки). */
+export function buildGoogleDriveApkDownloadUrl(fileId: string): string {
+  const id = fileId.trim();
+  return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`;
+}
+
 export type ClientUpdateManifest = {
   schemaVersion: number;
   android?: ClientUpdateAndroid;
@@ -42,6 +48,15 @@ function parseHttpsUrl(x: unknown): string | null {
   }
 }
 
+/** ID файла в Google Drive (из ссылки …/file/d/THIS/view). Не использовать ID папки. */
+function parseDriveApkFileId(x: unknown): string | null {
+  if (typeof x !== 'string' || !x.trim()) return null;
+  const raw = x.trim();
+  if (raw.length < 10 || raw.length > 128) return null;
+  if (!/^[a-zA-Z0-9_-]+$/.test(raw)) return null;
+  return raw;
+}
+
 /** Разбор тела манифеста (после JSON.parse). Возвращает null при невалидных данных. */
 export function parseClientUpdateManifest(data: unknown): ClientUpdateManifest | null {
   if (!isRecord(data)) return null;
@@ -53,7 +68,12 @@ export function parseClientUpdateManifest(data: unknown): ClientUpdateManifest |
     if (!isRecord(data.android)) return null;
     const minVersionCode = parsePositiveInt(data.android.minVersionCode);
     const latestVersionCode = parsePositiveInt(data.android.latestVersionCode);
-    const apkUrl = parseHttpsUrl(data.android.apkUrl);
+    const driveApkFileId = parseDriveApkFileId(data.android.driveApkFileId);
+    const apkUrlFromField = parseHttpsUrl(data.android.apkUrl);
+    const apkUrl =
+      driveApkFileId != null
+        ? buildGoogleDriveApkDownloadUrl(driveApkFileId)
+        : apkUrlFromField;
     if (minVersionCode === null || latestVersionCode === null || !apkUrl) return null;
     if (minVersionCode > latestVersionCode) return null;
 
