@@ -5,7 +5,7 @@
 
 import { SyncQueueDao } from '../db';
 import { WebSocketService } from './WebSocketService';
-import { apiGet, apiUpload, apiUploadVoice } from './apiClient';
+import { apiGet, apiUpload, apiUploadVoice, LARGE_MEDIA_UPLOAD_TIMEOUT_MS } from './apiClient';
 import { API_BASE_URL, resolveMediaUrl } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
@@ -395,6 +395,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         uri: p.uri,
         name: 'video_note.mp4',
         type: 'video/mp4',
+        timeoutMs: LARGE_MEDIA_UPLOAD_TIMEOUT_MS,
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
       const resolvedDurationMs = result.duration_ms ?? p.durationMs;
@@ -479,6 +480,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         uri: p.uri,
         name: videoName,
         type: videoMime,
+        timeoutMs: LARGE_MEDIA_UPLOAD_TIMEOUT_MS,
       });
       const fullUrl = toFullUrl(baseUrl, result.url);
       const resolvedDurationMs = result.duration_ms ?? p.durationMs;
@@ -529,6 +531,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             uri: item.uri,
             name,
             type: mimeType,
+            timeoutMs: item.kind === 'video' ? LARGE_MEDIA_UPLOAD_TIMEOUT_MS : undefined,
           });
           return {
             media_type: item.kind,

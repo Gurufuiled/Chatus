@@ -4,7 +4,7 @@
  */
 
 import { API_BASE_URL } from '../config';
-import { apiUpload, apiUploadVoice } from './apiClient';
+import { apiUpload, apiUploadVoice, LARGE_MEDIA_UPLOAD_TIMEOUT_MS } from './apiClient';
 import type { Message } from '../stores/types';
 
 export function getUploadBaseUrl(): string {
@@ -69,6 +69,7 @@ export async function ensureDiscussionMediaUploaded(
       uri: raw,
       name: 'video_note.mp4',
       type: 'video/mp4',
+      timeoutMs: LARGE_MEDIA_UPLOAD_TIMEOUT_MS,
     });
     const fullUrl = fullUploadUrl(r.url);
     const thumbnailUrl = r.thumbnail_path ? fullUploadUrl(r.thumbnail_path) : media.thumbnail_url;
@@ -115,6 +116,7 @@ export async function ensureDiscussionMediaUploaded(
       uri: raw,
       name: media.file_name ?? 'video.mp4',
       type: media.mime_type ?? 'video/mp4',
+      timeoutMs: LARGE_MEDIA_UPLOAD_TIMEOUT_MS,
     });
     const fullUrl = fullUploadUrl(r.url);
     const thumb = r.thumbnail_path ? fullUploadUrl(r.thumbnail_path) : media.thumbnail_url;

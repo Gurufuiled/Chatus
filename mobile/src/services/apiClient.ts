@@ -11,7 +11,10 @@ import { authService } from './AuthService';
 import { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete } from './apiMocks';
 
 const FETCH_TIMEOUT_MS = 15000;
-const UPLOAD_FETCH_TIMEOUT_MS = 60000;
+/** По умолчанию для фото/голоса/мелких файлов. */
+const UPLOAD_FETCH_TIMEOUT_MS = 120_000;
+/** Видео / video_note (до ~100 MB на сервере) — на медленном канале загрузка часто > 60 с. */
+export const LARGE_MEDIA_UPLOAD_TIMEOUT_MS = 300_000;
 
 export interface ApiFetchOptions extends RequestInit {
   /** If true, skip adding Authorization header (for public endpoints). */
@@ -184,6 +187,8 @@ export async function apiUpload(file: {
   uri: string;
   name?: string;
   type?: string;
+  /** По умолчанию UPLOAD_FETCH_TIMEOUT_MS; для видео задавай LARGE_MEDIA_UPLOAD_TIMEOUT_MS. */
+  timeoutMs?: number;
 }): Promise<ApiUploadResult> {
   const formData = new FormData();
   // React Native FormData accepts { uri, name, type } for file uploads
@@ -200,7 +205,7 @@ export async function apiUpload(file: {
     method: 'POST',
     headers: {},
     body: formData,
-    timeoutMs: UPLOAD_FETCH_TIMEOUT_MS,
+    timeoutMs: file.timeoutMs ?? UPLOAD_FETCH_TIMEOUT_MS,
   });
 
   if (!res.ok) {

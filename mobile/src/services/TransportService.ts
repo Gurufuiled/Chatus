@@ -5,7 +5,7 @@
 import { WebSocketService } from './WebSocketService';
 import { SyncService } from './SyncService';
 import { SyncQueueDao } from '../db';
-import { apiUpload, apiUploadVoice } from './apiClient';
+import { apiUpload, apiUploadVoice, LARGE_MEDIA_UPLOAD_TIMEOUT_MS } from './apiClient';
 import { API_BASE_URL } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
@@ -244,6 +244,7 @@ class TransportServiceClass {
       uri: item.uri,
       name: fallbackName,
       type: fallbackMime,
+      timeoutMs: item.kind === 'video' ? LARGE_MEDIA_UPLOAD_TIMEOUT_MS : undefined,
     });
     const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
     const thumbnailUrl = result.thumbnail_path
@@ -452,6 +453,7 @@ class TransportServiceClass {
           uri: payload.uri,
           name: 'video_note.mp4',
           type: 'video/mp4',
+          timeoutMs: LARGE_MEDIA_UPLOAD_TIMEOUT_MS,
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
         const resolvedDurationMs = result.duration_ms ?? payload.durationMs;
@@ -660,6 +662,7 @@ class TransportServiceClass {
           uri: payload.uri,
           name: videoName,
           type: videoMime,
+          timeoutMs: LARGE_MEDIA_UPLOAD_TIMEOUT_MS,
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
         const thumbnailUrl = result.thumbnail_path
@@ -824,10 +827,12 @@ class TransportServiceClass {
   ): Promise<void> {
     if (WebSocketService.isConnected()) {
       try {
+        const mime = payload.mimeType ?? 'application/octet-stream';
         const result = await apiUpload({
           uri: payload.uri,
           name: payload.name,
-          type: payload.mimeType ?? 'application/octet-stream',
+          type: mime,
+          timeoutMs: mime.startsWith('video/') ? LARGE_MEDIA_UPLOAD_TIMEOUT_MS : undefined,
         });
         const fullUrl = `${getUploadBaseUrl()}${result.url.startsWith('/') ? '' : '/'}${result.url}`;
         const fileName = result.file_name || payload.name;

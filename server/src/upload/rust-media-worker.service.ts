@@ -161,8 +161,8 @@ export class RustMediaWorkerService {
   }
 
   private resolveTimeoutMs(): number {
-    const raw = Number(process.env.RUST_MEDIA_WORKER_TIMEOUT_MS ?? '5000');
-    if (!Number.isFinite(raw) || raw <= 0) return 5000;
+    const raw = Number(process.env.RUST_MEDIA_WORKER_TIMEOUT_MS ?? '120000');
+    if (!Number.isFinite(raw) || raw <= 0) return 120_000;
     return Math.floor(raw);
   }
 
