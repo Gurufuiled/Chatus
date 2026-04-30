@@ -71,7 +71,8 @@ export function AppUpdateGate() {
       }
       const { decision, apkUrl: url } = evaluateAndroidUpdate(manifest, current, CLIENT_RELEASE_TAG);
       if (cancelled) return;
-      const downloadUrl = (CLIENT_UPDATE_APK_URL_OVERRIDE || url || '').trim();
+      /** Сначала URL из манифеста (driveApkFileId / apkUrl), иначе вшитый EXPO_PUBLIC_CLIENT_UPDATE_APK_URL — иначе старый APK с GitHub в env вечно игнорирует Drive в JSON. */
+      const downloadUrl = (url || CLIENT_UPDATE_APK_URL_OVERRIDE || '').trim();
       if (__DEV__) {
         // eslint-disable-next-line no-console
         console.warn('[AppUpdateGate]', {
@@ -81,7 +82,7 @@ export function AppUpdateGate() {
           min: manifest.android?.minVersionCode,
           latest: manifest.android?.latestVersionCode,
           decision,
-          downloadUrlFrom: CLIENT_UPDATE_APK_URL_OVERRIDE ? 'env' : 'manifest',
+          downloadUrlFrom: url ? 'manifest' : CLIENT_UPDATE_APK_URL_OVERRIDE ? 'env' : 'none',
         });
       }
       if (decision === 'force' && downloadUrl) {

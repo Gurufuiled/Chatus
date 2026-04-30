@@ -59,11 +59,7 @@ cp .env.production.example .env.production
 
 **Ограничения:** у Google для крупных файлов иногда показывается промежуточная страница «Подтвердить скачивание» — пользователь в браузере нажимает «Скачать всё равно». Для полностью автоматического потока без страниц провайдера — надёжнее раздавать APK **со своего VPS**.
 
-**Переопределение без push в git:** в **`mobile/.env.production`** можно задать полный URL:
-
-`EXPO_PUBLIC_CLIENT_UPDATE_APK_URL=https://drive.google.com/uc?export=download&id=FILE_ID`
-
-Тогда кнопка «Обновить» откроет его **вместо** `apkUrl` из манифеста (решение о том, *нужно ли* обновление, по-прежнему из манифеста). Пересобери release с `MOBILE_ENV=production`.
+**Запасной URL в сборке:** `EXPO_PUBLIC_CLIENT_UPDATE_APK_URL` в **`mobile/.env.production`** используется **только если** в манифесте нет рабочей ссылки на APK (пустой/битый блок `android`). Иначе **всегда** берётся URL из манифеста (`driveApkFileId` или `apkUrl`) — так старая сборка с вшитым GitHub в env не перекрывает Google Drive в JSON. Пересобери release с `MOBILE_ENV=production`, если меняешь env.
 
 После правки JSON сделай **`git push`** в ветку, с которой тянется `EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL` (например `main` на raw.githubusercontent.com).
 
