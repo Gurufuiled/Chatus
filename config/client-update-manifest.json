@@ -1,5 +1,5 @@
 {
-  "_readme": "Схема v1. android.releaseTag + EXPO_PUBLIC_CLIENT_RELEASE_TAG в APK: при смене тега в манифесте — мягкое обновление без смены versionCode. minVersionCode — жёсткий минимум. latestVersionCode — fallback, если releaseTag в манифесте не задан.",
+  "_readme": "Схема v1. android.releaseTag + EXPO_PUBLIC_CLIENT_RELEASE_TAG в APK: при смене тега в манифесте — мягкое обновление без смены versionCode. minVersionCode — жёсткий минимум. latestVersionCode — fallback, если releaseTag в манифесте не задан. apkUrl — любой https (GitHub release, свой CDN, Google Drive прямая ссылка uc?id=… — см. mobile/RELEASE-APK.md).",
   "schemaVersion": 1,
   "android": {
     "minVersionCode": 1,

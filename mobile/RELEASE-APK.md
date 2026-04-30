@@ -36,6 +36,26 @@ cp .env.production.example .env.production
 
 Перед выкладкой нового APK подними **`releaseTag`** в том же JSON и совмести с **`EXPO_PUBLIC_CLIENT_RELEASE_TAG`** при сборке (см. комментарии в примере `.env.production`).
 
+### 1.1.2 APK с Google Drive (если с GitHub releases «скачка» глючит)
+
+Манифест уже отдаёт в приложение поле **`apkUrl`** — достаточно подставить туда **прямую** ссылку на файл, а не страницу «Просмотр» в браузере.
+
+1. Залей `chatus-release.apk` на Google Диск.
+2. Правый клик → **Доступ** → «Все, у кого есть ссылка» (читатель) — иначе браузер на телефоне не скачает.
+3. Скопируй **ID файла** из ссылки вида  
+   `https://drive.google.com/file/d/FILE_ID_HERE/view`
+4. В **`config/client-update-manifest.json`** укажи:
+
+   `https://drive.google.com/uc?export=download&id=FILE_ID_HERE`
+
+   Альтернатива (иногда стабильнее для больших файлов):
+
+   `https://drive.usercontent.google.com/download?id=FILE_ID_HERE&export=download`
+
+**Ограничения:** у Google для очень больших APK иногда показывается промежуточная страница «подтвердите скачивание» — пользователь в браузере нажимает «Скачать всё равно», после этого установка идёт как обычно. Если нужен полностью автоматический поток без страниц провайдера — надёжнее выложить APK на **свой сервер** (тот же VPS, отдельный путь под `application/vnd.android.package-archive`).
+
+После правки JSON сделай **`git push`** в ветку, с которой тянется `EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL` (например `main` на raw.githubusercontent.com).
+
 ### 1.2 Сборка release APK (локально, Expo prebuild / Gradle)
 
 Из каталога **`mobile/`** (один раз: `npm install`, чтобы подтянулся `cross-env`):
