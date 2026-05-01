@@ -280,10 +280,18 @@ export async function leaveGroup(chatId: string): Promise<void> {
   }
 }
 
-export async function deleteGroup(chatId: string): Promise<void> {
+/**
+ * Deletes the chat on the server: private 1:1 for both sides, or a group if the current user is owner.
+ */
+export async function deleteChat(chatId: string): Promise<void> {
   const res = await apiDelete(`/chats/${encodeURIComponent(chatId)}`);
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `Failed to delete group: ${res.status}`);
+    throw new Error(text || `Failed to delete chat: ${res.status}`);
   }
+}
+
+/** @deprecated Use deleteChat — same endpoint. */
+export async function deleteGroup(chatId: string): Promise<void> {
+  return deleteChat(chatId);
 }

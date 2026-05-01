@@ -47,7 +47,7 @@ import { apiUserToUserRow, type ApiUser } from '../services/AuthService';
 import {
   addGroupMembers,
   createOrFindChat,
-  deleteGroup,
+  deleteChat,
   getChatById,
   leaveGroup,
   removeGroupMember,
@@ -111,18 +111,6 @@ function formatMemberCount(count: number) {
 function extractMediaUri(message: Message): string | null {
   const media = message.media?.[0];
   const candidates = [media?.thumbnail_url, media?.remote_url, message.content];
-
-  for (const candidate of candidates) {
-    const resolved = resolveAvatarUrl(candidate ?? null);
-    if (resolved) return resolved;
-  }
-
-  return null;
-}
-
-function extractRemoteMediaUri(message: Message): string | null {
-  const media = message.media?.[0];
-  const candidates = [media?.remote_url, message.content];
 
   for (const candidate of candidates) {
     const resolved = resolveAvatarUrl(candidate ?? null);
@@ -464,31 +452,35 @@ export function GroupProfileScreen() {
 
   const mediaItems = useMemo<GroupMediaItem[]>(
     () =>
-      chatMessages
-        .filter(
-          (message) =>
-            !message.is_deleted &&
-            (message.msg_type === 'image' || message.msg_type === 'video')
-        )
-        .map((message): GroupMediaItem | null => {
-          const uri = extractRemoteMediaUri(message);
-          if (!uri) return null;
-          const thumbnailUri = resolveAvatarUrl(message.media?.[0]?.thumbnail_url ?? null);
-          return {
-            id: message.id,
-            kind: message.msg_type === 'video' ? 'video' : 'image',
-            uri,
-            previewUri:
-              message.msg_type === 'video'
-                ? thumbnailUri ?? undefined
-                : extractPreviewMediaUri(message) ?? uri,
-            durationMs:
-              message.msg_type === 'video'
-                ? message.media?.[0]?.duration_ms ?? 0
-                : undefined,
-          };
-        })
-        .filter((item): item is GroupMediaItem => item != null),
+      chatMessages.flatMap((message) => {
+        if (
+          message.is_deleted ||
+          (message.msg_type !== 'image' && message.msg_type !== 'video')
+        ) {
+          return [];
+        }
+        const entries = (message.media ?? []).filter((m) => m.remote_url?.trim());
+        return entries
+          .map((m, idx): GroupMediaItem | null => {
+            const uri = resolveAvatarUrl(m.remote_url?.trim() ?? null);
+            if (!uri) return null;
+            const mt = (m.media_type ?? '').toLowerCase();
+            const kind: 'image' | 'video' =
+              mt === 'video' ? 'video' : mt === 'image' ? 'image' : message.msg_type === 'video' ? 'video' : 'image';
+            const thumbnailUri = resolveAvatarUrl(m.thumbnail_url ?? null);
+            return {
+              id: `${message.id}:${idx}`,
+              kind,
+              uri,
+              previewUri:
+                kind === 'video'
+                  ? thumbnailUri ?? undefined
+                  : thumbnailUri || uri,
+              durationMs: kind === 'video' ? m.duration_ms ?? 0 : undefined,
+            };
+          })
+          .filter((item): item is GroupMediaItem => item != null);
+      }),
     [chatMessages]
   );
 
@@ -804,7 +796,8 @@ export function GroupProfileScreen() {
     [actionMenu, actionMenuAnimation]
   );
 
-  const openActionMenu = useCallback((messageId: string, event: GestureResponderEvent) => {
+  const openActionMenu = useCallback((rawMessageId: string, event: GestureResponderEvent) => {
+    const messageId = rawMessageId.includes(':') ? (rawMessageId.split(':')[0] ?? rawMessageId) : rawMessageId;
     const anchorSize = 28;
     const anchorLeft = Math.max(event.nativeEvent.pageX - anchorSize / 2, 12);
     const anchorTop = Math.max(event.nativeEvent.pageY - anchorSize / 2, 92);
@@ -1026,7 +1019,7 @@ export function GroupProfileScreen() {
         onPress: () => {
           void (async () => {
             try {
-              await deleteGroup(chat.id);
+              await deleteChat(chat.id);
               await new ChatDao().delete(chat.id);
               messageStore.getState().clearMessages(chat.id);
               chatStore.getState().removeChat(chat.id);

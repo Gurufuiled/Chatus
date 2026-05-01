@@ -16,6 +16,8 @@ import { messageStore } from '../stores/messageStore';
 import { chatStore } from '../stores/chatStore';
 import { channelStore } from '../stores/channelStore';
 import { uiStore } from '../stores/uiStore';
+import { ChatDao } from '../db';
+import { dissolvingMessageStore } from '../stores/dissolvingMessageStore';
 import type { Message } from '../stores/types';
 import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
@@ -528,9 +530,17 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             message_id?: string;
           };
           if (!chat_id || !message_id) return;
+          const messages = messageStore.getState().messagesByChatId[chat_id] ?? [];
+          const prev = messages.find((m) => m.id === message_id);
+          if (prev && prev.is_deleted !== 1) {
+            dissolvingMessageStore.getState().begin({
+              chatId: chat_id,
+              messageId: message_id,
+              snapshot: { ...prev },
+            });
+          }
           messageStore.getState().updateMessage(chat_id, message_id, {
             is_deleted: 1,
-            content: null,
           });
           const discussionState = channelStore.getState().discussionByKey;
           for (const key of Object.keys(discussionState)) {
@@ -548,6 +558,48 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               pinned_message_id: null,
             });
           }
+        },
+
+        onChatDeleted: (payload) => {
+          const { chat_id } = payload as { chat_id?: string; deleted_by_user_id?: string };
+          if (!chat_id || typeof chat_id !== 'string') return;
+
+          messageStore.getState().clearMessages(chat_id);
+          chatStore.getState().removeChat(chat_id);
+          channelStore.setState((s) => {
+            const nextDiscussion = { ...s.discussionByKey };
+            for (const key of Object.keys(nextDiscussion)) {
+              const thread = nextDiscussion[key];
+              if (thread?.discussion_chat_id === chat_id) {
+                delete nextDiscussion[key];
+              }
+            }
+            const nextDetails = { ...s.detailsById };
+            for (const channelId of Object.keys(nextDetails)) {
+              const detail = nextDetails[channelId];
+              if (detail?.linked_discussion_chat_id === chat_id) {
+                nextDetails[channelId] = {
+                  ...detail,
+                  linked_discussion_chat_id: null,
+                };
+              }
+            }
+            return { discussionByKey: nextDiscussion, detailsById: nextDetails };
+          });
+          uiStore.getState().removeChatTheme(chat_id);
+          uiStore.getState().setPinnedMessage(chat_id, null);
+          uiStore.setState((s) => {
+            const nextTyping = { ...s.typingUsersByChatId };
+            delete nextTyping[chat_id];
+            return { typingUsersByChatId: nextTyping };
+          });
+          if (uiStore.getState().pushNotification?.chatId === chat_id) {
+            uiStore.getState().dismissPushNotification();
+          }
+
+          void new ChatDao()
+            .delete(chat_id)
+            .catch(() => {});
         },
 
         onChatPinnedMessageUpdated: (payload) => {

@@ -85,7 +85,7 @@ export class ChatsController {
   }
 
   @Delete(':id')
-  async deleteGroup(@Param('id') chatId: string, @CurrentUser() user: User) {
-    return this.chatsService.deleteGroup(user, chatId);
+  async deleteChat(@Param('id') chatId: string, @CurrentUser() user: User) {
+    return this.chatsService.deleteChat(user, chatId);
   }
 }

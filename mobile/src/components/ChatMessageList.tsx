@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   Animated,
@@ -26,6 +26,9 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import type { Message } from '../stores/types';
+import { messageStore } from '../stores/messageStore';
+import { dissolvingMessageStore } from '../stores/dissolvingMessageStore';
+import { DeletedMessageDissolve } from './DeletedMessageDissolve';
 import { bubbleRadius, colors, withAlpha } from '../theme/colors';
 import type { ChatTheme } from '../theme/chatThemes';
 import { FileBubble } from './FileBubble';
@@ -70,6 +73,19 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ALBUM_VIEWER_CLOSE_SWIPE_DISTANCE = 84;
 const FILE_ROW_WIDTH = Math.min(Dimensions.get('window').width * 0.76, 320);
 const ALBUM_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);
+
+function bubbleColorToRgb(
+  hex: string | undefined,
+  fallback: { r: number; g: number; b: number },
+): { r: number; g: number; b: number } {
+  if (!hex || typeof hex !== 'string') return fallback;
+  const h = hex.replace('#', '').trim();
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
+  if (full.length !== 6) return fallback;
+  const n = parseInt(full, 16);
+  if (Number.isNaN(n)) return fallback;
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
 
 function clampReplySwipe(value: number) {
   'worklet';
@@ -235,6 +251,23 @@ function MediaAlbumBubble({
           <View style={[styles.albumColumn, { width: rightWidth }]}>
             {renderTile(visibleMedia[1], 1, { width: rightWidth, height: halfHeight })}
             {renderTile(visibleMedia[2], 2, { width: rightWidth, height: halfHeight })}
+          </View>
+        </View>
+      );
+    }
+
+    if (visibleMedia.length === 4) {
+      const tileW = (ALBUM_BUBBLE_WIDTH - gap) / 2;
+      const tileH = (ALBUM_BUBBLE_WIDTH - gap) / 2;
+      return (
+        <View style={[styles.albumColumn, { width: ALBUM_BUBBLE_WIDTH }]}>
+          <View style={styles.albumRow}>
+            {renderTile(visibleMedia[0], 0, { width: tileW, height: tileH })}
+            {renderTile(visibleMedia[1], 1, { width: tileW, height: tileH })}
+          </View>
+          <View style={styles.albumRow}>
+            {renderTile(visibleMedia[2], 2, { width: tileW, height: tileH })}
+            {renderTile(visibleMedia[3], 3, { width: tileW, height: tileH })}
           </View>
         </View>
       );
@@ -696,6 +729,11 @@ const MessageRow = React.memo(function MessageRow({
   const lastTapAtRef = useRef(0);
   const { colors: themeColors } = useTheme();
   const isMe = item.sender_id === currentUserId;
+  const bodyItem: Message = useMemo(() => {
+    if (item.is_deleted !== 1) return item;
+    const snap = dissolvingMessageStore.getState().getSnapshot(chatId, item.id);
+    return { ...(snap ?? item), is_deleted: 0 } as Message;
+  }, [chatId, item]);
   const useViewportOutgoingGradient =
     isMe &&
     item.is_deleted !== 1 &&
@@ -721,7 +759,7 @@ const MessageRow = React.memo(function MessageRow({
     item.is_deleted !== 1 &&
     !!(authorPresentation.tag?.trim() ?? '');
   const inlineReactionList =
-    selectionMode || !(item.reactions?.length ?? 0) ? undefined : item.reactions;
+    selectionMode || !(bodyItem.reactions?.length ?? 0) ? undefined : bodyItem.reactions;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
 
   React.useEffect(() => {
@@ -742,7 +780,7 @@ const MessageRow = React.memo(function MessageRow({
   }));
 
   const renderReplySnippet = () => {
-    if (!item.reply_to_id) return null;
+    if (!bodyItem.reply_to_id) return null;
 
     const replyThumbnailUri = getReplyPreviewThumbnailUri(repliedMessage);
     const author = repliedMessage
@@ -769,19 +807,19 @@ const MessageRow = React.memo(function MessageRow({
         }
         authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
         thumbnailUri={replyThumbnailUri}
-        onPress={onReplyPreviewPress ? () => onReplyPreviewPress(item.reply_to_id!) : undefined}
+        onPress={onReplyPreviewPress ? () => onReplyPreviewPress(bodyItem.reply_to_id!) : undefined}
       />
     );
   };
 
   const renderForwardHeader = (options?: { compact?: boolean; forceLightText?: boolean }) => {
-    if (!item.forwarded_from_name && !item.forwarded_from_message_id) {
+    if (!bodyItem.forwarded_from_name && !bodyItem.forwarded_from_message_id) {
       return null;
     }
 
     const rawAvatar = resolveForwardedSenderAvatarUrl(
-      item.forwarded_from_sender_id,
-      item.forwarded_from_chat_id
+      bodyItem.forwarded_from_sender_id,
+      bodyItem.forwarded_from_chat_id
     );
     const avatarUri = resolveAvatarUrl(rawAvatar);
 
@@ -795,12 +833,12 @@ const MessageRow = React.memo(function MessageRow({
     return (
       <ForwardHeader
         isMe={isMe}
-        name={item.forwarded_from_name}
+        name={bodyItem.forwarded_from_name}
         avatarUri={avatarUri ?? undefined}
         labelColor={labelColor}
         titleColor={titleColor}
         compact={options?.compact}
-        onPress={onForwardHeaderPress ? () => onForwardHeaderPress(item) : undefined}
+        onPress={onForwardHeaderPress ? () => onForwardHeaderPress(bodyItem) : undefined}
       />
     );
   };
@@ -883,45 +921,9 @@ const MessageRow = React.memo(function MessageRow({
   };
 
   const renderBody = () => {
-    if (item.is_deleted === 1) {
-      return (
-        <View
-          style={[
-            styles.deletedBubble,
-            showAuthorAvatar && styles.groupMessageSurface,
-            isMe ? styles.deletedBubbleMe : null,
-            isMe
-              ? { backgroundColor: chatTheme.deletedBubbleMe }
-              : {
-                  backgroundColor: themeColors.bubbleOther,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: themeColors.bubbleOtherBorder,
-                },
-          ]}
-        >
-          <Text
-            style={[
-              styles.deletedText,
-              isMe && styles.deletedTextMe,
-              isMe ? { color: chatTheme.deletedTextMe } : { color: themeColors.textSecondary },
-            ]}
-          >
-            {getDeletedPlaceholder(isMe)}
-          </Text>
-          <MessageTimeStatus
-            time={formatTime(item.created_at)}
-            status={item.status}
-            isMe={isMe}
-            compact
-            timeColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
-            iconColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
-          />
-        </View>
-      );
-    }
-
-    if (item.msg_type === 'text') {
-      const rawContent = item.content ?? '';
+    const bubbleCore = () => {
+    if (bodyItem.msg_type === 'text') {
+      const rawContent = bodyItem.content ?? '';
       const displayContent = rawContent.trim() || ' ';
       const channelLink = parseChannelDeepLinkFromMessage(rawContent);
 
@@ -939,8 +941,8 @@ const MessageRow = React.memo(function MessageRow({
               parsed={channelLink}
               rawUrlLine={displayContent}
               isMe={isMe}
-              time={formatTime(item.created_at)}
-              status={item.status}
+              time={formatTime(bodyItem.created_at)}
+              status={bodyItem.status}
               navigation={navigation}
               chatTheme={chatTheme}
               useViewportOutgoingGradient={useViewportOutgoingGradient}
@@ -951,7 +953,7 @@ const MessageRow = React.memo(function MessageRow({
                 reactions={inlineReactionList}
                 isMe={isMe}
                 allowReactions={allowReactions}
-                onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+                onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
                 accentColor={chatTheme.bubbleMeAccent}
               />
             ) : null}
@@ -977,8 +979,8 @@ const MessageRow = React.memo(function MessageRow({
             <View style={styles.bubbleContentRow}>
               <Text style={[styles.textContent, { color: themeColors.textPrimary }]}>{displayContent}</Text>
               <MessageTimeStatus
-                time={formatTime(item.created_at)}
-                status={item.status}
+                time={formatTime(bodyItem.created_at)}
+                status={bodyItem.status}
                 isMe={isMe}
                 compact
                 timeColor={themeColors.textSecondary}
@@ -990,7 +992,7 @@ const MessageRow = React.memo(function MessageRow({
                 reactions={inlineReactionList}
                 isMe={isMe}
                 allowReactions={allowReactions}
-                onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+                onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
                 accentColor={chatTheme.bubbleMeAccent}
               />
             ) : null}
@@ -1022,8 +1024,8 @@ const MessageRow = React.memo(function MessageRow({
               {displayContent}
             </Text>
             <MessageTimeStatus
-              time={formatTime(item.created_at)}
-              status={item.status}
+              time={formatTime(bodyItem.created_at)}
+              status={bodyItem.status}
               isMe
               compact
               timeColor={chatTheme.bubbleMeMeta}
@@ -1035,7 +1037,7 @@ const MessageRow = React.memo(function MessageRow({
               reactions={inlineReactionList}
               isMe
               allowReactions={allowReactions}
-              onToggle={(emoji) => onToggleReaction(item.id, emoji)}
+              onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
               accentColor={chatTheme.bubbleMeAccent}
             />
           ) : null}
@@ -1043,19 +1045,19 @@ const MessageRow = React.memo(function MessageRow({
       );
     }
 
-    if (item.msg_type === 'voice' && item.media?.[0]) {
+    if (bodyItem.msg_type === 'voice' && bodyItem.media?.[0]) {
       const replySnippet = renderReplySnippet();
       const topHeader = replySnippet ? null : renderIncomingHeader();
       const voiceUri =
-        resolveVoiceMessageUri(item) ?? item.media[0].remote_url ?? `file://${item.id}`;
+        resolveVoiceMessageUri(bodyItem) ?? bodyItem.media[0].remote_url ?? `file://${bodyItem.id}`;
       const voiceContent = (
         <VoiceBubble
           uri={voiceUri}
-          waveform={item.media[0].waveform ?? []}
-          durationMs={item.media[0].duration_ms ?? 0}
+          waveform={bodyItem.media[0].waveform ?? []}
+          durationMs={bodyItem.media[0].duration_ms ?? 0}
           isMe={isMe}
-          time={formatTime(item.created_at)}
-          status={item.status}
+          time={formatTime(bodyItem.created_at)}
+          status={bodyItem.status}
           embedded={!!replySnippet}
           header={topHeader}
           bubbleMeColor={meBubbleFill}
@@ -1065,7 +1067,7 @@ const MessageRow = React.memo(function MessageRow({
           reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
-          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingDurationColor={!isMe ? themeColors.textSecondary : undefined}
@@ -1152,8 +1154,8 @@ const MessageRow = React.memo(function MessageRow({
       );
     }
 
-    if (item.msg_type === 'video_note' && item.media?.[0]) {
-      const media = item.media[0];
+    if (bodyItem.msg_type === 'video_note' && bodyItem.media?.[0]) {
+      const media = bodyItem.media[0];
       const videoUri = media.remote_url?.trim() ?? '';
       if (!videoUri) return null;
 
@@ -1174,13 +1176,13 @@ const MessageRow = React.memo(function MessageRow({
 
       const videoContent = (
         <VideoNoteBubble
-          messageId={item.id}
+          messageId={bodyItem.id}
           uri={videoUri}
           thumbnailUri={media.thumbnail_url ?? undefined}
           durationMs={media.duration_ms ?? 0}
           isMe={isMe}
-          time={formatTime(item.created_at)}
-          status={item.status}
+          time={formatTime(bodyItem.created_at)}
+          status={bodyItem.status}
           embedded={!!replySnippet}
           header={topHeader}
           bubbleMeColor={meBubbleFill}
@@ -1192,7 +1194,7 @@ const MessageRow = React.memo(function MessageRow({
           onReplySwipe={onReply}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
-          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
         />
       );
 
@@ -1267,23 +1269,23 @@ const MessageRow = React.memo(function MessageRow({
     }
 
     const visualMediaCount =
-      item.msg_type === 'image' || item.msg_type === 'video'
-        ? item.media?.filter((media) => media.remote_url?.trim()).length ?? 0
+      bodyItem.msg_type === 'image' || bodyItem.msg_type === 'video'
+        ? bodyItem.media?.filter((media) => media.remote_url?.trim()).length ?? 0
         : 0;
 
     if (visualMediaCount > 1) {
       const replySnippet = renderReplySnippet();
       const albumContent = (
         <MediaAlbumBubble
-          message={item}
+          message={bodyItem}
           isMe={isMe}
-          time={formatTime(item.created_at)}
-          status={item.status}
+          time={formatTime(bodyItem.created_at)}
+          status={bodyItem.status}
           chatTheme={chatTheme}
           onOpenMedia={onOpenAlbumMedia}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
-          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           viewportOutgoingGradient={useViewportOutgoingGradient}
           scrollTick={scrollTick}
           incomingCaptionBg={!isMe ? themeColors.bubbleOther : undefined}
@@ -1362,8 +1364,8 @@ const MessageRow = React.memo(function MessageRow({
       );
     }
 
-    if (item.msg_type === 'image') {
-      const media = item.media?.[0];
+    if (bodyItem.msg_type === 'image') {
+      const media = bodyItem.media?.[0];
       const rawImage = media?.remote_url ?? '';
       const imageUri = resolveMediaUrl(rawImage.trim() || null) ?? rawImage;
       if (!imageUri.trim()) return null;
@@ -1376,9 +1378,9 @@ const MessageRow = React.memo(function MessageRow({
           isMe={isMe}
           width={media?.width}
           height={media?.height}
-          caption={item.content ?? undefined}
-          time={formatTime(item.created_at)}
-          status={item.status}
+          caption={bodyItem.content ?? undefined}
+          time={formatTime(bodyItem.created_at)}
+          status={bodyItem.status}
           embedded={!!replySnippet}
           header={topHeader}
           bubbleMeColor={meBubbleFill}
@@ -1386,7 +1388,7 @@ const MessageRow = React.memo(function MessageRow({
           reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
-          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
@@ -1473,8 +1475,8 @@ const MessageRow = React.memo(function MessageRow({
       );
     }
 
-    if (item.msg_type === 'video') {
-      const media = item.media?.[0];
+    if (bodyItem.msg_type === 'video') {
+      const media = bodyItem.media?.[0];
       const rawVideo = media?.remote_url ?? '';
       const videoUri = resolveMediaUrl(rawVideo.trim() || null) ?? rawVideo;
       if (!videoUri.trim()) return null;
@@ -1492,9 +1494,9 @@ const MessageRow = React.memo(function MessageRow({
           width={media?.width}
           height={media?.height}
           durationMs={media?.duration_ms ?? 0}
-          caption={item.content ?? undefined}
-          time={formatTime(item.created_at)}
-          status={item.status}
+          caption={bodyItem.content ?? undefined}
+          time={formatTime(bodyItem.created_at)}
+          status={bodyItem.status}
           embedded={!!replySnippet}
           header={topHeader}
           bubbleMeColor={meBubbleFill}
@@ -1502,7 +1504,7 @@ const MessageRow = React.memo(function MessageRow({
           reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
-          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
@@ -1589,22 +1591,22 @@ const MessageRow = React.memo(function MessageRow({
       );
     }
 
-    if (item.msg_type === 'file' && item.media?.[0]) {
+    if (bodyItem.msg_type === 'file' && bodyItem.media?.[0]) {
       const replySnippet = renderReplySnippet();
-      const rawFile = item.media[0].remote_url ?? '';
+      const rawFile = bodyItem.media[0].remote_url ?? '';
       const fileUri =
         rawFile.trim().length > 0
           ? resolveMediaUrl(rawFile) ?? rawFile
           : undefined;
       const fileBubbleEl = (
         <FileBubble
-          fileName={item.media[0].file_name ?? 'File'}
-          fileSize={item.media[0].file_size}
+          fileName={bodyItem.media[0].file_name ?? 'File'}
+          fileSize={bodyItem.media[0].file_size}
           uri={fileUri}
           isMe={isMe}
-          caption={item.content ?? undefined}
-          time={formatTime(item.created_at)}
-          status={item.status}
+          caption={bodyItem.content ?? undefined}
+          time={formatTime(bodyItem.created_at)}
+          status={bodyItem.status}
           header={renderIncomingHeader()}
           bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
@@ -1613,7 +1615,7 @@ const MessageRow = React.memo(function MessageRow({
           reactionAccentColor={chatTheme.bubbleMeAccent}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
-          onToggleInlineReaction={(emoji) => onToggleReaction(item.id, emoji)}
+          onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingFileNameColor={!isMe ? themeColors.textPrimary : undefined}
@@ -1651,6 +1653,30 @@ const MessageRow = React.memo(function MessageRow({
     }
 
     return null;
+    };
+
+    const bubble = bubbleCore();
+
+    if (item.is_deleted === 1) {
+      const dustRgb = bubbleColorToRgb(
+        isMe ? chatTheme.bubbleMe : themeColors.bubbleOther,
+        isMe ? { r: 70, g: 135, b: 230 } : { r: 142, g: 152, b: 168 },
+      );
+      return (
+        <DeletedMessageDissolve
+          messageKey={`${chatId}:${item.id}`}
+          dustRgb={dustRgb}
+          onDissolveComplete={() => {
+            dissolvingMessageStore.getState().end(chatId, item.id);
+            messageStore.getState().removeMessage(chatId, item.id);
+          }}
+        >
+          {bubble}
+        </DeletedMessageDissolve>
+      );
+    }
+
+    return bubble;
   };
 
   const card = (

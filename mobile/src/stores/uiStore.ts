@@ -46,6 +46,7 @@ type UIActions = {
   setPinnedMessage: (chatId: string, messageId: string | null) => void;
   hydratePinnedMessages: () => Promise<void>;
   setChatTheme: (chatId: string, themeId: string) => void;
+  removeChatTheme: (chatId: string) => void;
   hydrateChatThemes: () => Promise<void>;
   setUserBlocked: (userId: string, blocked: boolean) => void;
   hydrateBlockedUsers: () => Promise<void>;
@@ -152,6 +153,14 @@ export const uiStore = create<UIState & UIActions>((set) => ({
       return {
         chatThemeIdByChatId: next,
       };
+    }),
+
+  removeChatTheme: (chatId) =>
+    set((s) => {
+      const next = { ...s.chatThemeIdByChatId };
+      delete next[chatId];
+      void SecureStore.setItemAsync(CHAT_THEMES_KEY, JSON.stringify(next)).catch(() => {});
+      return { chatThemeIdByChatId: next };
     }),
 
   hydrateChatThemes: async () => {

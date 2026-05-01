@@ -1,6 +1,16 @@
 import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { Animated, Dimensions, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
+import {
+  Animated,
+  Dimensions,
+  Image,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ResolvedColorScheme, ThemeColors } from '../theme/palettes';
 import { withAlpha } from '../theme/stylePrimitives';
@@ -18,6 +28,8 @@ export type AnchoredPopoverMenuItem = {
   key: string;
   label: string;
   icon?: React.ComponentProps<typeof Feather>['name'] | null;
+  /** When set, shown instead of the Feather icon (e.g. bundled PNG). */
+  iconImage?: ImageSourcePropType;
   color?: string;
 };
 
@@ -31,6 +43,10 @@ type AnchoredPopoverMenuProps = {
   offsetY?: number;
   horizontalAlign?: 'center' | 'start' | 'end';
   verticalAlign?: 'below' | 'above' | 'auto';
+  /** Replaces the list of items (same card shell). Used for in-place “step 2” flows. */
+  customBody?: React.ReactNode | null;
+  /** Vertical size hint for positioning when `customBody` is set. */
+  customBodyEstimatedHeight?: number;
 };
 
 const MENU_EDGE_GAP = 14;
@@ -143,6 +159,8 @@ function AnchoredPopoverMenuContent({
   offsetY = DEFAULT_OFFSET_Y,
   horizontalAlign = 'center',
   verticalAlign = 'below',
+  customBody = null,
+  customBodyEstimatedHeight = 260,
 }: AnchoredPopoverMenuContentProps) {
   const { colors, resolvedScheme } = useTheme();
   const styles = useMemo(
@@ -193,7 +211,8 @@ function AnchoredPopoverMenuContent({
         ? menu.left + menu.width - width + 4
         : anchorCenterX - width / 2;
   const cardLeft = clamp(rawLeft, MENU_EDGE_GAP, screenWidth - width - MENU_EDGE_GAP);
-  const estimatedCardHeight = items.length * 52 + 18;
+  const estimatedCardHeight =
+    customBody != null ? customBodyEstimatedHeight + 18 : items.length * 52 + 18;
   const resolvedVerticalAlign =
     verticalAlign === 'auto'
       ? menu.top + menu.height + offsetY + estimatedCardHeight > screenHeight - MENU_EDGE_GAP
@@ -223,32 +242,44 @@ function AnchoredPopoverMenuContent({
           cardStyle,
         ]}
       >
-        {resolvedVerticalAlign === 'above' ? (
-          <View style={[styles.arrow, styles.arrowBottom, { left: arrowLeft }]} />
-        ) : (
-          <View style={[styles.arrow, styles.arrowTop, { left: arrowLeft }]} />
-        )}
+        {customBody == null ? (
+          resolvedVerticalAlign === 'above' ? (
+            <View style={[styles.arrow, styles.arrowBottom, { left: arrowLeft }]} />
+          ) : (
+            <View style={[styles.arrow, styles.arrowTop, { left: arrowLeft }]} />
+          )
+        ) : null}
         <View style={styles.card}>
           <View pointerEvents="none" style={styles.cardTint} />
 
-          {items.map((item, index) => (
-            <Pressable
-              key={item.key}
-              onPress={() => onSelect(item.key)}
-              style={({ pressed }) => [
-                styles.item,
-                index < items.length - 1 && styles.itemBorder,
-                pressed && styles.itemPressed,
-              ]}
-            >
-              <Text style={[styles.itemLabel, { color: item.color ?? colors.textPrimary }]}>
-                {item.label}
-              </Text>
-              {item.icon ? (
-                <Feather name={item.icon as never} size={18} color={item.color ?? colors.textPrimary} />
-              ) : null}
-            </Pressable>
-          ))}
+          {customBody != null ? (
+            customBody
+          ) : (
+            items.map((item, index) => (
+              <Pressable
+                key={item.key}
+                onPress={() => onSelect(item.key)}
+                style={({ pressed }) => [
+                  styles.item,
+                  index < items.length - 1 && styles.itemBorder,
+                  pressed && styles.itemPressed,
+                ]}
+              >
+                <Text style={[styles.itemLabel, { color: item.color ?? colors.textPrimary }]}>
+                  {item.label}
+                </Text>
+                {item.iconImage ? (
+                  <Image
+                    source={item.iconImage}
+                    style={{ width: 20, height: 20, tintColor: item.color ?? colors.textPrimary }}
+                    resizeMode="contain"
+                  />
+                ) : item.icon ? (
+                  <Feather name={item.icon as never} size={18} color={item.color ?? colors.textPrimary} />
+                ) : null}
+              </Pressable>
+            ))
+          )}
         </View>
       </Animated.View>
     </View>
@@ -256,8 +287,8 @@ function AnchoredPopoverMenuContent({
 }
 
 export function AnchoredPopoverMenu(props: AnchoredPopoverMenuProps) {
-  const { menu, items } = props;
-  if (!menu || items.length === 0) {
+  const { menu, items, customBody } = props;
+  if (!menu || (items.length === 0 && customBody == null)) {
     return null;
   }
   return <AnchoredPopoverMenuContent {...props} menu={menu} />;

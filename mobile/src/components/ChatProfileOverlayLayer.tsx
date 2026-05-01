@@ -21,6 +21,8 @@ type ChatProfileOverlayLayerProps = {
   moreMenu: AnchoredMenuState;
   moreMenuAnimation: Animated.Value;
   moreMenuItems: AnchoredPopoverMenuItem[];
+  moreMenuCustomBody?: React.ReactNode | null;
+  moreMenuCustomBodyHeight?: number;
   onCloseMoreMenu: () => void;
   onMoreMenuAction: (key: string) => void;
   mediaItems: MediaTile[];
@@ -39,6 +41,8 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
   moreMenu,
   moreMenuAnimation,
   moreMenuItems,
+  moreMenuCustomBody = null,
+  moreMenuCustomBodyHeight = 260,
   onCloseMoreMenu,
   onMoreMenuAction,
   mediaItems,
@@ -87,7 +91,9 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
       <AnchoredPopoverMenu
         menu={moreMenu}
         animation={moreMenuAnimation}
-        items={moreMenuItems}
+        items={moreMenuCustomBody != null ? [] : moreMenuItems}
+        customBody={moreMenuCustomBody}
+        customBodyEstimatedHeight={moreMenuCustomBodyHeight}
         onClose={onCloseMoreMenu}
         onSelect={onMoreMenuAction}
         horizontalAlign="end"

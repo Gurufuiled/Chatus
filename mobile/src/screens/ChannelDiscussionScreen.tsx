@@ -127,6 +127,8 @@ function clampReplySwipe(value: number) {
 function createChannelDiscussionStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.chatBackground },
+    /** Outer stack peek (interactive back): transparent over previous screen. */
+    discussionRootTransparent: { backgroundColor: 'transparent' },
     loading: {
       flex: 1,
       alignItems: 'center',
@@ -1222,9 +1224,13 @@ export function ChannelDiscussionScreen() {
   }, [currentUserId, messageById, styles]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, styles.discussionRootTransparent]}>
       <InteractiveChatBackShell navigation={navigation} gestureEnabled={!menuState}>
-      <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
+      <BlurTargetView
+        ref={blurTargetRef}
+        collapsable={false}
+        style={[styles.container, { backgroundColor: c.chatBackground }]}
+      >
         <ChatBackgroundPattern />
 
         {loading && !thread && !loadError ? (

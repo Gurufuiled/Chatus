@@ -9,6 +9,7 @@ import {
   Image,
   InteractionManager,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Modal,
   Platform,
   Pressable,
@@ -16,6 +17,7 @@ import {
   StatusBar,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -36,12 +38,15 @@ import {
   type VoiceItem,
 } from '../components/ChatProfileMediaSection';
 import { ChatProfileOverlayLayer } from '../components/ChatProfileOverlayLayer';
+import { ChatProfileDeleteHistoryPanel } from '../components/ChatProfileDeleteHistoryPanel';
+import { ChatProfileBlockSheet } from '../components/ChatProfileBlockSheet';
 import { API_BASE_URL, resolveAvatarUrl } from '../config';
 import { useCall } from '../contexts/CallContext';
 import { ChatDao } from '../db';
 import type { ChatsStackParamList } from '../navigation/types';
 import type { ApiUser } from '../services/AuthService';
 import { getUserProfile } from '../services/profileService';
+import { deleteChat } from '../services/chatService';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
@@ -54,6 +59,12 @@ import {
 } from './chatProfileScreen.styles';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
+
+const WALLPAPER_MENU_ICON = require('../../assets/telegram-msg-background-wallpaper-icon.png');
 
 type ChatProfileRoute = RouteProp<ChatsStackParamList, 'ChatProfile'>;
 type ChatProfileNavigation = NativeStackNavigationProp<ChatsStackParamList, 'ChatProfile'>;
@@ -149,28 +160,35 @@ function extractMediaUri(message: Message): string | null {
   return null;
 }
 
-function extractRemoteMediaUri(message: Message): string | null {
-  const media = message.media?.[0];
-  const candidates = [media?.remote_url, message.content];
-
-  for (const candidate of candidates) {
-    const resolved = resolveAvatarUrl(candidate ?? null);
-    if (resolved) return resolved;
-  }
-
-  return null;
+function mediaKindForProfileItem(
+  message: Message,
+  item: NonNullable<Message['media']>[number],
+): 'image' | 'video' {
+  const mt = (item.media_type ?? '').toLowerCase();
+  if (mt === 'video') return 'video';
+  if (mt === 'image') return 'image';
+  return message.msg_type === 'video' ? 'video' : 'image';
 }
 
-function extractPreviewMediaUri(message: Message): string | null {
-  const media = message.media?.[0];
-  const candidates = [media?.thumbnail_url, media?.remote_url, message.content];
-
-  for (const candidate of candidates) {
-    const resolved = resolveAvatarUrl(candidate ?? null);
-    if (resolved) return resolved;
-  }
-
-  return null;
+function buildProfileMediaTile(
+  message: Message,
+  item: NonNullable<Message['media']>[number],
+  mediaIndex: number,
+): MediaTile | null {
+  const uri = resolveAvatarUrl(item.remote_url?.trim() ?? null);
+  if (!uri) return null;
+  const kind = mediaKindForProfileItem(message, item);
+  const thumb = resolveAvatarUrl(item.thumbnail_url ?? null);
+  return {
+    id: `${message.id}:${mediaIndex}`,
+    kind,
+    uri,
+    previewUri:
+      kind === 'video'
+        ? thumb ?? undefined
+        : thumb || resolveAvatarUrl(item.remote_url?.trim() ?? null) || uri,
+    durationMs: kind === 'video' ? item.duration_ms ?? 0 : undefined,
+  };
 }
 
 function extractLinks(content: string | null | undefined): string[] {
@@ -345,6 +363,8 @@ export function ChatProfileScreen() {
   const [actionMenu, setActionMenu] = useState<ProfileActionMenuState>(null);
   const [isHeroExpanded, setIsHeroExpanded] = useState(false);
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
+  const [moreMenuPhase, setMoreMenuPhase] = useState<'list' | 'delete'>('list');
+  const [blockSheetVisible, setBlockSheetVisible] = useState(false);
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
   const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
   const [isEditContactVisible, setIsEditContactVisible] = useState(false);
@@ -453,34 +473,19 @@ export function ChatProfileScreen() {
     [chatMessages]
   );
 
-  const mediaItems = useMemo<MediaTile[]>(
-    () =>
-      profileMessagesSlice
-        .filter(
-          (message) =>
-            !message.is_deleted &&
-            (message.msg_type === 'image' || message.msg_type === 'video')
-        )
-        .map((message) => {
-          const uri = extractRemoteMediaUri(message) ?? '';
-          const thumbnailUri = resolveAvatarUrl(message.media?.[0]?.thumbnail_url ?? null);
-          return {
-            id: message.id,
-            kind: message.msg_type === 'video' ? 'video' : 'image',
-            uri,
-            previewUri:
-              message.msg_type === 'video'
-                ? thumbnailUri ?? undefined
-                : extractPreviewMediaUri(message) ?? uri,
-            durationMs:
-              message.msg_type === 'video'
-                ? message.media?.[0]?.duration_ms ?? 0
-                : undefined,
-          } satisfies MediaTile;
-        })
-        .filter((item) => item.uri.length > 0),
-    [profileMessagesSlice]
-  );
+  const mediaItems = useMemo<MediaTile[]>(() => {
+    const tiles: MediaTile[] = [];
+    for (const message of profileMessagesSlice) {
+      if (message.is_deleted) continue;
+      if (message.msg_type !== 'image' && message.msg_type !== 'video') continue;
+      const entries = (message.media ?? []).filter((m) => m.remote_url?.trim());
+      entries.forEach((m, idx) => {
+        const tile = buildProfileMediaTile(message, m, idx);
+        if (tile) tiles.push(tile);
+      });
+    }
+    return tiles;
+  }, [profileMessagesSlice]);
 
   const fileItems = useMemo<FileItem[]>(
     () =>
@@ -591,6 +596,7 @@ export function ChatProfileScreen() {
 
     target.measureInWindow((left, top, width, height) => {
       moreMenuAnimation.setValue(0);
+      setMoreMenuPhase('list');
       setMoreMenu({ left, top, width, height });
     });
   }, [moreMenuAnimation]);
@@ -599,6 +605,7 @@ export function ChatProfileScreen() {
     (onClosed?: unknown) => {
       const callback = typeof onClosed === 'function' ? onClosed : undefined;
       if (!moreMenu) {
+        setMoreMenuPhase('list');
         callback?.();
         return;
       }
@@ -610,6 +617,7 @@ export function ChatProfileScreen() {
         useNativeDriver: true,
       }).start(() => {
         setMoreMenu(null);
+        setMoreMenuPhase('list');
         callback?.();
       });
     },
@@ -674,20 +682,6 @@ export function ChatProfileScreen() {
     setIsThemePickerVisible(false);
   }, [chatId, draftThemeId]);
 
-
-
-  const handleToggleBlocked = useCallback(() => {
-    closeMoreMenu();
-    const nextBlocked = !isBlocked;
-    uiStore.getState().setUserBlocked(userId, nextBlocked);
-    Alert.alert(
-      nextBlocked ? 'Пользователь заблокирован' : 'Пользователь разблокирован',
-        nextBlocked
-          ? `Локально заблокировали ${displayName}. Это состояние пока работает только на этом устройстве.`
-          : `${displayName} снова доступен на этом устройстве.`
-      );
-  }, [closeMoreMenu, displayName, isBlocked, userId]);
-
   const deleteChatLocally = useCallback(async () => {
     try {
       await new ChatDao().delete(chatId);
@@ -699,38 +693,66 @@ export function ChatProfileScreen() {
     }
   }, [chatId, navigation]);
 
-  const handleDeleteChatPress = useCallback(() => {
-    closeMoreMenu();
-    Alert.alert('Удалить чат?', 'Выбери, как удалить этот диалог.', [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: `Удалить у меня и у ${displayName}`,
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert(
-            'Пока недоступно',
-            'Этот вариант потребует отдельного серверного удаления чата для обоих участников. Сейчас можно удалить чат только локально у себя.'
-          );
-        },
-      },
-      {
-        text: 'Удалить у меня',
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert('Удалить только у тебя?', 'Чат исчезнет только на этом устройстве.', [
+  const handleDeleteForMeOnlyFromPanel = useCallback(() => {
+    closeMoreMenu(() => {
+      void deleteChatLocally();
+    });
+  }, [closeMoreMenu, deleteChatLocally]);
+
+  const handleDeleteForBothSides = useCallback(() => {
+    if (!chat) {
+      Alert.alert(
+        'Чат ещё не загружен',
+        'Повтори попытку через секунду или удали переписку только у себя.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+    if (chat.chat_type !== 'private') {
+      handleDeleteForMeOnlyFromPanel();
+      return;
+    }
+    void (async () => {
+      try {
+        await deleteChat(chatId);
+        closeMoreMenu(() => {
+          void deleteChatLocally();
+        });
+      } catch (e) {
+        Alert.alert(
+          'Не удалось удалить чат',
+          e instanceof Error ? e.message : 'Попробуй еще раз чуть позже.',
+        );
+      }
+    })();
+  }, [chat, chatId, closeMoreMenu, deleteChatLocally, handleDeleteForMeOnlyFromPanel]);
+
+  const handleConfirmBlockFromSheet = useCallback(() => {
+    uiStore.getState().setUserBlocked(userId, true);
+  }, [userId]);
+
+  const handleBlockMenuItem = useCallback(() => {
+    if (isBlocked) {
+      closeMoreMenu(() => {
+        Alert.alert(
+          'Разблокировать?',
+          `${displayName} снова сможет писать вам (локально на этом устройстве).`,
+          [
             { text: 'Отмена', style: 'cancel' },
             {
-              text: 'Удалить',
-              style: 'destructive',
+              text: 'Разблокировать',
               onPress: () => {
-                void deleteChatLocally();
+                uiStore.getState().setUserBlocked(userId, false);
+                Alert.alert('Готово', `${displayName} разблокирован.`);
               },
             },
-          ]);
-        },
-      },
-    ]);
-  }, [closeMoreMenu, deleteChatLocally, displayName]);
+          ],
+        );
+      });
+      return;
+    }
+    closeMoreMenu(() => setBlockSheetVisible(true));
+  }, [closeMoreMenu, displayName, isBlocked, userId]);
 
   const toggleHeroExpanded = useCallback(() => {
     if (!avatarUrl) return;
@@ -766,7 +788,8 @@ export function ChatProfileScreen() {
     });
   };
 
-  const openActionMenu = useCallback((messageId: string, event: GestureResponderEvent) => {
+  const openActionMenu = useCallback((rawMessageId: string, event: GestureResponderEvent) => {
+    const messageId = rawMessageId.includes(':') ? (rawMessageId.split(':')[0] ?? rawMessageId) : rawMessageId;
     const menuWidth = 176;
     const estimatedHeight = 44;
     const sideGap = 12;
@@ -821,7 +844,12 @@ export function ChatProfileScreen() {
       {
         key: 'change-wallpaper',
         label: 'Изменить обои',
-        icon: 'feather',
+        iconImage: WALLPAPER_MENU_ICON,
+      },
+      {
+        key: 'delete-chat',
+        label: 'Удалить чат',
+        icon: 'trash-2',
       },
       {
         key: 'toggle-block',
@@ -829,14 +857,36 @@ export function ChatProfileScreen() {
         icon: 'slash',
         color: isBlocked ? undefined : '#D04857',
       },
-      {
-        key: 'delete-chat',
-        label: 'Удалить чат',
-        icon: 'trash-2',
-      },
     ],
     [isBlocked]
   );
+
+  const moreMenuDeletePanelHeight = useMemo(
+    () => (chat?.chat_type === 'private' ? 268 : 198),
+    [chat?.chat_type],
+  );
+
+  const moreMenuCustomBody = useMemo(() => {
+    if (moreMenuPhase !== 'delete') return null;
+    return (
+      <ChatProfileDeleteHistoryPanel
+        peerName={displayName}
+        showDeleteForBoth={chat?.chat_type === 'private'}
+        onBack={() => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setMoreMenuPhase('list');
+        }}
+        onDeleteBoth={handleDeleteForBothSides}
+        onDeleteMeOnly={handleDeleteForMeOnlyFromPanel}
+      />
+    );
+  }, [
+    moreMenuPhase,
+    displayName,
+    chat?.chat_type,
+    handleDeleteForBothSides,
+    handleDeleteForMeOnlyFromPanel,
+  ]);
 
   const handleMoreMenuAction = useCallback(
     (key: string) => {
@@ -846,15 +896,16 @@ export function ChatProfileScreen() {
       }
 
       if (key === 'toggle-block') {
-        handleToggleBlocked();
+        handleBlockMenuItem();
         return;
       }
 
       if (key === 'delete-chat') {
-        handleDeleteChatPress();
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setMoreMenuPhase('delete');
       }
     },
-    [handleDeleteChatPress, handleToggleBlocked, openThemePicker]
+    [handleBlockMenuItem, openThemePicker]
   );
 
   return (
@@ -917,6 +968,8 @@ export function ChatProfileScreen() {
         moreMenu={moreMenu}
         moreMenuAnimation={moreMenuAnimation}
         moreMenuItems={moreMenuItems}
+        moreMenuCustomBody={moreMenuCustomBody}
+        moreMenuCustomBodyHeight={moreMenuDeletePanelHeight}
         onCloseMoreMenu={closeMoreMenu}
         onMoreMenuAction={handleMoreMenuAction}
         mediaItems={mediaItems}
@@ -1001,6 +1054,13 @@ export function ChatProfileScreen() {
         onSelectTheme={setDraftThemeId}
         onApply={handleApplyChatTheme}
         onClose={() => setIsThemePickerVisible(false)}
+      />
+
+      <ChatProfileBlockSheet
+        visible={blockSheetVisible}
+        peerName={displayName}
+        onClose={() => setBlockSheetVisible(false)}
+        onConfirmBlock={handleConfirmBlockFromSheet}
       />
     </View>
   );

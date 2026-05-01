@@ -66,6 +66,7 @@ export function InteractiveChatBackShell({ navigation, gestureEnabled, children 
 
   const sheetStyle = useAnimatedStyle(() => ({
     flex: 1,
+    backgroundColor: 'transparent',
     transform: [{ translateX: translateX.value }],
     ...(Platform.OS === 'android'
       ? {

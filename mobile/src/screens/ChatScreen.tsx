@@ -31,6 +31,7 @@ import Reanimated, {
 import type { ChatsStackParamList } from '../navigation/types';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
+import { dissolvingMessageStore } from '../stores/dissolvingMessageStore';
 import { messageStore } from '../stores/messageStore';
 import { canForwardMessage, TransportService } from '../services/TransportService';
 import { SyncService } from '../services/SyncService';
@@ -230,6 +231,23 @@ function MediaAlbumBubble({
       );
     }
 
+    if (visibleMedia.length === 4) {
+      const tileW = (albumWidth - gap) / 2;
+      const tileH = (albumWidth - gap) / 2;
+      return (
+        <View style={[msgStyles.albumColumn, { width: albumWidth }]}>
+          <View style={msgStyles.albumRow}>
+            {renderTile(visibleMedia[0], 0, { width: tileW, height: tileH })}
+            {renderTile(visibleMedia[1], 1, { width: tileW, height: tileH })}
+          </View>
+          <View style={msgStyles.albumRow}>
+            {renderTile(visibleMedia[2], 2, { width: tileW, height: tileH })}
+            {renderTile(visibleMedia[3], 3, { width: tileW, height: tileH })}
+          </View>
+        </View>
+      );
+    }
+
     const columns = 3;
     const tileWidth = (albumWidth - gap * (columns - 1)) / columns;
     return (
@@ -397,6 +415,21 @@ export function ChatScreen() {
   const currentChat = chatStore(
     useCallback((state) => state.chats.find((c) => c.id === chatId) ?? null, [chatId])
   );
+  const hadChatInStoreRef = React.useRef(false);
+  React.useEffect(() => {
+    if (currentChat) {
+      hadChatInStoreRef.current = true;
+    }
+  }, [currentChat]);
+
+  React.useEffect(() => {
+    if (!hadChatInStoreRef.current) return;
+    if (currentChat) return;
+    hadChatInStoreRef.current = false;
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    }
+  }, [currentChat, navigation]);
   const chatThemeId = uiStore((state) => state.chatThemeIdByChatId[chatId] ?? DEFAULT_CHAT_THEME_ID);
   
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
@@ -1168,9 +1201,13 @@ export function ChatScreen() {
     (message: Message) => {
       closeMenu();
       if (message.sender_id === currentUserId) {
+        dissolvingMessageStore.getState().begin({
+          chatId,
+          messageId: message.id,
+          snapshot: { ...message },
+        });
         messageStore.getState().updateMessage(chatId, message.id, {
           is_deleted: 1,
-          content: null,
         });
         if (pinnedMessageId === message.id && currentChat) {
           chatStore.getState().updateChat({
@@ -1424,9 +1461,13 @@ export function ChatScreen() {
               const chatSnapshot = chatStore.getState().chats.find((c) => c.id === chatId) ?? currentChat;
               const pinId = chatSnapshot?.pinned_message_id ?? null;
               if (message.sender_id === currentUserId) {
+                dissolvingMessageStore.getState().begin({
+                  chatId,
+                  messageId: message.id,
+                  snapshot: { ...message },
+                });
                 messageStore.getState().updateMessage(chatId, message.id, {
                   is_deleted: 1,
-                  content: null,
                 });
                 if (pinId === message.id && chatSnapshot) {
                   chatStore.getState().updateChat({
@@ -2293,7 +2334,7 @@ export function ChatScreen() {
   }, [activeMenuMessage, currentUserId, menuMode, pinnedMessageId, themeColors]);
 
   return (
-    <View style={[styles.container, { backgroundColor: chatTheme.canvasColor }]}>
+    <View style={[styles.container, styles.chatRootTransparent]}>
       <InteractiveChatBackShell
         navigation={navigation}
         gestureEnabled={
@@ -2304,7 +2345,11 @@ export function ChatScreen() {
           !isSearchMode
         }
       >
-      <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.chatContentLayer}>
+      <BlurTargetView
+        ref={blurTargetRef}
+        collapsable={false}
+        style={[styles.chatContentLayer, { backgroundColor: chatTheme.canvasColor }]}
+      >
         <ChatBackgroundPattern themeId={activeThemeId} />
         <ChatTopBanners
           selectionMode={selectionMode}

@@ -219,6 +219,9 @@ function createChannelFeedStyles(c: ThemeColors) {
       flex: 1,
       backgroundColor: c.chatBackground,
     },
+    feedRootTransparent: {
+      backgroundColor: 'transparent',
+    },
     listWrap: {
       flex: 1,
     },
@@ -731,6 +734,23 @@ function renderChannelMediaAlbum(
           <View style={[st.channelAlbumColumn, { width: rightWidth }]}>
             {renderTile(visibleMedia[1], 1, { width: rightWidth, height: halfHeight })}
             {renderTile(visibleMedia[2], 2, { width: rightWidth, height: halfHeight })}
+          </View>
+        </View>
+      );
+    }
+
+    if (visibleMedia.length === 4) {
+      const tileW = (albumWidth - gap) / 2;
+      const tileH = (albumWidth - gap) / 2;
+      return (
+        <View style={[st.channelAlbumColumn, { width: albumWidth }]}>
+          <View style={st.channelAlbumRow}>
+            {renderTile(visibleMedia[0], 0, { width: tileW, height: tileH })}
+            {renderTile(visibleMedia[1], 1, { width: tileW, height: tileH })}
+          </View>
+          <View style={st.channelAlbumRow}>
+            {renderTile(visibleMedia[2], 2, { width: tileW, height: tileH })}
+            {renderTile(visibleMedia[3], 3, { width: tileW, height: tileH })}
           </View>
         </View>
       );
@@ -2080,12 +2100,12 @@ export function ChannelFeedScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, styles.feedRootTransparent]}>
       <InteractiveChatBackShell
         navigation={navigation}
         gestureEnabled={!menuState && forwardSourceMessageIds.length === 0}
       >
-      <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
+      <BlurTargetView ref={blurTargetRef} collapsable={false} style={[styles.container, { backgroundColor: c.chatBackground }]}>
       <ChatBackgroundPattern />
       {feedError && sortedFeed.length === 0 ? (
         <LoadErrorState message={feedError} onRetry={() => void load()} />

@@ -44,6 +44,8 @@ const CHAT_INTERACTIVE_BACK_STACK_OPTIONS = {
   fullScreenGestureEnabled: true,
   animationMatchesGesture: true,
   fullScreenGestureShadowEnabled: true,
+  /** Let the previous stack screen show through when the chat body is translated (Android shell + iOS gesture). */
+  contentStyle: { backgroundColor: 'transparent' },
 } as const;
 
 function formatPresence(isOnline?: boolean, lastSeen?: number | null) {

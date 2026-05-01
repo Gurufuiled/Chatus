@@ -50,22 +50,6 @@ const CHANNEL_HERO_EXPANDED_H = Math.min(
   420,
 );
 
-function extractRemoteMediaUri(message: Message): string | null {
-  const media = message.media?.[0];
-  const resolved = resolveAvatarUrl(media?.remote_url ?? null);
-  return resolved ?? null;
-}
-
-function extractPreviewMediaUri(message: Message): string | null {
-  const media = message.media?.[0];
-  const candidates = [media?.thumbnail_url, media?.remote_url];
-  for (const c of candidates) {
-    const resolved = resolveAvatarUrl(c ?? null);
-    if (resolved) return resolved;
-  }
-  return null;
-}
-
 function createChannelProfileStyles(c: ThemeColors) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: c.chatBackground },
@@ -431,30 +415,36 @@ export function ChannelProfileScreen() {
 
   const channelMediaItems = React.useMemo<MediaTile[]>(
     () =>
-      feedPosts
-        .filter(
-          (m) =>
-            m.is_deleted !== 1 &&
-            (m.msg_type === 'image' || m.msg_type === 'video'),
-        )
-        .map((m) => {
-          const uri = extractRemoteMediaUri(m) ?? '';
-          const thumbnailUri = resolveAvatarUrl(m.media?.[0]?.thumbnail_url ?? null);
-          const caption = typeof m.content === 'string' ? m.content.trim() : '';
-          return {
-            id: m.id,
-            kind: m.msg_type === 'video' ? 'video' : 'image',
-            uri,
-            previewUri:
-              m.msg_type === 'video'
-                ? thumbnailUri ?? undefined
-                : extractPreviewMediaUri(m) ?? uri,
-            durationMs:
-              m.msg_type === 'video' ? m.media?.[0]?.duration_ms ?? 0 : undefined,
-            caption: caption.length > 0 ? caption : undefined,
-          } satisfies MediaTile;
-        })
-        .filter((item) => item.uri.length > 0),
+      feedPosts.flatMap((m) => {
+        if (m.is_deleted === 1 || (m.msg_type !== 'image' && m.msg_type !== 'video')) {
+          return [];
+        }
+        const entries = (m.media ?? []).filter((x) => x.remote_url?.trim());
+        if (entries.length === 0) return [];
+        const caption = typeof m.content === 'string' ? m.content.trim() : '';
+        const captionOpt = caption.length > 0 ? caption : undefined;
+        return entries
+          .map((mediaItem, idx): MediaTile | null => {
+            const uri = resolveAvatarUrl(mediaItem.remote_url?.trim() ?? null) ?? '';
+            if (!uri) return null;
+            const mt = (mediaItem.media_type ?? '').toLowerCase();
+            const kind: 'image' | 'video' =
+              mt === 'video' ? 'video' : mt === 'image' ? 'image' : m.msg_type === 'video' ? 'video' : 'image';
+            const thumbnailUri = resolveAvatarUrl(mediaItem.thumbnail_url ?? null);
+            return {
+              id: `${m.id}:${idx}`,
+              kind,
+              uri,
+              previewUri:
+                kind === 'video'
+                  ? thumbnailUri ?? undefined
+                  : thumbnailUri || uri,
+              durationMs: kind === 'video' ? mediaItem.duration_ms ?? 0 : undefined,
+              caption: captionOpt,
+            } satisfies MediaTile;
+          })
+          .filter((item): item is MediaTile => item != null);
+      }),
     [feedPosts],
   );
 

@@ -7,6 +7,8 @@ import { bubbleRadius, withAlpha } from '../theme/stylePrimitives';
 export function buildChatScreenStyles(themeColors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: '#E8F4D6' },
+    /** Root under native stack: transparent so the chat list shows through interactive back. */
+    chatRootTransparent: { backgroundColor: 'transparent' },
     albumBubble: {
       maxWidth: '100%',
       borderRadius: 10,

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { mapChat, type MappedChat } from '../common/mappers';
 import type { Prisma, User } from '@prisma/client';
 import { ChatMemberRole, ChatType } from '@prisma/client';
@@ -20,7 +21,25 @@ type ChatWithRelations = Prisma.ChatGetPayload<{ include: typeof CHAT_INCLUDE }>
 
 @Injectable()
 export class ChatsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
+
+  private notifyChatDeleted(
+    chatId: string,
+    memberUserIds: string[],
+    deletedByUserId: string,
+  ): void {
+    const payload = JSON.stringify({
+      type: 'chat_deleted',
+      chat_id: chatId,
+      deleted_by_user_id: deletedByUserId,
+    });
+    for (const userId of memberUserIds) {
+      this.realtime.sendToUser(userId, payload);
+    }
+  }
 
   private mapChatForUser(chat: ChatWithRelations, userId: string): MappedChat {
     return mapChat(chat, {
@@ -437,11 +456,30 @@ export class ChatsService {
     return { ok: true };
   }
 
-  async deleteGroup(currentUser: User, chatId: string): Promise<{ ok: true }> {
-    await this.getGroupChatForOwnerOrThrow(chatId, currentUser.id);
+  /**
+   * Deletes a private 1:1 chat for both participants, or deletes a group if the caller is the owner.
+   */
+  async deleteChat(currentUser: User, chatId: string): Promise<{ ok: true }> {
+    const chat = await this.getChatForUserOrThrow(chatId, currentUser.id);
+
+    if (chat.chatType === ChatType.private) {
+      if (chat.members.length !== 2) {
+        throw new BadRequestException('Invalid private chat');
+      }
+      const memberUserIds = chat.members.map((m) => m.userId);
+      await this.prisma.chat.delete({
+        where: { id: chatId },
+      });
+      this.notifyChatDeleted(chatId, memberUserIds, currentUser.id);
+      return { ok: true };
+    }
+
+    const groupChat = await this.getGroupChatForOwnerOrThrow(chatId, currentUser.id);
+    const memberUserIds = groupChat.members.map((m) => m.userId);
     await this.prisma.chat.delete({
       where: { id: chatId },
     });
+    this.notifyChatDeleted(chatId, memberUserIds, currentUser.id);
     return { ok: true };
   }
 
