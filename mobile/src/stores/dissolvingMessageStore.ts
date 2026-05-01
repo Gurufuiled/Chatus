@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 import type { Message } from './types';
 
@@ -37,3 +38,12 @@ export const dissolvingMessageStore = create<
 
   getSnapshot: (chatId, messageId) => get().entries[key(chatId, messageId)]?.snapshot ?? null,
 }));
+
+/** Подписка на снимок для dissolve; без неё React.memo не увидит только `end()`. */
+export function useDissolveSnapshot(chatId: string, messageId: string): Message | null {
+  return useSyncExternalStore(
+    (onStoreChange) => dissolvingMessageStore.subscribe(onStoreChange),
+    () => dissolvingMessageStore.getState().getSnapshot(chatId, messageId),
+    () => null,
+  );
+}

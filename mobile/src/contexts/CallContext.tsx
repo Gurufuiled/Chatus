@@ -30,6 +30,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Reanimated, { clamp, runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
 import { resolveAvatarUrl } from '../config';
@@ -88,6 +90,10 @@ type PendingOffer = {
 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 const OUTGOING_TIMEOUT_MS = 30000;
+
+/** Круглый превью своего видео (PiP): размер и отступы при перетаскивании. */
+const VIDEO_PIP_SIZE = 112;
+const VIDEO_PIP_MARGIN = 8;
 
 const CallContext = createContext<CallContextType | null>(null);
 
@@ -358,7 +364,7 @@ const CallOverlay = React.memo(function CallOverlay({
   onToggleVideo: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => {
     if (callState?.phase !== 'active' || !callState.startedAt) return undefined;
@@ -375,23 +381,128 @@ const CallOverlay = React.memo(function CallOverlay({
   const canToggleSpeaker = Platform.OS === 'android' && showUtilityControls;
   const canToggleMute = Boolean(callState?.isLocalAudioReady && showUtilityControls);
   const canToggleVideo = Boolean(callState?.isLocalAudioReady && showUtilityControls);
-  // Main video stage ALWAYS shows the remote stream once we have it. We used
-  // to fall back to showing the local camera full-screen until a remote video
-  // track arrived, but that caused the stage to flip between local and remote
-  // as tracks were added/renegotiated, producing rapid flicker.
+  /** Удалённое видео (после первого кадра), без подмены на локальное — меньше мигания. */
   const remoteVideoStageUrl =
     callState?.callKind === 'video' &&
     callState.hasRemoteVideoEverEnabled &&
     callState.remoteStreamUrl
       ? callState.remoteStreamUrl
       : null;
-  const fullVideoUrl = remoteVideoStageUrl;
-  const showVideoStage = Boolean(callState && !isIncoming && fullVideoUrl);
-  const showLocalPreview = Boolean(
+
+  const localPreviewReady = Boolean(
     callState?.callKind === 'video' &&
       callState.isLocalVideoEnabled &&
       callState.localStreamUrl
   );
+
+  const [pipSwapped, setPipSwapped] = useState(false);
+
+  useEffect(() => {
+    if (!localPreviewReady && pipSwapped) setPipSwapped(false);
+  }, [localPreviewReady, pipSwapped]);
+
+  useEffect(() => {
+    if (!remoteVideoStageUrl && pipSwapped) setPipSwapped(false);
+  }, [remoteVideoStageUrl, pipSwapped]);
+
+  const canSwapPip = Boolean(remoteVideoStageUrl && localPreviewReady);
+
+  const mainVideoUrl = pipSwapped
+    ? localPreviewReady
+      ? (callState?.localStreamUrl ?? null)
+      : null
+    : remoteVideoStageUrl;
+
+  const pipVideoUrl = pipSwapped
+    ? remoteVideoStageUrl
+    : localPreviewReady
+      ? (callState?.localStreamUrl ?? null)
+      : null;
+
+  const showPip = Boolean(
+    callState?.callKind === 'video' && !isIncoming && pipVideoUrl && showUtilityControls
+  );
+
+  const showMainVideo = Boolean(mainVideoUrl);
+  const showVideoStage = Boolean(callState && !isIncoming && showMainVideo);
+  const mainMirror = Boolean(
+    mainVideoUrl && callState?.localStreamUrl && mainVideoUrl === callState.localStreamUrl
+  );
+  const pipMirror = Boolean(
+    pipVideoUrl && callState?.localStreamUrl && pipVideoUrl === callState.localStreamUrl
+  );
+
+  const boundsW = useSharedValue(screenWidth);
+  const boundsH = useSharedValue(screenHeight);
+  const minPipTop = useSharedValue(Math.max(insets.top, 20) + 40);
+
+  useEffect(() => {
+    boundsW.value = screenWidth;
+    boundsH.value = screenHeight;
+    minPipTop.value = Math.max(insets.top, 20) + 40;
+  }, [screenWidth, screenHeight, insets.top, boundsW, boundsH, minPipTop]);
+
+  const pipLeft = useSharedValue(Math.max(VIDEO_PIP_MARGIN, screenWidth - VIDEO_PIP_SIZE - 18));
+  const pipTop = useSharedValue(Math.max(insets.top, 20) + 72);
+  const pipDragStartL = useSharedValue(0);
+  const pipDragStartT = useSharedValue(0);
+
+  useEffect(() => {
+    const maxL = screenWidth - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN;
+    const maxT = screenHeight - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN;
+    pipLeft.value = clamp(pipLeft.value, VIDEO_PIP_MARGIN, maxL);
+    pipTop.value = clamp(pipTop.value, minPipTop.value, maxT);
+  }, [screenWidth, screenHeight, pipLeft, pipTop, minPipTop]);
+
+  const togglePipSwap = useCallback(() => {
+    setPipSwapped((v) => (canSwapPip ? !v : v));
+  }, [canSwapPip]);
+
+  const pipGesture = useMemo(
+    () =>
+      Gesture.Exclusive(
+        Gesture.Pan()
+          .minDistance(10)
+          .onBegin(() => {
+            pipDragStartL.value = pipLeft.value;
+            pipDragStartT.value = pipTop.value;
+          })
+          .onUpdate((e) => {
+            const maxL = Math.max(
+              VIDEO_PIP_MARGIN,
+              boundsW.value - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN
+            );
+            const maxT = Math.max(
+              minPipTop.value + 8,
+              boundsH.value - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN
+            );
+            pipLeft.value = clamp(
+              pipDragStartL.value + e.translationX,
+              VIDEO_PIP_MARGIN,
+              maxL
+            );
+            pipTop.value = clamp(
+              pipDragStartT.value + e.translationY,
+              minPipTop.value,
+              maxT
+            );
+          }),
+        Gesture.Tap().onEnd(() => {
+          runOnJS(togglePipSwap)();
+        })
+      ),
+    [pipLeft, pipTop, pipDragStartL, pipDragStartT, boundsW, boundsH, minPipTop, togglePipSwap]
+  );
+
+  const pipAnimatedStyle = useAnimatedStyle(() => ({
+    position: 'absolute' as const,
+    left: pipLeft.value,
+    top: pipTop.value,
+    width: VIDEO_PIP_SIZE,
+    height: VIDEO_PIP_SIZE,
+    zIndex: 24,
+  }));
+
   const endLabel = callState?.phase === 'active' ? 'Завершить' : 'Отменить';
   const controlsLayout = useMemo(() => getCallControlsLayout(screenWidth), [screenWidth]);
 
@@ -403,48 +514,40 @@ const CallOverlay = React.memo(function CallOverlay({
       statusBarTranslucent
       onRequestClose={onEnd}
     >
-      <View style={styles.overlay}>
-        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-        {fullVideoUrl ? (
-          <RTCView
-            streamURL={fullVideoUrl}
-            style={styles.remoteVideo}
-            objectFit="cover"
-            mirror={fullVideoUrl === callState?.localStreamUrl}
-            zOrder={0}
-          />
-        ) : (
-          <>
-            <View style={styles.backgroundBase} />
-            <View style={styles.backgroundGlowTop} />
-            <View style={styles.backgroundGlowBottom} />
-          </>
-        )}
-        <View style={[styles.backgroundVeil, showVideoStage && styles.videoVeil]} />
-        <View
-          style={[
-            styles.screenContent,
-            {
-              paddingTop: Math.max(insets.top, 20) + 22,
-              paddingBottom: Math.max(insets.bottom, 20) + 18,
-              paddingHorizontal: controlsLayout.screenHorizontalPadding,
-            },
-          ]}
-        >
-          <View style={styles.topMeta}>
-            <Text style={styles.topMetaText}>
-              {callState?.callKind === 'video' ? 'Видео' : 'Звонок'}
-            </Text>
-          </View>
-          {showLocalPreview ? (
+      <GestureHandlerRootView style={styles.overlayRoot}>
+        <View style={styles.overlay}>
+          <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+          {showMainVideo ? (
             <RTCView
-              streamURL={callState?.localStreamUrl ?? undefined}
-              style={[styles.localVideoPreview, { top: Math.max(insets.top, 20) + 72 }]}
+              streamURL={mainVideoUrl!}
+              style={styles.remoteVideo}
               objectFit="cover"
-              mirror
-              zOrder={1}
+              mirror={mainMirror}
+              zOrder={0}
             />
-          ) : null}
+          ) : (
+            <>
+              <View style={styles.backgroundBase} />
+              <View style={styles.backgroundGlowTop} />
+              <View style={styles.backgroundGlowBottom} />
+            </>
+          )}
+          <View style={[styles.backgroundVeil, showVideoStage && styles.videoVeil]} />
+          <View
+            style={[
+              styles.screenContent,
+              {
+                paddingTop: Math.max(insets.top, 20) + 22,
+                paddingBottom: Math.max(insets.bottom, 20) + 18,
+                paddingHorizontal: controlsLayout.screenHorizontalPadding,
+              },
+            ]}
+          >
+            <View style={styles.topMeta}>
+              <Text style={styles.topMetaText}>
+                {callState?.callKind === 'video' ? 'Видео' : 'Звонок'}
+              </Text>
+            </View>
           <View style={[styles.centerStage, showVideoStage && styles.centerStageVideo]}>
             {!showVideoStage ? (
               callState?.avatarUrl ? (
@@ -525,7 +628,23 @@ const CallOverlay = React.memo(function CallOverlay({
             )}
           </View>
         </View>
+        {showPip ? (
+          <GestureDetector gesture={pipGesture}>
+            <Reanimated.View style={pipAnimatedStyle}>
+              <View style={styles.videoPipClip}>
+                <RTCView
+                  streamURL={pipVideoUrl!}
+                  style={styles.videoPipRtc}
+                  objectFit="cover"
+                  mirror={pipMirror}
+                  zOrder={2}
+                />
+              </View>
+            </Reanimated.View>
+          </GestureDetector>
+        ) : null}
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 });
@@ -1280,6 +1399,9 @@ export function useCall() {
 }
 
 const styles = StyleSheet.create({
+  overlayRoot: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     backgroundColor: '#07111E',
@@ -1318,16 +1440,23 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#050A12',
   },
-  localVideoPreview: {
-    position: 'absolute',
-    right: 18,
-    width: 118,
-    height: 166,
-    borderRadius: 22,
+  videoPipClip: {
+    width: VIDEO_PIP_SIZE,
+    height: VIDEO_PIP_SIZE,
+    borderRadius: VIDEO_PIP_SIZE / 2,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.82)',
     backgroundColor: '#101827',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  videoPipRtc: {
+    width: VIDEO_PIP_SIZE,
+    height: VIDEO_PIP_SIZE,
   },
   screenContent: {
     flex: 1,

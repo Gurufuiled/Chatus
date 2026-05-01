@@ -8,7 +8,8 @@ import {
   type NavigationProp,
 } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { PlatformPressable } from '@react-navigation/elements';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { ChatsStack } from './ChatsStack';
 import { SettingsStack } from './SettingsStack';
 import { ContactsScreen } from '../screens';
@@ -144,7 +145,7 @@ function AnimatedTabButton(props: BottomTabBarButtonProps) {
   };
 
   return (
-    <Pressable
+    <PlatformPressable
       {...props}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
@@ -153,7 +154,7 @@ function AnimatedTabButton(props: BottomTabBarButtonProps) {
       <Animated.View style={[{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }, { transform: [{ scale }] }]}>
         {props.children}
       </Animated.View>
-    </Pressable>
+    </PlatformPressable>
   );
 }
 

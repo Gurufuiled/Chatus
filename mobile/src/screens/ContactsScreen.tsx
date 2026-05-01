@@ -282,17 +282,18 @@ export function ContactsScreen() {
         <View style={styles.center}>
           <ActivityIndicator size="large" color={themeColors.accent} />
         </View>
+      ) : isSearchMode ? (
+        <FlatList<ApiUser>
+          data={filteredResults}
+          keyExtractor={(item) => item.id}
+          renderItem={renderSearchItem}
+          ListEmptyComponent={listEmpty}
+        />
       ) : (
-        <FlatList
-          data={isSearchMode ? filteredResults : contactsFromChats}
-          keyExtractor={(item) =>
-            isSearchMode ? (item as ApiUser).id : (item as ContactFromChatRow).chat.id
-          }
-          renderItem={({ item }) =>
-            isSearchMode
-              ? renderSearchItem({ item: item as ApiUser })
-              : renderContactFromChat({ item: item as ContactFromChatRow })
-          }
+        <FlatList<ContactFromChatRow>
+          data={contactsFromChats}
+          keyExtractor={(item) => item.chat.id}
+          renderItem={renderContactFromChat}
           ListEmptyComponent={listEmpty}
         />
       )}

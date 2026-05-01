@@ -35,9 +35,12 @@ export function ChannelLinkGateScreen({ route, navigation }: Props) {
     if (ranRef.current) return;
     ranRef.current = true;
 
-    const slug = route.name === 'ChannelLinkSlug' ? route.params.slug : undefined;
+    const slug =
+      route.name === 'ChannelLinkSlug' ? (route.params as Readonly<{ slug: string }>).slug : undefined;
     const inviteToken =
-      route.name === 'ChannelLinkInvite' ? route.params.inviteToken : undefined;
+      route.name === 'ChannelLinkInvite'
+        ? (route.params as Readonly<{ inviteToken: string }>).inviteToken
+        : undefined;
 
     void (async () => {
       try {

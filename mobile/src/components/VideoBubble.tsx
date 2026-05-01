@@ -455,7 +455,7 @@ export function VideoBubble({
     }
 
     let cancelled = false;
-    Image.getSize(
+    RNImage.getSize(
       posterUri,
       (width, height) => {
         if (!cancelled) {

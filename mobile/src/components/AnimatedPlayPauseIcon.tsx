@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View } from 'react-native';
+import { View, type ViewStyle } from 'react-native';
 import Reanimated, {
   useSharedValue,
   useAnimatedStyle,
@@ -28,25 +28,25 @@ export const AnimatedPlayPauseIcon = React.memo(function AnimatedPlayPauseIcon({
     });
   }, [isPlaying, progress]);
 
-  const playStyle = useAnimatedStyle(() => {
+  const playStyle = useAnimatedStyle<ViewStyle>(() => {
     return {
       position: 'absolute',
       opacity: 1 - progress.value,
       transform: [
         { scale: 1 - progress.value * 0.5 },
         { rotate: `${progress.value * 180}deg` },
-      ],
+      ] as ViewStyle['transform'],
     };
   });
 
-  const pauseStyle = useAnimatedStyle(() => {
+  const pauseStyle = useAnimatedStyle<ViewStyle>(() => {
     return {
       position: 'absolute',
       opacity: progress.value,
       transform: [
         { scale: 0.5 + progress.value * 0.5 },
         { rotate: `${(1 - progress.value) * -180}deg` },
-      ],
+      ] as ViewStyle['transform'],
     };
   });
 

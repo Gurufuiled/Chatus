@@ -17,7 +17,7 @@ export function GallerySkeletonGrid({ rows = 4 }: { rows?: number }) {
         <View key={i} style={styles.cellOuter}>
           <Skeleton
             width="100%"
-            height="100%"
+            style={StyleSheet.absoluteFillObject}
             radius={10}
             baseColor={colors.placeholderBg}
             highlightColor={colors.inputBackgroundSolid}

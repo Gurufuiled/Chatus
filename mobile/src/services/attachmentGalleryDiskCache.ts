@@ -3,7 +3,7 @@
  * before MediaLibrary.getAssetsAsync + getAssetInfoAsync finish.
  */
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { GalleryItem } from '../components/InputAttachmentSheet';
 
 const CACHE_FILENAME = 'attachment_gallery_cache_v1.json';

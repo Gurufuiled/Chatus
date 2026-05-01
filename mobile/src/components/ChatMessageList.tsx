@@ -26,9 +26,8 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import type { Message } from '../stores/types';
-import { messageStore } from '../stores/messageStore';
-import { dissolvingMessageStore } from '../stores/dissolvingMessageStore';
-import { DeletedMessageDissolve } from './DeletedMessageDissolve';
+import { dissolvingMessageStore, useDissolveSnapshot } from '../stores/dissolvingMessageStore';
+import { DeletedMessageDissolve, type DissolveFragmentShape } from './DeletedMessageDissolve';
 import { bubbleRadius, colors, withAlpha } from '../theme/colors';
 import type { ChatTheme } from '../theme/chatThemes';
 import { FileBubble } from './FileBubble';
@@ -697,7 +696,44 @@ function getAuthorTagStyle(color?: string | null) {
 function effectiveBodyItemForRow(p: MessageRowProps): Message {
   if (p.item.is_deleted !== 1) return p.item;
   const snap = dissolvingMessageStore.getState().getSnapshot(p.chatId, p.item.id);
-  return { ...(snap ?? p.item), is_deleted: 0 } as Message;
+  if (!snap) return p.item;
+  return { ...snap, is_deleted: 0 } as Message;
+}
+
+/** URI превью для «рассыпания» картинки/видео/кружка; без URI — только цветная пыль. */
+function getDissolveFragmentForMessage(m: Message): {
+  uri: string | null;
+  shape: DissolveFragmentShape;
+} {
+  const withUrl = m.media?.filter((x) => x.remote_url?.trim()) ?? [];
+  if (withUrl.length === 0) return { uri: null, shape: 'rect' };
+  const first = withUrl[0];
+
+  if (m.msg_type === 'video_note') {
+    const raw = (first.thumbnail_url || '').trim();
+    if (!raw) return { uri: null, shape: 'circle' };
+    return { uri: resolveMediaUrl(raw) ?? raw, shape: 'circle' };
+  }
+  if (m.msg_type === 'image') {
+    const raw = (first.remote_url || '').trim();
+    if (!raw) return { uri: null, shape: 'rect' };
+    return { uri: resolveMediaUrl(raw) ?? raw, shape: 'rect' };
+  }
+  if (m.msg_type === 'video') {
+    const raw = (first.thumbnail_url || first.remote_url || '').trim();
+    if (!raw) return { uri: null, shape: 'rect' };
+    return { uri: resolveMediaUrl(raw) ?? raw, shape: 'rect' };
+  }
+  if (withUrl.length > 1) {
+    const t = first.media_type?.toLowerCase();
+    if (t === 'video' && first.thumbnail_url?.trim()) {
+      const th = first.thumbnail_url.trim();
+      return { uri: resolveMediaUrl(th) ?? th, shape: 'rect' };
+    }
+    const r = (first.remote_url || '').trim();
+    return { uri: resolveMediaUrl(r) ?? r, shape: 'rect' };
+  }
+  return { uri: null, shape: 'rect' };
 }
 
 function messageRowUsesDarkDefaultOutgoingGradient(p: MessageRowProps): boolean {
@@ -742,14 +778,15 @@ const MessageRow = React.memo(function MessageRow({
   const lastTapAtRef = useRef(0);
   const { colors: themeColors } = useTheme();
   const isMe = item.sender_id === currentUserId;
+  const dissolveSnap = useDissolveSnapshot(chatId, item.id);
   const bodyItem: Message = useMemo(() => {
     if (item.is_deleted !== 1) return item;
-    const snap = dissolvingMessageStore.getState().getSnapshot(chatId, item.id);
-    return { ...(snap ?? item), is_deleted: 0 } as Message;
-  }, [chatId, item]);
+    if (!dissolveSnap) return item;
+    return { ...dissolveSnap, is_deleted: 0 } as Message;
+  }, [chatId, item, dissolveSnap]);
   const useViewportOutgoingGradient =
     isMe &&
-    item.is_deleted !== 1 &&
+    bodyItem.is_deleted !== 1 &&
     shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
   const meBubbleFill = useViewportOutgoingGradient ? '#00000000' : chatTheme.bubbleMe;
   const ownsInlineReplySwipe = item.msg_type === 'video_note';
@@ -935,6 +972,28 @@ const MessageRow = React.memo(function MessageRow({
   };
 
   const renderBody = () => {
+    if (item.is_deleted === 1 && !dissolveSnap) {
+      return (
+        <View
+          style={[
+            styles.deletedBubble,
+            isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
+            isMe ? { backgroundColor: chatTheme.deletedBubbleMe } : null,
+          ]}
+        >
+          <Text style={[styles.deletedText, isMe && { color: chatTheme.deletedTextMe }]}>
+            {getDeletedPlaceholder(isMe)}
+          </Text>
+          <MessageTimeStatus
+            time={formatTime(item.created_at)}
+            status={item.status}
+            isMe={isMe}
+            compact
+          />
+        </View>
+      );
+    }
+
     const bubbleCore = () => {
     if (bodyItem.msg_type === 'text') {
       const rawContent = bodyItem.content ?? '';
@@ -1178,7 +1237,7 @@ const MessageRow = React.memo(function MessageRow({
         ? null
         : renderIncomingHeader({ forceLightText: true });
 
-      let topHeader = null;
+      let topHeader: React.ReactNode = null;
       if (topHeaderRaw) {
         topHeader = (
           <View style={styles.videoNoteHeaderBadge}>
@@ -1670,18 +1729,20 @@ const MessageRow = React.memo(function MessageRow({
 
     const bubble = bubbleCore();
 
-    if (item.is_deleted === 1) {
+    if (item.is_deleted === 1 && dissolveSnap) {
       const dustRgb = bubbleColorToRgb(
         isMe ? chatTheme.bubbleMe : themeColors.bubbleOther,
         isMe ? { r: 70, g: 135, b: 230 } : { r: 142, g: 152, b: 168 },
       );
+      const frag = getDissolveFragmentForMessage(dissolveSnap);
       return (
         <DeletedMessageDissolve
           messageKey={`${chatId}:${item.id}`}
           dustRgb={dustRgb}
+          fragmentImageUri={frag.uri}
+          fragmentShape={frag.shape}
           onDissolveComplete={() => {
             dissolvingMessageStore.getState().end(chatId, item.id);
-            messageStore.getState().removeMessage(chatId, item.id);
           }}
         >
           {bubble}
