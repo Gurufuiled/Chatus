@@ -400,6 +400,8 @@ export function ChatScreen() {
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchActiveMatchIndex, setSearchActiveMatchIndex] = useState(0);
+  const matchedMessageIdsRef = useRef<string[]>([]);
   const [isAppActive, setIsAppActive] = useState(AppState.currentState === 'active');
   const menuAnim = useRef(new Animated.Value(0)).current;
   const messageContentRefs = useRef<Record<string, View | null>>({});
@@ -514,6 +516,8 @@ export function ChatScreen() {
       })
       .map((message) => message.id);
   }, [messages, normalizedSearchQuery]);
+  matchedMessageIdsRef.current = matchedMessageIds;
+  const searchMatchSignature = matchedMessageIds.join('|');
   const activeVoiceMessage = useMemo(() => {
     if (!currentVoiceUri) return null;
     return (
@@ -685,6 +689,12 @@ export function ChatScreen() {
   const handleCancelSearch = useCallback(() => {
     setIsSearchMode(false);
     setSearchQuery('');
+    setSearchActiveMatchIndex(0);
+    setHighlightedMessageId(null);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
     Keyboard.dismiss();
   }, []);
 
@@ -724,35 +734,45 @@ export function ChatScreen() {
     }
   }, [isFocused]);
 
-  const scrollToMessageId = useCallback((messageId: string, missingMessageTitle?: string) => {
-    const targetIndex = messages.findIndex((message) => message.id === messageId);
-    if (targetIndex < 0) {
-      Alert.alert(
-        missingMessageTitle ?? 'Сообщение не найдено',
-        'Нужное сообщение пока не загружено в этот экран.'
-      );
-      return false;
-    }
+  const scrollToMessageId = useCallback(
+    (
+      messageId: string,
+      missingMessageTitle?: string,
+      options?: { persistHighlight?: boolean },
+    ) => {
+      const targetIndex = messages.findIndex((message) => message.id === messageId);
+      if (targetIndex < 0) {
+        Alert.alert(
+          missingMessageTitle ?? 'Сообщение не найдено',
+          'Нужное сообщение пока не загружено в этот экран.',
+        );
+        return false;
+      }
 
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToIndex({
-        index: targetIndex,
-        animated: true,
-        viewPosition: 0.45,
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToIndex({
+          index: targetIndex,
+          animated: true,
+          viewPosition: 0.45,
+        });
       });
-    });
 
-    setHighlightedMessageId(messageId);
-    if (highlightTimeoutRef.current) {
-      clearTimeout(highlightTimeoutRef.current);
-    }
-    highlightTimeoutRef.current = setTimeout(() => {
-      setHighlightedMessageId(null);
-      highlightTimeoutRef.current = null;
-    }, 1800);
+      setHighlightedMessageId(messageId);
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+      if (!options?.persistHighlight) {
+        highlightTimeoutRef.current = setTimeout(() => {
+          setHighlightedMessageId(null);
+          highlightTimeoutRef.current = null;
+        }, 1800);
+      }
 
-    return true;
-  }, [messages]);
+      return true;
+    },
+    [messages],
+  );
 
   const handlePinnedBannerPress = useCallback(() => {
     if (!pinnedMessageId) return;
@@ -773,15 +793,55 @@ export function ChatScreen() {
   }, [focusMessageId, navigation, scrollToMessageId]);
 
   useEffect(() => {
+    if (!isSearchMode) return;
+    setSearchActiveMatchIndex(0);
+  }, [normalizedSearchQuery, isSearchMode]);
+
+  useEffect(() => {
+    setSearchActiveMatchIndex((i) => {
+      const L = matchedMessageIdsRef.current.length;
+      if (L === 0) return 0;
+      return Math.min(i, L - 1);
+    });
+  }, [searchMatchSignature]);
+
+  useEffect(() => {
     if (!isSearchMode || !normalizedSearchQuery) return;
-    if (matchedMessageIds.length === 0) return;
-
+    const list = matchedMessageIdsRef.current;
+    if (list.length === 0) {
+      setHighlightedMessageId(null);
+      return;
+    }
+    const idx = Math.min(searchActiveMatchIndex, list.length - 1);
+    const id = list[idx];
+    if (!id) return;
     const timer = setTimeout(() => {
-      scrollToMessageId(matchedMessageIds[0]);
-    }, 120);
-
+      scrollToMessageId(id, undefined, { persistHighlight: true });
+    }, 80);
     return () => clearTimeout(timer);
-  }, [isSearchMode, matchedMessageIds, normalizedSearchQuery, scrollToMessageId]);
+  }, [
+    isSearchMode,
+    normalizedSearchQuery,
+    searchActiveMatchIndex,
+    searchMatchSignature,
+    scrollToMessageId,
+  ]);
+
+  const handleSearchMatchNext = useCallback(() => {
+    setSearchActiveMatchIndex((i) => {
+      const list = matchedMessageIdsRef.current;
+      if (list.length === 0) return 0;
+      return (i + 1) % list.length;
+    });
+  }, []);
+
+  const handleSearchMatchPrev = useCallback(() => {
+    setSearchActiveMatchIndex((i) => {
+      const list = matchedMessageIdsRef.current;
+      if (list.length === 0) return 0;
+      return (i - 1 + list.length) % list.length;
+    });
+  }, []);
 
   const handleScrollToIndexFailed = useCallback(
     (info: { index: number; averageItemLength: number }) => {
@@ -2405,6 +2465,7 @@ export function ChatScreen() {
           selectionMode={selectionMode}
           selectedMessageIdSet={selectedMessageIdSet}
           highlightedMessageId={highlightedMessageId}
+          searchHighlightQuery={isSearchMode ? normalizedSearchQuery : ''}
           listRef={listRef}
           listAnimatedStyle={listWrapAnimatedStyle}
           contentPaddingTop={(selectionMode ? selectionActionBarHeight : inputBarHeight) + 8}
@@ -2426,6 +2487,43 @@ export function ChatScreen() {
           chatTheme={chatTheme}
           activeVideoNoteVisible={activeVideoNoteVisible}
         />
+
+        {isSearchMode && normalizedSearchQuery.length > 0 && matchedMessageIds.length > 0 ? (
+          <View style={styles.searchMatchOverlay} pointerEvents="box-none">
+            <View
+              style={[
+                styles.searchMatchCounterPill,
+                { bottom: inputBarHeight + Math.max(insets.bottom, 8) + 6 },
+              ]}
+            >
+              <Text style={styles.searchMatchCounterText}>
+                {`${searchActiveMatchIndex + 1} из ${matchedMessageIds.length}`}
+              </Text>
+            </View>
+            <View style={styles.searchMatchNavColumn}>
+              <Pressable
+                accessibilityLabel="Предыдущий результат поиска"
+                onPress={handleSearchMatchPrev}
+                style={({ pressed }) => [
+                  styles.searchMatchNavButton,
+                  pressed && styles.searchMatchNavButtonPressed,
+                ]}
+              >
+                <Feather name="chevron-up" size={22} color="#FFFFFF" />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Следующий результат поиска"
+                onPress={handleSearchMatchNext}
+                style={({ pressed }) => [
+                  styles.searchMatchNavButton,
+                  pressed && styles.searchMatchNavButtonPressed,
+                ]}
+              >
+                <Feather name="chevron-down" size={22} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         {selectionMode ? (
           <Reanimated.View

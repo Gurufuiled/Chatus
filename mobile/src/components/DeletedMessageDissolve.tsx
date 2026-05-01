@@ -1,9 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import Reanimated, {
+  Easing,
+  cancelAnimation,
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 
-const CELL = 9;
-const MAX_CELLS = 88;
-const DURATION_MS = 440;
+const CELL = 8;
+const MAX_CELLS = 72;
+const DURATION_MS = 480;
 
 type PixelSpec = {
   key: string;
@@ -11,7 +22,9 @@ type PixelSpec = {
   top: number;
   dx: number;
   dy: number;
-  delay: number;
+  /** When global progress crosses this (0..1), this pixel starts moving. */
+  delayStart: number;
+  rotDeg: number;
   bg: string;
 };
 
@@ -21,7 +34,7 @@ function hashSeed(s: string) {
   return Math.abs(h);
 }
 
-function makePixels(
+function makePixelSpecs(
   width: number,
   height: number,
   bubbleRgb: { r: number; g: number; b: number },
@@ -40,23 +53,59 @@ function makePixels(
     const row = Math.floor(i / cols);
     const left = col * CELL;
     const top = row * CELL;
-    const dx = (rnd - 0.5) * 58;
-    const dy = -16 - rnd2 * 54;
+    const dx = (rnd - 0.5) * 64;
+    const dy = -12 - rnd2 * 52;
     const jitter = ((h >> (i % 17)) & 0xff) / 255;
-    const alpha = 0.2 + jitter * 0.38;
+    const alpha = 0.22 + jitter * 0.36;
     const bg = `rgba(${bubbleRgb.r},${bubbleRgb.g},${bubbleRgb.b},${alpha})`;
+    const delayStart = (i / Math.max(total, 1)) * 0.32;
+    const rotDeg = (rnd - 0.5) * 22;
     out.push({
       key: `${col}-${row}-${i}`,
       left,
       top,
       dx,
       dy,
-      delay: Math.floor((i / Math.max(total, 1)) * 120),
+      delayStart,
+      rotDeg,
       bg,
     });
   }
   return out;
 }
+
+const DissolvePixel = React.memo(function DissolvePixel({
+  progress,
+  spec,
+}: {
+  progress: SharedValue<number>;
+  spec: PixelSpec;
+}) {
+  const style = useAnimatedStyle(() => {
+    'worklet';
+    const t = progress.value;
+    const u = interpolate(t, [spec.delayStart, 1], [0, 1], Extrapolation.CLAMP);
+    return {
+      opacity: interpolate(u, [0, 0.14, 0.48, 1], [0, 0.95, 0.5, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateX: spec.dx * u },
+        { translateY: spec.dy * u },
+        { rotate: `${spec.rotDeg * u}deg` },
+      ],
+    };
+  });
+
+  return (
+    <Reanimated.View
+      pointerEvents="none"
+      style={[
+        styles.pixel,
+        { left: spec.left, top: spec.top, backgroundColor: spec.bg },
+        style,
+      ]}
+    />
+  );
+});
 
 type Props = {
   messageKey: string;
@@ -65,6 +114,9 @@ type Props = {
   children: React.ReactNode;
 };
 
+/**
+ * Deleted message: shell fades / lifts on Reanimated + pixel scatter overlay (same progress).
+ */
 export function DeletedMessageDissolve({
   messageKey,
   dustRgb,
@@ -72,24 +124,16 @@ export function DeletedMessageDissolve({
   children,
 }: Props) {
   const [layout, setLayout] = useState({ w: 0, h: 0 });
-  const shellOpacity = useRef(new Animated.Value(1)).current;
+  const progress = useSharedValue(0);
+  const runGen = useSharedValue(0);
   const doneRef = useRef(false);
-  /** Parent often passes an inline callback — keep effect deps stable. */
   const onCompleteRef = useRef(onDissolveComplete);
   onCompleteRef.current = onDissolveComplete;
 
-  const pixels = useMemo(
-    () => makePixels(layout.w, layout.h, dustRgb, messageKey),
+  const specs = useMemo(
+    () => makePixelSpecs(layout.w, layout.h, dustRgb, messageKey),
     [layout.w, layout.h, dustRgb, messageKey],
   );
-
-  const pixelAnims = useRef<Animated.Value[]>([]);
-  if (pixelAnims.current.length !== pixels.length) {
-    pixelAnims.current = pixels.map(() => new Animated.Value(0));
-  }
-
-  /** Lets interrupted animations distinguish “new effect started” vs unmount (see microtask in onEnd). */
-  const dissolveRunIdRef = useRef(0);
 
   const fireComplete = useCallback(() => {
     if (doneRef.current) return;
@@ -98,76 +142,46 @@ export function DeletedMessageDissolve({
   }, []);
 
   useEffect(() => {
-    const fallback = setTimeout(() => {
-      if (layout.w <= 0 && layout.h <= 0) {
-        fireComplete();
-      }
-    }, 520);
-    return () => clearTimeout(fallback);
-  }, [fireComplete, layout.h, layout.w]);
-
-  useEffect(() => {
-    if (layout.w <= 0 || layout.h <= 0) return;
-
-    const myRunId = ++dissolveRunIdRef.current;
-    doneRef.current = false;
-    shellOpacity.setValue(1);
-    for (const v of pixelAnims.current) {
-      v.setValue(0);
+    if (layout.w <= 0 || layout.h <= 0) {
+      const t = setTimeout(() => fireComplete(), 520);
+      return () => clearTimeout(t);
     }
+    doneRef.current = false;
+    cancelAnimation(progress);
+    progress.value = 0;
+    runGen.value = runGen.value + 1;
+    const myGen = runGen.value;
 
-    const pixelSpecs = makePixels(layout.w, layout.h, dustRgb, messageKey);
-    const pixelRuns = pixelSpecs.map((p, i) => {
-      const v = pixelAnims.current[i];
-      if (!v) return null;
-      return Animated.sequence([
-        Animated.delay(p.delay),
-        Animated.timing(v, {
-          toValue: 1,
-          duration: DURATION_MS - 100,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]);
-    }).filter(Boolean) as Animated.CompositeAnimation[];
-
-    const parallel = Animated.parallel([
-      Animated.timing(shellOpacity, {
-        toValue: 0,
-        duration: DURATION_MS,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      ...pixelRuns,
-    ]);
-
-    const onEnd = ({ finished }: { finished: boolean }) => {
-      if (dissolveRunIdRef.current !== myRunId) return;
-      if (finished) {
-        fireComplete();
-        return;
-      }
-      // stop() from effect cleanup: defer so a follow-up effect run can bump runId first.
-      queueMicrotask(() => {
-        if (dissolveRunIdRef.current !== myRunId) return;
-        fireComplete();
-      });
-    };
-
-    parallel.start(onEnd);
+    progress.value = withTiming(
+      1,
+      { duration: DURATION_MS, easing: Easing.out(Easing.cubic) },
+      (_finished) => {
+        'worklet';
+        if (runGen.value !== myGen) return;
+        runOnJS(fireComplete)();
+      },
+    );
 
     return () => {
-      parallel.stop();
-      shellOpacity.stopAnimation();
-      for (const v of pixelAnims.current) {
-        v.stopAnimation();
-      }
+      cancelAnimation(progress);
     };
-  }, [dustRgb, fireComplete, layout.h, layout.w, messageKey, shellOpacity]);
+  }, [messageKey, layout.w, layout.h, progress, fireComplete, runGen]);
+
+  const shellStyle = useAnimatedStyle(() => {
+    const t = progress.value;
+    return {
+      opacity: interpolate(t, [0, 0.1, 1], [1, 1, 0]),
+      transform: [
+        { translateY: interpolate(t, [0, 1], [0, -10]) },
+        { scale: interpolate(t, [0, 0.22, 1], [1, 1.02, 1.01]) },
+      ],
+    };
+  });
 
   return (
     <View
       style={styles.wrap}
+      collapsable={false}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         if (width > 0 && height > 0 && (width !== layout.w || height !== layout.h)) {
@@ -175,43 +189,17 @@ export function DeletedMessageDissolve({
         }
       }}
     >
-      <Animated.View style={[styles.content, { opacity: shellOpacity }]}>{children}</Animated.View>
-
-      {layout.w > 0 && layout.h > 0 ? (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pixelLayer]}>
-          {pixels.map((p, i) => {
-            const anim = pixelAnims.current[i];
-            if (!anim) return null;
-            const translateX = anim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, p.dx],
-            });
-            const translateY = anim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, p.dy],
-            });
-            const pixOpacity = anim.interpolate({
-              inputRange: [0, 0.12, 0.55, 1],
-              outputRange: [0, 0.95, 0.55, 0],
-            });
-            return (
-              <Animated.View
-                key={p.key}
-                style={[
-                  styles.pixel,
-                  {
-                    left: p.left,
-                    top: p.top,
-                    backgroundColor: p.bg,
-                    opacity: pixOpacity,
-                    transform: [{ translateX }, { translateY }, { rotate: `${(p.dx % 18) - 9}deg` }],
-                  },
-                ]}
-              />
-            );
-          })}
-        </View>
-      ) : null}
+      {/* Particles inside the same animated shell so opacity/scale apply to the whole dissolve. */}
+      <Reanimated.View style={[styles.shell, shellStyle]} collapsable={false}>
+        <View style={styles.content}>{children}</View>
+        {layout.w > 0 && layout.h > 0 && specs.length > 0 ? (
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pixelLayer]}>
+            {specs.map((s) => (
+              <DissolvePixel key={s.key} progress={progress} spec={s} />
+            ))}
+          </View>
+        ) : null}
+      </Reanimated.View>
     </View>
   );
 }
@@ -220,6 +208,12 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'relative',
     alignSelf: 'stretch',
+    overflow: 'visible',
+  },
+  shell: {
+    position: 'relative',
+    alignSelf: 'stretch',
+    overflow: 'visible',
   },
   content: {
     alignSelf: 'stretch',
@@ -227,6 +221,7 @@ const styles = StyleSheet.create({
   pixelLayer: {
     overflow: 'hidden',
     borderRadius: 18,
+    zIndex: 2,
   },
   pixel: {
     position: 'absolute',

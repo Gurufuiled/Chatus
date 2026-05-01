@@ -58,6 +58,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChannelLinkRichMessage } from './ChannelLinkRichMessage';
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
+import { renderTextWithSearchHighlight } from '../utils/searchHighlightText';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ResolvedColorScheme } from '../theme/palettes';
 import {
@@ -100,6 +101,8 @@ type ChatMessageListProps = {
   selectionMode: boolean;
   selectedMessageIdSet: Set<string>;
   highlightedMessageId: string | null;
+  /** Lowercase trimmed; empty = no in-bubble search highlights. */
+  searchHighlightQuery: string;
   listRef: React.RefObject<FlatList<Message> | null>;
   listAnimatedStyle: React.ComponentProps<typeof Reanimated.View>['style'];
   contentPaddingTop: number;
@@ -634,6 +637,8 @@ type MessageRowProps = {
   navigation: NativeStackNavigationProp<ChatsStackParamList>;
   resolvedScheme: ResolvedColorScheme;
   scrollTick: number;
+  /** Lowercase trimmed; empty = no highlights. */
+  searchHighlightQuery: string;
 };
 
 const AUTHOR_TAG_STYLES: Record<
@@ -689,10 +694,17 @@ function getAuthorTagStyle(color?: string | null) {
   return AUTHOR_TAG_STYLES.blue;
 }
 
+function effectiveBodyItemForRow(p: MessageRowProps): Message {
+  if (p.item.is_deleted !== 1) return p.item;
+  const snap = dissolvingMessageStore.getState().getSnapshot(p.chatId, p.item.id);
+  return { ...(snap ?? p.item), is_deleted: 0 } as Message;
+}
+
 function messageRowUsesDarkDefaultOutgoingGradient(p: MessageRowProps): boolean {
+  const body = effectiveBodyItemForRow(p);
   return (
     p.item.sender_id === p.currentUserId &&
-    p.item.is_deleted !== 1 &&
+    body.is_deleted !== 1 &&
     shouldUseDarkDefaultOutgoingBubbleGradient(p.chatTheme, p.resolvedScheme)
   );
 }
@@ -725,6 +737,7 @@ const MessageRow = React.memo(function MessageRow({
   navigation,
   resolvedScheme,
   scrollTick,
+  searchHighlightQuery,
 }: MessageRowProps) {
   const lastTapAtRef = useRef(0);
   const { colors: themeColors } = useTheme();
@@ -751,12 +764,12 @@ const MessageRow = React.memo(function MessageRow({
     () => resolveAvatarUrl(authorPresentation.avatarUrl ?? null),
     [authorPresentation.avatarUrl]
   );
-  const showAuthorName = isGroupChat && !isMe && item.is_deleted !== 1;
+  const showAuthorName = isGroupChat && !isMe && bodyItem.is_deleted !== 1;
   const showAuthorAvatar = isGroupChat && !isMe;
   const showOwnGroupAuthorTag =
     isGroupChat &&
     isMe &&
-    item.is_deleted !== 1 &&
+    bodyItem.is_deleted !== 1 &&
     !!(authorPresentation.tag?.trim() ?? '');
   const inlineReactionList =
     selectionMode || !(bodyItem.reactions?.length ?? 0) ? undefined : bodyItem.reactions;
@@ -807,6 +820,7 @@ const MessageRow = React.memo(function MessageRow({
         }
         authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
         thumbnailUri={replyThumbnailUri}
+        searchHighlightQuery={searchHighlightQuery}
         onPress={onReplyPreviewPress ? () => onReplyPreviewPress(bodyItem.reply_to_id!) : undefined}
       />
     );
@@ -977,7 +991,10 @@ const MessageRow = React.memo(function MessageRow({
             {renderIncomingHeader()}
             {renderReplySnippet()}
             <View style={styles.bubbleContentRow}>
-              <Text style={[styles.textContent, { color: themeColors.textPrimary }]}>{displayContent}</Text>
+              {renderTextWithSearchHighlight(displayContent, searchHighlightQuery, [
+                styles.textContent,
+                { color: themeColors.textPrimary },
+              ])}
               <MessageTimeStatus
                 time={formatTime(bodyItem.created_at)}
                 status={bodyItem.status}
@@ -1014,15 +1031,11 @@ const MessageRow = React.memo(function MessageRow({
           {renderIncomingHeader()}
           {renderReplySnippet()}
           <View style={styles.bubbleContentRow}>
-            <Text
-              style={[
-                styles.textContent,
-                styles.textContentMe,
-                { color: chatTheme.bubbleMeText },
-              ]}
-            >
-              {displayContent}
-            </Text>
+            {renderTextWithSearchHighlight(displayContent, searchHighlightQuery, [
+              styles.textContent,
+              styles.textContentMe,
+              { color: chatTheme.bubbleMeText },
+            ])}
             <MessageTimeStatus
               time={formatTime(bodyItem.created_at)}
               status={bodyItem.status}
@@ -1799,6 +1812,7 @@ const MessageRow = React.memo(function MessageRow({
     prev.selectionMode === next.selectionMode &&
     prev.isSelected === next.isSelected &&
     prev.isHighlighted === next.isHighlighted &&
+    prev.searchHighlightQuery === next.searchHighlightQuery &&
     prev.canSwipe === next.canSwipe &&
     prev.allowReactions === next.allowReactions &&
     prev.currentUserId === next.currentUserId &&
@@ -1821,6 +1835,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   selectionMode,
   selectedMessageIdSet,
   highlightedMessageId,
+  searchHighlightQuery,
   listRef,
   listAnimatedStyle,
   contentPaddingTop,
@@ -1908,6 +1923,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       navigation={navigation}
       resolvedScheme={resolvedScheme}
       scrollTick={scrollTick}
+      searchHighlightQuery={searchHighlightQuery}
     />
   ), [
     allowReactions,
@@ -1921,6 +1937,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     getMessageAuthorName,
     handleOpenAlbumMedia,
     highlightedMessageId,
+    searchHighlightQuery,
     isGroupChat,
     navigation,
     onMessageLongPress,
@@ -1976,6 +1993,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.selectionMode === next.selectionMode &&
     prev.selectedMessageIdSet === next.selectedMessageIdSet &&
     prev.highlightedMessageId === next.highlightedMessageId &&
+    prev.searchHighlightQuery === next.searchHighlightQuery &&
     prev.contentPaddingTop === next.contentPaddingTop &&
     prev.allowReactions === next.allowReactions &&
     prev.canSwipeReply === next.canSwipeReply &&

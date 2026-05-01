@@ -291,6 +291,46 @@ export function buildChatScreenStyles(themeColors: ThemeColors) {
     deletedTextMe: {
       color: '#426789',
     },
+    searchMatchOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      pointerEvents: 'box-none',
+      zIndex: 24,
+    },
+    searchMatchNavColumn: {
+      position: 'absolute',
+      right: 10,
+      top: '30%',
+      gap: 10,
+      alignItems: 'center',
+    },
+    searchMatchNavButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(18, 22, 28, 0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.14)',
+    },
+    searchMatchNavButtonPressed: {
+      opacity: 0.78,
+    },
+    searchMatchCounterPill: {
+      position: 'absolute',
+      left: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: 'rgba(18, 22, 28, 0.52)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.1)',
+    },
+    searchMatchCounterText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
     replySwipeAction: {
       position: 'absolute',
       right: 16,

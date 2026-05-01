@@ -3,6 +3,7 @@ import type { GestureResponderEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import type { Message } from '../stores/types';
+import { buildSearchHighlightChildren } from '../utils/searchHighlightText';
 
 export type ReplyPreviewMode = 'composer' | 'bubble';
 
@@ -61,6 +62,8 @@ type ReplyPreviewProps = {
   textColor?: string;
   authorColor?: string;
   thumbnailUri?: string | null;
+  /** Lowercase trimmed query; highlights case-insensitive matches in `text`. */
+  searchHighlightQuery?: string;
   onPress?: () => void;
   onClose?: () => void;
 };
@@ -74,11 +77,15 @@ export function ReplyPreview({
   textColor,
   authorColor,
   thumbnailUri,
+  searchHighlightQuery,
   onPress,
   onClose,
 }: ReplyPreviewProps) {
   const isComposer = mode === 'composer';
   const hasThumbnail = !!thumbnailUri?.trim();
+  const q = searchHighlightQuery?.trim() ?? '';
+  const textChildren =
+    q.length > 0 ? buildSearchHighlightChildren(text, q.toLowerCase()) : text;
 
   const handlePress = React.useCallback((event: GestureResponderEvent) => {
     event.stopPropagation?.();
@@ -118,7 +125,7 @@ export function ReplyPreview({
           ]}
           numberOfLines={1}
         >
-          {text}
+          {textChildren}
         </Text>
       </View>
       {onClose ? (
