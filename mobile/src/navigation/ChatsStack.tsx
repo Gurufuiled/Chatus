@@ -39,6 +39,13 @@ import type { ThemeColors } from '../theme/palettes';
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
 
+/** iOS: full-screen interactive pop matching finger (Telegram-style sheet). */
+const CHAT_INTERACTIVE_BACK_STACK_OPTIONS = {
+  fullScreenGestureEnabled: true,
+  animationMatchesGesture: true,
+  fullScreenGestureShadowEnabled: true,
+} as const;
+
 function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
   if (isOnline) return 'в сети';
   if (!lastSeen) return 'был(а) недавно';
@@ -193,6 +200,7 @@ export function ChatsStack() {
           };
 
           return {
+            ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
             title,
             headerBackTitle: 'Назад',
             headerTitleAlign: 'left',
@@ -262,6 +270,7 @@ export function ChatsStack() {
           const subtitle = `${channel?.subscriber_count ?? 0} подписчиков`;
           const avatarUrl = resolveAvatarUrl(channel?.avatar_url);
           return {
+            ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
             headerBackTitle: 'Назад',
             headerTitleAlign: 'left',
             headerTitle: () => (
@@ -319,7 +328,7 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChannelDiscussion"
         component={ChannelDiscussionScreen}
-        options={{ title: 'Обсуждение', headerBackTitle: 'Назад' }}
+        options={{ title: 'Обсуждение', headerBackTitle: 'Назад', ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS }}
       />
 
       <Stack.Screen

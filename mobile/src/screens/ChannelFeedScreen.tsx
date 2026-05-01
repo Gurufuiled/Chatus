@@ -28,6 +28,7 @@ import {
   ChatInputDock,
   ChatContextMenuOverlay,
   ChatForwardSheet,
+  InteractiveChatBackShell,
   FileBubble,
   ImageBubble,
   LoadErrorState,
@@ -2080,6 +2081,10 @@ export function ChannelFeedScreen() {
 
   return (
     <View style={styles.container}>
+      <InteractiveChatBackShell
+        navigation={navigation}
+        gestureEnabled={!menuState && forwardSourceMessageIds.length === 0}
+      >
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
       <ChatBackgroundPattern />
       {feedError && sortedFeed.length === 0 ? (
@@ -2167,6 +2172,7 @@ export function ChannelFeedScreen() {
         />
       ) : null}
       </BlurTargetView>
+      </InteractiveChatBackShell>
 
       <ChatContextMenuOverlay
         menuState={menuState}

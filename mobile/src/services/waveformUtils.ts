@@ -100,20 +100,37 @@ export function buildUiWaveform(samples: number[], targetCount: number): number[
 }
 
 /**
+ * Noise gate for *live* recording UI only (Telegram uses raw RMS; expo dB noise sits
+ * mid‑range so we must not boost quiet samples like the old pow(0.68) curve did).
+ */
+function gateLiveMeterSample(normalized: number): number {
+  const v = clamp01(normalized);
+  /** Below this → treat as silence / room noise (bars stay short). */
+  const gate = 0.22;
+  if (v < gate) {
+    return clamp01((v / gate) * 0.06);
+  }
+  const above = (v - gate) / (1 - gate);
+  /** Compress low‑mid; loud speech still reaches ~1. */
+  return clamp01(0.06 + Math.pow(above, 1.15) * 0.94);
+}
+
+/**
  * Live recording waveform:
- * keeps only the freshest window of samples and boosts speech dynamics
- * so the recording stage visibly reacts to the current loudness.
+ * short window, light smoothing, noise gate — quiet room noise stays visually low.
  */
 export function buildLiveWaveform(samples: number[], targetCount: number): number[] {
   if (targetCount <= 0) return [];
 
-  const liveWindow = samples.slice(-Math.max(targetCount * 4, targetCount));
-  const resampled = resampleWaveform(liveWindow, targetCount);
+  /** Smaller window than UI so bars react sooner early in recording (fewer samples needed). */
+  const liveWindow = samples.slice(-Math.max(targetCount * 2, targetCount));
+  const gated = liveWindow.map(gateLiveMeterSample);
+  const resampled = resampleWaveform(gated, targetCount);
   const smoothed = smoothWaveform(resampled, 1);
 
   return smoothed.map((sample, index) => {
-    const freshness = targetCount <= 1 ? 1 : 0.92 + (index / (targetCount - 1)) * 0.16;
-    const energized = Math.pow(clamp01(sample), 0.68) * freshness;
-    return Math.max(0.08, clamp01(energized));
+    /** Slight right emphasis (newest audio) without tall‑bar skew like before. */
+    const freshness = targetCount <= 1 ? 1 : 0.96 + (index / (targetCount - 1)) * 0.08;
+    return Math.max(0.045, clamp01(sample * freshness));
   });
 }

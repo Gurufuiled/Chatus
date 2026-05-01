@@ -48,10 +48,11 @@ function buildVoicePlaybackSelection(
 ): VoicePlaybackForUri {
   const isCurrent = Boolean(uri) && snapshot.currentVoiceUri === uri;
   const positionMs = isCurrent ? snapshot.status.positionMs : 0;
-  // Prefer the actual duration reported by the player as it may be more accurate
-  // than the server-reported fallback (which can differ by a few hundred ms).
+  /** Use loaded media duration for progress — message metadata can be inflated (e.g. recording wall-clock bug). */
   const durationMs = isCurrent
-    ? Math.max(snapshot.status.durationMs || 0, fallbackDurationMs)
+    ? snapshot.status.durationMs > 0
+      ? snapshot.status.durationMs
+      : fallbackDurationMs
     : fallbackDurationMs;
   const effectiveDurationMs = durationMs > 0 ? durationMs : fallbackDurationMs;
   const progress =

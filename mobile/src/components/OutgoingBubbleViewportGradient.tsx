@@ -98,7 +98,11 @@ export function OutgoingBubbleGradientShell({ scrollTick, style, children }: She
   }, [applyMeasure, scrollTick, winH]);
 
   return (
-    <View ref={wrapRef} style={[style, { overflow: 'hidden', backgroundColor: 'transparent' }]}>
+    <View
+      ref={wrapRef}
+      collapsable={false}
+      style={[style, { overflow: 'hidden', backgroundColor: 'transparent' }]}
+    >
       <LinearGradient
         pointerEvents="none"
         colors={pair}

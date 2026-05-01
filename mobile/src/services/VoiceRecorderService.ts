@@ -12,7 +12,8 @@ import { buildLiveWaveform, buildUiWaveform, dbToNormalized } from './waveformUt
 const RAW_WAVEFORM_LIMIT = 600;
 const UI_WAVEFORM_SAMPLE_COUNT = 72;
 const LIVE_WAVEFORM_SAMPLE_COUNT = 28;
-const PROGRESS_INTERVAL_MS = 60;
+/** expo-av metering cadence; slightly tighter than 60ms so the live waveform reacts sooner at record start. */
+const PROGRESS_INTERVAL_MS = 50;
 
 type LiveWaveformListener = (waveform: number[]) => void;
 
@@ -96,8 +97,7 @@ class VoiceRecorderServiceClass {
     await VoicePlayerService.stop().catch(() => {});
     await this.ensureAudioMode();
     this.waveformSamples = [];
-    this.emitLiveWaveform(Array(LIVE_WAVEFORM_SAMPLE_COUNT).fill(0.08));
-    this.startTimeMs = Date.now();
+    this.emitLiveWaveform(Array(LIVE_WAVEFORM_SAMPLE_COUNT).fill(0.06));
 
     const options = {
       ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
@@ -121,6 +121,8 @@ class VoiceRecorderServiceClass {
       );
 
       this.recording = recording;
+      /** Wall-clock from here matches real audio (createAsync can take hundreds of ms). */
+      this.startTimeMs = Date.now();
     } catch (err) {
       this.emitLiveWaveform([]);
       this.startTimeMs = 0;
@@ -142,7 +144,10 @@ class VoiceRecorderServiceClass {
       const status = await rec.stopAndUnloadAsync();
       const uri = rec.getURI();
       const measuredDurationMs = Math.max(stopRequestedAtMs - this.startTimeMs, 0);
-      const resolvedDurationMs = Math.max(status.durationMillis ?? 0, measuredDurationMs);
+      const fileDurationMs = status.durationMillis ?? 0;
+      /** Prefer encoder duration; wall-clock can still drift vs file on some devices. */
+      const resolvedDurationMs =
+        fileDurationMs > 0 ? fileDurationMs : measuredDurationMs;
 
       if (!uri) {
         throw new Error('Recording produced no file URI');

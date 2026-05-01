@@ -3,12 +3,13 @@ import { useEvent, useEventListener } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { getThumbnailAsync } from 'expo-video-thumbnails';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Gesture, GestureDetector, Pressable } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   Dimensions,
   Image as RNImage,
   type ImageStyle,
   Platform,
+  Pressable as RNPressable,
   StyleSheet,
   Text,
   View,
@@ -30,6 +31,7 @@ import Reanimated, {
 import Svg, { Circle } from 'react-native-svg';
 
 const AnimatedCircle = Reanimated.createAnimatedComponent(Circle);
+const ReanimatedPressable = Reanimated.createAnimatedComponent(RNPressable);
 import { VoicePlayerService } from '../services/VoicePlayerService';
 import { colors, typography } from '../theme/colors';
 import {
@@ -359,6 +361,10 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const generatedNoteId = React.useId();
   const noteId = messageId ?? generatedNoteId;
   const useOutgoingGradientRing = Boolean(isMe && viewportOutgoingGradient);
+  const gradientRingActiveSV = useSharedValue(useOutgoingGradientRing ? 1 : 0);
+  React.useEffect(() => {
+    gradientRingActiveSV.value = useOutgoingGradientRing ? 1 : 0;
+  }, [gradientRingActiveSV, useOutgoingGradientRing]);
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
   const [generatedThumbnailUri, setGeneratedThumbnailUri] = React.useState(() => {
@@ -797,7 +803,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       return;
     }
 
-    const durationForState = Math.max(durationMs, Math.round((player.duration || 0) * 1000));
+    const playerDurationMs = Math.round((player.duration || 0) * 1000);
+    const durationForState = playerDurationMs > 0 ? playerDurationMs : durationMs;
     let rawPositionMs: number;
     if (scrubProgress != null) {
       rawPositionMs = Math.round(clampUnit(scrubProgress) * durationForState);
@@ -884,7 +891,11 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       shadowOpacity,
       shadowRadius,
       shadowOffset: { width: 0, height: 8 },
-      elevation: interpolate(progress.value, [0, 1], [4, 8]),
+      /**
+       * Elevation + LinearGradient underflow often draws a square on Android (esp. press/hold).
+       * Screen-gradient ring relies on overflow clip; skip elevation for this shell.
+       */
+      elevation: gradientRingActiveSV.value ? 0 : interpolate(progress.value, [0, 1], [4, 8]),
     };
   });
 
@@ -994,7 +1005,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     };
   });
 
-  const effectiveDurationMs = Math.max(durationMs, Math.round((player.duration || 0) * 1000));
+  const playerDurationMs = Math.round((player.duration || 0) * 1000);
+  const effectiveDurationMs = playerDurationMs > 0 ? playerDurationMs : durationMs;
 
   const liveElapsedMs = React.useMemo(() => {
     if (effectiveDurationMs <= 0) {
@@ -1316,23 +1328,33 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     </>
   );
 
+  const circleAndroidRipple =
+    Platform.OS === 'android'
+      ? useOutgoingGradientRing
+        ? { color: 'rgba(255,255,255,0.16)', borderless: true }
+        : { color: 'rgba(255,255,255,0.12)' }
+      : undefined;
+
   const pressableContent = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={isExpanded ? 'Toggle video note playback' : 'Open video note'}
-      onPress={handlePress}
-      style={styles.pressable}
-    >
-      {useOutgoingGradientRing ? (
-        <Reanimated.View style={ringOuterStyle}>
-          <OutgoingBubbleGradientShell scrollTick={scrollTick} style={StyleSheet.absoluteFillObject}>
-            {null}
-          </OutgoingBubbleGradientShell>
-          <Reanimated.View style={ringHoleStyle}>{circleInner}</Reanimated.View>
-        </Reanimated.View>
-      ) : (
-        <Reanimated.View style={[styles.circle, circleStyle]}>{circleInner}</Reanimated.View>
-      )}
+    <View style={styles.tapColumn}>
+      <ReanimatedPressable
+        accessibilityRole="button"
+        accessibilityLabel={isExpanded ? 'Toggle video note playback' : 'Open video note'}
+        onPress={handlePress}
+        android_ripple={circleAndroidRipple}
+        style={styles.pressableCircleHost}
+      >
+        {useOutgoingGradientRing ? (
+          <Reanimated.View style={ringOuterStyle}>
+            <OutgoingBubbleGradientShell scrollTick={scrollTick} style={StyleSheet.absoluteFillObject}>
+              {null}
+            </OutgoingBubbleGradientShell>
+            <Reanimated.View style={ringHoleStyle}>{circleInner}</Reanimated.View>
+          </Reanimated.View>
+        ) : (
+          <Reanimated.View style={[styles.circle, circleStyle]}>{circleInner}</Reanimated.View>
+        )}
+      </ReanimatedPressable>
 
       <Reanimated.View pointerEvents="none" style={[styles.footerMeta, footerMetaStyle]}>
         <View style={styles.metaPill}>
@@ -1354,7 +1376,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
           </View>
         ) : null}
       </Reanimated.View>
-    </Pressable>
+    </View>
   );
 
   return (
@@ -1461,11 +1483,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pressable: {
+  tapColumn: {
     width: '100%',
-    height: '100%',
     alignItems: 'center',
     justifyContent: 'flex-start',
+  },
+  /** Only wraps the round video — avoids Android ripple filling a tall rect that included meta row. */
+  pressableCircleHost: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   circle: {
     overflow: 'hidden',

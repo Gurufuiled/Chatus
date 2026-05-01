@@ -14,7 +14,7 @@ import { VoiceRecorderService } from '../services/VoiceRecorderService';
 import { colors } from '../theme/colors';
 
 const LIVE_WAVEFORM_BAR_COUNT = 28;
-const LIVE_WAVEFORM_FALLBACK = Array(LIVE_WAVEFORM_BAR_COUNT).fill(0.08);
+const LIVE_WAVEFORM_FALLBACK = Array(LIVE_WAVEFORM_BAR_COUNT).fill(0.06);
 
 type AnimatedStyle = React.ComponentProps<typeof RNAnimated.View>['style'];
 type PanHandlers = ReturnType<typeof PanResponder.create>['panHandlers'];
@@ -123,8 +123,9 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
   const liveBarHeights = React.useMemo(
     () =>
       liveWaveform.map((value) => {
-        const normalized = Math.max(0, Math.min(1, value ?? 0.08));
-        return 4 + Math.pow(normalized, 0.82) * 18;
+        const normalized = Math.max(0, Math.min(1, value ?? 0.06));
+        /** Shorter bars than before: steeper curve so only real peaks grow tall. */
+        return 3 + Math.pow(normalized, 1.05) * 12;
       }),
     [liveWaveform]
   );

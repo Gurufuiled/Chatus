@@ -60,6 +60,7 @@ import {
   stopActiveVideoNotePlayback,
   useVideoNotePlayer,
 } from '../components/VideoNoteBubble';
+import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
 import {
   MeBubbleChrome,
   shouldUseDarkDefaultOutgoingBubbleGradient,
@@ -2293,6 +2294,16 @@ export function ChatScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: chatTheme.canvasColor }]}>
+      <InteractiveChatBackShell
+        navigation={navigation}
+        gestureEnabled={
+          !selectionMode &&
+          !menuState &&
+          forwardSourceMessageIds.length === 0 &&
+          !isThemePickerVisible &&
+          !isSearchMode
+        }
+      >
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.chatContentLayer}>
         <ChatBackgroundPattern themeId={activeThemeId} />
         <ChatTopBanners
@@ -2477,6 +2488,7 @@ export function ChatScreen() {
           />
         )}
       </BlurTargetView>
+      </InteractiveChatBackShell>
 
       <ChatContextMenuOverlay
         menuState={menuState}

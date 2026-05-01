@@ -14,6 +14,7 @@ export { ChatThemePickerModal } from './ChatThemePickerModal';
 export { InputAttachmentSheet } from './InputAttachmentSheet';
 export { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 export { ChatInputDock } from './ChatInputDock';
+export { InteractiveChatBackShell } from './InteractiveChatBackShell';
 export { ChatMessageList } from './ChatMessageList';
 export { ChatTopBanners } from './ChatTopBanners';
 export { ChannelLinkRichMessage } from './ChannelLinkRichMessage';

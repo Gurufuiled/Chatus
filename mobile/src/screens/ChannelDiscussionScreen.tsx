@@ -25,7 +25,7 @@ import Reanimated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { useRoute, type RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChatsStackParamList } from '../navigation/types';
 import {
@@ -48,6 +48,7 @@ import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import {
   ChatContextMenuOverlay,
   ChatInputDock,
+  InteractiveChatBackShell,
   FileBubble,
   ImageBubble,
   LoadErrorState,
@@ -267,8 +268,8 @@ const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({
 
   const gesture = Gesture.Pan()
     .enabled(enabled)
-    .activeOffsetX([-10, 10])
-    .failOffsetY([-10, 10])
+    .activeOffsetX(-12)
+    .failOffsetY([-12, 12])
     .onBegin(() => {
       hasTriggered.value = false;
     })
@@ -693,6 +694,7 @@ function parseCooldownSecondsFromApiError(message: string): number | null {
 
 export function ChannelDiscussionScreen() {
   const route = useRoute<Route>();
+  const navigation = useNavigation();
   const { colors: c } = useTheme();
   const styles = useMemo(() => createChannelDiscussionStyles(c), [c]);
   const insets = useSafeAreaInsets();
@@ -1221,6 +1223,7 @@ export function ChannelDiscussionScreen() {
 
   return (
     <View style={styles.container}>
+      <InteractiveChatBackShell navigation={navigation} gestureEnabled={!menuState}>
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.container}>
         <ChatBackgroundPattern />
 
@@ -1274,6 +1277,7 @@ export function ChannelDiscussionScreen() {
           />
         ) : null}
       </BlurTargetView>
+      </InteractiveChatBackShell>
 
       <ChatContextMenuOverlay
         menuState={menuState}
