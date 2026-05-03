@@ -14,6 +14,17 @@
     "production": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "MOBILE_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "http://45.11.93.210:4000/api",
+        "EXPO_PUBLIC_LOGINUS_CLIENT_ID": "36bd25a329898885fd4b60c9f7b4f475",
+        "EXPO_PUBLIC_USE_MOCKS": "false",
+        "EXPO_PUBLIC_USE_EMULATOR": "false",
+        "EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL": "https://raw.githubusercontent.com/Gurufuiled/Chatus/main/config/client-update-manifest.json",
+        "EXPO_PUBLIC_CLIENT_RELEASE_TAG": "1.0.7",
+        "EXPO_PUBLIC_CLIENT_UPDATE_DISABLED": "false",
+        "EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV": "false"
       }
     }
   },

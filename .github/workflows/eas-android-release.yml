@@ -3,10 +3,8 @@
 # Требования:
 #   Secrets → EXPO_TOKEN — токен доступа Expo (Access tokens).
 #
-#   Variables (Repository → Settings → Secrets and variables → Actions → Variables):
-#     EXPO_PUBLIC_API_URL                    — прод API, например http://host:4000/api
-#     EXPO_PUBLIC_LOGINUS_CLIENT_ID          — OAuth client id
-#     EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL — URL raw JSON (опционально; иначе клиент не проверяет обновления)
+#   Прод-URL для JS вшиваются из mobile/eas.json → build.production.env (EAS не видит gitignored .env.production).
+#   Опционально Variables в репозитории (дублируют/документируют); для бандла на стороне Expo надёжнее править eas.json.
 #
 # Как выпустить билд:
 #   1. Подними version / android.versionCode в mobile/app.json при необходимости.
