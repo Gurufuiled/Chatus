@@ -1,30 +1,40 @@
 /**
- * Expo config plugin: копирует stub TDLib bridge (Kotlin) и регистрирует пакет в MainApplication.
+ * Expo config plugin: копирует нативный TDLib bridge (Kotlin + JsonClient.java) в android/app/src/main/java.
+ * Бинарники libtdjson.so — отдельно: `npm run tdlib:fetch-android` (см. mobile/TDLIB.md).
  */
 const fs = require('fs');
 const path = require('path');
 const { withDangerousMod, withMainApplication } = require('@expo/config-plugins');
 
-const REL = path.join('app', 'src', 'main', 'java', 'com', 'anonymous', 'mobile');
+const JAVA_REL = path.join('app', 'src', 'main', 'java');
 
 function withTdlibNative(config) {
-  const mobileRoot = config.modRequest.projectRoot;
+  const mobileRoot =
+    config.modRequest?.projectRoot ??
+    config._internal?.projectRoot ??
+    path.join(__dirname, '..');
+
+  const srcRoot = path.join(mobileRoot, 'tdlib-android');
 
   config = withDangerousMod(config, [
     'android',
     async (cfg) => {
-      const destRoot = cfg.modRequest.platformProjectRoot;
-      const destDir = path.join(destRoot, REL);
-      await fs.promises.mkdir(destDir, { recursive: true });
-      const stubDir = path.join(mobileRoot, 'tdlib-stub');
-      await fs.promises.copyFile(
-        path.join(stubDir, 'TdlibModule.kt'),
-        path.join(destDir, 'TdlibModule.kt'),
-      );
-      await fs.promises.copyFile(
-        path.join(stubDir, 'TdlibPackage.kt'),
-        path.join(destDir, 'TdlibPackage.kt'),
-      );
+      const destJava = path.join(cfg.modRequest.platformProjectRoot, JAVA_REL);
+      await fs.promises.mkdir(destJava, { recursive: true });
+      for (const rel of ['com', 'io']) {
+        const from = path.join(srcRoot, rel);
+        const to = path.join(destJava, rel);
+        if (!fs.existsSync(from)) {
+          throw new Error(`withTdlibNative: missing ${from}`);
+        }
+        await fs.promises.cp(from, to, { recursive: true });
+      }
+      const jniFrom = path.join(srcRoot, 'jniLibs');
+      const jniTo = path.join(cfg.modRequest.platformProjectRoot, 'app', 'src', 'main', 'jniLibs');
+      if (fs.existsSync(path.join(jniFrom, 'arm64-v8a', 'libtdjson.so'))) {
+        await fs.promises.mkdir(path.dirname(jniTo), { recursive: true });
+        await fs.promises.cp(jniFrom, jniTo, { recursive: true });
+      }
       return cfg;
     },
   ]);

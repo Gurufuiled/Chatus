@@ -12,6 +12,8 @@
     "android:release": "cross-env CI=1 expo run:android --variant release",
     "android:release:prod": "cross-env CI=1 MOBILE_ENV=production expo run:android --variant release",
     "android:assembleRelease:prod": "cross-env MOBILE_ENV=production node ./scripts/assembleRelease.mjs",
+    "tdlib:fetch-android": "node ./scripts/fetchTdlibAndroid.mjs",
+    "eas-build-pre-install": "node ./scripts/fetchTdlibAndroid.mjs",
     "android:prebuild:clean": "expo prebuild --platform android --clean",
     "eas:android": "cross-env MOBILE_ENV=production npx eas-cli build --platform android --non-interactive",
     "android:emulator": "expo run:android -d Pixel_4_API_36 --no-bundler",

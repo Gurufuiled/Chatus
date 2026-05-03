@@ -15,8 +15,27 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SettingsStackParamList } from '../navigation/types';
 import { useTheme } from '../contexts/ThemeContext';
 import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from '../services/tdlib/TdlibClient';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
+
+async function getTdlibDirectories(): Promise<{ databaseDir: string; filesDir: string }> {
+  const base = FileSystem.documentDirectory ?? '';
+  const databaseDir = `${base}tdlib`;
+  const filesDir = `${base}tdlib_files`;
+  await FileSystem.makeDirectoryAsync(databaseDir, { intermediates: true }).catch(() => undefined);
+  await FileSystem.makeDirectoryAsync(filesDir, { intermediates: true }).catch(() => undefined);
+  return { databaseDir, filesDir };
+}
+
+function throwIfTdError(result: unknown): void {
+  if (!result || typeof result !== 'object') return;
+  const t = (result as { '@type'?: string })['@type'];
+  if (t === 'error') {
+    const msg = (result as { message?: string }).message ?? 'TDLib error';
+    throw new Error(msg);
+  }
+}
 
 export function TelegramAuthScreen() {
   const { colors } = useTheme();
@@ -37,11 +56,12 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      await tdlibClient.send({
+      const { databaseDir, filesDir } = await getTdlibDirectories();
+      const setRes = await tdlibClient.send({
         '@type': 'setTdlibParameters',
         use_test_dc: false,
-        database_directory: 'tdlib',
-        files_directory: 'tdlib_files',
+        database_directory: databaseDir,
+        files_directory: filesDir,
         database_encryption_key: '',
         api_id: apiId,
         api_hash: apiHash,
@@ -49,7 +69,9 @@ export function TelegramAuthScreen() {
         device_model: 'Chatus',
         application_version: String(Constants.expoConfig?.version ?? '1.0.0'),
       });
+      throwIfTdError(setRes);
       const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
+      throwIfTdError(auth);
       const t = (auth as { '@type'?: string })['@type'];
       if (t === 'authorizationStateReady') {
         telegramAccountStore.getState().setAuthStatus('ready');
@@ -74,10 +96,11 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      await tdlibClient.send({
+      const phoneRes = await tdlibClient.send({
         '@type': 'setAuthenticationPhoneNumber',
         phone_number: trimmed,
       });
+      throwIfTdError(phoneRes);
       telegramAccountStore.getState().setPhoneHint(trimmed);
       telegramAccountStore.getState().setAuthStatus('waiting_code');
       await telegramAccountStore.getState().persistSnapshot();
@@ -96,10 +119,11 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      await tdlibClient.send({
+      const codeRes = await tdlibClient.send({
         '@type': 'checkAuthenticationCode',
         code: trimmed,
       });
+      throwIfTdError(codeRes);
       telegramAccountStore.getState().setAuthStatus('ready');
       telegramAccountStore.getState().setTelegramUserId(0);
       await telegramAccountStore.getState().persistSnapshot();
@@ -137,8 +161,8 @@ export function TelegramAuthScreen() {
           Telegram
         </Text>
         <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 16 }}>
-          Отдельная учётная запись от Chatus (Loginus). Нативный TDLib на устройстве; после подключения
-          libtdjson ответы станут «живыми».
+          Отдельная учётная запись от Chatus (Loginus). На Android используется TDLib (libtdjson) на устройстве;
+          перед первой сборкой выполни из папки mobile: npm run tdlib:fetch-android (см. TDLIB.md).
         </Text>
 
         {apiId == null || !apiHash ? (

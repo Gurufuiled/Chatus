@@ -38,3 +38,8 @@ target/
 /docs/
 /steps/
 /Improvements/
+
+# TDLib prebuilt .so (~40MB; `npm run tdlib:fetch-android` in mobile/)
+mobile/android/app/src/main/jniLibs/
+mobile/tdlib-android/jniLibs/
+mobile/.tdlib-fetch-*/

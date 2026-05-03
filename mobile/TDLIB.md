@@ -24,10 +24,25 @@ TELEGRAM_API_HASH=your_hash_here
 
 В репозитории **Secrets** добавь `TELEGRAM_API_ID` и `TELEGRAM_API_HASH` (как для EAS). Workflow передаёт их в окружение шага `eas build`.
 
-## Нативный слой
+## Android: настоящий TDLib (libtdjson)
 
-- **Android:** `TdlibModule` / `TdlibPackage` (stub JSON в `mobile/tdlib-stub/`, копируются плагином `withTdlibNative` при `expo prebuild`). Для настоящего TDLib положи `libtdjson.so` в `android/app/jniLibs/{abi}/` и замени реализацию `sendClientJson` на вызов tdjson.
-- **iOS:** `ios/mobile/Tdlib.swift` + `TdlibBridge.m` — тот же stub; позже подключи XCFramework TDLib.
+1. Из папки **`mobile/`** один раз скачай нативные библиотеки (в git не входят, см. `.gitignore`):
+
+   ```bash
+   npm run tdlib:fetch-android
+   ```
+
+   Скрипт распаковывает архив в **`mobile/tdlib-android/jniLibs/`** (источник: [up9cloud/android-libtdjson](https://github.com/up9cloud/android-libtdjson), сейчас тег **v1.8.52** — см. `scripts/fetchTdlibAndroid.mjs`). Если в репозитории уже есть папка `android/`, те же `.so` копируются в `android/app/src/main/jniLibs/` для локальной сборки без `prebuild`.
+
+2. При **`expo prebuild --platform android`** плагин **`withTdlibNative`** копирует в `android/` исходники из `tdlib-android/com`, `tdlib-android/io` и, если есть, **`tdlib-android/jniLibs`** → `android/app/src/main/jniLibs/`.
+
+3. Поведение: `td_send` / `td_receive` в отдельном потоке; ответы на запросы с `@extra` резолвят Promise в `TdlibClient.send`; остальной JSON уходит в событие `td_json_update`.
+
+4. **EAS Build:** в `package.json` добавлен хук **`eas-build-pre-install`**, который вызывает `fetchTdlibAndroid.mjs`, чтобы на билд-машине подтянуть `.so` до сборки нативного проекта.
+
+## iOS
+
+`ios/mobile/Tdlib.swift` + `TdlibBridge.m` — пока заглушка; для продакшена подключи XCFramework TDLib и тот же JSON-поток, что на Android.
 
 ## JS
 
