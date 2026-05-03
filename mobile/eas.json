@@ -22,7 +22,7 @@
         "EXPO_PUBLIC_USE_MOCKS": "false",
         "EXPO_PUBLIC_USE_EMULATOR": "false",
         "EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL": "https://raw.githubusercontent.com/Gurufuiled/Chatus/main/config/client-update-manifest.json",
-        "EXPO_PUBLIC_CLIENT_RELEASE_TAG": "1.0.7",
+        "EXPO_PUBLIC_CLIENT_RELEASE_TAG": "1.0.8",
         "EXPO_PUBLIC_CLIENT_UPDATE_DISABLED": "false",
         "EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV": "false"
       }
