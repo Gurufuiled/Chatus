@@ -25,6 +25,7 @@ import { SettingsIconRow } from '../components/settings/SettingsIconRow';
 import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createSettingsScreenStyles } from './settingsScreen.styles';
+import { telegramAccountStore } from '../stores/telegramAccountStore';
 
 export function SettingsScreen() {
   const { colors: themeColors } = useTheme();
@@ -45,6 +46,7 @@ export function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
+  const telegramAuthStatus = telegramAccountStore((s) => s.authStatus);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -168,8 +170,46 @@ export function SettingsScreen() {
         )}
 
         <Text style={styles.sectionTitle}>Аккаунт</Text>
+        <Text
+          style={{
+            fontSize: 12,
+            color: themeColors.textSecondaryMuted,
+            marginBottom: 8,
+            marginTop: -4,
+          }}
+        >
+          Удерживайте карточку профиля, чтобы добавить Telegram или выйти из Chatus (Loginus).
+        </Text>
         <Pressable
           style={styles.profileHeroCard}
+          delayLongPress={450}
+          onLongPress={() => {
+            Alert.alert(
+              'Аккаунты',
+              'Telegram (TDLib) и Chatus (Loginus) — разные сессии.',
+              [
+                {
+                  text: 'Подключить / сменить Telegram',
+                  onPress: () => navigation.navigate('TelegramAuth'),
+                },
+                {
+                  text: 'Выйти из Chatus (Loginus)…',
+                  style: 'destructive',
+                  onPress: () => {
+                    Alert.alert(
+                      'Выйти из Chatus?',
+                      'Сессия Loginus будет сброшена. Подключённый Telegram на устройстве не удаляем.',
+                      [
+                        { text: 'Отмена', style: 'cancel' },
+                        { text: 'Выйти', style: 'destructive', onPress: () => void logout() },
+                      ],
+                    );
+                  },
+                },
+                { text: 'Отмена', style: 'cancel' },
+              ],
+            );
+          }}
           onPress={() => navigation.navigate('MyProfile')}
         >
           <View style={styles.profileHeroAvatarWrap}>
@@ -213,6 +253,28 @@ export function SettingsScreen() {
 
         <Text style={styles.sectionTitle}>Настройки</Text>
         <View style={styles.settingsCard}>
+          <Pressable
+            onPress={() =>
+              telegramAuthStatus === 'ready'
+                ? navigation.navigate('TelegramDialogs')
+                : navigation.navigate('TelegramAuth')
+            }
+            style={({ pressed }) => [
+              styles.servicesRow,
+              pressed && styles.servicesRowPressed,
+            ]}
+          >
+            <View style={styles.servicesIconBubble}>
+              <MaterialCommunityIcons name="send-circle-outline" size={22} color={themeColors.accent} />
+            </View>
+            <View style={styles.servicesText}>
+              <Text style={styles.servicesTitle}>Telegram</Text>
+              <Text style={styles.servicesSubtitle}>
+                {telegramAuthStatus === 'ready' ? 'Открыть диалоги' : 'Подключить аккаунт (TDLib на устройстве)'}
+              </Text>
+            </View>
+            <Text style={styles.servicesChevron}>›</Text>
+          </Pressable>
           <Pressable
             onPress={() => navigation.navigate('Appearance')}
             style={({ pressed }) => [

@@ -8,6 +8,9 @@ import {
   MyProfileScreen,
   SettingsScreen,
   ServicesScreen,
+  TelegramAuthScreen,
+  TelegramChatScreen,
+  TelegramDialogsScreen,
 } from '../screens';
 import { MiniAppScreen } from '../screens/MiniAppScreen';
 import { useTheme } from '../contexts/ThemeContext';
@@ -67,6 +70,24 @@ export function SettingsStack() {
         name="FeedbackCompose"
         component={FeedbackComposeScreen}
         options={{ headerBackTitle: 'Назад' }}
+      />
+      <Stack.Screen
+        name="TelegramAuth"
+        component={TelegramAuthScreen}
+        options={{ title: 'Telegram', headerBackTitle: 'Назад' }}
+      />
+      <Stack.Screen
+        name="TelegramDialogs"
+        component={TelegramDialogsScreen}
+        options={{ title: 'Telegram', headerBackTitle: 'Назад' }}
+      />
+      <Stack.Screen
+        name="TelegramChat"
+        component={TelegramChatScreen}
+        options={({ route }) => ({
+          title: route.params.title ?? 'Чат',
+          headerBackTitle: 'Назад',
+        })}
       />
     </Stack.Navigator>
   );

@@ -4,7 +4,7 @@
 #   Secrets → EXPO_TOKEN — токен доступа Expo (Access tokens).
 #
 #   Прод-URL для JS вшиваются из mobile/eas.json → build.production.env (EAS не видит gitignored .env.production).
-#   Опционально Variables в репозитории (дублируют/документируют); для бандла на стороне Expo надёжнее править eas.json.
+#   Опционально: Secrets TELEGRAM_API_ID, TELEGRAM_API_HASH — для экрана Telegram (см. mobile/TDLIB.md).
 #
 # Как выпустить билд:
 #   1. Подними version / android.versionCode в mobile/app.json при необходимости.
@@ -40,6 +40,8 @@ jobs:
       EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL: ${{ vars.EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL }}
       EXPO_PUBLIC_CLIENT_UPDATE_DISABLED: 'false'
       EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV: 'false'
+      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
 
     steps:
       - name: Checkout

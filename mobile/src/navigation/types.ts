@@ -51,6 +51,9 @@ export type SettingsStackParamList = {
   MiniApp: { appId: string; title?: string };
   FeedbackList: { kind: 'bug' | 'suggestion'; prependEntry?: FeedbackEntry };
   FeedbackCompose: { kind: 'bug' | 'suggestion' };
+  TelegramAuth: undefined;
+  TelegramDialogs: undefined;
+  TelegramChat: { telegramChatId: string; title?: string };
 };
 
 export type MainTabParamList = {

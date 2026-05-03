@@ -12,6 +12,8 @@
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		92ECBA9DC2671F303C9026BD /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 81BB6F1E2F9CDE6E4A1D1447 /* PrivacyInfo.xcprivacy */; };
 		96FAFD95095B9AAD23A74C55 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F4293C7C65EBF1C9331C98 /* ExpoModulesProvider.swift */; };
+		E7A1F2414D16062B00ABCDEF /* Tdlib.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A1F2404D16062B00ABCDEF /* Tdlib.swift */; };
+		E7A1F2434D16062B00ABCDEF /* TdlibBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = E7A1F2424D16062B00ABCDEF /* TdlibBridge.m */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -30,6 +32,8 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = mobile/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* mobile-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "mobile-Bridging-Header.h"; path = "mobile/mobile-Bridging-Header.h"; sourceTree = "<group>"; };
+		E7A1F2404D16062B00ABCDEF /* Tdlib.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Tdlib.swift; path = mobile/Tdlib.swift; sourceTree = "<group>"; };
+		E7A1F2424D16062B00ABCDEF /* TdlibBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = TdlibBridge.m; path = mobile/TdlibBridge.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +60,8 @@
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
+				E7A1F2404D16062B00ABCDEF /* Tdlib.swift */,
+				E7A1F2424D16062B00ABCDEF /* TdlibBridge.m */,
 				F11748442D0722820044C1D9 /* mobile-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
@@ -328,6 +334,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
+				E7A1F2414D16062B00ABCDEF /* Tdlib.swift in Sources */,
+				E7A1F2434D16062B00ABCDEF /* TdlibBridge.m in Sources */,
 				96FAFD95095B9AAD23A74C55 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

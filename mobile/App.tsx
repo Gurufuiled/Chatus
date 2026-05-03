@@ -18,6 +18,7 @@ import { AppUpdateGate } from './src/components/AppUpdateGate';
 import { initDatabase } from './src/services/DatabaseService';
 import { authService, type AuthSession } from './src/services/AuthService';
 import { uiStore } from './src/stores/uiStore';
+import { telegramAccountStore } from './src/stores/telegramAccountStore';
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -28,6 +29,7 @@ export default function App() {
     initDatabase()
       .then(async () => {
         await uiStore.getState().hydrateAppAppearance();
+        await telegramAccountStore.getState().hydrate();
         return authService.restoreSession();
       })
       .then((session) => {

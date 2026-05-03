@@ -67,6 +67,9 @@ module.exports = ({ config }) => {
       EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV: env('EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV'),
       EXPO_PUBLIC_CLIENT_RELEASE_TAG: env('EXPO_PUBLIC_CLIENT_RELEASE_TAG'),
       EXPO_PUBLIC_CLIENT_UPDATE_APK_URL: env('EXPO_PUBLIC_CLIENT_UPDATE_APK_URL'),
+      /** Не EXPO_PUBLIC_: не вшивать api_hash в открытый бандл без EAS Secrets. */
+      TELEGRAM_API_ID: env('TELEGRAM_API_ID'),
+      TELEGRAM_API_HASH: env('TELEGRAM_API_HASH'),
       eas: { projectId: easProjectId },
     },
   };

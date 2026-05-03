@@ -2,6 +2,7 @@
   "expo": {
     "plugins": [
       "./plugins/withAndroidApkBasename",
+      "./plugins/withTdlibNative",
       [
         "expo-build-properties",
         {
