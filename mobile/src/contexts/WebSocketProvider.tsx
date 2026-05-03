@@ -17,7 +17,6 @@ import { chatStore } from '../stores/chatStore';
 import { channelStore } from '../stores/channelStore';
 import { uiStore } from '../stores/uiStore';
 import { ChatDao } from '../db';
-import { dissolvingMessageStore } from '../stores/dissolvingMessageStore';
 import type { Message } from '../stores/types';
 import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
@@ -530,15 +529,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             message_id?: string;
           };
           if (!chat_id || !message_id) return;
-          const messages = messageStore.getState().messagesByChatId[chat_id] ?? [];
-          const prev = messages.find((m) => m.id === message_id);
-          if (prev && prev.is_deleted !== 1) {
-            dissolvingMessageStore.getState().begin({
-              chatId: chat_id,
-              messageId: message_id,
-              snapshot: { ...prev },
-            });
-          }
+          // Локальная анимация удаления не используется — только обновление флага.
           messageStore.getState().updateMessage(chat_id, message_id, {
             is_deleted: 1,
           });

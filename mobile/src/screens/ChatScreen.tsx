@@ -31,7 +31,6 @@ import Reanimated, {
 import type { ChatsStackParamList } from '../navigation/types';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
-import { dissolvingMessageStore } from '../stores/dissolvingMessageStore';
 import { messageStore } from '../stores/messageStore';
 import { canForwardMessage, TransportService } from '../services/TransportService';
 import { SyncService } from '../services/SyncService';
@@ -1261,11 +1260,6 @@ export function ChatScreen() {
     (message: Message) => {
       closeMenu();
       if (message.sender_id === currentUserId) {
-        dissolvingMessageStore.getState().begin({
-          chatId,
-          messageId: message.id,
-          snapshot: { ...message },
-        });
         messageStore.getState().updateMessage(chatId, message.id, {
           is_deleted: 1,
         });
@@ -1521,11 +1515,6 @@ export function ChatScreen() {
               const chatSnapshot = chatStore.getState().chats.find((c) => c.id === chatId) ?? currentChat;
               const pinId = chatSnapshot?.pinned_message_id ?? null;
               if (message.sender_id === currentUserId) {
-                dissolvingMessageStore.getState().begin({
-                  chatId,
-                  messageId: message.id,
-                  snapshot: { ...message },
-                });
                 messageStore.getState().updateMessage(chatId, message.id, {
                   is_deleted: 1,
                 });

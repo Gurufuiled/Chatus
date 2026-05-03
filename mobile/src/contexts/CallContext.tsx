@@ -631,14 +631,18 @@ const CallOverlay = React.memo(function CallOverlay({
         {showPip ? (
           <GestureDetector gesture={pipGesture}>
             <Reanimated.View style={pipAnimatedStyle}>
-              <View style={styles.videoPipClip}>
-                <RTCView
-                  streamURL={pipVideoUrl!}
-                  style={styles.videoPipRtc}
-                  objectFit="cover"
-                  mirror={pipMirror}
-                  zOrder={2}
-                />
+              <View style={styles.videoPipShell}>
+                <View style={styles.videoPipClip}>
+                  <RTCView
+                    streamURL={pipVideoUrl!}
+                    style={styles.videoPipRtc}
+                    objectFit="cover"
+                    mirror={pipMirror}
+                    /** zOrder 2 = setZOrderOnTop на Android — Surface уходит «над окном» и ломает круглый клип. Для PiP достаточно 1 (над удалённым zOrder 0). */
+                    zOrder={1}
+                  />
+                </View>
+                <View pointerEvents="none" style={styles.videoPipRing} />
               </View>
             </Reanimated.View>
           </GestureDetector>
@@ -1440,19 +1444,30 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#050A12',
   },
-  videoPipClip: {
+  videoPipShell: {
     width: VIDEO_PIP_SIZE,
     height: VIDEO_PIP_SIZE,
     borderRadius: VIDEO_PIP_SIZE / 2,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.82)',
     backgroundColor: '#101827',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 10,
+  },
+  videoPipClip: {
+    width: VIDEO_PIP_SIZE,
+    height: VIDEO_PIP_SIZE,
+    borderRadius: VIDEO_PIP_SIZE / 2,
+    overflow: 'hidden',
+    backgroundColor: '#101827',
+  },
+  videoPipRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: VIDEO_PIP_SIZE / 2,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: 'transparent',
   },
   videoPipRtc: {
     width: VIDEO_PIP_SIZE,
