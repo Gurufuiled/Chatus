@@ -408,9 +408,10 @@ function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: number)
 }
 
 /**
- * Returns true when two adjacent messages belong to the same visual group chain:
- * same direction (both outgoing or both incoming) and sent within the grouping
- * time window.
+ * Returns true when two adjacent messages belong to the same visual group chain.
+ * Groups by send direction (outgoing vs incoming) — not by actual sender identity —
+ * which is correct for 1-to-1 chats; group chats with multiple senders need a
+ * sender-id comparison on top of this.
  */
 function isSameGroup(
   a: TelegramMessageRow | undefined,
@@ -419,7 +420,7 @@ function isSameGroup(
   return (
     a != null &&
     a.outgoing === b.outgoing &&
-    Math.abs(a.dateMs - b.dateMs) < CHAT_MSG_GROUP_TIME_GAP_MS
+    Math.abs(a.dateMs - b.dateMs) <= CHAT_MSG_GROUP_TIME_GAP_MS
   );
 }
 
@@ -492,9 +493,9 @@ export function TelegramChatScreen() {
   );
   const replyAuthorName = replyToRow ? (replyToRow.outgoing ? 'Вы' : headerTitle) : null;
 
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  // Keep ref in sync during render so renderItem always reads the current array
+  // (an effect would lag by one frame, causing stale neighbor lookups).
+  messagesRef.current = messages;
 
   useEffect(() => {
     return () => {
@@ -843,6 +844,7 @@ export function TelegramChatScreen() {
       // Pressable accessibility props shared across all message types
       const pressableA11y = {
         accessibilityRole: 'button' as const,
+        accessibilityHint: 'Удерживайте для ответа',
         onLongPress: handleReplyLongPress,
         delayLongPress: 260,
       };
