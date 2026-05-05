@@ -25,12 +25,14 @@ import { searchUsers } from '../services/profileService';
 import { authStore } from '../stores/authStore';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
+import { inboxModeStore } from '../stores/inboxModeStore';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createChatListStyles, type ChatListStyleSet } from './chatList.styles';
+import { TelegramDialogsScreen } from './TelegramDialogsScreen';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChatList'>;
 
@@ -166,6 +168,7 @@ export function ChatListScreen() {
   const { colors: themeColors } = useTheme();
   const listStyles = React.useMemo(() => createChatListStyles(themeColors), [themeColors]);
   const navigation = useNavigation<Nav>();
+  const activeInbox = inboxModeStore((s) => s.activeInbox);
   const chats = chatStore((s) => s.chats);
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const [menuState, setMenuState] = React.useState<ChatListMenuState>(null);
@@ -446,6 +449,10 @@ export function ChatListScreen() {
   );
 
   const keyExtractor = React.useCallback((item: ChatListItem) => item.id, []);
+
+  if (activeInbox === 'telegram') {
+    return <TelegramDialogsScreen />;
+  }
 
   return (
     <View style={listStyles.container}>

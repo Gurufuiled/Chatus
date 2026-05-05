@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { appLinking } from './src/navigation/linking';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
@@ -47,7 +47,13 @@ export default function App() {
   if (!isReady) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <Image
+          accessibilityIgnoresInvertColors
+          source={require('./assets/chatus_icon.png')}
+          style={styles.bootLogo}
+          resizeMode="contain"
+        />
+        <ActivityIndicator size="large" color={colors.accent} style={styles.bootSpinner} />
         <StatusBar style="auto" />
       </View>
     );
@@ -104,7 +110,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.inputBackgroundSolid,
+    backgroundColor: colors.chatBackground,
+  },
+  bootLogo: {
+    width: 96,
+    height: 96,
+    marginBottom: 20,
+  },
+  bootSpinner: {
+    marginTop: 4,
   },
   errorWrap: {
     flex: 1,

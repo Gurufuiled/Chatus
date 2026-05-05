@@ -22,7 +22,7 @@ function getNativeModule(): {
 
 /**
  * Thin client over native TDLib JSON bridge.
- * Android: {@link com.anonymous.mobile.TdlibModule} (stub until libtdjson is linked).
+ * Android: {@link com.anonymous.mobile.TdlibModule} + libtdjson (see TDLIB.md).
  * iOS: same module name when Tdlib.swift is linked; until then — in-memory stub.
  */
 class TdlibClientImpl {

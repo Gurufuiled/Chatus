@@ -34,8 +34,12 @@ target/
 *.key
 *.mobileprovision
 
-# Local notes / agent context (не в репозитории)
-/docs/
+# Local notes / agent context (не в репозитории); содержимое docs кроме планирования в подпапках
+/docs/*
+!/docs/p2p/
+!/docs/p2p/**
+!/docs/tasks/
+!/docs/tasks/**
 /steps/
 /Improvements/
 

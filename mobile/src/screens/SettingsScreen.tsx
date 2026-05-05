@@ -16,15 +16,16 @@ import { authService, apiUserToUserRow } from '../services/AuthService';
 import { getProfile, updateProfile } from '../services/profileService';
 import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, type NavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { SettingsStackParamList } from '../navigation/types';
+import type { MainTabParamList, SettingsStackParamList } from '../navigation/types';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 import { SettingsIconRow } from '../components/settings/SettingsIconRow';
 import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createSettingsScreenStyles } from './settingsScreen.styles';
+import { inboxModeStore } from '../stores/inboxModeStore';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 
 export function SettingsScreen() {
@@ -47,6 +48,15 @@ export function SettingsScreen() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
   const telegramAuthStatus = telegramAccountStore((s) => s.authStatus);
+
+  const openTelegram = useCallback(() => {
+    if (telegramAuthStatus !== 'ready') {
+      navigation.navigate('TelegramAuth');
+      return;
+    }
+    inboxModeStore.getState().setActiveInbox('telegram');
+    navigation.getParent<NavigationProp<MainTabParamList>>()?.navigate('Chats', { screen: 'ChatList' });
+  }, [navigation, telegramAuthStatus]);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -254,11 +264,7 @@ export function SettingsScreen() {
         <Text style={styles.sectionTitle}>Настройки</Text>
         <View style={styles.settingsCard}>
           <Pressable
-            onPress={() =>
-              telegramAuthStatus === 'ready'
-                ? navigation.navigate('TelegramDialogs')
-                : navigation.navigate('TelegramAuth')
-            }
+            onPress={openTelegram}
             style={({ pressed }) => [
               styles.servicesRow,
               pressed && styles.servicesRowPressed,
@@ -270,7 +276,11 @@ export function SettingsScreen() {
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Telegram</Text>
               <Text style={styles.servicesSubtitle}>
-                {telegramAuthStatus === 'ready' ? 'Открыть диалоги' : 'Подключить аккаунт (TDLib на устройстве)'}
+                {telegramAuthStatus === 'ready'
+                  ? 'Открыть диалоги'
+                  : telegramAuthStatus === 'waiting_password'
+                    ? 'Ввести пароль двухэтапной проверки (2FA)'
+                    : 'Подключить аккаунт (TDLib на устройстве)'}
               </Text>
             </View>
             <Text style={styles.servicesChevron}>›</Text>

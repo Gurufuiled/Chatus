@@ -27,11 +27,13 @@ import {
   CreateContactScreen,
   CreateGroupChatScreen,
   GroupProfileScreen,
+  TelegramChatScreen,
 } from '../screens';
 import type { ChatsStackParamList } from './types';
 import { resolveAvatarUrl } from '../config';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
+import { inboxModeStore } from '../stores/inboxModeStore';
 import { uiStore } from '../stores/uiStore';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
@@ -115,6 +117,7 @@ function ChatHeaderTitle({
 
 export function ChatsStack() {
   const chats = chatStore((state) => state.chats);
+  const activeInbox = inboxModeStore((state) => state.activeInbox);
   const presenceByUserId = uiStore((state) => state.presenceByUserId);
   const currentUserId = authStore((state) => state.user?.id ?? null);
   const { colors } = useTheme();
@@ -139,17 +142,20 @@ export function ChatsStack() {
         name="ChatList"
         component={ChatListScreen}
         options={({ navigation }) => ({
-          title: 'Чаты',
-          headerRight: () => (
-            <Pressable
-              accessibilityLabel="Написать сообщение"
-              onPress={() => navigation.navigate('ComposeMessage')}
-              hitSlop={12}
-              style={({ pressed }) => [{ paddingHorizontal: 4, opacity: pressed ? 0.65 : 1 }]}
-            >
-              <Feather name="edit-2" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ),
+          title: activeInbox === 'telegram' ? 'Telegram' : 'Чаты',
+          headerRight:
+            activeInbox === 'telegram'
+              ? undefined
+              : () => (
+                  <Pressable
+                    accessibilityLabel="Написать сообщение"
+                    onPress={() => navigation.navigate('ComposeMessage')}
+                    hitSlop={12}
+                    style={({ pressed }) => [{ paddingHorizontal: 4, opacity: pressed ? 0.65 : 1 }]}
+                  >
+                    <Feather name="edit-2" size={22} color={colors.textPrimary} />
+                  </Pressable>
+                ),
         })}
       />
 
@@ -225,6 +231,16 @@ export function ChatsStack() {
             ),
           };
         }}
+      />
+
+      <Stack.Screen
+        name="TelegramChat"
+        component={TelegramChatScreen}
+        options={({ route }) => ({
+          title: route.params.title ?? 'Telegram',
+          headerBackTitle: 'Назад',
+          headerTitleAlign: 'left',
+        })}
       />
 
       <Stack.Screen

@@ -40,6 +40,7 @@ export type ChatsStackParamList = {
   ChannelType: { channelId: string };
   ChannelDiscussionSettings: { channelId: string };
   ChannelMonetization: { channelId: string };
+  TelegramChat: { telegramChatId: string; title?: string; avatarUri?: string | null };
 };
 
 export type SettingsStackParamList = {
@@ -52,8 +53,6 @@ export type SettingsStackParamList = {
   FeedbackList: { kind: 'bug' | 'suggestion'; prependEntry?: FeedbackEntry };
   FeedbackCompose: { kind: 'bug' | 'suggestion' };
   TelegramAuth: undefined;
-  TelegramDialogs: undefined;
-  TelegramChat: { telegramChatId: string; title?: string };
 };
 
 export type MainTabParamList = {

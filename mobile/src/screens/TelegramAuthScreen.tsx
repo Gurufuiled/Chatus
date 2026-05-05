@@ -10,41 +10,30 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { SettingsStackParamList } from '../navigation/types';
+import type { MainTabParamList, SettingsStackParamList } from '../navigation/types';
 import { useTheme } from '../contexts/ThemeContext';
-import Constants from 'expo-constants';
-import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from '../services/tdlib/TdlibClient';
+import { applyTdlibParameters } from '../services/tdlib/tdlibBootstrap';
+import { throwIfTdError } from '../services/tdlib/tdlibErrors';
+import { inboxModeStore } from '../stores/inboxModeStore';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
-
-async function getTdlibDirectories(): Promise<{ databaseDir: string; filesDir: string }> {
-  const base = FileSystem.documentDirectory ?? '';
-  const databaseDir = `${base}tdlib`;
-  const filesDir = `${base}tdlib_files`;
-  await FileSystem.makeDirectoryAsync(databaseDir, { intermediates: true }).catch(() => undefined);
-  await FileSystem.makeDirectoryAsync(filesDir, { intermediates: true }).catch(() => undefined);
-  return { databaseDir, filesDir };
-}
-
-function throwIfTdError(result: unknown): void {
-  if (!result || typeof result !== 'object') return;
-  const t = (result as { '@type'?: string })['@type'];
-  if (t === 'error') {
-    const msg = (result as { message?: string }).message ?? 'TDLib error';
-    throw new Error(msg);
-  }
-}
 
 export function TelegramAuthScreen() {
   const { colors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
+  const [cloudPassword, setCloudPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
   const { apiId, apiHash } = useMemo(() => getTelegramBuildCredentials(), []);
+
+  const openTelegramChats = useCallback(() => {
+    inboxModeStore.getState().setActiveInbox('telegram');
+    navigation.getParent<NavigationProp<MainTabParamList>>()?.navigate('Chats', { screen: 'ChatList' });
+  }, [navigation]);
 
   const initTdlib = useCallback(async () => {
     if (apiId == null || !apiHash) {
@@ -56,27 +45,19 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      const { databaseDir, filesDir } = await getTdlibDirectories();
-      const setRes = await tdlibClient.send({
-        '@type': 'setTdlibParameters',
-        use_test_dc: false,
-        database_directory: databaseDir,
-        files_directory: filesDir,
-        database_encryption_key: '',
-        api_id: apiId,
-        api_hash: apiHash,
-        system_language_code: 'ru',
-        device_model: 'Chatus',
-        application_version: String(Constants.expoConfig?.version ?? '1.0.0'),
-      });
-      throwIfTdError(setRes);
+      await applyTdlibParameters();
       const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
       throwIfTdError(auth);
       const t = (auth as { '@type'?: string })['@type'];
       if (t === 'authorizationStateReady') {
         telegramAccountStore.getState().setAuthStatus('ready');
         await telegramAccountStore.getState().persistSnapshot();
-        navigation.replace('TelegramDialogs');
+        openTelegramChats();
+        return;
+      }
+      if (t === 'authorizationStateWaitPassword') {
+        telegramAccountStore.getState().setAuthStatus('waiting_password');
+        await telegramAccountStore.getState().persistSnapshot();
         return;
       }
       telegramAccountStore.getState().setAuthStatus('waiting_phone');
@@ -86,9 +67,16 @@ export function TelegramAuthScreen() {
     } finally {
       setBusy(false);
     }
-  }, [apiHash, apiId, navigation]);
+  }, [apiHash, apiId, openTelegramChats]);
 
   const submitPhone = useCallback(async () => {
+    if (telegramAccountStore.getState().authStatus !== 'waiting_phone') {
+      Alert.alert(
+        'TDLib',
+        'Сначала нажмите «Инициализировать TDLib» и дождитесь успеха (без ошибки в диалоге).',
+      );
+      return;
+    }
     const trimmed = phone.replace(/\s+/g, '');
     if (!trimmed) {
       Alert.alert('Телефон', 'Введите номер в международном формате.');
@@ -112,6 +100,10 @@ export function TelegramAuthScreen() {
   }, [phone]);
 
   const submitCode = useCallback(async () => {
+    if (telegramAccountStore.getState().authStatus !== 'waiting_code') {
+      Alert.alert('TDLib', 'Сначала отправьте номер и дождитесь запроса кода.');
+      return;
+    }
     const trimmed = code.trim();
     if (!trimmed) {
       Alert.alert('Код', 'Введите код из Telegram.');
@@ -124,16 +116,63 @@ export function TelegramAuthScreen() {
         code: trimmed,
       });
       throwIfTdError(codeRes);
+      const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
+      throwIfTdError(auth);
+      const authType = (auth as { '@type'?: string })['@type'];
+      if (authType === 'authorizationStateWaitPassword') {
+        telegramAccountStore.getState().setAuthStatus('waiting_password');
+        await telegramAccountStore.getState().persistSnapshot();
+        return;
+      }
+      if (authType !== 'authorizationStateReady') {
+        Alert.alert('Telegram', `Неожиданное состояние после кода: ${authType ?? '?'}`);
+        return;
+      }
       telegramAccountStore.getState().setAuthStatus('ready');
       telegramAccountStore.getState().setTelegramUserId(0);
       await telegramAccountStore.getState().persistSnapshot();
-      navigation.replace('TelegramDialogs');
+      openTelegramChats();
     } catch (e) {
       Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [code, navigation]);
+  }, [code, openTelegramChats]);
+
+  const submitPassword = useCallback(async () => {
+    if (telegramAccountStore.getState().authStatus !== 'waiting_password') {
+      Alert.alert('TDLib', 'Сначала подтвердите код из SMS / Telegram.');
+      return;
+    }
+    const trimmed = cloudPassword.trim();
+    if (!trimmed) {
+      Alert.alert('Пароль', 'Введите облачный пароль двухэтапной проверки (настройки Telegram).');
+      return;
+    }
+    setBusy(true);
+    try {
+      const pwRes = await tdlibClient.send({
+        '@type': 'checkAuthenticationPassword',
+        password: trimmed,
+      });
+      throwIfTdError(pwRes);
+      const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
+      throwIfTdError(auth);
+      const authType = (auth as { '@type'?: string })['@type'];
+      if (authType !== 'authorizationStateReady') {
+        Alert.alert('Telegram', `Сессия не готова: ${authType ?? '?'}`);
+        return;
+      }
+      telegramAccountStore.getState().setAuthStatus('ready');
+      telegramAccountStore.getState().setTelegramUserId(0);
+      await telegramAccountStore.getState().persistSnapshot();
+      openTelegramChats();
+    } catch (e) {
+      Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [cloudPassword, openTelegramChats]);
 
   const resetTg = useCallback(() => {
     Alert.alert('Сбросить Telegram?', 'Локальные данные сессии будут очищены.', [
@@ -199,8 +238,15 @@ export function TelegramAuthScreen() {
           )}
         </Pressable>
 
-        {status === 'waiting_phone' || status === 'waiting_code' ? (
+        {apiId != null && apiHash && status !== 'ready' ? (
           <>
+            {status !== 'waiting_phone' &&
+            status !== 'waiting_code' &&
+            status !== 'waiting_password' ? (
+              <Text style={{ marginTop: 4, marginBottom: 10, fontSize: 13, color: colors.textSecondary }}>
+                Поля ниже доступны сразу; номер можно отправить только после успешной инициализации TDLib.
+              </Text>
+            ) : null}
             <Text style={{ marginTop: 8, marginBottom: 6, color: colors.textSecondary }}>Телефон</Text>
             <TextInput
               value={phone}
@@ -219,12 +265,12 @@ export function TelegramAuthScreen() {
             />
             <Pressable
               onPress={() => void submitPhone()}
-              disabled={busy}
+              disabled={busy || status !== 'waiting_phone'}
               style={({ pressed }) => ({
                 paddingVertical: 12,
                 borderRadius: 12,
                 backgroundColor: colors.inputBackgroundSolid,
-                opacity: pressed ? 0.85 : 1,
+                opacity: busy || status !== 'waiting_phone' ? 0.5 : pressed ? 0.85 : 1,
                 marginBottom: 16,
                 alignItems: 'center',
               })}
@@ -250,16 +296,52 @@ export function TelegramAuthScreen() {
             />
             <Pressable
               onPress={() => void submitCode()}
-              disabled={busy}
+              disabled={busy || status !== 'waiting_code'}
               style={({ pressed }) => ({
                 paddingVertical: 12,
                 borderRadius: 12,
                 backgroundColor: colors.inputBackgroundSolid,
-                opacity: pressed ? 0.85 : 1,
+                opacity: busy || status !== 'waiting_code' ? 0.5 : pressed ? 0.85 : 1,
                 alignItems: 'center',
               })}
             >
               <Text style={{ color: colors.accent, fontWeight: '700' }}>Подтвердить код</Text>
+            </Pressable>
+
+            <Text style={{ marginTop: 16, marginBottom: 6, color: colors.textSecondary }}>
+              Облачный пароль (2FA)
+            </Text>
+            <Text style={{ marginBottom: 8, fontSize: 12, color: colors.textSecondary }}>
+              Если в Telegram включена двухэтапная проверка, после кода введите облачный пароль здесь.
+            </Text>
+            <TextInput
+              value={cloudPassword}
+              onChangeText={setCloudPassword}
+              placeholder="Пароль из настроек Telegram"
+              placeholderTextColor={colors.textSecondaryMuted}
+              secureTextEntry
+              autoCapitalize="none"
+              style={{
+                borderWidth: 1,
+                borderColor: colors.separator,
+                borderRadius: 10,
+                padding: 12,
+                color: colors.textPrimary,
+                marginBottom: 12,
+              }}
+            />
+            <Pressable
+              onPress={() => void submitPassword()}
+              disabled={busy || status !== 'waiting_password'}
+              style={({ pressed }) => ({
+                paddingVertical: 12,
+                borderRadius: 12,
+                backgroundColor: colors.inputBackgroundSolid,
+                opacity: busy || status !== 'waiting_password' ? 0.5 : pressed ? 0.85 : 1,
+                alignItems: 'center',
+              })}
+            >
+              <Text style={{ color: colors.accent, fontWeight: '700' }}>Подтвердить пароль 2FA</Text>
             </Pressable>
           </>
         ) : null}

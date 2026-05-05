@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import { resetTdlibParametersLock } from '../services/tdlib/tdlibBootstrap';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
 
@@ -8,6 +9,7 @@ export type TelegramAuthStatus =
   | 'waiting_parameters'
   | 'waiting_phone'
   | 'waiting_code'
+  | 'waiting_password'
   | 'ready'
   | 'error';
 
@@ -15,6 +17,9 @@ export type TelegramDialogRow = {
   id: string;
   title: string;
   lastMessagePreview: string;
+  avatarUri?: string | null;
+  lastMessageAt?: number | null;
+  unreadCount?: number;
   /** TDLib internal chat id as string */
   chatId: string;
 };
@@ -87,6 +92,7 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
   setDialogs: (dialogs) => set({ dialogs }),
 
   resetTelegramSession: async () => {
+    resetTdlibParametersLock();
     set({ ...initial });
     await SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => undefined);
   },
