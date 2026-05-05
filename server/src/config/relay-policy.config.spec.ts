@@ -63,6 +63,7 @@ describe('loadRelayPolicyFromEnv', () => {
       mediaCacheSeconds: 0,
       mediaRetainUntilDownload: true,
       mediaMaxBytes: null,
+      defaultTransport: Transport.websocket,
     });
   });
 });

@@ -20,6 +20,8 @@ import { ChatDao } from '../db';
 import type { Message } from '../stores/types';
 import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
+import { normalizeMessageTransport } from '../utils/messageTransport';
+import { buildMessageListPreviewText } from '../utils/messageListPreview';
 
 /** Server message payload shape (MappedMessage from backend) */
 interface ServerMessagePayload {
@@ -31,6 +33,7 @@ interface ServerMessagePayload {
   content: string | null;
   msg_type: string;
   status: string;
+  transport?: string | null;
   reply_to_id?: string | null;
   thread_root_message_id?: string | null;
   is_channel_post?: boolean;
@@ -138,7 +141,7 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
     is_edited: 0,
     is_deleted: 0,
     status: payload.status,
-    transport: 'ws',
+    transport: normalizeMessageTransport(payload.transport),
     server_id: null,
     created_at: createdAt,
     updated_at: createdAt,
@@ -168,8 +171,6 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
   }
   return msg;
 }
-
-import { buildMessageListPreviewText } from '../utils/messageListPreview';
 
 function buildMessagePreview(msg: Message): string {
   return buildMessageListPreviewText(msg);

@@ -2,6 +2,8 @@
  * TypeScript interfaces for SQLite row types.
  */
 
+import type { MessageTransport } from '../utils/messageTransport';
+
 export interface UserRow {
   id: string;
   username: string;
@@ -127,7 +129,7 @@ export interface MessageRow {
   is_edited: number;
   is_deleted: number;
   status: string;
-  transport: string;
+  transport: MessageTransport;
   server_id: string | null;
   created_at: number;
   updated_at: number;

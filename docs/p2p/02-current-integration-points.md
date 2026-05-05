@@ -23,7 +23,7 @@
 | Отправка всех типов | `src/services/TransportService.ts` | Для онлайна: загрузка файла → `WebSocketService.sendEvent('send_message', …)`. Для офлайна: `queueToSyncQueue` с разными `action`. |
 | Очередь синхронизации | `src/services/SyncService.ts` | Разбор `send_message_text`, `send_message_voice`, `send_message_video_note`, `send_message_image`, `send_message_video`, `send_message_file`, альбомы и т.д. — все сходятся на **`send_message` по WebSocket**. |
 | WebSocket | `src/services/WebSocketService.ts` | Подписка на входящие события (`onNewMessage`, ack, typing, …). |
-| Локальная БД | `src/db/schema.ts`, `src/db/dao/MessageDao.ts`, `src/db/dao/MediaDao.ts` | `messages.transport` по умолчанию **`server`**; медиа — `local_path` / `remote_url`. |
+| Локальная БД | `src/db/schema.ts`, `src/db/dao/MessageDao.ts`, `src/db/dao/MediaDao.ts` | `messages.transport` по умолчанию **`websocket`**; legacy `server` / `ws` мигрируют и нормализуются в `websocket`; медиа — `local_path` / `remote_url`. |
 | Конфиг API / WS | `src/config.ts` | `API_BASE_URL`, `getWebSocketUrl`, `getSignalingUrl` — для новых эндпоинтов или второго канала не забыть dev/prod и Android emulator (`10.0.2.2`). |
 
 ## Цепочка для медиа (общая для типов)

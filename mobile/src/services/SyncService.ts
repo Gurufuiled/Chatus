@@ -13,6 +13,7 @@ import { authStore } from '../stores/authStore';
 import { uiStore } from '../stores/uiStore';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
+import { normalizeMessageTransport } from '../utils/messageTransport';
 
 const MAX_RETRIES = 5;
 
@@ -188,7 +189,7 @@ interface ApiMessage {
   is_edited?: number;
   is_deleted?: number;
   status: string;
-  transport?: string;
+  transport?: string | null;
   server_id?: string | null;
   created_at: number | string;
   updated_at?: number | string;
@@ -260,7 +261,7 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
     is_edited: api.is_edited ?? 0,
     is_deleted: api.is_deleted ?? 0,
     status: api.status,
-    transport: api.transport ?? 'ws',
+    transport: normalizeMessageTransport(api.transport),
     server_id: api.server_id ?? null,
     created_at: createdAt,
     updated_at: updatedAt,

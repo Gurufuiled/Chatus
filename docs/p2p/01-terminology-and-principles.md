@@ -16,7 +16,7 @@
 | **WebSocket чата** (`WS_PORT`, обычно 4001) | События `send_message`, broadcast участникам чата после `MessagesService.createMessage`. |
 | **Signaling WebSocket** (4002) | Сейчас **только звонки** WebRTC (`SignalingService` / `SignalingGateway`), не перенос сообщений чата. Любой перенос данных чата по WebRTC data channel — **отдельное решение и отдельная фаза**. |
 | **Клиент SQLite** | Офлайн-first: `messages`, `media` (`local_path` / `remote_url`), очередь `sync_queue`, действия вида `send_message_*` в `SyncService`. |
-| **Транспорт сообщения** | На сервере: `Message.transport` ∈ `{ websocket, p2p }`. На клиенте сейчас: строка `transport` по умолчанию **`server`** — нужно выровнять с контрактом API при внедрении. |
+| **Транспорт сообщения** | Единый контракт Chatus: `Message.transport` ∈ `{ websocket, p2p }`. Клиент нормализует legacy-значения `server` / `ws` в `websocket`. |
 
 ## Два бэкенда в одном приложении (Chatus + Telegram)
 
@@ -40,6 +40,6 @@
 
 ## Нефункциональные требования
 
-- **Согласованность имён**: Prisma `Transport`, REST/WebSocket payload, SQLite `messages.transport`.
+- **Согласованность имён**: Prisma `Transport`, REST/WebSocket payload, SQLite `messages.transport` используют `websocket` / `p2p`.
 - **Обратная совместимость**: старые клиенты должны продолжать работать с `transport = websocket` / эквивалентом `server`.
 - **Наблюдаемость**: логирование на сервере есть точечно; отдельный дашборд — по желанию фазы, не блокер для протокола.

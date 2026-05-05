@@ -5,6 +5,7 @@
   "scripts": {
     "postinstall": "patch-package",
     "build": "npx tsc --noEmit",
+    "test:transport": "npx tsx src/utils/messageTransport.test.ts",
     "test:voice": "npx tsx src/services/VoiceRecorderService.test.ts",
     "test:voice-gesture": "npx tsc --noEmit",
     "start": "expo start",

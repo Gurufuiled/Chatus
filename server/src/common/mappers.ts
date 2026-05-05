@@ -297,7 +297,7 @@ export type MappedMessage = {
   is_edited: boolean;
   is_deleted: boolean;
   status: string;
-  transport: string | null;
+  transport: string;
   created_at: number;
   updated_at: number;
   media?: MappedMedia[];
@@ -345,7 +345,7 @@ export function mapMessage(
     is_edited: message.isEdited,
     is_deleted: message.isDeleted,
     status: message.status,
-    transport: message.transport ?? null,
+    transport: message.transport ?? 'websocket',
     created_at: dateToUnixMs(message.createdAt) ?? 0,
     updated_at: dateToUnixMs(message.updatedAt) ?? 0,
   };

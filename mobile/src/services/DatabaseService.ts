@@ -181,6 +181,15 @@ async function ensureSchemaColumns(db: SQLite.SQLiteDatabase): Promise<void> {
   }
 }
 
+async function normalizeLegacyMessageTransport(db: SQLite.SQLiteDatabase): Promise<void> {
+  const hasMessagesTransport = await hasColumn(db, 'messages', 'transport');
+  if (!hasMessagesTransport) return;
+
+  await db.execAsync(
+    "UPDATE messages SET transport = 'websocket' WHERE transport IS NULL OR LOWER(transport) IN ('api', 'server', 'ws');"
+  );
+}
+
 export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (dbInstance) {
     return dbInstance;
@@ -303,12 +312,14 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
       }
     }
     await db.execAsync(SCHEMA_SQL);
+    await normalizeLegacyMessageTransport(db);
     await db.runAsync('PRAGMA user_version = ' + DB_VERSION);
   }
 
   // Repair drifted local schemas even when user_version was already bumped earlier.
   await db.execAsync(SCHEMA_SQL);
   await ensureSchemaColumns(db);
+  await normalizeLegacyMessageTransport(db);
   await db.runAsync('PRAGMA user_version = ' + DB_VERSION);
 
   try {

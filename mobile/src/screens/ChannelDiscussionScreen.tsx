@@ -1012,7 +1012,7 @@ export function ChannelDiscussionScreen() {
         is_edited: 0,
         is_deleted: 0,
         status: 'sending',
-        transport: 'api',
+        transport: 'websocket',
         server_id: null,
         created_at: now,
         updated_at: now,

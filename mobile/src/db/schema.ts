@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 12;
+export const DB_VERSION = 13;
 
 export const SCHEMA_SQL = `
 -- users
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS messages (
   is_edited INTEGER DEFAULT 0,
   is_deleted INTEGER DEFAULT 0,
   status TEXT DEFAULT 'sending',
-  transport TEXT DEFAULT 'server',
+  transport TEXT DEFAULT 'websocket',
   server_id TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
