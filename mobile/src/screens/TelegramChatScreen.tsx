@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChatsStackParamList } from '../navigation/types';
 import { FileBubble } from '../components/FileBubble';
 import { ImageBubble } from '../components/ImageBubble';
@@ -17,7 +20,12 @@ import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { getCachedUserName, setCachedUserName } from '../services/tdlib/userNameCache';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import type { Message } from '../stores/types';
+import { uiStore } from '../stores/uiStore';
 import type { ThemeColors } from '../theme/palettes';
+import { DEFAULT_CHAT_THEME_ID } from '../theme/chatThemes';
+import { withAlpha } from '../theme/stylePrimitives';
+import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
+import { ChatBackgroundPattern } from './chatScreen.shared';
 import {
   CHAT_BUBBLE_MAX_WIDTH_PCT,
   CHAT_MSG_GROUP_TIME_GAP_MS,
@@ -517,10 +525,20 @@ function markMessageFailed(rows: TelegramMessageRow[], messageId: number): Teleg
 }
 
 export function TelegramChatScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList, 'TelegramChat'>>();
+  const headerHeightNav = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useMemo(() => createTelegramChatStyles(colors), [colors]);
+  const headerChromeStyles = useMemo(
+    () => createTelegramStackHeaderPresentationStyles(colors),
+    [colors],
+  );
   const route = useRoute<RouteProp<ChatsStackParamList, 'TelegramChat'>>();
   const { telegramChatId, title, avatarUri, chatType: routeChatType } = route.params;
+  const telegramWallpaperKey = `telegram:${telegramChatId}`;
+  const storedWallpaperThemeId = uiStore((s) => s.chatThemeIdByChatId[telegramWallpaperKey]);
+  const wallpaperThemeId = storedWallpaperThemeId ?? DEFAULT_CHAT_THEME_ID;
   const chatId = useMemo(() => Number.parseInt(telegramChatId, 10), [telegramChatId]);
   const isChannel = routeChatType === 'channel';
   const isGroupChat = routeChatType === 'group' || routeChatType === 'supergroup';
@@ -561,6 +579,42 @@ export function TelegramChatScreen() {
     [chatId, replyToRow],
   );
   const replyAuthorName = replyToRow ? (replyToRow.outgoing ? 'Вы' : headerTitle) : null;
+
+  useLayoutEffect(() => {
+    const initialChar = (headerTitle.trim()[0] || '?').toUpperCase();
+    navigation.setOptions({
+      headerTitle: () => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={headerTitle}
+          accessibilityHint="Открывает профиль"
+          onPress={() => Alert.alert('Профиль')}
+          style={({ pressed }) => [
+            headerChromeStyles.pressableRow,
+            pressed ? headerChromeStyles.pressablePressed : null,
+          ]}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={headerChromeStyles.avatar} />
+          ) : (
+            <View style={headerChromeStyles.avatarPlaceholder}>
+              <Text style={headerChromeStyles.avatarPlaceholderLetter}>{initialChar}</Text>
+            </View>
+          )}
+          <View style={headerChromeStyles.titleWrap}>
+            <Text style={headerChromeStyles.headerTitleText} numberOfLines={1} ellipsizeMode="tail">
+              {headerTitle}
+            </Text>
+            {headerSubtitle ? (
+              <Text style={headerChromeStyles.headerSubtitleText} numberOfLines={1} ellipsizeMode="tail">
+                {headerSubtitle}
+              </Text>
+            ) : null}
+          </View>
+        </Pressable>
+      ),
+    });
+  }, [avatarUri, headerChromeStyles, headerSubtitle, headerTitle, navigation]);
 
   // Keep ref in sync during render so renderItem always reads the current array
   // (an effect would lag by one frame, causing stale neighbor lookups).
@@ -954,9 +1008,9 @@ export function TelegramChatScreen() {
         <ReplyPreview
           author={replyTarget ? (replyTarget.outgoing ? 'Вы' : headerTitle) : 'Исходное сообщение'}
           text={replyTarget ? getTelegramReplyPreviewText(replyTarget) : 'Исходное сообщение недоступно'}
-          accentColor={isMe ? 'rgba(255,255,255,0.9)' : colors.accent}
-          backgroundColor={isMe ? 'rgba(255,255,255,0.12)' : colors.inputBackground}
-          textColor={isMe ? 'rgba(255,255,255,0.82)' : colors.textSecondary}
+          accentColor={isMe ? withAlpha('#FFFFFF', 0.9) : colors.accent}
+          backgroundColor={isMe ? withAlpha('#FFFFFF', 0.12) : colors.inputBackground}
+          textColor={isMe ? withAlpha('#FFFFFF', 0.82) : colors.textSecondary}
           authorColor={isMe ? '#FFFFFF' : colors.accent}
           thumbnailUri={getTelegramReplyThumbnailUri(replyTarget)}
         />
@@ -1030,8 +1084,8 @@ export function TelegramChatScreen() {
                   status={item.status}
                   isMe={isMe}
                   compact
-                  timeColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
-                  iconColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
+                  timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                  iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
                 />
               </View>
             </Pressable>
@@ -1053,7 +1107,7 @@ export function TelegramChatScreen() {
               header={bubbleHeader}
               bubbleMeColor={colors.bubbleMe}
               outgoingTextColor="#FFFFFF"
-              outgoingMetaColor="rgba(255,255,255,0.72)"
+              outgoingMetaColor={colors.textSecondaryMuted}
               outgoingAccentColor="#FFFFFF"
               incomingBubbleBackground={colors.bubbleOther}
               incomingBubbleBorderColor={colors.bubbleOtherBorder}
@@ -1136,7 +1190,7 @@ export function TelegramChatScreen() {
                 header={bubbleHeader}
                 bubbleMeColor={colors.bubbleMe}
                 outgoingTextColor="#FFFFFF"
-                outgoingMetaColor="rgba(255,255,255,0.72)"
+                outgoingMetaColor={colors.textSecondaryMuted}
                 outgoingAccentColor="#FFFFFF"
                 incomingBubbleBackground={colors.bubbleOther}
                 incomingBubbleBorderColor={colors.bubbleOtherBorder}
@@ -1169,8 +1223,8 @@ export function TelegramChatScreen() {
                 status={item.status}
                 isMe={isMe}
                 compact
-                timeColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
-                iconColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
+                timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
               />
             </View>
           </View>
@@ -1182,83 +1236,125 @@ export function TelegramChatScreen() {
 
   return (
     <KeyboardAvoidingView
+      // Android inherits window soft resize from the host Activity (`adjustResize`), so RN's KeyboardAvoidingView
+      // is unnecessary and tends to conflict; iOS keeps the composer readable with measured header offset.
       style={{ flex: 1, backgroundColor: colors.chatBackground }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeightNav : 0}
     >
-      <View style={styles.headerHint}>
-        {avatarUri ? <Image source={{ uri: avatarUri }} style={styles.headerAvatar} /> : null}
-        <View style={styles.headerTitleBlock}>
-          <Text style={styles.headerHintText} numberOfLines={1}>
-            {headerTitle}
-          </Text>
-          {headerSubtitle ? (
-            <Text style={styles.headerSubtitleText} numberOfLines={1}>
-              {headerSubtitle}
-            </Text>
+      <View style={styles.flexChatBody}>
+        <View style={styles.wallpaperLayer} pointerEvents="none">
+          <ChatBackgroundPattern themeId={wallpaperThemeId} />
+        </View>
+        <FlatList
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          inverted
+          style={styles.messagesList}
+          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          refreshing={loading}
+          onRefresh={() => void loadHistory(false)}
+          onEndReached={() => void loadHistory(true)}
+          onEndReachedThreshold={0.3}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                {lastError ?? (loading ? 'Загружаем историю Telegram...' : 'История пуста')}
+              </Text>
+            </View>
+          }
+        />
+        <View style={[styles.bottomChrome, { paddingBottom: insets.bottom }]}>
+          {loadingOlder ? (
+            <Text style={styles.loadingOlder}>Загружаем старые сообщения...</Text>
           ) : null}
+          {canPost ? (
+            <InputBar
+              onSendText={sendText}
+              onSendVoice={sendVoice}
+              onSendMedia={sendMedia}
+              onSendFile={sendFile}
+              replyToMessage={replyToInputMessage}
+              replyAuthorName={replyAuthorName}
+              onCancelReply={() => setReplyToMessageId(null)}
+              placeholder="Сообщение"
+            />
+          ) : (
+            <View style={styles.readOnlyFooter} accessibilityLabel="Только для чтения">
+              <Text style={styles.readOnlyText}>Только для чтения</Text>
+            </View>
+          )}
         </View>
       </View>
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        inverted
-        contentContainerStyle={styles.listContent}
-        refreshing={loading}
-        onRefresh={() => void loadHistory(false)}
-        onEndReached={() => void loadHistory(true)}
-        onEndReachedThreshold={0.3}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>
-              {lastError ?? (loading ? 'Загружаем историю Telegram...' : 'История пуста')}
-            </Text>
-          </View>
-        }
-      />
-      {loadingOlder ? <Text style={styles.loadingOlder}>Загружаем старые сообщения...</Text> : null}
-      {canPost ? (
-        <InputBar
-          onSendText={sendText}
-          onSendVoice={sendVoice}
-          onSendMedia={sendMedia}
-          onSendFile={sendFile}
-          replyToMessage={replyToInputMessage}
-          replyAuthorName={replyAuthorName}
-          onCancelReply={() => setReplyToMessageId(null)}
-          placeholder="Сообщение"
-        />
-      ) : (
-        <View style={styles.readOnlyFooter} accessibilityLabel="Только для чтения">
-          <Text style={styles.readOnlyText}>Только для чтения</Text>
-        </View>
-      )}
     </KeyboardAvoidingView>
   );
 }
 
-function createTelegramChatStyles(colors: ThemeColors) {
+function createTelegramStackHeaderPresentationStyles(colors: ThemeColors) {
+  const subtitleKey = chatHeaderPresentation.subtitleColorKey;
   return StyleSheet.create({
-    headerHint: {
-      minHeight: 0,
+    pressableRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.separator,
-      backgroundColor: colors.toolbar,
-    },
-    headerAvatar: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      marginRight: 8,
-    },
-    headerHintText: {
       flex: 1,
-      color: colors.textSecondary,
-      fontSize: 12,
+    },
+    pressablePressed: {
+      opacity: 0.7,
+    },
+    avatar: {
+      width: CHAT_HEADER_AVATAR_SIZE,
+      height: CHAT_HEADER_AVATAR_SIZE,
+      borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
+      marginRight: 10,
+    },
+    avatarPlaceholder: {
+      width: CHAT_HEADER_AVATAR_SIZE,
+      height: CHAT_HEADER_AVATAR_SIZE,
+      borderRadius: CHAT_HEADER_AVATAR_SIZE / 2,
+      marginRight: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accent,
+    },
+    avatarPlaceholderLetter: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    titleWrap: {
+      flexShrink: 1,
+      justifyContent: 'center',
+    },
+    headerTitleText: {
+      fontSize: chatHeaderPresentation.titleFontSize,
+      fontWeight: chatHeaderPresentation.titleFontWeight,
+      color: colors.textPrimary,
+    },
+    headerSubtitleText: {
+      marginTop: 1,
+      fontSize: chatHeaderPresentation.subtitleFontSize,
+      color: colors[subtitleKey],
+    },
+  });
+}
+
+function createTelegramChatStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    flexChatBody: {
+      flex: 1,
+      backgroundColor: colors.chatBackground,
+    },
+    wallpaperLayer: StyleSheet.absoluteFillObject,
+    messagesList: {
+      flex: 1,
+      backgroundColor: 'transparent',
+    },
+    bottomChrome: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.toolbar,
     },
     listContent: {
       paddingHorizontal: CHAT_MSG_HORIZONTAL_PADDING,
@@ -1337,15 +1433,6 @@ function createTelegramChatStyles(colors: ThemeColors) {
       color: colors.textSecondary,
       fontSize: 12,
     },
-    /** Two-line header when member/subscriber count is available. */
-    headerTitleBlock: {
-      flex: 1,
-      justifyContent: 'center',
-    },
-    headerSubtitleText: {
-      color: colors.textSecondary,
-      fontSize: 11,
-    },
     /** Sender name shown at the top of an incoming bubble in group/supergroup chats. */
     senderNameText: {
       fontSize: 13,
@@ -1359,15 +1446,13 @@ function createTelegramChatStyles(colors: ThemeColors) {
       color: colors.textSecondary,
     },
     viewCountTextMe: {
-      color: 'rgba(255,255,255,0.72)',
+      color: colors.textSecondaryMuted,
     },
     /** Read-only footer shown for channels where the user cannot post. */
     readOnlyFooter: {
       paddingVertical: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.separator,
       backgroundColor: colors.toolbar,
     },
     readOnlyText: {
