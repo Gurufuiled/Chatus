@@ -1,8 +1,8 @@
 # Переменные окружения и конфиг (черновик для mailbox / relay на сервере)
 
-Этот файл описывает политики для данных, которые **оказались на сервере** — прежде всего после **фолбэка** с peer-пути ([01-terminology-and-principles.md](./01-terminology-and-principles.md)). Пока сообщение успешно ушло только по peer и **не** требует записи в mailbox, часть `RELAY_*` может не применяться (конкретика — в реализации).
+Этот файл описывает политики для данных, которые **оказались на сервере** — прежде всего после **фолбэка** с peer-пути ([01-terminology-and-principles.md](./01-terminology-and-principles.md)). Пока сообщение успешно ушло только по peer и **не** требует записи в mailbox, часть `RELAY_*` может не применяться.
 
-В коде переменные могут ещё не читаться; при внедрении собрать в один модуль (например `RelayPolicyConfig` / `MailboxPolicyService`).
+Фаза 0 уже читает базовые значения в `RelayPolicyConfig` и `mobile/src/config.ts`; применение TTL/удаления mailbox и peer-оркестратор внедряются следующими фазами.
 
 **Telegram** этими переменными не управляется; см. [06-unified-inbox-telegram-scope.md](./06-unified-inbox-telegram-scope.md).
 
@@ -21,6 +21,19 @@
 | `SIGNALING_PORT` | WebRTC signaling (по умолчанию 4002). |
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | Авторизация WS и API. |
 | `RUST_MEDIA_WORKER_ENABLED`, `RUST_MEDIA_WORKER_BIN`, `RUST_MEDIA_WORKER_TIMEOUT_MS` | Опциональный воркер обработки медиа. |
+
+---
+
+## Черновик: попытка peer до fallback
+
+Эти значения нужны для **P2P-first** цепочки в личке 1:1: клиент сначала пытается peer-доставку, затем при таймауте/ошибке отправляет сообщение в server mailbox.
+
+| Переменная | Где читается | Тип | Пример | Смысл |
+|------------|--------------|-----|--------|--------|
+| `EXPO_PUBLIC_P2P_FIRST_ENABLED` | mobile | `true` \| `false` | `false` | Feature flag клиентского оркестратора `peer attempt → server fallback`. На первом этапе по умолчанию выключен, чтобы не менять поведение до готовности peer-слоя. |
+| `EXPO_PUBLIC_P2P_PEER_ATTEMPT_TIMEOUT_MS` | mobile | positive int ms | `2500` | Сколько клиент ждёт peer-доставку перед fallback на WebSocket/server mailbox. |
+| `P2P_PEER_ATTEMPT_TIMEOUT_MS` | server | positive int ms | `2500` | Серверное значение для согласованной политики/логов и будущего endpoint конфигурации клиента. |
+| `P2P_PEER_METRICS_ENABLED` | server | `0` \| `1` \| `true` \| `false` | `1` | Включение будущих метрик peer success/fallback без смешения с Telegram. |
 
 ---
 
@@ -89,8 +102,14 @@
 ## Рекомендации по внедрению в коде
 
 1. Один **prefix** (`RELAY_*` или `CHATUS_CACHE_*`) — чтобы в `.env` было видно группу переменных.
-2. Парсинг в `main.ts` или `ConfigModule`: числа через `parseInt(..., 10)`, булевы через явное сравнение с `'1'` / `'true'`.
+2. Парсинг в `main.ts` или `ConfigModule`: числа через `parseInt(..., 10)`, булевы через явное сравнение с `'1'` / `'true'` и `'0'` / `'false'`.
 3. Значения по умолчанию должны совпадать с текущим поведением («храним как сейчас»), пока фича не включена явно.
 4. Документировать в README деплоя только те переменные, которые реально прочитаны в текущей версии образа.
 
 После появления первой реализации этот файл стоит сопоставить с фактическим `ConfigService` или `.env.example` в `server/`.
+
+## Реализация фазы 0
+
+- `RelayPolicyConfig` читает серверные `P2P_PEER_ATTEMPT_TIMEOUT_MS`, `P2P_PEER_METRICS_ENABLED` и `RELAY_*`.
+- `mobile/src/config.ts` читает `EXPO_PUBLIC_P2P_FIRST_ENABLED` и `EXPO_PUBLIC_P2P_PEER_ATTEMPT_TIMEOUT_MS`.
+- `RELAY_*` остаются политиками **только для данных, попавших на server mailbox**, а не причиной отправлять каждое онлайн-сообщение через сервер.

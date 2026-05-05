@@ -19,6 +19,7 @@
 | [04-message-types-and-media.md](./04-message-types-and-media.md) | Типы сообщений — точки расширения |
 | [05-env-and-config.md](./05-env-and-config.md) | Переменные `RELAY_*` для данных **на сервере** после фолбэка |
 | [06-unified-inbox-telegram-scope.md](./06-unified-inbox-telegram-scope.md) | Единый инбокс с Telegram и границы |
+| [07-p2p-first-reorientation.md](./07-p2p-first-reorientation.md) | Таблица переориентации уже сделанных server-first правок на peer-first + fallback |
 | [Задача: единый список чатов](../tasks/unified-inbox-chatus-telegram.md) | Смешанный список Chatus + TG |
 
 ## Быстрый консенсус для команды

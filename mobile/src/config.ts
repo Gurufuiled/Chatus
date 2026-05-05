@@ -11,6 +11,8 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_API_URL'
   | 'EXPO_PUBLIC_USE_EMULATOR'
   | 'EXPO_PUBLIC_USE_MOCKS'
+  | 'EXPO_PUBLIC_P2P_FIRST_ENABLED'
+  | 'EXPO_PUBLIC_P2P_PEER_ATTEMPT_TIMEOUT_MS'
   | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID'
   /** Plain hostname or IPv4 — physical iPhone cannot reach Mac `localhost`; set LAN IP when using http://localhost in EXPO_PUBLIC_API_URL. */
   | 'EXPO_PUBLIC_IOS_DEV_HOST'
@@ -39,6 +41,13 @@ const envApiUrl = readExpoPublic('EXPO_PUBLIC_API_URL') || 'http://localhost:400
 
 const forceEmulator = readExpoPublic('EXPO_PUBLIC_USE_EMULATOR') === 'true';
 const forceDevice = readExpoPublic('EXPO_PUBLIC_USE_EMULATOR') === 'false';
+
+function readPositiveInt(key: PublicEnvKey, fallback: number): number {
+  const raw = readExpoPublic(key)?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return fallback;
+  const value = parseInt(raw, 10);
+  return value > 0 ? value : fallback;
+}
 
 /**
  * Physical iPhone: localhost/127.0.0.1 points at the phone, not your dev machine.
@@ -96,6 +105,12 @@ function resolveApiUrl(): string {
 export const API_BASE_URL = resolveApiUrl();
 
 export const USE_MOCKS = readExpoPublic('EXPO_PUBLIC_USE_MOCKS') === 'true';
+
+export const P2P_FIRST_ENABLED = readExpoPublic('EXPO_PUBLIC_P2P_FIRST_ENABLED') === 'true';
+export const P2P_PEER_ATTEMPT_TIMEOUT_MS = readPositiveInt(
+  'EXPO_PUBLIC_P2P_PEER_ATTEMPT_TIMEOUT_MS',
+  2500,
+);
 
 /** WebSocket URL derived from API: http://host:4000/api -> ws://host:4001 */
 export function getWebSocketUrl(): string {

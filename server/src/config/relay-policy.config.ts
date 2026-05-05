@@ -4,6 +4,8 @@ import { Transport } from '@prisma/client';
 export type RelayMode = 'standard' | 'minimal' | 'pop_like';
 
 export interface RelayPolicySnapshot {
+  peerAttemptTimeoutMs: number;
+  peerMetricsEnabled: boolean;
   mode: RelayMode;
   textCacheSeconds: number;
   deleteAfterAllDevicesAck: boolean;
@@ -39,6 +41,15 @@ function parseNonNegativeInt(
   return parseInt(raw, 10);
 }
 
+function parsePositiveInt(
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): number {
+  const value = parseNonNegativeInt(env, name, fallback);
+  return value && value > 0 ? value : fallback;
+}
+
 function parseBoolean(
   env: NodeJS.ProcessEnv,
   name: string,
@@ -69,6 +80,8 @@ export function loadRelayPolicyFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): RelayPolicySnapshot {
   return {
+    peerAttemptTimeoutMs: parsePositiveInt(env, 'P2P_PEER_ATTEMPT_TIMEOUT_MS', 2500),
+    peerMetricsEnabled: parseBoolean(env, 'P2P_PEER_METRICS_ENABLED', true),
     mode: parseRelayMode(env),
     textCacheSeconds: parseNonNegativeInt(env, 'RELAY_TEXT_CACHE_SECONDS', 0) ?? 0,
     deleteAfterAllDevicesAck: parseBoolean(
