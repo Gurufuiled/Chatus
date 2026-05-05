@@ -4,9 +4,10 @@
 
 import { WebSocketService } from './WebSocketService';
 import { SyncService } from './SyncService';
+import { PeerDeliveryService, type PeerDeliveryFailureReason } from './PeerDeliveryService';
 import { SyncQueueDao } from '../db';
 import { apiUpload, apiUploadVoice, LARGE_MEDIA_UPLOAD_TIMEOUT_MS } from './apiClient';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, P2P_FIRST_ENABLED, P2P_PEER_ATTEMPT_TIMEOUT_MS } from '../config';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
@@ -218,6 +219,26 @@ export function canForwardMessage(message: Message): boolean {
 class TransportServiceClass {
   private syncQueueDao = new SyncQueueDao();
 
+  private getPrivateChatPeerId(chatId: string): string | null {
+    const currentUserId = authStore.getState().user?.id ?? null;
+    if (!currentUserId) return null;
+
+    const chat = chatStore.getState().chats.find((item) => item.id === chatId);
+    if (!chat || chat.chat_type !== 'private') return null;
+
+    const peers = chat.members?.filter((member) => member.user_id !== currentUserId) ?? [];
+    return peers.length === 1 ? peers[0].user_id : null;
+  }
+
+  private logP2PDecision(
+    event: 'peer_skipped' | 'peer_success' | 'peer_failed' | 'server_fallback',
+    payload: Record<string, unknown>,
+  ): void {
+    if (__DEV__) {
+      console.log(`[TransportService] ${event}`, payload);
+    }
+  }
+
   private ensureWebSocketConnectedForDispatch(context: string): void {
     if (!WebSocketService.isConnected()) {
       throw new Error(`[TransportService] WebSocket disconnected before ${context}`);
@@ -323,10 +344,7 @@ class TransportServiceClass {
     return 'offline';
   }
 
-  /**
-   * Send message: WebSocket when connected, else SyncQueueDao.
-   */
-  sendMessage(
+  private sendTextViaServerOrQueue(
     chatId: string,
     content: string,
     msgType: string,
@@ -355,6 +373,94 @@ class TransportServiceClass {
       { chatId, content, msgType, tempId, replyToId },
       tempId
     );
+  }
+
+  private async attemptPeerTextMessage(
+    chatId: string,
+    recipientUserId: string,
+    content: string,
+    tempId: string,
+    replyToId: string | null,
+  ): Promise<{ ok: true } | { ok: false; reason: PeerDeliveryFailureReason }> {
+    try {
+      const result = await PeerDeliveryService.attemptTextMessage({
+        chatId,
+        recipientUserId,
+        content,
+        tempId,
+        replyToId,
+        timeoutMs: P2P_PEER_ATTEMPT_TIMEOUT_MS,
+      });
+
+      return result.ok ? { ok: true } : result;
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[TransportService] peer attempt threw', {
+          chatId,
+          tempId,
+          recipientUserId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return { ok: false, reason: 'unavailable' };
+    }
+  }
+
+  /**
+   * Send text: private 1:1 tries peer first when enabled, then falls back to server mailbox.
+   */
+  async sendMessage(
+    chatId: string,
+    content: string,
+    msgType: string,
+    tempId: string,
+    replyToId: string | null = null
+  ): Promise<void> {
+    if (msgType === 'text') {
+      if (P2P_FIRST_ENABLED) {
+        const recipientUserId = this.getPrivateChatPeerId(chatId);
+        if (recipientUserId) {
+          const peerResult = await this.attemptPeerTextMessage(
+            chatId,
+            recipientUserId,
+            content,
+            tempId,
+            replyToId,
+          );
+          if (peerResult.ok) {
+            this.logP2PDecision('peer_success', { chatId, tempId, recipientUserId });
+            messageStore.getState().updateMessage(chatId, tempId, {
+              status: 'sent',
+              transport: 'p2p',
+            });
+            return;
+          }
+
+          this.logP2PDecision('peer_failed', {
+            chatId,
+            tempId,
+            recipientUserId,
+            reason: peerResult.reason,
+          });
+        } else {
+          this.logP2PDecision('peer_skipped', {
+            chatId,
+            tempId,
+            reason: 'not_private_or_missing_peer',
+          });
+        }
+      } else {
+        this.logP2PDecision('peer_skipped', { chatId, tempId, reason: 'disabled' });
+      }
+
+      this.logP2PDecision('server_fallback', {
+        chatId,
+        tempId,
+        path: WebSocketService.isConnected() ? 'websocket' : 'offline_queue',
+      });
+    }
+
+    this.sendTextViaServerOrQueue(chatId, content, msgType, tempId, replyToId);
   }
 
   /**

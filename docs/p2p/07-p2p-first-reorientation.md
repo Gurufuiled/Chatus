@@ -14,4 +14,13 @@
 | `mobile/src/db/dao/MessageDao.ts` / `schema.ts` | SQLite хранит `transport`. | Хранит фактический путь: `p2p` для peer success, `websocket` для mailbox/server fallback. |
 | Каналы / группы | Server fan-out и хранение. | Не меняются в первых фазах; P2P-first применяется к личке 1:1. |
 
-Следующий шаг после этой конфигурационной фазы — клиентский оркестратор с явными логами `peer_attempt`, `peer_success`, `peer_failed`, `server_fallback`.
+## Реализация фазы 2: первый клиентский шаг
+
+Добавлен клиентский `PeerDeliveryService` со stub-реализацией и подключена ветка в `TransportService.sendMessage` для текстовых сообщений private 1:1:
+
+1. если `EXPO_PUBLIC_P2P_FIRST_ENABLED=true`, клиент ищет peer в private-чате;
+2. выполняет `peer_attempt`;
+3. при успехе будущего peer-слоя optimistic message помечается `transport: p2p`;
+4. при `not_implemented` / ошибке / отсутствии peer идёт текущий server fallback (`transport: websocket`, WebSocket или `sync_queue`).
+
+Stub пока всегда возвращает `not_implemented`; следующий коммит должен заменить его на signaling + DataChannel или другой согласованный peer-протокол.

@@ -999,7 +999,7 @@ export function ChatScreen() {
         updated_at: now,
       };
       messageStore.getState().prependMessage(chatId, msg);
-      TransportService.sendMessage(chatId, text, 'text', tempId, activeReplyId);
+      void TransportService.sendMessage(chatId, text, 'text', tempId, activeReplyId);
       setReplyToMessageId(null);
     },
     [chatId, currentUserId, replyToMessageId]
