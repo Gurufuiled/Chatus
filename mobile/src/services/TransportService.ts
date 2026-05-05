@@ -5,6 +5,7 @@
 import { WebSocketService } from './WebSocketService';
 import { SyncService } from './SyncService';
 import { PeerDeliveryService, type PeerDeliveryFailureReason } from './PeerDeliveryService';
+import { decideP2PTextAttempt } from './p2pSendDecision';
 import { SyncQueueDao } from '../db';
 import { apiUpload, apiUploadVoice, LARGE_MEDIA_UPLOAD_TIMEOUT_MS } from './apiClient';
 import { API_BASE_URL, P2P_FIRST_ENABLED, P2P_PEER_ATTEMPT_TIMEOUT_MS } from '../config';
@@ -219,17 +220,6 @@ export function canForwardMessage(message: Message): boolean {
 class TransportServiceClass {
   private syncQueueDao = new SyncQueueDao();
 
-  private getPrivateChatPeerId(chatId: string): string | null {
-    const currentUserId = authStore.getState().user?.id ?? null;
-    if (!currentUserId) return null;
-
-    const chat = chatStore.getState().chats.find((item) => item.id === chatId);
-    if (!chat || chat.chat_type !== 'private') return null;
-
-    const peers = chat.members?.filter((member) => member.user_id !== currentUserId) ?? [];
-    return peers.length === 1 ? peers[0].user_id : null;
-  }
-
   private logP2PDecision(
     event: 'peer_skipped' | 'peer_success' | 'peer_failed' | 'server_fallback',
     payload: Record<string, unknown>,
@@ -417,40 +407,46 @@ class TransportServiceClass {
     replyToId: string | null = null
   ): Promise<void> {
     if (msgType === 'text') {
-      if (P2P_FIRST_ENABLED) {
-        const recipientUserId = this.getPrivateChatPeerId(chatId);
-        if (recipientUserId) {
-          const peerResult = await this.attemptPeerTextMessage(
-            chatId,
-            recipientUserId,
-            content,
-            tempId,
-            replyToId,
-          );
-          if (peerResult.ok) {
-            this.logP2PDecision('peer_success', { chatId, tempId, recipientUserId });
-            messageStore.getState().updateMessage(chatId, tempId, {
-              status: 'sent',
-              transport: 'p2p',
-            });
-            return;
-          }
+      const p2pDecision = decideP2PTextAttempt({
+        enabled: P2P_FIRST_ENABLED,
+        msgType,
+        chat: chatStore.getState().chats.find((item) => item.id === chatId),
+        currentUserId: authStore.getState().user?.id ?? null,
+      });
 
-          this.logP2PDecision('peer_failed', {
+      if (p2pDecision.attemptPeer) {
+        const peerResult = await this.attemptPeerTextMessage(
+          chatId,
+          p2pDecision.recipientUserId,
+          content,
+          tempId,
+          replyToId,
+        );
+        if (peerResult.ok) {
+          this.logP2PDecision('peer_success', {
             chatId,
             tempId,
-            recipientUserId,
-            reason: peerResult.reason,
+            recipientUserId: p2pDecision.recipientUserId,
           });
-        } else {
-          this.logP2PDecision('peer_skipped', {
-            chatId,
-            tempId,
-            reason: 'not_private_or_missing_peer',
+          messageStore.getState().updateMessage(chatId, tempId, {
+            status: 'sent',
+            transport: 'p2p',
           });
+          return;
         }
+
+        this.logP2PDecision('peer_failed', {
+          chatId,
+          tempId,
+          recipientUserId: p2pDecision.recipientUserId,
+          reason: peerResult.reason,
+        });
       } else {
-        this.logP2PDecision('peer_skipped', { chatId, tempId, reason: 'disabled' });
+        this.logP2PDecision('peer_skipped', {
+          chatId,
+          tempId,
+          reason: p2pDecision.reason,
+        });
       }
 
       this.logP2PDecision('server_fallback', {
