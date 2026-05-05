@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -7,6 +7,7 @@ import { FileBubble } from '../components/FileBubble';
 import { ImageBubble } from '../components/ImageBubble';
 import { InputBar, type FilePickResult, type MediaPickResult } from '../components/InputBar';
 import { MessageTimeStatus } from '../components/MessageTimeStatus';
+import { ReplyPreview } from '../components/ReplyPreview';
 import { VideoBubble } from '../components/VideoBubble';
 import { VoiceBubble } from '../components/VoiceBubble';
 import { useTheme } from '../contexts/ThemeContext';
@@ -14,6 +15,7 @@ import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
+import type { Message } from '../stores/types';
 import type { ThemeColors } from '../theme/palettes';
 
 type TelegramMessageKind = 'text' | 'voice' | 'image' | 'video' | 'file' | 'service';
@@ -27,6 +29,7 @@ type TelegramMessageRow = {
   outgoing: boolean;
   dateMs: number;
   status: TelegramMessageStatus;
+  replyToMessageId?: number | null;
   voiceUri?: string | null;
   mediaUri?: string | null;
   thumbnailUri?: string | null;
@@ -107,6 +110,24 @@ function getTdMessageStatus(
 function getLastReadOutboxMessageId(value: Record<string, unknown>): number {
   const raw = value.last_read_outbox_message_id;
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+}
+
+function getReplyToMessageId(raw: Record<string, unknown>): number | null {
+  const replyTo = getNestedRecord(raw.reply_to);
+  if (replyTo?.['@type'] !== 'messageReplyToMessage') return null;
+
+  const messageId = replyTo.message_id;
+  return typeof messageId === 'number' && Number.isFinite(messageId) && messageId > 0 ? messageId : null;
+}
+
+function getInputReplyTo(messageId: number | null): Record<string, unknown> | undefined {
+  if (messageId == null || messageId <= 0) return undefined;
+  return {
+    '@type': 'inputMessageReplyToMessage',
+    message_id: messageId,
+    quote: null,
+    checklist_task_id: 0,
+  };
 }
 
 function getFormattedText(value: unknown): string {
@@ -222,6 +243,7 @@ async function mapTdMessage(
     outgoing,
     dateMs: dateSec * 1000,
     status: getTdMessageStatus(raw, lastReadOutboxMessageId),
+    replyToMessageId: getReplyToMessageId(raw),
   };
 
   if (kind === 'messageText') {
@@ -310,6 +332,7 @@ async function mapTdMessage(
 function optimisticOutgoingMessage(
   text: string,
   tempId = -Date.now(),
+  replyToMessageId?: number | null,
 ): TelegramMessageRow {
   return {
     id: `temp-${Math.abs(tempId)}`,
@@ -319,6 +342,60 @@ function optimisticOutgoingMessage(
     outgoing: true,
     dateMs: Date.now(),
     status: 'sending',
+    replyToMessageId,
+  };
+}
+
+function getTelegramReplyPreviewText(row: TelegramMessageRow): string {
+  if (row.kind === 'text') return row.text.trim() || 'Пустое сообщение';
+  if (row.kind === 'image') return row.text.trim() ? `Фото: ${row.text.trim()}` : 'Фото';
+  if (row.kind === 'video') return row.text.trim() ? `Видео: ${row.text.trim()}` : 'Видео';
+  if (row.kind === 'voice') return 'Голосовое сообщение';
+  if (row.kind === 'file') return row.fileName?.trim() || 'Файл';
+  return row.text.trim() || 'Сообщение';
+}
+
+function getTelegramReplyThumbnailUri(row: TelegramMessageRow | null | undefined): string | null {
+  if (!row) return null;
+  if (row.kind === 'image') return row.mediaUri?.trim() || null;
+  if (row.kind === 'video') return row.thumbnailUri?.trim() || null;
+  return null;
+}
+
+function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: number): Message {
+  const media =
+    row.kind === 'image' || row.kind === 'video' || row.kind === 'file'
+      ? [
+          {
+            media_type: row.kind,
+            remote_url: row.mediaUri ?? undefined,
+            thumbnail_url: row.thumbnailUri ?? undefined,
+            width: row.width,
+            height: row.height,
+            duration_ms: row.durationMs,
+            file_name: row.fileName,
+            file_size: row.fileSize,
+          },
+        ]
+      : undefined;
+
+  return {
+    id: String(row.messageId),
+    chat_id: String(chatId),
+    sender_id: row.outgoing ? 'telegram:self' : 'telegram:peer',
+    msg_type: row.kind === 'image' || row.kind === 'video' || row.kind === 'file' || row.kind === 'voice'
+      ? row.kind
+      : 'text',
+    content: row.kind === 'text' ? row.text : row.text || null,
+    reply_to_id: row.replyToMessageId != null ? String(row.replyToMessageId) : null,
+    is_edited: 0,
+    is_deleted: 0,
+    status: row.status,
+    transport: 'telegram',
+    server_id: null,
+    created_at: row.dateMs,
+    updated_at: row.dateMs,
+    media,
   };
 }
 
@@ -369,11 +446,25 @@ export function TelegramChatScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
   const lastReadOutboxMessageIdRef = useRef<number>(0);
   const mountedRef = useRef(true);
 
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
+  const messageById = useMemo(() => {
+    const map = new Map<number, TelegramMessageRow>();
+    for (const message of messages) {
+      map.set(message.messageId, message);
+    }
+    return map;
+  }, [messages]);
+  const replyToRow = replyToMessageId != null ? messageById.get(replyToMessageId) ?? null : null;
+  const replyToInputMessage = useMemo(
+    () => (replyToRow ? telegramRowToInputReplyMessage(replyToRow, chatId) : null),
+    [chatId, replyToRow],
+  );
+  const replyAuthorName = replyToRow ? (replyToRow.outgoing ? 'Вы' : headerTitle) : null;
 
   useEffect(() => {
     return () => {
@@ -499,6 +590,7 @@ export function TelegramChatScreen() {
       const trimmed = text.trim();
       if (!trimmed || !Number.isFinite(chatId)) return;
       const tempId = -Date.now();
+      const activeReplyToMessageId = replyToMessageId;
       const optimistic: TelegramMessageRow = {
         id: `temp-${Math.abs(tempId)}`,
         messageId: tempId,
@@ -507,13 +599,16 @@ export function TelegramChatScreen() {
         outgoing: true,
         dateMs: Date.now(),
         status: 'sending',
+        replyToMessageId: activeReplyToMessageId,
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
+      setReplyToMessageId(null);
       try {
         await ensureReady();
         const response = (await tdlibClient.send({
           '@type': 'sendMessage',
           chat_id: chatId,
+          reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_content: {
             '@type': 'inputMessageText',
             text: {
@@ -534,13 +629,14 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить', message);
       }
     },
-    [chatId, ensureReady],
+    [chatId, ensureReady, replyToMessageId],
   );
 
   const sendVoice = useCallback(
     async (result: VoiceRecordingResult) => {
       if (!Number.isFinite(chatId)) return;
       const tempId = -Date.now();
+      const activeReplyToMessageId = replyToMessageId;
       const localPath = fileUriToPath(result.uri);
       const optimistic: TelegramMessageRow = {
         id: `temp-${Math.abs(tempId)}`,
@@ -550,16 +646,19 @@ export function TelegramChatScreen() {
         outgoing: true,
         dateMs: Date.now(),
         status: 'sending',
+        replyToMessageId: activeReplyToMessageId,
         voiceUri: result.uri,
         durationMs: result.durationMs,
         waveform: result.waveform,
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
+      setReplyToMessageId(null);
       try {
         await ensureReady();
         const response = (await tdlibClient.send({
           '@type': 'sendMessage',
           chat_id: chatId,
+          reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_content: {
             '@type': 'inputMessageVoiceNote',
             voice_note: {
@@ -584,7 +683,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить голосовое', message);
       }
     },
-    [chatId, ensureReady],
+    [chatId, ensureReady, replyToMessageId],
   );
 
   const sendInputMessageContent = useCallback(
@@ -594,13 +693,16 @@ export function TelegramChatScreen() {
       failureTitle: string,
     ) => {
       if (!Number.isFinite(chatId)) return;
-      const optimistic = optimisticOutgoingMessage(optimisticText);
+      const activeReplyToMessageId = replyToMessageId;
+      const optimistic = optimisticOutgoingMessage(optimisticText, -Date.now(), activeReplyToMessageId);
       setMessages((prev) => upsertMessage(prev, optimistic));
+      setReplyToMessageId(null);
       try {
         await ensureReady();
         const response = (await tdlibClient.send({
           '@type': 'sendMessage',
           chat_id: chatId,
+          reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_content: inputMessageContent,
         })) as Record<string, unknown>;
         throwIfTdError(response);
@@ -614,7 +716,7 @@ export function TelegramChatScreen() {
         Alert.alert(failureTitle, message);
       }
     },
-    [chatId, ensureReady],
+    [chatId, ensureReady, replyToMessageId],
   );
 
   const sendMedia = useCallback(
@@ -670,11 +772,34 @@ export function TelegramChatScreen() {
   const renderItem = useCallback(
     ({ item }: { item: TelegramMessageRow }) => {
       const isMe = item.outgoing;
+      const replyTarget = item.replyToMessageId != null ? messageById.get(item.replyToMessageId) ?? null : null;
+      const replySnippet = item.replyToMessageId != null ? (
+        <ReplyPreview
+          author={replyTarget ? (replyTarget.outgoing ? 'Вы' : headerTitle) : 'Исходное сообщение'}
+          text={replyTarget ? getTelegramReplyPreviewText(replyTarget) : 'Исходное сообщение недоступно'}
+          accentColor={isMe ? 'rgba(255,255,255,0.9)' : colors.accent}
+          backgroundColor={isMe ? 'rgba(255,255,255,0.12)' : colors.inputBackground}
+          textColor={isMe ? 'rgba(255,255,255,0.82)' : colors.textSecondary}
+          authorColor={isMe ? '#FFFFFF' : colors.accent}
+          thumbnailUri={getTelegramReplyThumbnailUri(replyTarget)}
+        />
+      ) : null;
+      const handleReplyLongPress = () => {
+        if (item.messageId > 0) {
+          setReplyToMessageId(item.messageId);
+        }
+      };
+
       if (item.kind === 'voice') {
         if (!item.voiceUri) {
           return (
-            <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+            <Pressable
+              style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+              onLongPress={handleReplyLongPress}
+              delayLongPress={260}
+            >
               <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+                {replySnippet}
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
                 <MessageTimeStatus
                   time={formatTime(item.dateMs)}
@@ -685,11 +810,15 @@ export function TelegramChatScreen() {
                   iconColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
                 />
               </View>
-            </View>
+            </Pressable>
           );
         }
         return (
-          <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+          <Pressable
+            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+            onLongPress={handleReplyLongPress}
+            delayLongPress={260}
+          >
             <VoiceBubble
               uri={item.voiceUri}
               waveform={item.waveform ?? []}
@@ -697,6 +826,7 @@ export function TelegramChatScreen() {
               isMe={isMe}
               time={formatTime(item.dateMs)}
               status={item.status}
+              header={replySnippet}
               bubbleMeColor={colors.bubbleMe}
               outgoingTextColor="#FFFFFF"
               outgoingMetaColor="rgba(255,255,255,0.72)"
@@ -705,13 +835,17 @@ export function TelegramChatScreen() {
               incomingBubbleBorderColor={colors.bubbleOtherBorder}
               incomingDurationColor={colors.textSecondary}
             />
-          </View>
+          </Pressable>
         );
       }
 
       if (item.kind === 'image' && item.mediaUri) {
         return (
-          <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+          <Pressable
+            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+            onLongPress={handleReplyLongPress}
+            delayLongPress={260}
+          >
             <ImageBubble
               uri={item.mediaUri}
               isMe={isMe}
@@ -720,19 +854,24 @@ export function TelegramChatScreen() {
               caption={item.text}
               time={formatTime(item.dateMs)}
               status={item.status}
+              header={replySnippet}
               bubbleMeColor={colors.bubbleMe}
               outgoingTextColor="#FFFFFF"
               incomingBubbleBackground={colors.bubbleOther}
               incomingBubbleBorderColor={colors.bubbleOtherBorder}
               incomingCaptionTextColor={colors.textPrimary}
             />
-          </View>
+          </Pressable>
         );
       }
 
       if (item.kind === 'video' && item.mediaUri) {
         return (
-          <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+          <Pressable
+            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+            onLongPress={handleReplyLongPress}
+            delayLongPress={260}
+          >
             <VideoBubble
               uri={item.mediaUri}
               thumbnailUri={item.thumbnailUri ?? undefined}
@@ -743,19 +882,24 @@ export function TelegramChatScreen() {
               caption={item.text}
               time={formatTime(item.dateMs)}
               status={item.status}
+              header={replySnippet}
               bubbleMeColor={colors.bubbleMe}
               outgoingTextColor="#FFFFFF"
               incomingBubbleBackground={colors.bubbleOther}
               incomingBubbleBorderColor={colors.bubbleOtherBorder}
               incomingCaptionTextColor={colors.textPrimary}
             />
-          </View>
+          </Pressable>
         );
       }
 
       if (item.kind === 'file') {
         return (
-          <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+          <Pressable
+            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+            onLongPress={handleReplyLongPress}
+            delayLongPress={260}
+          >
             <View style={styles.fileBubbleWrap}>
               <FileBubble
                 fileName={item.fileName ?? 'File'}
@@ -765,6 +909,7 @@ export function TelegramChatScreen() {
                 caption={item.text}
                 time={formatTime(item.dateMs)}
                 status={item.status}
+                header={replySnippet}
                 bubbleMeColor={colors.bubbleMe}
                 outgoingTextColor="#FFFFFF"
                 outgoingMetaColor="rgba(255,255,255,0.72)"
@@ -776,13 +921,18 @@ export function TelegramChatScreen() {
                 incomingCaptionColor={colors.textPrimary}
               />
             </View>
-          </View>
+          </Pressable>
         );
       }
 
       return (
-        <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+        <Pressable
+          style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+          onLongPress={handleReplyLongPress}
+          delayLongPress={260}
+        >
           <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+            {replySnippet}
             <View style={styles.bubbleContentRow}>
               <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
               <MessageTimeStatus
@@ -795,10 +945,10 @@ export function TelegramChatScreen() {
               />
             </View>
           </View>
-        </View>
+        </Pressable>
       );
     },
-    [colors, styles],
+    [colors, headerTitle, messageById, styles],
   );
 
   return (
@@ -836,6 +986,9 @@ export function TelegramChatScreen() {
         onSendVoice={sendVoice}
         onSendMedia={sendMedia}
         onSendFile={sendFile}
+        replyToMessage={replyToInputMessage}
+        replyAuthorName={replyAuthorName}
+        onCancelReply={() => setReplyToMessageId(null)}
         placeholder="Сообщение"
       />
     </KeyboardAvoidingView>
