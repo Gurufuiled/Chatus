@@ -140,10 +140,12 @@ async function loadChatRow(chatId: number): Promise<TelegramDialogRow> {
     const date = typeof last?.date === 'number' ? last.date * 1000 : null;
     const unreadCount = typeof chat.unread_count === 'number' ? chat.unread_count : 0;
     const avatarFileId = getChatAvatarFileId(chat);
-    const avatarUri = avatarFileId != null ? await getLocalFilePath(avatarFileId).catch(() => null) : null;
     const { chatType, supergroupId, basicGroupId } = parseChatType(chat);
-    // Load member count for groups/channels in parallel with avatar (already done).
-    const memberCount = await loadMemberCount(supergroupId, basicGroupId);
+    // Run avatar download and member-count fetch in parallel to keep row load time low.
+    const [avatarUri, memberCount] = await Promise.all([
+      avatarFileId != null ? getLocalFilePath(avatarFileId).catch(() => null) : Promise.resolve(null),
+      loadMemberCount(supergroupId, basicGroupId),
+    ]);
     return {
       id: idStr,
       chatId: idStr,

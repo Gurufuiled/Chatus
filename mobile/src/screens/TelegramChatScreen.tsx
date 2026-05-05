@@ -14,6 +14,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
+import { getCachedUserName, setCachedUserName } from '../services/tdlib/userNameCache';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import type { Message } from '../stores/types';
 import type { ThemeColors } from '../theme/palettes';
@@ -231,11 +232,8 @@ async function downloadTdlibFile(fileId: number): Promise<string | null> {
 
 // ─── Sender name resolution (for group messages) ─────────────────────────────
 
-/** Module-level cache: TDLib user_id → display name. Persists across screen mounts. */
-const userNameCache = new Map<number, string>();
-
 async function resolveUserName(userId: number): Promise<string> {
-  const cached = userNameCache.get(userId);
+  const cached = getCachedUserName(userId);
   if (cached) return cached;
   try {
     const user = (await tdlibClient.send({
@@ -246,7 +244,7 @@ async function resolveUserName(userId: number): Promise<string> {
     const firstName = typeof user.first_name === 'string' ? user.first_name.trim() : '';
     const lastName = typeof user.last_name === 'string' ? user.last_name.trim() : '';
     const name = [firstName, lastName].filter(Boolean).join(' ') || `User ${userId}`;
-    userNameCache.set(userId, name);
+    setCachedUserName(userId, name);
     return name;
   } catch {
     return `User ${userId}`;
@@ -595,13 +593,19 @@ export function TelegramChatScreen() {
           chat_id: chatId,
         })) as Record<string, unknown>;
         throwIfTdError(chat);
-        // Posting permissions: can_send_basic_messages=false means read-only channel
+        // Determine if this is a broadcast channel so we can apply posting restriction.
+        // We check the chat type directly rather than `can_send_basic_messages` alone,
+        // because that field reflects member-level defaults and would incorrectly block
+        // admins. Full admin detection via getChatMember is a future improvement.
+        const type = getNestedRecord(chat.type);
+        const isBroadcastChannel =
+          type?.['@type'] === 'chatTypeSupergroup' && type?.is_channel === true;
         const perms = getNestedRecord(chat.permissions);
         if (!cancelled) {
-          setCanPost(perms?.can_send_basic_messages !== false);
+          // Read-only only for broadcast channels where members cannot send messages.
+          setCanPost(!isBroadcastChannel || perms?.can_send_basic_messages !== false);
         }
-        // Member/subscriber count via getSupergroup / getBasicGroup
-        const type = getNestedRecord(chat.type);
+        // Member/subscriber count via getSupergroup / getBasicGroup (reuse `type` from above)
         const typeKind = type?.['@type'];
         if (typeKind === 'chatTypeSupergroup') {
           const sgId = typeof type?.supergroup_id === 'number' ? type.supergroup_id : null;
