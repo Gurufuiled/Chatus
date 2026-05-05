@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PushService } from '../push/push.service';
@@ -23,7 +24,7 @@ import {
   type MappedMessage,
   type MappedMessageReaction,
 } from '../common/mappers';
-import { RelayPolicyConfig } from '../config';
+import { RelayPolicyConfig, type MailboxChatType } from '../config';
 
 const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   voice: MediaType.voice,
@@ -72,10 +73,14 @@ export interface CreateMessageOptions {
   threadRootMessageId?: string | null;
   isChannelPost?: boolean;
   transport?: Transport;
+  /** Caller-supplied chat type to skip an extra DB round-trip when already known. */
+  chatType?: MailboxChatType;
 }
 
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
@@ -203,6 +208,20 @@ export class MessagesService {
   ): Promise<MappedMessage> {
     await this.ensureChatMember(chatId, senderId);
 
+    const chatTypeStr: MailboxChatType = options?.chatType
+      ?? ((await this.prisma.chat.findUnique({
+          where: { id: chatId },
+          select: { chatType: true },
+        }).then((r) => r?.chatType ?? 'private')) as MailboxChatType);
+
+    const mailboxPolicy = this.relayPolicy.getEffectiveCachePolicy(chatTypeStr);
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(
+        `mailbox policy chatType=${chatTypeStr} ` +
+          `textCache=${mailboxPolicy.textCacheSeconds}s mediaCache=${mailboxPolicy.mediaCacheSeconds}s`,
+      );
+    }
+
     const prismaMsgType = this.toMessageType(msgType);
     const mediaItems = this.normalizeMediaItems(media);
     const defaultTransport = this.relayPolicy.getDefaultTransport();
@@ -293,6 +312,7 @@ export class MessagesService {
     return this.createMessage(channelId, senderId, msgType, content, media, null, undefined, {
       isChannelPost: true,
       transport: Transport.websocket,
+      chatType: 'channel',
     });
   }
 

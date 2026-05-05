@@ -120,9 +120,47 @@ export function loadRelayPolicyFromEnv(
   };
 }
 
+export type EffectiveCachePolicy = {
+  /** How long to keep text in server mailbox (0 = no enforced TTL). */
+  textCacheSeconds: number;
+  /** How long to keep media blobs in server mailbox (0 = no enforced TTL). */
+  mediaCacheSeconds: number;
+};
+
+/** Chat types understood by the policy resolver. */
+export type MailboxChatType = 'private' | 'group' | 'channel' | 'discussion';
+
+export function computeEffectiveCachePolicy(
+  snapshot: RelayPolicySnapshot,
+  chatType: MailboxChatType | string,
+): EffectiveCachePolicy {
+  if (chatType === 'group') {
+    return {
+      textCacheSeconds: snapshot.groupTextCacheSeconds ?? snapshot.textCacheSeconds,
+      mediaCacheSeconds: snapshot.mediaCacheSeconds,
+    };
+  }
+
+  if (chatType === 'channel' || chatType === 'discussion') {
+    return {
+      textCacheSeconds: snapshot.channelPostRetentionSeconds ?? snapshot.textCacheSeconds,
+      mediaCacheSeconds: snapshot.channelMediaMinRetentionSeconds ?? snapshot.mediaCacheSeconds,
+    };
+  }
+
+  return {
+    textCacheSeconds: snapshot.textCacheSeconds,
+    mediaCacheSeconds: snapshot.mediaCacheSeconds,
+  };
+}
+
 @Injectable()
 export class RelayPolicyConfig {
-  private readonly policy = loadRelayPolicyFromEnv();
+  private readonly policy: RelayPolicySnapshot;
+
+  constructor(snapshot?: RelayPolicySnapshot) {
+    this.policy = snapshot ?? loadRelayPolicyFromEnv();
+  }
 
   getPolicy(): RelayPolicySnapshot {
     return this.policy;
@@ -130,5 +168,14 @@ export class RelayPolicyConfig {
 
   getDefaultTransport(): Transport {
     return this.policy.defaultTransport;
+  }
+
+  /**
+   * Returns the effective mailbox cache policy for the given chat type.
+   * Group overrides fall back to the generic private-chat policy when not set.
+   * Channel/discussion share the channel retention settings.
+   */
+  getEffectiveCachePolicy(chatType: MailboxChatType | string): EffectiveCachePolicy {
+    return computeEffectiveCachePolicy(this.policy, chatType);
   }
 }

@@ -1,5 +1,9 @@
 import { Transport } from '@prisma/client';
-import { loadRelayPolicyFromEnv } from './relay-policy.config';
+import {
+  loadRelayPolicyFromEnv,
+  RelayPolicyConfig,
+  computeEffectiveCachePolicy,
+} from './relay-policy.config';
 
 describe('loadRelayPolicyFromEnv', () => {
   it('keeps current relay behaviour by default', () => {
@@ -49,6 +53,99 @@ describe('loadRelayPolicyFromEnv', () => {
       channelPostRetentionSeconds: 604800,
       channelMediaMinRetentionSeconds: 86400,
       fanoutMaxConcurrent: 8,
+    });
+  });
+
+  it('returns default policy (all zeros / no TTL) for all chat types when no overrides set', () => {
+    const snapshot = loadRelayPolicyFromEnv({});
+
+    expect(computeEffectiveCachePolicy(snapshot, 'private')).toEqual({
+      textCacheSeconds: 0,
+      mediaCacheSeconds: 0,
+    });
+    expect(computeEffectiveCachePolicy(snapshot, 'group')).toEqual({
+      textCacheSeconds: 0,
+      mediaCacheSeconds: 0,
+    });
+    expect(computeEffectiveCachePolicy(snapshot, 'channel')).toEqual({
+      textCacheSeconds: 0,
+      mediaCacheSeconds: 0,
+    });
+    expect(computeEffectiveCachePolicy(snapshot, 'discussion')).toEqual({
+      textCacheSeconds: 0,
+      mediaCacheSeconds: 0,
+    });
+  });
+
+  it('applies group and channel overrides and resolves per-type effective policy', () => {
+    const snapshot = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+      RELAY_MEDIA_CACHE_SECONDS: '7200',
+      RELAY_GROUP_TEXT_CACHE_SECONDS: '1800',
+      RELAY_CHANNEL_POST_RETENTION_SECONDS: '604800',
+      RELAY_CHANNEL_MEDIA_MIN_RETENTION_SECONDS: '86400',
+    });
+
+    expect(computeEffectiveCachePolicy(snapshot, 'private')).toEqual({
+      textCacheSeconds: 3600,
+      mediaCacheSeconds: 7200,
+    });
+    expect(computeEffectiveCachePolicy(snapshot, 'group')).toEqual({
+      textCacheSeconds: 1800,
+      mediaCacheSeconds: 7200,
+    });
+    expect(computeEffectiveCachePolicy(snapshot, 'channel')).toEqual({
+      textCacheSeconds: 604800,
+      mediaCacheSeconds: 86400,
+    });
+    expect(computeEffectiveCachePolicy(snapshot, 'discussion')).toEqual({
+      textCacheSeconds: 604800,
+      mediaCacheSeconds: 86400,
+    });
+  });
+
+  it('group falls back to generic textCacheSeconds when RELAY_GROUP_TEXT_CACHE_SECONDS not set', () => {
+    const snapshot = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+      RELAY_MEDIA_CACHE_SECONDS: '7200',
+    });
+
+    expect(computeEffectiveCachePolicy(snapshot, 'group')).toEqual({
+      textCacheSeconds: 3600,
+      mediaCacheSeconds: 7200,
+    });
+  });
+
+  it('channel/discussion fall back to generic cache seconds when channel-specific keys not set', () => {
+    const snapshot = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+      RELAY_MEDIA_CACHE_SECONDS: '7200',
+    });
+
+    expect(computeEffectiveCachePolicy(snapshot, 'channel')).toEqual({
+      textCacheSeconds: 3600,
+      mediaCacheSeconds: 7200,
+    });
+    expect(computeEffectiveCachePolicy(snapshot, 'discussion')).toEqual({
+      textCacheSeconds: 3600,
+      mediaCacheSeconds: 7200,
+    });
+  });
+
+  it('RelayPolicyConfig.getEffectiveCachePolicy delegates to computeEffectiveCachePolicy', () => {
+    const snapshot = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '1000',
+      RELAY_GROUP_TEXT_CACHE_SECONDS: '500',
+    });
+    const config = new RelayPolicyConfig(snapshot);
+
+    expect(config.getEffectiveCachePolicy('group')).toEqual({
+      textCacheSeconds: 500,
+      mediaCacheSeconds: 0,
+    });
+    expect(config.getEffectiveCachePolicy('private')).toEqual({
+      textCacheSeconds: 1000,
+      mediaCacheSeconds: 0,
     });
   });
 

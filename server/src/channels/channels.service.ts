@@ -1278,6 +1278,7 @@ export class ChannelsService {
       {
         threadRootMessageId: postId,
         transport: Transport.websocket,
+        chatType: 'discussion',
       },
     );
 
