@@ -1,11 +1,26 @@
+import * as Clipboard from 'expo-clipboard';
+import Feather from '@expo/vector-icons/Feather';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Animated,
+  FlatList,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChatsStackParamList } from '../navigation/types';
+import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
 import { FileBubble } from '../components/FileBubble';
 import { ImageBubble } from '../components/ImageBubble';
 import { InputBar, type FilePickResult, type MediaPickResult } from '../components/InputBar';
@@ -25,7 +40,16 @@ import type { ThemeColors } from '../theme/palettes';
 import { DEFAULT_CHAT_THEME_ID } from '../theme/chatThemes';
 import { withAlpha } from '../theme/stylePrimitives';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
-import { ChatBackgroundPattern } from './chatScreen.shared';
+import {
+  ChatBackgroundPattern,
+  estimateMenuCardHeight,
+  getCopyableContent,
+  MENU_EDGE_GAP,
+  MENU_HEIGHT,
+  MENU_WIDTH,
+  SCREEN_HEIGHT,
+  SCREEN_WIDTH,
+} from './chatScreen.shared';
 import {
   CHAT_BUBBLE_MAX_WIDTH_PCT,
   CHAT_MSG_GROUP_TIME_GAP_MS,
@@ -61,6 +85,19 @@ type TelegramMessageRow = {
   /** Post view count from TDLib `interaction_info.view_count` (channel posts). */
   viewCount?: number;
 };
+
+/** Same layout contract as `ChatScreen` context menu — drives `ChatContextMenuOverlay`. */
+type TelegramMessageMenuState = {
+  messageId: string;
+  isMe: boolean;
+  previewTop: number;
+  previewLeft: number;
+  previewWidth: number;
+  previewHeight: number;
+  menuTop: number;
+  menuLeft: number;
+  placement: 'above' | 'below';
+} | null;
 
 function getNestedRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
@@ -434,21 +471,30 @@ function getTelegramReplyThumbnailUri(row: TelegramMessageRow | null | undefined
 }
 
 function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: number): Message {
-  const media =
-    row.kind === 'image' || row.kind === 'video' || row.kind === 'file'
-      ? [
-          {
-            media_type: row.kind,
-            remote_url: row.mediaUri ?? undefined,
-            thumbnail_url: row.thumbnailUri ?? undefined,
-            width: row.width,
-            height: row.height,
-            duration_ms: row.durationMs,
-            file_name: row.fileName,
-            file_size: row.fileSize,
-          },
-        ]
-      : undefined;
+  let media: Message['media'] | undefined;
+  if (row.kind === 'image' || row.kind === 'video' || row.kind === 'file') {
+    media = [
+      {
+        media_type: row.kind,
+        remote_url: row.mediaUri ?? undefined,
+        thumbnail_url: row.thumbnailUri ?? undefined,
+        width: row.width,
+        height: row.height,
+        duration_ms: row.durationMs,
+        file_name: row.fileName,
+        file_size: row.fileSize,
+      },
+    ];
+  } else if (row.kind === 'voice') {
+    media = [
+      {
+        media_type: 'voice',
+        remote_url: row.voiceUri ?? undefined,
+        duration_ms: row.durationMs,
+        waveform: row.waveform,
+      },
+    ];
+  }
 
   return {
     id: String(row.messageId),
@@ -556,6 +602,11 @@ export function TelegramChatScreen() {
   const mountedRef = useRef(true);
   /** Ref kept in sync with `messages` so renderItem can read adjacent rows without a dep on `messages`. */
   const messagesRef = useRef<TelegramMessageRow[]>([]);
+  const [menuState, setMenuState] = useState<TelegramMessageMenuState>(null);
+  const menuAnim = useRef(new Animated.Value(0)).current;
+  const messageContentRefs = useRef<Record<string, View | null>>({});
+  /** Bottom composer chrome height — drives context-menu placement above the input bar. */
+  const [inputBarHeight, setInputBarHeight] = useState(88);
 
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
   const headerSubtitle = useMemo(() => {
@@ -579,6 +630,60 @@ export function TelegramChatScreen() {
     [chatId, replyToRow],
   );
   const replyAuthorName = replyToRow ? (replyToRow.outgoing ? 'Вы' : headerTitle) : null;
+
+  const activeMenuMessage = useMemo(() => {
+    if (!menuState) return null;
+    const row = messages.find((m) => m.id === menuState.messageId);
+    return row ? telegramRowToInputReplyMessage(row, chatId) : null;
+  }, [chatId, menuState, messages]);
+
+  const telegramMenuActions = useMemo(
+    () => [
+      {
+        key: 'reply',
+        label: 'Ответить',
+        icon: 'corner-left-up' as React.ComponentProps<typeof Feather>['name'],
+        color: colors.textPrimary,
+        disabled: false,
+      },
+      {
+        key: 'copy',
+        label: 'Скопировать',
+        icon: 'copy' as React.ComponentProps<typeof Feather>['name'],
+        color: colors.textPrimary,
+        disabled: false,
+      },
+      {
+        key: 'pin',
+        label: 'Закрепить',
+        icon: 'bookmark' as React.ComponentProps<typeof Feather>['name'],
+        color: colors.iconMuted,
+        disabled: true,
+      },
+      {
+        key: 'forward',
+        label: 'Переслать',
+        icon: 'corner-up-right' as React.ComponentProps<typeof Feather>['name'],
+        color: colors.iconMuted,
+        disabled: true,
+      },
+      {
+        key: 'delete',
+        label: 'Удалить',
+        icon: 'trash-2' as React.ComponentProps<typeof Feather>['name'],
+        color: colors.iconMuted,
+        disabled: true,
+      },
+      {
+        key: 'select',
+        label: 'Выбрать',
+        icon: 'check-circle' as React.ComponentProps<typeof Feather>['name'],
+        color: colors.iconMuted,
+        disabled: true,
+      },
+    ],
+    [colors.iconMuted, colors.textPrimary],
+  );
 
   useLayoutEffect(() => {
     const initialChar = (headerTitle.trim()[0] || '?').toUpperCase();
@@ -986,6 +1091,300 @@ export function TelegramChatScreen() {
     [sendInputMessageContent],
   );
 
+  const setMessageContentRef = useCallback((messageId: string, node: View | null) => {
+    if (node) {
+      messageContentRefs.current[messageId] = node;
+    } else {
+      delete messageContentRefs.current[messageId];
+    }
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    Animated.timing(menuAnim, {
+      toValue: 0,
+      duration: 140,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setMenuState(null);
+      }
+    });
+  }, [menuAnim]);
+
+  useEffect(() => {
+    if (!menuState) {
+      menuAnim.setValue(0);
+      return;
+    }
+    Animated.spring(menuAnim, {
+      toValue: 1,
+      damping: 18,
+      stiffness: 220,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start();
+  }, [menuAnim, menuState]);
+
+  const openTelegramMessageMenu = useCallback(
+    (row: TelegramMessageRow) => {
+      if (row.messageId <= 0) return;
+      const target = messageContentRefs.current[row.id];
+      if (!target) return;
+      Keyboard.dismiss();
+      target.measureInWindow((pageX, pageY, width, height) => {
+        const menuGap = 4;
+        const menuCardHeight = Math.max(MENU_HEIGHT, estimateMenuCardHeight(2)) + 10;
+        const bottomSafety = 28;
+        const composerOffset = inputBarHeight + Math.max(insets.bottom, 12);
+        const effectiveBottom = SCREEN_HEIGHT - (composerOffset + bottomSafety);
+        const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
+        const previewLeft = Math.max(
+          MENU_EDGE_GAP,
+          Math.min(pageX, SCREEN_WIDTH - previewWidth - MENU_EDGE_GAP),
+        );
+        const minPreviewTop = Math.max(insets.top + 12, MENU_EDGE_GAP);
+        const spaceForPreview = effectiveBottom - minPreviewTop - menuGap - menuCardHeight;
+        const previewDisplayHeight = Math.min(height, Math.max(0, spaceForPreview));
+        const columnBelowPreview = previewDisplayHeight + menuGap + menuCardHeight;
+        let previewTop = Math.min(pageY, effectiveBottom - columnBelowPreview);
+        previewTop = Math.max(minPreviewTop, previewTop);
+        if (previewTop + columnBelowPreview > effectiveBottom) {
+          previewTop = Math.max(MENU_EDGE_GAP, effectiveBottom - columnBelowPreview);
+        }
+        const menuTop = previewTop + previewDisplayHeight + menuGap;
+        const menuLeftBase = row.outgoing
+          ? previewLeft + previewWidth - MENU_WIDTH
+          : previewLeft;
+        const menuLeft = Math.max(
+          MENU_EDGE_GAP,
+          Math.min(menuLeftBase, SCREEN_WIDTH - MENU_WIDTH - MENU_EDGE_GAP),
+        );
+        setMenuState({
+          messageId: row.id,
+          isMe: row.outgoing,
+          previewTop,
+          previewLeft,
+          previewWidth,
+          previewHeight: previewDisplayHeight,
+          menuTop,
+          menuLeft,
+          placement: 'below',
+        });
+      });
+    },
+    [insets.bottom, insets.top, inputBarHeight],
+  );
+
+  const handleTelegramMenuAction = useCallback(
+    async (key: string) => {
+      if (!activeMenuMessage) return;
+      switch (key) {
+        case 'reply': {
+          const id = Number.parseInt(activeMenuMessage.id, 10);
+          if (Number.isFinite(id) && id > 0) {
+            setReplyToMessageId(id);
+          }
+          closeMenu();
+          return;
+        }
+        case 'copy': {
+          const value = getCopyableContent(activeMenuMessage);
+          closeMenu();
+          if (!value) {
+            Alert.alert('Нечего копировать', 'В этом сообщении нет текста для копирования.');
+            return;
+          }
+          await Clipboard.setStringAsync(value);
+          return;
+        }
+        default:
+          return;
+      }
+    },
+    [activeMenuMessage, closeMenu],
+  );
+
+  const renderTelegramMenuPreviewBody = useCallback(
+    (message: Message, forcedWidth?: number) => {
+      const row = messagesRef.current.find((r) => r.id === message.id);
+      if (!row) return <View />;
+      const fixedWidthStyle = forcedWidth ? { width: forcedWidth, maxWidth: forcedWidth } : undefined;
+      const isMe = row.outgoing;
+      const replyTarget =
+        row.replyToMessageId != null ? messageById.get(row.replyToMessageId) ?? null : null;
+      const replySnippet =
+        row.replyToMessageId != null ? (
+          <ReplyPreview
+            author={replyTarget ? (replyTarget.outgoing ? 'Вы' : headerTitle) : 'Исходное сообщение'}
+            text={replyTarget ? getTelegramReplyPreviewText(replyTarget) : 'Исходное сообщение недоступно'}
+            accentColor={isMe ? withAlpha('#FFFFFF', 0.9) : colors.accent}
+            backgroundColor={isMe ? withAlpha('#FFFFFF', 0.12) : colors.inputBackground}
+            textColor={isMe ? withAlpha('#FFFFFF', 0.82) : colors.textSecondary}
+            authorColor={isMe ? '#FFFFFF' : colors.accent}
+            thumbnailUri={getTelegramReplyThumbnailUri(replyTarget)}
+          />
+        ) : null;
+      const senderNameNode =
+        !isMe && row.senderName && isGroupChat ? (
+          <Text style={styles.senderNameText} numberOfLines={1}>
+            {row.senderName}
+          </Text>
+        ) : null;
+      const bubbleHeader =
+        senderNameNode || replySnippet ? (
+          <>
+            {senderNameNode}
+            {replySnippet}
+          </>
+        ) : null;
+      const textBubbleColorStyle = isMe ? styles.bubbleMe : styles.bubbleOther;
+      const viewCountFormatted =
+        row.viewCount != null
+          ? row.viewCount >= 1_000_000
+            ? `${(row.viewCount / 1_000_000).toFixed(1)}M`
+            : row.viewCount >= 1_000
+              ? `${(row.viewCount / 1_000).toFixed(1)}K`
+              : String(row.viewCount)
+          : null;
+
+      if (row.kind === 'voice') {
+        if (!row.voiceUri) {
+          return (
+            <View style={fixedWidthStyle}>
+              <View style={[styles.bubble, textBubbleColorStyle]}>
+                {bubbleHeader}
+                <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
+                <MessageTimeStatus
+                  time={formatTime(row.dateMs)}
+                  status={row.status}
+                  isMe={isMe}
+                  compact
+                  timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                  iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                />
+              </View>
+            </View>
+          );
+        }
+        return (
+          <View style={fixedWidthStyle}>
+            <VoiceBubble
+              uri={row.voiceUri}
+              waveform={row.waveform ?? []}
+              durationMs={row.durationMs ?? 0}
+              isMe={isMe}
+              time={formatTime(row.dateMs)}
+              status={row.status}
+              header={bubbleHeader}
+              bubbleMeColor={colors.bubbleMe}
+              outgoingTextColor="#FFFFFF"
+              outgoingMetaColor={colors.textSecondaryMuted}
+              outgoingAccentColor="#FFFFFF"
+              incomingBubbleBackground={colors.bubbleOther}
+              incomingBubbleBorderColor={colors.bubbleOtherBorder}
+              incomingDurationColor={colors.textSecondary}
+            />
+          </View>
+        );
+      }
+
+      if (row.kind === 'image' && row.mediaUri) {
+        return (
+          <View style={fixedWidthStyle}>
+            <ImageBubble
+              uri={row.mediaUri}
+              isMe={isMe}
+              width={row.width}
+              height={row.height}
+              caption={row.text}
+              time={formatTime(row.dateMs)}
+              status={row.status}
+              header={bubbleHeader}
+              bubbleMeColor={colors.bubbleMe}
+              outgoingTextColor="#FFFFFF"
+              incomingBubbleBackground={colors.bubbleOther}
+              incomingBubbleBorderColor={colors.bubbleOtherBorder}
+              incomingCaptionTextColor={colors.textPrimary}
+            />
+          </View>
+        );
+      }
+
+      if (row.kind === 'video' && row.mediaUri) {
+        return (
+          <View style={fixedWidthStyle}>
+            <VideoBubble
+              uri={row.mediaUri}
+              thumbnailUri={row.thumbnailUri ?? undefined}
+              isMe={isMe}
+              width={row.width}
+              height={row.height}
+              durationMs={row.durationMs ?? 0}
+              caption={row.text}
+              time={formatTime(row.dateMs)}
+              status={row.status}
+              header={bubbleHeader}
+              bubbleMeColor={colors.bubbleMe}
+              outgoingTextColor="#FFFFFF"
+              incomingBubbleBackground={colors.bubbleOther}
+              incomingBubbleBorderColor={colors.bubbleOtherBorder}
+              incomingCaptionTextColor={colors.textPrimary}
+            />
+          </View>
+        );
+      }
+
+      if (row.kind === 'file') {
+        return (
+          <View style={[styles.fileBubbleWrap, fixedWidthStyle]}>
+            <FileBubble
+              fileName={row.fileName ?? 'File'}
+              fileSize={row.fileSize}
+              uri={row.mediaUri ?? undefined}
+              isMe={isMe}
+              caption={row.text}
+              time={formatTime(row.dateMs)}
+              status={row.status}
+              header={bubbleHeader}
+              bubbleMeColor={colors.bubbleMe}
+              outgoingTextColor="#FFFFFF"
+              outgoingMetaColor={colors.textSecondaryMuted}
+              outgoingAccentColor="#FFFFFF"
+              incomingBubbleBackground={colors.bubbleOther}
+              incomingBubbleBorderColor={colors.bubbleOtherBorder}
+              incomingFileNameColor={colors.textPrimary}
+              incomingSecondaryTextColor={colors.textSecondary}
+              incomingCaptionColor={colors.textPrimary}
+            />
+          </View>
+        );
+      }
+
+      return (
+        <View style={fixedWidthStyle}>
+          <View style={[styles.bubble, textBubbleColorStyle]}>
+            {bubbleHeader}
+            <View style={styles.bubbleContentRow}>
+              <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{row.text || ' '}</Text>
+              {viewCountFormatted ? (
+                <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{`👁 ${viewCountFormatted}`}</Text>
+              ) : null}
+              <MessageTimeStatus
+                time={formatTime(row.dateMs)}
+                status={row.status}
+                isMe={isMe}
+                compact
+                timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+              />
+            </View>
+          </View>
+        </View>
+      );
+    },
+    [colors, headerTitle, isGroupChat, messageById, styles],
+  );
+
   const renderItem = useCallback(
     ({ item, index }: { item: TelegramMessageRow; index: number }) => {
       const isMe = item.outgoing;
@@ -1015,10 +1414,8 @@ export function TelegramChatScreen() {
           thumbnailUri={getTelegramReplyThumbnailUri(replyTarget)}
         />
       ) : null;
-      const handleReplyLongPress = () => {
-        if (item.messageId > 0) {
-          setReplyToMessageId(item.messageId);
-        }
+      const handleOpenMessageMenu = () => {
+        openTelegramMessageMenu(item);
       };
 
       // Sender name header — shown for incoming messages when we have a name and the chat
@@ -1059,8 +1456,8 @@ export function TelegramChatScreen() {
       // Pressable accessibility props shared across all message types
       const pressableA11y = {
         accessibilityRole: 'button' as const,
-        accessibilityHint: 'Удерживайте для ответа',
-        onLongPress: handleReplyLongPress,
+        accessibilityHint: 'Удерживайте для меню сообщения',
+        onLongPress: handleOpenMessageMenu,
         delayLongPress: 260,
       };
       // Text-bubble colour: tail variant (last in group / alone) vs chained (no tail)
@@ -1076,7 +1473,11 @@ export function TelegramChatScreen() {
               style={rowStyle}
               accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
             >
-              <View style={[styles.bubble, textBubbleColorStyle]}>
+              <View
+                ref={(node) => setMessageContentRef(item.id, node)}
+                collapsable={false}
+                style={[styles.bubble, textBubbleColorStyle]}
+              >
                 {bubbleHeader}
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
                 <MessageTimeStatus
@@ -1097,22 +1498,24 @@ export function TelegramChatScreen() {
             style={rowStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
           >
-            <VoiceBubble
-              uri={item.voiceUri}
-              waveform={item.waveform ?? []}
-              durationMs={item.durationMs ?? 0}
-              isMe={isMe}
-              time={formatTime(item.dateMs)}
-              status={item.status}
-              header={bubbleHeader}
-              bubbleMeColor={colors.bubbleMe}
-              outgoingTextColor="#FFFFFF"
-              outgoingMetaColor={colors.textSecondaryMuted}
-              outgoingAccentColor="#FFFFFF"
-              incomingBubbleBackground={colors.bubbleOther}
-              incomingBubbleBorderColor={colors.bubbleOtherBorder}
-              incomingDurationColor={colors.textSecondary}
-            />
+            <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
+              <VoiceBubble
+                uri={item.voiceUri}
+                waveform={item.waveform ?? []}
+                durationMs={item.durationMs ?? 0}
+                isMe={isMe}
+                time={formatTime(item.dateMs)}
+                status={item.status}
+                header={bubbleHeader}
+                bubbleMeColor={colors.bubbleMe}
+                outgoingTextColor="#FFFFFF"
+                outgoingMetaColor={colors.textSecondaryMuted}
+                outgoingAccentColor="#FFFFFF"
+                incomingBubbleBackground={colors.bubbleOther}
+                incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                incomingDurationColor={colors.textSecondary}
+              />
+            </View>
           </Pressable>
         );
       }
@@ -1124,21 +1527,23 @@ export function TelegramChatScreen() {
             style={rowStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: фото${item.text ? `, ${item.text}` : ''}`}
           >
-            <ImageBubble
-              uri={item.mediaUri}
-              isMe={isMe}
-              width={item.width}
-              height={item.height}
-              caption={item.text}
-              time={formatTime(item.dateMs)}
-              status={item.status}
-              header={bubbleHeader}
-              bubbleMeColor={colors.bubbleMe}
-              outgoingTextColor="#FFFFFF"
-              incomingBubbleBackground={colors.bubbleOther}
-              incomingBubbleBorderColor={colors.bubbleOtherBorder}
-              incomingCaptionTextColor={colors.textPrimary}
-            />
+            <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
+              <ImageBubble
+                uri={item.mediaUri}
+                isMe={isMe}
+                width={item.width}
+                height={item.height}
+                caption={item.text}
+                time={formatTime(item.dateMs)}
+                status={item.status}
+                header={bubbleHeader}
+                bubbleMeColor={colors.bubbleMe}
+                outgoingTextColor="#FFFFFF"
+                incomingBubbleBackground={colors.bubbleOther}
+                incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                incomingCaptionTextColor={colors.textPrimary}
+              />
+            </View>
           </Pressable>
         );
       }
@@ -1150,23 +1555,25 @@ export function TelegramChatScreen() {
             style={rowStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: видео${item.text ? `, ${item.text}` : ''}`}
           >
-            <VideoBubble
-              uri={item.mediaUri}
-              thumbnailUri={item.thumbnailUri ?? undefined}
-              isMe={isMe}
-              width={item.width}
-              height={item.height}
-              durationMs={item.durationMs ?? 0}
-              caption={item.text}
-              time={formatTime(item.dateMs)}
-              status={item.status}
-              header={bubbleHeader}
-              bubbleMeColor={colors.bubbleMe}
-              outgoingTextColor="#FFFFFF"
-              incomingBubbleBackground={colors.bubbleOther}
-              incomingBubbleBorderColor={colors.bubbleOtherBorder}
-              incomingCaptionTextColor={colors.textPrimary}
-            />
+            <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
+              <VideoBubble
+                uri={item.mediaUri}
+                thumbnailUri={item.thumbnailUri ?? undefined}
+                isMe={isMe}
+                width={item.width}
+                height={item.height}
+                durationMs={item.durationMs ?? 0}
+                caption={item.text}
+                time={formatTime(item.dateMs)}
+                status={item.status}
+                header={bubbleHeader}
+                bubbleMeColor={colors.bubbleMe}
+                outgoingTextColor="#FFFFFF"
+                incomingBubbleBackground={colors.bubbleOther}
+                incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                incomingCaptionTextColor={colors.textPrimary}
+              />
+            </View>
           </Pressable>
         );
       }
@@ -1178,7 +1585,7 @@ export function TelegramChatScreen() {
             style={rowStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: файл ${item.fileName ?? ''}`}
           >
-            <View style={styles.fileBubbleWrap}>
+            <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false} style={styles.fileBubbleWrap}>
               <FileBubble
                 fileName={item.fileName ?? 'File'}
                 fileSize={item.fileSize}
@@ -1209,7 +1616,11 @@ export function TelegramChatScreen() {
           style={rowStyle}
           accessibilityLabel={`${isMe ? 'Я' : headerTitle}: ${item.text || 'сообщение'}`}
         >
-          <View style={[styles.bubble, textBubbleColorStyle]}>
+          <View
+            ref={(node) => setMessageContentRef(item.id, node)}
+            collapsable={false}
+            style={[styles.bubble, textBubbleColorStyle]}
+          >
             {bubbleHeader}
             <View style={styles.bubbleContentRow}>
               <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
@@ -1231,10 +1642,11 @@ export function TelegramChatScreen() {
         </Pressable>
       );
     },
-    [colors, headerTitle, isGroupChat, messageById, styles],
+    [colors, headerTitle, isGroupChat, messageById, openTelegramMessageMenu, setMessageContentRef, styles],
   );
 
   return (
+    <View style={{ flex: 1 }}>
     <KeyboardAvoidingView
       // Android inherits window soft resize from the host Activity (`adjustResize`), so RN's KeyboardAvoidingView
       // is unnecessary and tends to conflict; iOS keeps the composer readable with measured header offset.
@@ -1266,7 +1678,13 @@ export function TelegramChatScreen() {
             </View>
           }
         />
-        <View style={[styles.bottomChrome, { paddingBottom: insets.bottom }]}>
+        <View
+          style={[styles.bottomChrome, { paddingBottom: insets.bottom }]}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) setInputBarHeight(Math.ceil(h));
+          }}
+        >
           {loadingOlder ? (
             <Text style={styles.loadingOlder}>Загружаем старые сообщения...</Text>
           ) : null}
@@ -1289,6 +1707,18 @@ export function TelegramChatScreen() {
         </View>
       </View>
     </KeyboardAvoidingView>
+    <ChatContextMenuOverlay
+      menuState={menuState}
+      activeMenuMessage={activeMenuMessage}
+      menuActions={telegramMenuActions}
+      menuAnim={menuAnim}
+      screenWidth={SCREEN_WIDTH}
+      showReactions={false}
+      onClose={closeMenu}
+      onMenuAction={handleTelegramMenuAction}
+      renderMenuPreviewBody={renderTelegramMenuPreviewBody}
+    />
+    </View>
   );
 }
 
