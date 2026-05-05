@@ -62,3 +62,26 @@ export const composerPresentation = {
   shellBorderRadius: 27,
   shellMinHeight: 54,
 };
+
+// ─── Message feed layout ─────────────────────────────────────────────────────
+
+/** Horizontal padding of the message list container. */
+export const CHAT_MSG_HORIZONTAL_PADDING = 8;
+
+/** Vertical padding at top and bottom of the message list. */
+export const CHAT_MSG_VERTICAL_PADDING = 12;
+
+/** Max bubble width as a percentage string (mirrors the 84% cap in ChatScreen). */
+export const CHAT_BUBBLE_MAX_WIDTH_PCT = '84%';
+
+/** marginVertical for a standalone (isolated) message row or at group boundaries. */
+export const CHAT_MSG_ROW_MARGIN_ISOLATED = 3;
+
+/** marginVertical for a message row inside a same-author chain. */
+export const CHAT_MSG_ROW_MARGIN_GROUPED = 1;
+
+/**
+ * Maximum time gap (ms) between two consecutive messages from the same author
+ * for them to be considered part of the same visual group chain.
+ */
+export const CHAT_MSG_GROUP_TIME_GAP_MS = 60_000;

@@ -17,6 +17,14 @@ import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import type { Message } from '../stores/types';
 import type { ThemeColors } from '../theme/palettes';
+import {
+  CHAT_BUBBLE_MAX_WIDTH_PCT,
+  CHAT_MSG_GROUP_TIME_GAP_MS,
+  CHAT_MSG_HORIZONTAL_PADDING,
+  CHAT_MSG_ROW_MARGIN_GROUPED,
+  CHAT_MSG_ROW_MARGIN_ISOLATED,
+  CHAT_MSG_VERTICAL_PADDING,
+} from '../presentation/telegramChatUi';
 
 type TelegramMessageKind = 'text' | 'voice' | 'image' | 'video' | 'file' | 'service';
 type TelegramMessageStatus = 'sending' | 'sent' | 'read' | 'failed';
@@ -399,6 +407,22 @@ function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: number)
   };
 }
 
+/**
+ * Returns true when two adjacent messages belong to the same visual group chain:
+ * same direction (both outgoing or both incoming) and sent within the grouping
+ * time window.
+ */
+function isSameGroup(
+  a: TelegramMessageRow | undefined,
+  b: TelegramMessageRow,
+): boolean {
+  return (
+    a != null &&
+    a.outgoing === b.outgoing &&
+    Math.abs(a.dateMs - b.dateMs) < CHAT_MSG_GROUP_TIME_GAP_MS
+  );
+}
+
 function upsertMessage(
   rows: TelegramMessageRow[],
   next: TelegramMessageRow,
@@ -450,6 +474,8 @@ export function TelegramChatScreen() {
   const oldestMessageIdRef = useRef<number>(0);
   const lastReadOutboxMessageIdRef = useRef<number>(0);
   const mountedRef = useRef(true);
+  /** Ref kept in sync with `messages` so renderItem can read adjacent rows without a dep on `messages`. */
+  const messagesRef = useRef<TelegramMessageRow[]>([]);
 
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
   const messageById = useMemo(() => {
@@ -465,6 +491,10 @@ export function TelegramChatScreen() {
     [chatId, replyToRow],
   );
   const replyAuthorName = replyToRow ? (replyToRow.outgoing ? 'Вы' : headerTitle) : null;
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     return () => {
@@ -770,8 +800,22 @@ export function TelegramChatScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: TelegramMessageRow }) => {
+    ({ item, index }: { item: TelegramMessageRow; index: number }) => {
       const isMe = item.outgoing;
+
+      // ── Group-chain detection ──────────────────────────────────────────────
+      // messages[] is sorted descending (index 0 = most recent).
+      // With inverted FlatList: higher index → displayed higher on screen (older).
+      // "above on screen" = messages[index + 1] (older)
+      // "below on screen" = messages[index - 1] (newer)
+      const msgs = messagesRef.current;
+      const isGroupedAbove = isSameGroup(msgs[index + 1], item);
+      const isGroupedBelow = isSameGroup(msgs[index - 1], item);
+      // The tail (asymmetric corner) belongs to the BOTTOM-most message in the chain.
+      const isLastInGroup = !isGroupedBelow;
+      const marginTop = isGroupedAbove ? CHAT_MSG_ROW_MARGIN_GROUPED : CHAT_MSG_ROW_MARGIN_ISOLATED;
+      const marginBottom = isGroupedBelow ? CHAT_MSG_ROW_MARGIN_GROUPED : CHAT_MSG_ROW_MARGIN_ISOLATED;
+
       const replyTarget = item.replyToMessageId != null ? messageById.get(item.replyToMessageId) ?? null : null;
       const replySnippet = item.replyToMessageId != null ? (
         <ReplyPreview
@@ -790,15 +834,32 @@ export function TelegramChatScreen() {
         }
       };
 
+      // Shared row style: static layout + dynamic group-aware spacing
+      const rowStyle = [
+        styles.messageRow,
+        isMe ? styles.messageRowMe : styles.messageRowOther,
+        { marginTop, marginBottom },
+      ];
+      // Pressable accessibility props shared across all message types
+      const pressableA11y = {
+        accessibilityRole: 'button' as const,
+        onLongPress: handleReplyLongPress,
+        delayLongPress: 260,
+      };
+      // Text-bubble colour: tail variant (last in group / alone) vs chained (no tail)
+      const textBubbleColorStyle = isMe
+        ? (isLastInGroup ? styles.bubbleMe : styles.bubbleMeChained)
+        : (isLastInGroup ? styles.bubbleOther : styles.bubbleOtherChained);
+
       if (item.kind === 'voice') {
         if (!item.voiceUri) {
           return (
             <Pressable
-              style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
-              onLongPress={handleReplyLongPress}
-              delayLongPress={260}
+              {...pressableA11y}
+              style={rowStyle}
+              accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
             >
-              <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+              <View style={[styles.bubble, textBubbleColorStyle]}>
                 {replySnippet}
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
                 <MessageTimeStatus
@@ -815,9 +876,9 @@ export function TelegramChatScreen() {
         }
         return (
           <Pressable
-            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
-            onLongPress={handleReplyLongPress}
-            delayLongPress={260}
+            {...pressableA11y}
+            style={rowStyle}
+            accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
           >
             <VoiceBubble
               uri={item.voiceUri}
@@ -842,9 +903,9 @@ export function TelegramChatScreen() {
       if (item.kind === 'image' && item.mediaUri) {
         return (
           <Pressable
-            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
-            onLongPress={handleReplyLongPress}
-            delayLongPress={260}
+            {...pressableA11y}
+            style={rowStyle}
+            accessibilityLabel={`${isMe ? 'Я' : headerTitle}: фото${item.text ? `, ${item.text}` : ''}`}
           >
             <ImageBubble
               uri={item.mediaUri}
@@ -868,9 +929,9 @@ export function TelegramChatScreen() {
       if (item.kind === 'video' && item.mediaUri) {
         return (
           <Pressable
-            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
-            onLongPress={handleReplyLongPress}
-            delayLongPress={260}
+            {...pressableA11y}
+            style={rowStyle}
+            accessibilityLabel={`${isMe ? 'Я' : headerTitle}: видео${item.text ? `, ${item.text}` : ''}`}
           >
             <VideoBubble
               uri={item.mediaUri}
@@ -896,9 +957,9 @@ export function TelegramChatScreen() {
       if (item.kind === 'file') {
         return (
           <Pressable
-            style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
-            onLongPress={handleReplyLongPress}
-            delayLongPress={260}
+            {...pressableA11y}
+            style={rowStyle}
+            accessibilityLabel={`${isMe ? 'Я' : headerTitle}: файл ${item.fileName ?? ''}`}
           >
             <View style={styles.fileBubbleWrap}>
               <FileBubble
@@ -927,11 +988,11 @@ export function TelegramChatScreen() {
 
       return (
         <Pressable
-          style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
-          onLongPress={handleReplyLongPress}
-          delayLongPress={260}
+          {...pressableA11y}
+          style={rowStyle}
+          accessibilityLabel={`${isMe ? 'Я' : headerTitle}: ${item.text || 'сообщение'}`}
         >
-          <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
+          <View style={[styles.bubble, textBubbleColorStyle]}>
             {replySnippet}
             <View style={styles.bubbleContentRow}>
               <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
@@ -1019,12 +1080,13 @@ function createTelegramChatStyles(colors: ThemeColors) {
       fontSize: 12,
     },
     listContent: {
-      paddingHorizontal: 10,
-      paddingTop: 12,
-      paddingBottom: 12,
+      paddingHorizontal: CHAT_MSG_HORIZONTAL_PADDING,
+      paddingTop: CHAT_MSG_VERTICAL_PADDING,
+      paddingBottom: CHAT_MSG_VERTICAL_PADDING,
     },
     messageRow: {
-      marginVertical: 3,
+      // marginVertical is overridden per-row by group-aware inline style
+      marginVertical: CHAT_MSG_ROW_MARGIN_ISOLATED,
       flexDirection: 'row',
     },
     messageRowMe: {
@@ -1034,18 +1096,30 @@ function createTelegramChatStyles(colors: ThemeColors) {
       justifyContent: 'flex-start',
     },
     bubble: {
-      maxWidth: '84%',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
       borderRadius: 18,
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
+    /** Last (most-recent) or standalone outgoing message — shows the corner tail. */
     bubbleMe: {
       backgroundColor: colors.bubbleMe,
       borderBottomRightRadius: 6,
     },
+    /** Outgoing message inside a chain (not the last one) — fully rounded, no tail. */
+    bubbleMeChained: {
+      backgroundColor: colors.bubbleMe,
+    },
+    /** Last (most-recent) or standalone incoming message — shows the corner tail. */
     bubbleOther: {
       backgroundColor: colors.bubbleOther,
       borderBottomLeftRadius: 6,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.bubbleOtherBorder,
+    },
+    /** Incoming message inside a chain (not the last one) — fully rounded, no tail. */
+    bubbleOtherChained: {
+      backgroundColor: colors.bubbleOther,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.bubbleOtherBorder,
     },
@@ -1065,7 +1139,7 @@ function createTelegramChatStyles(colors: ThemeColors) {
       columnGap: 6,
     },
     fileBubbleWrap: {
-      maxWidth: '84%',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
       minWidth: 220,
     },
     empty: {
