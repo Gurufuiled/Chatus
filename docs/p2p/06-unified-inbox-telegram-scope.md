@@ -2,13 +2,13 @@
 
 Продуктовое направление (без кода в этом документе): пользователь **логинится в Chatus**, затем в **настройках привязывает аккаунт Telegram**; в основном списке **смешиваются** чаты Chatus и чаты Telegram — **без** переключателя режима инбокса, который использовался ранее в идее «Loginus vs Telegram».
 
-Этот документ фиксирует, **что меняется в планах P2P/relay**, а что остаётся прежним.
+Этот документ фиксирует границы между **нативным Chatus** (в т.ч. цель **P2P-first** и mailbox из `docs/p2p/`) и **Telegram**, без смешения транспортов в одном протоколе.
 
 ---
 
 ## Область действия документов `docs/p2p/`
 
-Все фазы ([03-rollout-phases.md](./03-rollout-phases.md)), политики кэша ([05-env-and-config.md](./05-env-and-config.md)) и типы сообщений ([04-message-types-and-media.md](./04-message-types-and-media.md)) относятся **только к нативному контуру Chatus**:
+Все фазы ([03-rollout-phases.md](./03-rollout-phases.md)), политики ([05-env-and-config.md](./05-env-and-config.md)) и типы сообщений ([04-message-types-and-media.md](./04-message-types-and-media.md)) относятся **только к нативному контуру Chatus** (цель — доставка через peer с сервером как запасной канал):
 
 - сервер NestJS, PostgreSQL, Prisma `Message` / `Transport`;
 - WebSocket чата (`send_message`, `RealtimeService`);
