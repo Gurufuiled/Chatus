@@ -9,6 +9,7 @@ import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { createChatListRowStyles } from '../components/chatListRow.styles';
+import { buildChatRowLoadFailure } from './telegramChat/telegramDialogFallback';
 
 const AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
 
@@ -128,7 +129,7 @@ async function loadMemberCount(
   return undefined;
 }
 
-async function loadChatRow(chatId: number): Promise<TelegramDialogRow> {
+async function loadChatRow(chatId: number, previous?: TelegramDialogRow): Promise<TelegramDialogRow> {
   try {
     const chat = (await tdlibClient.send({
       '@type': 'getChat',
@@ -158,8 +159,7 @@ async function loadChatRow(chatId: number): Promise<TelegramDialogRow> {
       memberCount,
     };
   } catch {
-    const idStr = String(chatId);
-    return { id: idStr, chatId: idStr, title: `Чат ${chatId}`, lastMessagePreview: '' };
+    return buildChatRowLoadFailure(chatId, previous);
   }
 }
 
@@ -209,11 +209,16 @@ export function TelegramDialogsScreen() {
         await telegramAccountStore.getState().persistSnapshot();
         return;
       }
+      const prevByChatId = new Map(
+        telegramAccountStore.getState().dialogs.map((r) => [r.chatId, r] as const),
+      );
       const rows: TelegramDialogRow[] = [];
       const batch = 6;
       for (let i = 0; i < ids.length; i += batch) {
         const slice = ids.slice(i, i + batch);
-        const part = await Promise.all(slice.map((id) => loadChatRow(id)));
+        const part = await Promise.all(
+          slice.map((id) => loadChatRow(id, prevByChatId.get(String(id)))),
+        );
         rows.push(...part);
       }
       telegramAccountStore.getState().setDialogs(rows);
@@ -291,33 +296,40 @@ export function TelegramDialogsScreen() {
         return item.lastMessagePreview;
       })();
 
+      const rowNavParams = {
+        telegramChatId: item.chatId,
+        title: item.title,
+        avatarUri: item.avatarUri ?? null,
+        chatType: item.chatType ?? null,
+      };
+
       return (
-        <Pressable
-          onPress={() =>
-            navigation.navigate('TelegramChat', {
-              telegramChatId: item.chatId,
-              title: item.title,
-              avatarUri: item.avatarUri ?? null,
-              chatType: item.chatType ?? null,
-            })
-          }
-          style={({ pressed }) => [rowStyles.row, pressed && rowStyles.rowPressed]}
-        >
-          {item.avatarUri ? (
-            <Image source={{ uri: item.avatarUri }} style={rowStyles.avatar} />
-          ) : (
-            <View
-              style={[
-                rowStyles.avatarPlaceholder,
-                isChannel ? rowStyles.channelAvatarPlaceholder : { backgroundColor: getAvatarColor(item.title) },
-              ]}
-            >
-              <Text style={rowStyles.avatarPlaceholderText}>
-                {isChannel ? '📢' : (item.title.trim()[0] || '?').toUpperCase()}
-              </Text>
-            </View>
-          )}
-          <View style={rowStyles.content}>
+        <View style={rowStyles.row}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Профиль: ${item.title}`}
+            accessibilityHint="Открывает экран профиля чата или канала"
+            onPress={() => navigation.navigate('TelegramChatProfile', rowNavParams)}
+          >
+            {item.avatarUri ? (
+              <Image source={{ uri: item.avatarUri }} style={rowStyles.avatar} />
+            ) : (
+              <View
+                style={[
+                  rowStyles.avatarPlaceholder,
+                  isChannel ? rowStyles.channelAvatarPlaceholder : { backgroundColor: getAvatarColor(item.title) },
+                ]}
+              >
+                <Text style={rowStyles.avatarPlaceholderText}>
+                  {isChannel ? '📢' : (item.title.trim()[0] || '?').toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate('TelegramChat', rowNavParams)}
+            style={({ pressed }) => [rowStyles.content, pressed && rowStyles.rowPressed]}
+          >
             <View style={rowStyles.topRow}>
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={rowStyles.title} numberOfLines={1}>
@@ -349,8 +361,8 @@ export function TelegramDialogsScreen() {
                 {subtitle}
               </Text>
             ) : null}
-          </View>
-        </Pressable>
+          </Pressable>
+        </View>
       );
     },
     [colors.accent, colors.textSecondary, navigation, rowStyles],

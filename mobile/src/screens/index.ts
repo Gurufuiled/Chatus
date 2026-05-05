@@ -34,4 +34,5 @@ export { EditProfileScreen } from './EditProfileScreen';
 export { MyProfileScreen } from './MyProfileScreen';
 export { TelegramAuthScreen } from './TelegramAuthScreen';
 export { TelegramChatScreen } from './TelegramChatScreen';
+export { TelegramChatProfileScreen } from './TelegramChatProfileScreen';
 export { TelegramDialogsScreen } from './TelegramDialogsScreen';

@@ -47,6 +47,8 @@ type ChatProfileHeroProps = {
   onBackPress: () => void;
   onEditPress: () => void;
   moreButtonRef?: React.RefObject<View | null>;
+  /** Hide voice/video (e.g. Telegram broadcast channels). */
+  hideCallAndVideoActions?: boolean;
 };
 
 type QuickActionButtonProps = {
@@ -187,6 +189,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   onBackPress,
   onEditPress,
   moreButtonRef,
+  hideCallAndVideoActions = false,
 }: ChatProfileHeroProps) {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createChatProfileHeroStyles(themeColors), [themeColors]);
@@ -298,24 +301,28 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
         {handleLabel ? <Text style={styles.handle}>{handleLabel}</Text> : null}
 
         <Reanimated.View style={[styles.quickActionsRow, actionsStyle]}>
-          <QuickActionButton
-            icon="call"
-            label="Звонок"
-            styles={styles}
-            accentColor={themeColors.accent}
-            onPress={() => {
-              void onStartCallPress();
-            }}
-          />
-          <QuickActionButton
-            icon="video"
-            label="Видео"
-            styles={styles}
-            accentColor={themeColors.accent}
-            onPress={() => {
-              void onStartVideoCallPress();
-            }}
-          />
+          {!hideCallAndVideoActions ? (
+            <>
+              <QuickActionButton
+                icon="call"
+                label="Звонок"
+                styles={styles}
+                accentColor={themeColors.accent}
+                onPress={() => {
+                  void onStartCallPress();
+                }}
+              />
+              <QuickActionButton
+                icon="video"
+                label="Видео"
+                styles={styles}
+                accentColor={themeColors.accent}
+                onPress={() => {
+                  void onStartVideoCallPress();
+                }}
+              />
+            </>
+          ) : null}
           <QuickActionButton
             icon="sound"
             label="Звук"

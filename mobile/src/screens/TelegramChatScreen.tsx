@@ -1,19 +1,11 @@
+import Feather from '@expo/vector-icons/Feather';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  Text,
-  View,
-} from 'react-native';
+import { Alert, FlatList, Image, Pressable, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
 import { FileBubble } from '../components/FileBubble';
@@ -21,6 +13,7 @@ import { ImageBubble } from '../components/ImageBubble';
 import { InputBar, type FilePickResult, type MediaPickResult } from '../components/InputBar';
 import { MessageTimeStatus } from '../components/MessageTimeStatus';
 import { ReplyPreview } from '../components/ReplyPreview';
+import { TelegramChannelCommentsBar } from '../components/TelegramChannelCommentsBar';
 import { VideoBubble } from '../components/VideoBubble';
 import { VoiceBubble } from '../components/VoiceBubble';
 import { useTheme } from '../contexts/ThemeContext';
@@ -31,11 +24,12 @@ import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import { uiStore } from '../stores/uiStore';
 import { DEFAULT_CHAT_THEME_ID } from '../theme/chatThemes';
 import { withAlpha } from '../theme/stylePrimitives';
-import { ChatBackgroundPattern, SCREEN_WIDTH } from './chatScreen.shared';
+import { ChatBackgroundPattern, SCREEN_HEIGHT, SCREEN_WIDTH } from './chatScreen.shared';
 import {
-  CHAT_MSG_GROUP_TIME_GAP_MS,
+  CHAT_MSG_HORIZONTAL_PADDING,
   CHAT_MSG_ROW_MARGIN_GROUPED,
   CHAT_MSG_ROW_MARGIN_ISOLATED,
+  CHAT_MSG_VERTICAL_PADDING,
 } from '../presentation/telegramChatUi';
 import {
   fileUriToPath,
@@ -48,7 +42,7 @@ import {
   applyReadOutboxStatus,
   getTelegramReplyPreviewText,
   getTelegramReplyThumbnailUri,
-  isSameGroup,
+  isSameTelegramChain,
   markMessageFailed,
   optimisticOutgoingMessage,
   telegramRowToInputReplyMessage,
@@ -61,17 +55,48 @@ import {
 import {
   getLastReadOutboxMessageId,
   getNestedRecord,
+  getPinnedMessageIdFromChat,
   loadLastReadOutboxMessageId,
   mapTdMessage,
   mapTdMessages,
 } from './telegramChat/tdlibMapping';
 import type { TelegramMessageRow } from './telegramChat/types';
+import { tdlibDeleteMessages, tdlibForwardToSavedMessages } from './telegramChat/tdlibChatActions';
 import { useTelegramChatMenu } from './telegramChat/useTelegramChatMenu';
+
+const TELEGRAM_PEER_AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
+
+function telegramPeerAvatarColor(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TELEGRAM_PEER_AVATAR_COLORS[Math.abs(hash) % TELEGRAM_PEER_AVATAR_COLORS.length];
+}
+
+/** When viewing a forum/discussion thread, ignore TDLib message updates from other threads in the same chat. */
+function tdlibRawMessageMatchesActiveThread(
+  rawMessage: Record<string, unknown>,
+  activeThreadId: number | undefined,
+): boolean {
+  if (activeThreadId == null || activeThreadId === 0) return true;
+  const mtid = rawMessage.message_thread_id;
+  const tid = typeof mtid === 'number' && Number.isFinite(mtid) ? mtid : 0;
+  return tid === activeThreadId;
+}
 
 export function TelegramChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList, 'TelegramChat'>>();
-  const headerHeightNav = useHeaderHeight();
   const insets = useSafeAreaInsets();
+  const animatedKeyboard = useAnimatedKeyboard();
+
+  const inputDockAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }],
+  }));
+
+  const listKeyboardAnimatedStyle = useAnimatedStyle(() => ({
+    marginBottom: Math.max(animatedKeyboard.height.value, 0),
+  }));
   const { colors } = useTheme();
   const styles = useMemo(() => createTelegramChatStyles(colors), [colors]);
   const headerChromeStyles = useMemo(
@@ -79,24 +104,41 @@ export function TelegramChatScreen() {
     [colors],
   );
   const route = useRoute<RouteProp<ChatsStackParamList, 'TelegramChat'>>();
-  const { telegramChatId, title, avatarUri, chatType: routeChatType } = route.params;
+  const {
+    telegramChatId,
+    title,
+    avatarUri,
+    chatType: routeChatType,
+    focusMessageId,
+    messageThreadId,
+  } = route.params;
   const telegramWallpaperKey = `telegram:${telegramChatId}`;
   const storedWallpaperThemeId = uiStore((s) => s.chatThemeIdByChatId[telegramWallpaperKey]);
   const wallpaperThemeId = storedWallpaperThemeId ?? DEFAULT_CHAT_THEME_ID;
   const chatId = useMemo(() => Number.parseInt(telegramChatId, 10), [telegramChatId]);
   const isChannel = routeChatType === 'channel';
   const isGroupChat = routeChatType === 'group' || routeChatType === 'supergroup';
+  const channelMediaClamp = useMemo(
+    () => ({
+      maxWidth: SCREEN_WIDTH - CHAT_MSG_HORIZONTAL_PADDING * 2,
+      maxHeight: Math.min(SCREEN_HEIGHT * 0.52, 520),
+    }),
+    [],
+  );
   const [messages, setMessages] = useState<TelegramMessageRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
+  const [pinnedMessageId, setPinnedMessageId] = useState<number | null>(null);
+  const [selectedTelegramMessageIds, setSelectedTelegramMessageIds] = useState<string[]>([]);
   const [canPost, setCanPost] = useState(true);
   const [memberCount, setMemberCount] = useState<number | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
   const lastReadOutboxMessageIdRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const messagesRef = useRef<TelegramMessageRow[]>([]);
+  const listRef = useRef<FlatList<TelegramMessageRow>>(null);
   const [inputBarHeight, setInputBarHeight] = useState(88);
 
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
@@ -122,6 +164,128 @@ export function TelegramChatScreen() {
   );
   const replyAuthorName = replyToRow ? (replyToRow.outgoing ? 'Вы' : headerTitle) : null;
 
+  const telegramSelectionMode = selectedTelegramMessageIds.length > 0;
+  const selectedTelegramIdSet = useMemo(
+    () => new Set(selectedTelegramMessageIds),
+    [selectedTelegramMessageIds],
+  );
+
+  const enterTelegramSelection = useCallback((rowId: string) => {
+    setSelectedTelegramMessageIds([rowId]);
+  }, []);
+
+  const toggleTelegramSelection = useCallback((rowId: string) => {
+    setSelectedTelegramMessageIds((prev) =>
+      prev.includes(rowId) ? prev.filter((id) => id !== rowId) : [...prev, rowId],
+    );
+  }, []);
+
+  const clearTelegramSelection = useCallback(() => {
+    setSelectedTelegramMessageIds([]);
+  }, []);
+
+  const selectedTelegramRows = useMemo(() => {
+    const rows: TelegramMessageRow[] = [];
+    for (const sid of selectedTelegramMessageIds) {
+      const row = messages.find((m) => m.id === sid);
+      if (row) rows.push(row);
+    }
+    return rows;
+  }, [messages, selectedTelegramMessageIds]);
+
+  const selectedTdMessageIds = useMemo(() => {
+    const ids = selectedTelegramRows.filter((r) => r.messageId > 0).map((r) => r.messageId);
+    return [...new Set(ids)].sort((a, b) => a - b);
+  }, [selectedTelegramRows]);
+
+  const canBatchTdLib = selectedTdMessageIds.length > 0;
+
+  const ensureReady = useCallback(async () => {
+    await applyTdlibParameters();
+    const { ready, state } = await waitForTdlibAuthorizationReady();
+    if (!ready) {
+      throw new Error(`Сессия Telegram не готова (${state ?? 'таймаут'})`);
+    }
+  }, []);
+
+  const handleOpenDiscussion = useCallback(
+    (item: TelegramMessageRow) => {
+      if (item.discussionChatId == null || item.discussionChatId === 0) return;
+      navigation.navigate({
+        name: 'TelegramChat',
+        params: {
+          telegramChatId: String(item.discussionChatId),
+          title: 'Обсуждение',
+          avatarUri: null,
+          chatType: 'supergroup',
+          messageThreadId:
+            item.messageThreadId != null && item.messageThreadId !== 0
+              ? item.messageThreadId
+              : undefined,
+        },
+      });
+    },
+    [navigation],
+  );
+
+  const handleTelegramBatchForward = useCallback(async () => {
+    if (!canBatchTdLib || !Number.isFinite(chatId)) return;
+    try {
+      await ensureReady();
+      await tdlibForwardToSavedMessages(chatId, selectedTdMessageIds);
+      clearTelegramSelection();
+    } catch (err) {
+      Alert.alert('Переслать', err instanceof Error ? err.message : String(err));
+    }
+  }, [canBatchTdLib, chatId, clearTelegramSelection, ensureReady, selectedTdMessageIds]);
+
+  const handleTelegramBatchDelete = useCallback(() => {
+    if (!canBatchTdLib || !Number.isFinite(chatId)) return;
+    const outgoingIds = [
+      ...new Set(
+        selectedTelegramRows.filter((r) => r.messageId > 0 && r.outgoing).map((r) => r.messageId),
+      ),
+    ];
+    const incomingIds = [
+      ...new Set(
+        selectedTelegramRows.filter((r) => r.messageId > 0 && !r.outgoing).map((r) => r.messageId),
+      ),
+    ];
+
+    let body = '';
+    if (outgoingIds.length > 0 && incomingIds.length > 0) {
+      body = 'Свои сообщения будут удалены у всех участников, чужие — только у вас.';
+    } else if (outgoingIds.length > 0) {
+      body = 'Сообщения будут удалены у всех участников.';
+    } else {
+      body = 'Сообщения будут удалены только у вас.';
+    }
+
+    Alert.alert('Удалить выбранные?', body, [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            try {
+              await ensureReady();
+              if (outgoingIds.length > 0) {
+                await tdlibDeleteMessages(chatId, outgoingIds, true);
+              }
+              if (incomingIds.length > 0) {
+                await tdlibDeleteMessages(chatId, incomingIds, false);
+              }
+              clearTelegramSelection();
+            } catch (err) {
+              Alert.alert('Удаление', err instanceof Error ? err.message : String(err));
+            }
+          })();
+        },
+      },
+    ]);
+  }, [canBatchTdLib, chatId, clearTelegramSelection, ensureReady, selectedTelegramRows]);
+
   const {
     menuState,
     menuAnim,
@@ -131,6 +295,7 @@ export function TelegramChatScreen() {
     closeMenu,
     openTelegramMessageMenu,
     handleTelegramMenuAction,
+    handleTelegramPickReaction,
     renderTelegramMenuPreviewBody,
   } = useTelegramChatMenu({
     chatId,
@@ -144,17 +309,77 @@ export function TelegramChatScreen() {
     inputBarHeight,
     insets,
     setReplyToMessageId,
+    pinnedMessageId,
+    setPinnedMessageId,
+    ensureReady,
+    showMenuReactions: true,
+    onEnterSelection: enterTelegramSelection,
   });
+
+  const handleOpenTelegramMemberProfile = useCallback(
+    async (row: TelegramMessageRow) => {
+      if (row.senderUserId == null) return;
+      try {
+        await ensureReady();
+        const chat = (await tdlibClient.send({
+          '@type': 'createPrivateChat',
+          user_id: row.senderUserId,
+          force: false,
+        })) as Record<string, unknown>;
+        throwIfTdError(chat);
+        const cid = typeof chat.id === 'number' ? chat.id : null;
+        if (cid == null || !Number.isFinite(cid)) return;
+        navigation.navigate('TelegramChatProfile', {
+          telegramChatId: String(cid),
+          title: row.senderName ?? undefined,
+          avatarUri: row.senderAvatarUri ?? null,
+          chatType: 'private',
+        });
+      } catch (e) {
+        Alert.alert('Профиль', e instanceof Error ? e.message : String(e));
+      }
+    },
+    [ensureReady, navigation],
+  );
 
   useLayoutEffect(() => {
     const initialChar = (headerTitle.trim()[0] || '?').toUpperCase();
+    if (telegramSelectionMode) {
+      navigation.setOptions({
+        headerTitle: () => (
+          <Text style={headerChromeStyles.headerTitleText}>
+            {selectedTelegramMessageIds.length === 1
+              ? '1 сообщение'
+              : `${selectedTelegramMessageIds.length} сообщ.`}
+          </Text>
+        ),
+        headerRight: () => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Отменить выбор"
+            onPress={clearTelegramSelection}
+            style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1, paddingHorizontal: 12, paddingVertical: 8 })}
+          >
+            <Text style={{ color: colors.accent, fontSize: 17, fontWeight: '600' }}>Отмена</Text>
+          </Pressable>
+        ),
+      });
+      return;
+    }
     navigation.setOptions({
       headerTitle: () => (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={headerTitle}
           accessibilityHint="Открывает профиль"
-          onPress={() => Alert.alert('Профиль')}
+          onPress={() =>
+            navigation.navigate('TelegramChatProfile', {
+              telegramChatId,
+              title: headerTitle,
+              avatarUri: avatarUri ?? null,
+              chatType: routeChatType ?? null,
+            })
+          }
           style={({ pressed }) => [
             headerChromeStyles.pressableRow,
             pressed ? headerChromeStyles.pressablePressed : null,
@@ -179,23 +404,47 @@ export function TelegramChatScreen() {
           </View>
         </Pressable>
       ),
+      headerRight: undefined,
     });
-  }, [avatarUri, headerChromeStyles, headerSubtitle, headerTitle, navigation]);
+  }, [
+    avatarUri,
+    clearTelegramSelection,
+    routeChatType,
+    telegramChatId,
+    colors.accent,
+    headerChromeStyles,
+    headerSubtitle,
+    headerTitle,
+    navigation,
+    selectedTelegramMessageIds.length,
+    telegramSelectionMode,
+  ]);
 
   messagesRef.current = messages;
+
+  useEffect(() => {
+    if (focusMessageId == null || !Number.isFinite(focusMessageId)) return;
+    const ix = messages.findIndex((m) => m.messageId === focusMessageId);
+    if (ix < 0) return;
+    const frame = requestAnimationFrame(() => {
+      try {
+        listRef.current?.scrollToIndex({
+          index: ix,
+          animated: true,
+          viewPosition: 0.5,
+        });
+      } catch {
+        /* scrollToIndex can throw before layout */
+      }
+      navigation.setParams({ focusMessageId: undefined });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusMessageId, messages, navigation]);
 
   useEffect(() => {
     return () => {
       mountedRef.current = false;
     };
-  }, []);
-
-  const ensureReady = useCallback(async () => {
-    await applyTdlibParameters();
-    const { ready, state } = await waitForTdlibAuthorizationReady();
-    if (!ready) {
-      throw new Error(`Сессия Telegram не готова (${state ?? 'таймаут'})`);
-    }
   }, []);
 
   useEffect(() => {
@@ -210,6 +459,9 @@ export function TelegramChatScreen() {
           chat_id: chatId,
         })) as Record<string, unknown>;
         throwIfTdError(chat);
+        if (!cancelled) {
+          setPinnedMessageId(getPinnedMessageIdFromChat(chat));
+        }
         const type = getNestedRecord(chat.type);
         const isBroadcastChannel =
           type?.['@type'] === 'chatTypeSupergroup' && type?.is_channel === true;
@@ -277,12 +529,20 @@ export function TelegramChatScreen() {
           offset: 0,
           limit: 40,
           only_local: false,
+          message_thread_id:
+            typeof messageThreadId === 'number' &&
+            Number.isFinite(messageThreadId) &&
+            messageThreadId !== 0
+              ? messageThreadId
+              : 0,
         })) as Record<string, unknown>;
         throwIfTdError(response);
         const rawMessages = Array.isArray(response.messages) ? response.messages : [];
         const mapped = await mapTdMessages(
           rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
           lastReadOutboxMessageIdRef.current,
+          4,
+          { loadSenderAvatar: isGroupChat },
         );
 
         if (!mountedRef.current) return;
@@ -309,7 +569,7 @@ export function TelegramChatScreen() {
         setLoadingOlder(false);
       }
     },
-    [chatId, ensureReady, loadingOlder],
+    [chatId, ensureReady, isGroupChat, loadingOlder, messageThreadId],
   );
 
   useFocusEffect(
@@ -319,6 +579,28 @@ export function TelegramChatScreen() {
         try {
           const update = JSON.parse(json) as Record<string, unknown>;
           const type = update['@type'];
+
+          if (type === 'updateChatPinnedMessage') {
+            if (update.chat_id !== chatId) return;
+            const pid = update.pinned_message_id;
+            const next =
+              typeof pid === 'number' && Number.isFinite(pid) && pid > 0 ? pid : null;
+            setPinnedMessageId(next);
+            return;
+          }
+
+          if (type === 'updateDeleteMessages') {
+            if (update.chat_id !== chatId) return;
+            const rawIds = update.message_ids;
+            if (!Array.isArray(rawIds)) return;
+            const idSet = new Set(
+              rawIds.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)),
+            );
+            if (idSet.size === 0) return;
+            setMessages((prev) => prev.filter((m) => !idSet.has(m.messageId)));
+            return;
+          }
+
           if (type === 'updateChatReadOutbox') {
             if (update.chat_id !== chatId) return;
             const lastReadOutboxMessageId = getLastReadOutboxMessageId(update);
@@ -347,7 +629,21 @@ export function TelegramChatScreen() {
             }
             return;
           }
-          void mapTdMessage(rawMessage, lastReadOutboxMessageIdRef.current).then((row) => {
+
+          const activeThreadFilterId =
+            typeof messageThreadId === 'number' && Number.isFinite(messageThreadId) && messageThreadId !== 0
+              ? messageThreadId
+              : undefined;
+          if (!tdlibRawMessageMatchesActiveThread(rawMessage, activeThreadFilterId)) {
+            if (type === 'updateMessageSendFailed' && oldMessageId != null) {
+              setMessages((prev) => markMessageFailed(prev, oldMessageId));
+            }
+            return;
+          }
+
+          void mapTdMessage(rawMessage, lastReadOutboxMessageIdRef.current, {
+            loadSenderAvatar: isGroupChat,
+          }).then((row) => {
             if (!row || !mountedRef.current) return;
             setMessages((prev) => upsertMessage(prev, row, oldMessageId));
           });
@@ -356,7 +652,7 @@ export function TelegramChatScreen() {
         }
       });
       return unsubscribe;
-    }, [chatId, loadHistory]),
+    }, [chatId, isGroupChat, loadHistory, messageThreadId]),
   );
 
   const sendText = useCallback(
@@ -548,8 +844,8 @@ export function TelegramChatScreen() {
       const isMe = item.outgoing;
 
       const msgs = messagesRef.current;
-      const isGroupedAbove = isSameGroup(msgs[index + 1], item);
-      const isGroupedBelow = isSameGroup(msgs[index - 1], item);
+      const isGroupedAbove = isSameTelegramChain(msgs[index + 1], item, isGroupChat);
+      const isGroupedBelow = isSameTelegramChain(msgs[index - 1], item, isGroupChat);
       const isLastInGroup = !isGroupedBelow;
       const marginTop = isGroupedAbove ? CHAT_MSG_ROW_MARGIN_GROUPED : CHAT_MSG_ROW_MARGIN_ISOLATED;
       const marginBottom = isGroupedBelow ? CHAT_MSG_ROW_MARGIN_GROUPED : CHAT_MSG_ROW_MARGIN_ISOLATED;
@@ -557,7 +853,15 @@ export function TelegramChatScreen() {
       const replyTarget = item.replyToMessageId != null ? messageById.get(item.replyToMessageId) ?? null : null;
       const replySnippet = item.replyToMessageId != null ? (
         <ReplyPreview
-          author={replyTarget ? (replyTarget.outgoing ? 'Вы' : headerTitle) : 'Исходное сообщение'}
+          author={
+            replyTarget
+              ? replyTarget.outgoing
+                ? 'Вы'
+                : isGroupChat && replyTarget.senderName
+                  ? replyTarget.senderName
+                  : headerTitle
+              : 'Исходное сообщение'
+          }
           text={replyTarget ? getTelegramReplyPreviewText(replyTarget) : 'Исходное сообщение недоступно'}
           accentColor={isMe ? withAlpha('#FFFFFF', 0.9) : colors.accent}
           backgroundColor={isMe ? withAlpha('#FFFFFF', 0.12) : colors.inputBackground}
@@ -594,27 +898,105 @@ export function TelegramChatScreen() {
               : String(item.viewCount)
           : null;
 
+      const channelIncoming = isChannel && !isMe;
+      const showDiscussionFooter =
+        channelIncoming &&
+        item.discussionChatId != null &&
+        item.discussionChatId !== 0;
+
+      const discussionFooter = showDiscussionFooter ? (
+        <TelegramChannelCommentsBar
+          replyCount={item.discussionReplyCount}
+          accentColor={colors.accent}
+          mutedColor={colors.textSecondary}
+          borderColor={colors.separator}
+          onPress={() => handleOpenDiscussion(item)}
+        />
+      ) : null;
+
       const rowStyle = [
         styles.messageRow,
         isMe ? styles.messageRowMe : styles.messageRowOther,
         { marginTop, marginBottom },
       ];
-      const pressableA11y = {
-        accessibilityRole: 'button' as const,
-        accessibilityHint: 'Удерживайте для меню сообщения',
-        onLongPress: handleOpenMessageMenu,
-        delayLongPress: 260,
+      const pressableStyle = telegramSelectionMode ? undefined : rowStyle;
+      const pressableA11y = telegramSelectionMode
+        ? {
+            accessibilityRole: 'button' as const,
+            accessibilityHint: 'Нажмите, чтобы отметить сообщение',
+            onPress: () => toggleTelegramSelection(item.id),
+          }
+        : {
+            accessibilityRole: 'button' as const,
+            accessibilityHint: 'Удерживайте для меню сообщения',
+            onLongPress: handleOpenMessageMenu,
+            delayLongPress: 260,
+          };
+
+      const wrapGroupIncoming = (element: React.ReactElement) => {
+        if (isMe || !isGroupChat) return element;
+        const seed = String(item.senderUserId ?? item.senderName ?? item.id);
+        const avatarInitial = (item.senderName?.trim()[0] || '?').toUpperCase();
+        const openProfile =
+          item.senderUserId != null && !telegramSelectionMode
+            ? () => void handleOpenTelegramMemberProfile(item)
+            : undefined;
+        return (
+          <View style={styles.groupIncomingRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                item.senderUserId != null ? `Профиль: ${item.senderName ?? 'Участник'}` : undefined
+              }
+              disabled={item.senderUserId == null || telegramSelectionMode}
+              hitSlop={10}
+              onPress={openProfile}
+              style={styles.groupAvatarSlot}
+            >
+              {item.senderAvatarUri ? (
+                <Image source={{ uri: item.senderAvatarUri }} style={styles.groupAvatarImage} />
+              ) : (
+                <View style={[styles.groupAvatarFallback, { backgroundColor: telegramPeerAvatarColor(seed) }]}>
+                  <Text style={styles.groupAvatarInitial}>{avatarInitial}</Text>
+                </View>
+              )}
+            </Pressable>
+            <View style={styles.groupIncomingContent}>{element}</View>
+          </View>
+        );
       };
+
+      const wrapSelectionShell = (inner: React.ReactElement) => {
+        const layered = wrapGroupIncoming(inner);
+        if (!telegramSelectionMode) return layered;
+        const selected = selectedTelegramIdSet.has(item.id);
+        return (
+          <View style={[styles.selectionOuterRow, { marginTop, marginBottom }]}>
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected }}
+              onPress={() => toggleTelegramSelection(item.id)}
+              style={styles.selectionCheckboxHit}
+            >
+              <View style={[styles.selectionCheckboxOuter, selected && styles.selectionCheckboxOuterOn]}>
+                {selected ? <Feather name="check" size={14} color="#FFFFFF" /> : null}
+              </View>
+            </Pressable>
+            <View style={[styles.selectionBubbleColumn, isMe && styles.selectionBubbleColumnMe]}>{layered}</View>
+          </View>
+        );
+      };
+
       const textBubbleColorStyle = isMe
         ? (isLastInGroup ? styles.bubbleMe : styles.bubbleMeChained)
         : (isLastInGroup ? styles.bubbleOther : styles.bubbleOtherChained);
 
       if (item.kind === 'voice') {
         if (!item.voiceUri) {
-          return (
+          return wrapSelectionShell(
             <Pressable
               {...pressableA11y}
-              style={rowStyle}
+              style={pressableStyle}
               accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
             >
               <View
@@ -633,13 +1015,13 @@ export function TelegramChatScreen() {
                   iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
                 />
               </View>
-            </Pressable>
+            </Pressable>,
           );
         }
-        return (
+        return wrapSelectionShell(
           <Pressable
             {...pressableA11y}
-            style={rowStyle}
+            style={pressableStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
           >
             <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
@@ -654,24 +1036,28 @@ export function TelegramChatScreen() {
                 bubbleMeColor={colors.bubbleMe}
                 outgoingTextColor="#FFFFFF"
                 outgoingMetaColor={colors.textSecondaryMuted}
-                outgoingAccentColor="#FFFFFF"
+                outgoingAccentColor={colors.accent}
                 incomingBubbleBackground={colors.bubbleOther}
                 incomingBubbleBorderColor={colors.bubbleOtherBorder}
                 incomingDurationColor={colors.textSecondary}
               />
             </View>
-          </Pressable>
+          </Pressable>,
         );
       }
 
       if (item.kind === 'image' && item.mediaUri) {
-        return (
+        return wrapSelectionShell(
           <Pressable
             {...pressableA11y}
-            style={rowStyle}
+            style={pressableStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: фото${item.text ? `, ${item.text}` : ''}`}
           >
-            <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
+            <View
+              ref={(node) => setMessageContentRef(item.id, node)}
+              collapsable={false}
+              style={channelIncoming ? styles.channelIncomingWrap : undefined}
+            >
               <ImageBubble
                 uri={item.mediaUri}
                 isMe={isMe}
@@ -686,20 +1072,29 @@ export function TelegramChatScreen() {
                 incomingBubbleBackground={colors.bubbleOther}
                 incomingBubbleBorderColor={colors.bubbleOtherBorder}
                 incomingCaptionTextColor={colors.textPrimary}
+                viewCount={item.viewCount}
+                viewCountShortLabel={viewCountFormatted ?? undefined}
+                mediaClamp={channelIncoming ? channelMediaClamp : undefined}
+                incomingChannelPost={channelIncoming}
+                footer={discussionFooter}
               />
             </View>
-          </Pressable>
+          </Pressable>,
         );
       }
 
       if (item.kind === 'video' && item.mediaUri) {
-        return (
+        return wrapSelectionShell(
           <Pressable
             {...pressableA11y}
-            style={rowStyle}
+            style={pressableStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: видео${item.text ? `, ${item.text}` : ''}`}
           >
-            <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
+            <View
+              ref={(node) => setMessageContentRef(item.id, node)}
+              collapsable={false}
+              style={channelIncoming ? styles.channelIncomingWrap : undefined}
+            >
               <VideoBubble
                 uri={item.mediaUri}
                 thumbnailUri={item.thumbnailUri ?? undefined}
@@ -716,17 +1111,22 @@ export function TelegramChatScreen() {
                 incomingBubbleBackground={colors.bubbleOther}
                 incomingBubbleBorderColor={colors.bubbleOtherBorder}
                 incomingCaptionTextColor={colors.textPrimary}
+                viewCount={item.viewCount}
+                viewCountShortLabel={viewCountFormatted ?? undefined}
+                mediaClamp={channelIncoming ? channelMediaClamp : undefined}
+                incomingChannelPost={channelIncoming}
+                footer={discussionFooter}
               />
             </View>
-          </Pressable>
+          </Pressable>,
         );
       }
 
       if (item.kind === 'file') {
-        return (
+        return wrapSelectionShell(
           <Pressable
             {...pressableA11y}
-            style={rowStyle}
+            style={pressableStyle}
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: файл ${item.fileName ?? ''}`}
           >
             <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false} style={styles.fileBubbleWrap}>
@@ -750,114 +1150,247 @@ export function TelegramChatScreen() {
                 incomingCaptionColor={colors.textPrimary}
               />
             </View>
-          </Pressable>
+          </Pressable>,
         );
       }
 
-      return (
+      return wrapSelectionShell(
         <Pressable
           {...pressableA11y}
-          style={rowStyle}
+          style={pressableStyle}
           accessibilityLabel={`${isMe ? 'Я' : headerTitle}: ${item.text || 'сообщение'}`}
         >
           <View
             ref={(node) => setMessageContentRef(item.id, node)}
             collapsable={false}
-            style={[styles.bubble, textBubbleColorStyle]}
+            style={[
+              styles.bubble,
+              textBubbleColorStyle,
+              channelIncoming && styles.channelIncomingBubble,
+              discussionFooter ? { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' } : null,
+            ]}
           >
-            {bubbleHeader}
-            <View style={styles.bubbleContentRow}>
-              <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
-              {viewCountFormatted ? (
-                <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>
-                  {`👁 ${viewCountFormatted}`}
-                </Text>
-              ) : null}
-              <MessageTimeStatus
-                time={formatTime(item.dateMs)}
-                status={item.status}
-                isMe={isMe}
-                compact
-                timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-                iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-              />
-            </View>
+            {discussionFooter ? (
+              <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
+                {bubbleHeader}
+                <View style={styles.bubbleContentRow}>
+                  <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
+                  {viewCountFormatted ? (
+                    <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>
+                      {`👁 ${viewCountFormatted}`}
+                    </Text>
+                  ) : null}
+                  <MessageTimeStatus
+                    time={formatTime(item.dateMs)}
+                    status={item.status}
+                    isMe={isMe}
+                    compact
+                    timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                    iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                  />
+                </View>
+              </View>
+            ) : (
+              <>
+                {bubbleHeader}
+                <View style={styles.bubbleContentRow}>
+                  <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
+                  {viewCountFormatted ? (
+                    <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>
+                      {`👁 ${viewCountFormatted}`}
+                    </Text>
+                  ) : null}
+                  <MessageTimeStatus
+                    time={formatTime(item.dateMs)}
+                    status={item.status}
+                    isMe={isMe}
+                    compact
+                    timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                    iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+                  />
+                </View>
+              </>
+            )}
+            {discussionFooter}
           </View>
-        </Pressable>
+        </Pressable>,
       );
     },
-    [colors, headerTitle, isGroupChat, messageById, openTelegramMessageMenu, setMessageContentRef, styles],
+    [
+      channelMediaClamp,
+      colors,
+      handleOpenDiscussion,
+      handleOpenTelegramMemberProfile,
+      headerTitle,
+      isChannel,
+      isGroupChat,
+      messageById,
+      openTelegramMessageMenu,
+      selectedTelegramIdSet,
+      setMessageContentRef,
+      styles,
+      telegramSelectionMode,
+      toggleTelegramSelection,
+    ],
   );
 
   return (
     <View style={{ flex: 1 }}>
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: colors.chatBackground }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeightNav : 0}
-      >
+      <View style={{ flex: 1, backgroundColor: colors.chatBackground }}>
         <View style={styles.flexChatBody}>
           <View style={styles.wallpaperLayer} pointerEvents="none">
             <ChatBackgroundPattern themeId={wallpaperThemeId} />
           </View>
-          <FlatList
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            inverted
-            style={styles.messagesList}
-            contentContainerStyle={styles.listContent}
-            keyboardShouldPersistTaps="handled"
-            refreshing={loading}
-            onRefresh={() => void loadHistory(false)}
-            onEndReached={() => void loadHistory(true)}
-            onEndReachedThreshold={0.3}
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>
-                  {lastError ?? (loading ? 'Загружаем историю Telegram...' : 'История пуста')}
-                </Text>
-              </View>
-            }
-          />
-          <View
-            style={[styles.bottomChrome, { paddingBottom: insets.bottom }]}
-            onLayout={(e) => {
-              const h = e.nativeEvent.layout.height;
-              if (h > 0) setInputBarHeight(Math.ceil(h));
-            }}
-          >
-            {loadingOlder ? (
-              <Text style={styles.loadingOlder}>Загружаем старые сообщения...</Text>
-            ) : null}
-            {canPost ? (
-              <InputBar
-                onSendText={sendText}
-                onSendVoice={sendVoice}
-                onSendMedia={sendMedia}
-                onSendFile={sendFile}
-                replyToMessage={replyToInputMessage}
-                replyAuthorName={replyAuthorName}
-                onCancelReply={() => setReplyToMessageId(null)}
-                placeholder="Сообщение"
-              />
-            ) : (
-              <View style={styles.readOnlyFooter} accessibilityLabel="Только для чтения">
-                <Text style={styles.readOnlyText}>Только для чтения</Text>
-              </View>
-            )}
-          </View>
+          <Reanimated.View style={[{ flex: 1 }, listKeyboardAnimatedStyle]}>
+            <FlatList
+              ref={listRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderItem}
+              inverted
+              style={styles.messagesList}
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingTop: CHAT_MSG_VERTICAL_PADDING + inputBarHeight },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              refreshing={loading}
+              onRefresh={() => void loadHistory(false)}
+              onEndReached={() => void loadHistory(true)}
+              onEndReachedThreshold={0.3}
+              onScrollToIndexFailed={(info) => {
+                setTimeout(() => {
+                  listRef.current?.scrollToIndex({
+                    index: info.index,
+                    animated: true,
+                    viewPosition: 0.5,
+                  });
+                }, 120);
+              }}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Text style={styles.emptyText}>
+                    {lastError ?? (loading ? 'Загружаем историю Telegram...' : 'История пуста')}
+                  </Text>
+                </View>
+              }
+            />
+          </Reanimated.View>
+          <Reanimated.View style={[styles.composerDockAbsolute, inputDockAnimatedStyle]}>
+            <View
+              style={[styles.bottomChrome, !telegramSelectionMode ? { paddingBottom: insets.bottom } : null]}
+              onLayout={(e) => {
+                const h = e.nativeEvent.layout.height;
+                if (h > 0) setInputBarHeight(Math.ceil(h));
+              }}
+            >
+              {loadingOlder ? (
+                <Text style={styles.loadingOlder}>Загружаем старые сообщения...</Text>
+              ) : null}
+              {telegramSelectionMode ? (
+                <View
+                  style={[styles.selectionBatchWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}
+                >
+                  <View style={styles.selectionBatchRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Удалить выбранные сообщения"
+                      disabled={!canBatchTdLib}
+                      onPress={handleTelegramBatchDelete}
+                      style={({ pressed }) => [
+                        styles.selectionBatchAction,
+                        !canBatchTdLib && styles.selectionBatchActionDisabled,
+                        pressed && canBatchTdLib && styles.selectionBatchActionPressed,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.selectionBatchIconCircle,
+                          styles.selectionBatchIconCircleDanger,
+                          !canBatchTdLib && styles.selectionBatchIconCircleMuted,
+                        ]}
+                      >
+                        <Feather
+                          name="trash-2"
+                          size={20}
+                          color={canBatchTdLib ? '#DB4F55' : colors.textSecondary}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.selectionBatchLabel,
+                          !canBatchTdLib && styles.selectionBatchLabelDisabled,
+                        ]}
+                      >
+                        Удалить
+                      </Text>
+                    </Pressable>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Переслать выбранные в Избранное"
+                      disabled={!canBatchTdLib}
+                      onPress={() => void handleTelegramBatchForward()}
+                      style={({ pressed }) => [
+                        styles.selectionBatchAction,
+                        !canBatchTdLib && styles.selectionBatchActionDisabled,
+                        pressed && canBatchTdLib && styles.selectionBatchActionPressed,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.selectionBatchIconCircle,
+                          styles.selectionBatchIconCircleAccent,
+                          !canBatchTdLib && styles.selectionBatchIconCircleMuted,
+                        ]}
+                      >
+                        <Feather
+                          name="corner-up-right"
+                          size={20}
+                          color={canBatchTdLib ? colors.accent : colors.textSecondary}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.selectionBatchLabel,
+                          !canBatchTdLib && styles.selectionBatchLabelDisabled,
+                        ]}
+                      >
+                        Переслать
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : canPost ? (
+                <InputBar
+                  onSendText={sendText}
+                  onSendVoice={sendVoice}
+                  onSendMedia={sendMedia}
+                  onSendFile={sendFile}
+                  replyToMessage={replyToInputMessage}
+                  replyAuthorName={replyAuthorName}
+                  onCancelReply={() => setReplyToMessageId(null)}
+                  placeholder="Сообщение"
+                />
+              ) : (
+                <View style={styles.readOnlyFooter} accessibilityLabel="Только для чтения">
+                  <Text style={styles.readOnlyText}>Только для чтения</Text>
+                </View>
+              )}
+            </View>
+          </Reanimated.View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
       <ChatContextMenuOverlay
         menuState={menuState}
         activeMenuMessage={activeMenuMessage}
         menuActions={telegramMenuActions}
         menuAnim={menuAnim}
         screenWidth={SCREEN_WIDTH}
-        showReactions={false}
+        showReactions
         onClose={closeMenu}
         onMenuAction={handleTelegramMenuAction}
+        onPickReaction={handleTelegramPickReaction}
         renderMenuPreviewBody={renderTelegramMenuPreviewBody}
       />
     </View>

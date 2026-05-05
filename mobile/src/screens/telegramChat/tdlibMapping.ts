@@ -1,11 +1,34 @@
 import { tdlibClient } from '../../services/tdlib/TdlibClient';
 import { throwIfTdError } from '../../services/tdlib/tdlibErrors';
-import { getCachedUserName, setCachedUserName } from '../../services/tdlib/userNameCache';
+import {
+  getCachedUserAvatarUri,
+  getCachedUserName,
+  setCachedUserAvatarUri,
+  setCachedUserName,
+} from '../../services/tdlib/userNameCache';
 import { previewForUnsupported } from './composer';
 import type { TelegramMessageRow, TelegramMessageStatus } from './types';
 
+export type MapTdMessageOptions = {
+  /** When true, fetch sender profile photo for incoming user messages (group / supergroup UI). */
+  loadSenderAvatar?: boolean;
+};
+
 export function getNestedRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+export function getPinnedMessageIdFromChat(chat: Record<string, unknown>): number | null {
+  const direct = chat.pinned_message_id;
+  if (typeof direct === 'number' && Number.isFinite(direct) && direct > 0) {
+    return direct;
+  }
+  const pm = getNestedRecord(chat.pinned_message);
+  const id = pm?.id;
+  if (typeof id === 'number' && Number.isFinite(id) && id > 0) {
+    return id;
+  }
+  return null;
 }
 
 function getMessageId(raw: Record<string, unknown>): number | null {
@@ -95,7 +118,7 @@ function getLargestPhotoSize(photo: Record<string, unknown> | null): Record<stri
   return largest;
 }
 
-async function downloadTdlibFile(fileId: number): Promise<string | null> {
+export async function downloadTdlibFile(fileId: number): Promise<string | null> {
   const file = (await tdlibClient.send({
     '@type': 'downloadFile',
     file_id: fileId,
@@ -110,9 +133,41 @@ async function downloadTdlibFile(fileId: number): Promise<string | null> {
   return path ? `file://${path}` : null;
 }
 
-async function resolveUserName(userId: number): Promise<string> {
-  const cached = getCachedUserName(userId);
-  if (cached) return cached;
+async function fetchTdlibUserProfilePhotoUri(user: Record<string, unknown>): Promise<string | null> {
+  const photo = getNestedRecord(user.profile_photo);
+  if (!photo) return null;
+  const big = getNestedRecord(photo.big);
+  const small = getNestedRecord(photo.small);
+  const file = big ?? small;
+  const fid = typeof file?.id === 'number' ? file.id : null;
+  if (fid == null) return null;
+  return downloadTdlibFile(fid).catch(() => null);
+}
+
+async function resolveIncomingUserSender(
+  raw: Record<string, unknown>,
+  loadAvatar: boolean,
+): Promise<{ userId: number; name: string; avatarUri: string | null | undefined } | null> {
+  if (raw.is_outgoing === true) return null;
+  const sender = getNestedRecord(raw.sender_id);
+  if (!sender || sender['@type'] !== 'messageSenderUser') return null;
+  const userId = typeof sender.user_id === 'number' ? sender.user_id : null;
+  if (userId == null) return null;
+
+  const cachedName = getCachedUserName(userId);
+  const cachedAvatarState = loadAvatar ? getCachedUserAvatarUri(userId) : undefined;
+
+  const canSkipNetwork =
+    !!cachedName && (!loadAvatar || cachedAvatarState !== undefined);
+
+  if (canSkipNetwork) {
+    return {
+      userId,
+      name: cachedName,
+      avatarUri: loadAvatar ? cachedAvatarState ?? null : undefined,
+    };
+  }
+
   try {
     const user = (await tdlibClient.send({
       '@type': 'getUser',
@@ -123,28 +178,56 @@ async function resolveUserName(userId: number): Promise<string> {
     const lastName = typeof user.last_name === 'string' ? user.last_name.trim() : '';
     const name = [firstName, lastName].filter(Boolean).join(' ') || `User ${userId}`;
     setCachedUserName(userId, name);
-    return name;
-  } catch {
-    return `User ${userId}`;
-  }
-}
 
-async function getTdSenderName(raw: Record<string, unknown>): Promise<string | null> {
-  if (raw.is_outgoing === true) return null;
-  const sender = getNestedRecord(raw.sender_id);
-  if (!sender) return null;
-  if (sender['@type'] === 'messageSenderUser') {
-    const userId = typeof sender.user_id === 'number' ? sender.user_id : null;
-    if (userId == null) return null;
-    return resolveUserName(userId);
+    let avatarUri: string | null | undefined;
+    if (loadAvatar) {
+      const downloaded = await fetchTdlibUserProfilePhotoUri(user);
+      avatarUri = downloaded;
+      setCachedUserAvatarUri(userId, downloaded);
+    }
+
+    return { userId, name, avatarUri: loadAvatar ? avatarUri ?? null : undefined };
+  } catch {
+    const fallbackName = cachedName ?? `User ${userId}`;
+    return {
+      userId,
+      name: fallbackName,
+      avatarUri: loadAvatar
+        ? cachedAvatarState !== undefined
+          ? cachedAvatarState ?? null
+          : null
+        : undefined,
+    };
   }
-  return null;
 }
 
 function getTdViewCount(raw: Record<string, unknown>): number | undefined {
   const info = getNestedRecord(raw.interaction_info);
   const count = info?.view_count;
   return typeof count === 'number' && count > 0 ? count : undefined;
+}
+
+/** Channel post → linked discussion group + comment thread (TDLib `Message`). */
+function getTdDiscussionFields(raw: Record<string, unknown>): {
+  discussionReplyCount?: number;
+  discussionChatId?: number;
+  messageThreadId?: number;
+} {
+  const interaction = getNestedRecord(raw.interaction_info);
+  const replyInfo = getNestedRecord(interaction?.reply_info);
+  const rc = replyInfo?.reply_count;
+  const discussionReplyCount =
+    typeof rc === 'number' && Number.isFinite(rc) && rc >= 0 ? rc : undefined;
+
+  const ric = raw.reply_in_chat_id;
+  const discussionChatId =
+    typeof ric === 'number' && Number.isFinite(ric) && ric !== 0 ? ric : undefined;
+
+  const mtid = raw.message_thread_id;
+  const messageThreadId =
+    typeof mtid === 'number' && Number.isFinite(mtid) && mtid !== 0 ? mtid : undefined;
+
+  return { discussionReplyCount, discussionChatId, messageThreadId };
 }
 
 export async function loadLastReadOutboxMessageId(chatId: number): Promise<number> {
@@ -160,6 +243,7 @@ export async function mapTdMessages(
   rawMessages: Record<string, unknown>[],
   lastReadOutboxMessageId: number,
   concurrency = 4,
+  options?: MapTdMessageOptions,
 ): Promise<TelegramMessageRow[]> {
   const mapped: Array<TelegramMessageRow | null> = new Array(rawMessages.length).fill(null);
   let nextIndex = 0;
@@ -168,7 +252,7 @@ export async function mapTdMessages(
     while (nextIndex < rawMessages.length) {
       const index = nextIndex;
       nextIndex += 1;
-      const row = await mapTdMessage(rawMessages[index], lastReadOutboxMessageId);
+      const row = await mapTdMessage(rawMessages[index], lastReadOutboxMessageId, options);
       mapped[index] = row;
     }
   }
@@ -181,6 +265,7 @@ export async function mapTdMessages(
 export async function mapTdMessage(
   raw: Record<string, unknown>,
   lastReadOutboxMessageId: number,
+  options?: MapTdMessageOptions,
 ): Promise<TelegramMessageRow | null> {
   const id = getMessageId(raw);
   if (id == null) return null;
@@ -189,8 +274,14 @@ export async function mapTdMessage(
   const outgoing = raw.is_outgoing === true;
   const dateSec = typeof raw.date === 'number' ? raw.date : Math.floor(Date.now() / 1000);
   const caption = getFormattedText(content?.caption);
-  const senderName = outgoing ? null : await getTdSenderName(raw);
+  const loadAvatar = options?.loadSenderAvatar === true;
+  const incomingSender = await resolveIncomingUserSender(raw, loadAvatar);
+  const senderName = outgoing ? undefined : incomingSender?.name;
+  const senderUserId = outgoing ? undefined : incomingSender?.userId;
+  const senderAvatarUri =
+    outgoing || !loadAvatar ? undefined : incomingSender?.avatarUri;
   const viewCount = getTdViewCount(raw);
+  const { discussionReplyCount, discussionChatId, messageThreadId } = getTdDiscussionFields(raw);
   const base = {
     id: String(id),
     messageId: id,
@@ -199,7 +290,12 @@ export async function mapTdMessage(
     status: getTdMessageStatus(raw, lastReadOutboxMessageId),
     replyToMessageId: getReplyToMessageId(raw),
     senderName: senderName ?? undefined,
+    senderUserId,
+    senderAvatarUri: senderAvatarUri !== undefined ? senderAvatarUri : undefined,
     viewCount,
+    discussionReplyCount,
+    discussionChatId,
+    messageThreadId,
   };
 
   if (kind === 'messageText') {

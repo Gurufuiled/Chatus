@@ -66,16 +66,23 @@ export interface VideoBubbleProps {
   incomingBubbleBackground?: string;
   incomingBubbleBorderColor?: string;
   incomingCaptionTextColor?: string;
+  mediaClamp?: { maxWidth: number; maxHeight: number };
+  incomingChannelPost?: boolean;
+  footer?: React.ReactNode;
+  viewCountShortLabel?: string;
 }
 
 function computeDisplaySize(
   naturalWidth: number,
   naturalHeight: number,
   maxWidth: number = MAX_BUBBLE_WIDTH,
-  maxHeight: number = MAX_BUBBLE_HEIGHT
+  maxHeight: number = MAX_BUBBLE_HEIGHT,
 ): { width: number; height: number } {
   if (naturalWidth <= 0 || naturalHeight <= 0) {
-    return DEFAULT_VIDEO_SIZE;
+    return {
+      width: Math.min(maxWidth, DEFAULT_VIDEO_SIZE.width),
+      height: Math.min(maxHeight, DEFAULT_VIDEO_SIZE.height),
+    };
   }
 
   const baseScale = Math.min(maxWidth / naturalWidth, maxHeight / naturalHeight, 1);
@@ -93,9 +100,14 @@ function computeDisplaySize(
   return { width, height };
 }
 
-function resolveKnownDisplaySize(width?: number, height?: number) {
+function resolveKnownDisplaySize(
+  width?: number,
+  height?: number,
+  maxWidth: number = MAX_BUBBLE_WIDTH,
+  maxHeight: number = MAX_BUBBLE_HEIGHT,
+) {
   if (width == null || height == null) return null;
-  return computeDisplaySize(width, height);
+  return computeDisplaySize(width, height, maxWidth, maxHeight);
 }
 
 function formatPlaybackRateLabel(rate: number) {
@@ -423,16 +435,22 @@ export function VideoBubble({
   incomingBubbleBackground,
   incomingBubbleBorderColor,
   incomingCaptionTextColor,
+  mediaClamp,
+  incomingChannelPost = false,
+  footer,
+  viewCountShortLabel,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
+  const maxW = mediaClamp?.maxWidth ?? MAX_BUBBLE_WIDTH;
+  const maxH = mediaClamp?.maxHeight ?? MAX_BUBBLE_HEIGHT;
   const [generatedThumbnailUri, setGeneratedThumbnailUri] = useState(() =>
     normalizedUri ? getCachedVideoThumbnailUri(normalizedUri) ?? '' : ''
   );
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
     fixedSize && propWidth && propHeight
       ? { width: propWidth, height: propHeight }
-      : resolveKnownDisplaySize(propWidth, propHeight)
+      : resolveKnownDisplaySize(propWidth, propHeight, maxW, maxH)
   );
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const insets = useSafeAreaInsets();
@@ -442,7 +460,7 @@ export function VideoBubble({
       setDisplaySize({ width: propWidth, height: propHeight });
       return;
     }
-    const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight);
+    const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight, maxW, maxH);
     if (knownDisplaySize) {
       setDisplaySize(knownDisplaySize);
       return;
@@ -450,7 +468,10 @@ export function VideoBubble({
 
     const posterUri = normalizedThumbnailUri || generatedThumbnailUri;
     if (!posterUri) {
-      setDisplaySize(DEFAULT_VIDEO_SIZE);
+      setDisplaySize({
+        width: Math.min(maxW, DEFAULT_VIDEO_SIZE.width),
+        height: Math.min(maxH, DEFAULT_VIDEO_SIZE.height),
+      });
       return;
     }
 
@@ -459,12 +480,15 @@ export function VideoBubble({
       posterUri,
       (width, height) => {
         if (!cancelled) {
-          setDisplaySize(computeDisplaySize(width, height));
+          setDisplaySize(computeDisplaySize(width, height, maxW, maxH));
         }
       },
       () => {
         if (!cancelled) {
-          setDisplaySize(DEFAULT_VIDEO_SIZE);
+          setDisplaySize({
+            width: Math.min(maxW, DEFAULT_VIDEO_SIZE.width),
+            height: Math.min(maxH, DEFAULT_VIDEO_SIZE.height),
+          });
         }
       }
     );
@@ -472,7 +496,7 @@ export function VideoBubble({
     return () => {
       cancelled = true;
     };
-  }, [generatedThumbnailUri, normalizedThumbnailUri, propHeight, propWidth, fixedSize]);
+  }, [generatedThumbnailUri, normalizedThumbnailUri, propHeight, propWidth, fixedSize, maxW, maxH]);
 
   useEffect(() => {
     if (!normalizedUri || normalizedThumbnailUri) {
@@ -518,9 +542,11 @@ export function VideoBubble({
   }, []);
 
   const posterUri = normalizedThumbnailUri || generatedThumbnailUri;
-  const w = displaySize?.width ?? DEFAULT_VIDEO_SIZE.width;
-  const h = displaySize?.height ?? DEFAULT_VIDEO_SIZE.height;
+  const w = displaySize?.width ?? Math.min(maxW, DEFAULT_VIDEO_SIZE.width);
+  const h = displaySize?.height ?? Math.min(maxH, DEFAULT_VIDEO_SIZE.height);
   const hasCaption = (caption ?? '').trim().length > 0;
+  const hasFooter = Boolean(footer);
+  const mediaBottomRounded = !hasCaption && !hasFooter;
 
   return (
     <>
@@ -529,6 +555,7 @@ export function VideoBubble({
           styles.container,
           centered && styles.containerCentered,
           embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+          incomingChannelPost && styles.containerChannelPost,
           !isMe && incomingBubbleBackground
             ? {
                 backgroundColor: incomingBubbleBackground,
@@ -549,6 +576,8 @@ export function VideoBubble({
             { width: w, height: h },
             isMe ? styles.videoWrapperMe : styles.videoWrapperOther,
             embedded && styles.videoWrapperEmbedded,
+            incomingChannelPost &&
+              (mediaBottomRounded ? styles.videoWrapperChannelSolo : styles.videoWrapperChannelStacked),
           ]}
         >
           {posterUri ? (
@@ -571,7 +600,9 @@ export function VideoBubble({
                 {viewCount != null ? (
                   <View style={styles.timePillMetric}>
                     <Feather name="eye" size={12} color="#FFFFFF" />
-                    <Text style={styles.timePillMetricText}>{viewCount}</Text>
+                    <Text style={styles.timePillMetricText}>
+                      {viewCountShortLabel ?? String(viewCount)}
+                    </Text>
                   </View>
                 ) : null}
                 <MessageTimeStatus
@@ -591,6 +622,7 @@ export function VideoBubble({
           <Text
             style={[
               styles.caption,
+              incomingChannelPost && styles.captionChannel,
               isMe && styles.captionMe,
               isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
               !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
@@ -599,6 +631,8 @@ export function VideoBubble({
             {caption}
           </Text>
         ) : null}
+
+        {footer}
 
         {inlineReactions?.length ? (
           <MessageReactionInline
@@ -630,6 +664,14 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     maxWidth: '100%',
     alignSelf: 'flex-start',
+  },
+  containerChannelPost: {
+    alignSelf: 'stretch',
+    width: '100%',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderRadius: 14,
+    overflow: 'hidden',
   },
   containerCentered: {
     alignSelf: 'center',
@@ -665,6 +707,15 @@ const styles = StyleSheet.create({
   },
   videoWrapperEmbedded: {
     borderRadius: 0,
+  },
+  videoWrapperChannelSolo: {
+    borderRadius: 14,
+  },
+  videoWrapperChannelStacked: {
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   poster: {
     ...StyleSheet.absoluteFillObject,
@@ -741,6 +792,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
     color: '#111827',
+  },
+  captionChannel: {
+    marginTop: 0,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+    fontSize: 15,
+    lineHeight: 21,
   },
   captionMe: {
     color: '#FFFFFF',

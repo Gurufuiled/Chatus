@@ -21,8 +21,18 @@ export type TelegramMessageRow = {
   fileSize?: number;
   /** Display name of the sender – populated for incoming messages in group/supergroup chats. */
   senderName?: string | null;
+  /** TDLib user id for incoming messages from `messageSenderUser` (groups / supergroups). */
+  senderUserId?: number;
+  /** Resolved profile photo URI for the sender when `loadSenderAvatar` was used while mapping. */
+  senderAvatarUri?: string | null;
   /** Post view count from TDLib `interaction_info.view_count` (channel posts). */
   viewCount?: number;
+  /** Linked discussion supergroup chat id (`reply_in_chat_id`) when comments exist for a channel post. */
+  discussionChatId?: number;
+  /** Thread id for discussion messages (`message_thread_id`). */
+  messageThreadId?: number;
+  /** Approximate comment count from `interaction_info.reply_info.reply_count`. */
+  discussionReplyCount?: number;
 };
 
 /** Same layout contract as `ChatScreen` context menu — drives `ChatContextMenuOverlay`. */

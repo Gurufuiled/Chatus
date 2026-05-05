@@ -5,6 +5,7 @@
   "scripts": {
     "postinstall": "patch-package",
     "build": "npx tsc --noEmit",
+    "test:telegram-chat": "npx tsx src/screens/telegramChat/tdlibPhotoUtils.test.ts && npx tsx src/screens/telegramChat/telegramDialogFallback.test.ts",
     "test:voice": "npx tsx src/services/VoiceRecorderService.test.ts",
     "test:voice-gesture": "npx tsc --noEmit",
     "start": "expo start",

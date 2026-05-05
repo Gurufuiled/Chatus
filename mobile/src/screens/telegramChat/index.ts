@@ -6,6 +6,7 @@ export {
   getTelegramReplyPreviewText,
   getTelegramReplyThumbnailUri,
   isSameGroup,
+  isSameTelegramChain,
   markMessageFailed,
   optimisticOutgoingMessage,
   telegramRowToInputReplyMessage,

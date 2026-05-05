@@ -277,7 +277,8 @@ export function MainTabs() {
             focusedRoute === 'ChannelAdmin' ||
             focusedRoute === 'ComposeMessage' ||
             focusedRoute === 'CreateContact' ||
-            focusedRoute === 'TelegramChat';
+            focusedRoute === 'TelegramChat' ||
+            focusedRoute === 'TelegramChatProfile';
 
           return {
             title: 'Чаты',

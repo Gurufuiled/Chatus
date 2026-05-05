@@ -40,7 +40,22 @@ export type ChatsStackParamList = {
   ChannelType: { channelId: string };
   ChannelDiscussionSettings: { channelId: string };
   ChannelMonetization: { channelId: string };
-  TelegramChat: { telegramChatId: string; title?: string; avatarUri?: string | null; chatType?: string | null };
+  TelegramChat: {
+    telegramChatId: string;
+    title?: string;
+    avatarUri?: string | null;
+    chatType?: string | null;
+    /** Jump to message after navigating from profile shared media */
+    focusMessageId?: number;
+    /** Discussion thread inside supergroup / linked discussion chat */
+    messageThreadId?: number;
+  };
+  TelegramChatProfile: {
+    telegramChatId: string;
+    title?: string;
+    avatarUri?: string | null;
+    chatType?: string | null;
+  };
 };
 
 export type SettingsStackParamList = {

@@ -53,13 +53,20 @@ export interface ImageBubbleProps {
   incomingBubbleBackground?: string;
   incomingBubbleBorderColor?: string;
   incomingCaptionTextColor?: string;
+  /** Override clamp for media box (e.g. Telegram channel almost full width). */
+  mediaClamp?: { maxWidth: number; maxHeight: number };
+  /** Channel incoming post: stretch card, flush media top corners, optional footer bar. */
+  incomingChannelPost?: boolean;
+  footer?: React.ReactNode;
+  /** Short label for views in overlay (e.g. `60.8K`) — defaults to raw viewCount. */
+  viewCountShortLabel?: string;
 }
 
 function computeDisplaySize(
   naturalWidth: number,
   naturalHeight: number,
   maxWidth: number = MAX_BUBBLE_WIDTH,
-  maxHeight: number = MAX_BUBBLE_HEIGHT
+  maxHeight: number = MAX_BUBBLE_HEIGHT,
 ): { width: number; height: number } {
   if (naturalWidth <= 0 || naturalHeight <= 0) {
     return { width: maxWidth, height: maxHeight };
@@ -83,9 +90,11 @@ function computeDisplaySize(
 function resolveKnownDisplaySize(
   width?: number,
   height?: number,
+  maxWidth: number = MAX_BUBBLE_WIDTH,
+  maxHeight: number = MAX_BUBBLE_HEIGHT,
 ): { width: number; height: number } | null {
   if (width == null || height == null) return null;
-  return computeDisplaySize(width, height);
+  return computeDisplaySize(width, height, maxWidth, maxHeight);
 }
 
 export function ImageBubble({
@@ -112,12 +121,18 @@ export function ImageBubble({
   incomingBubbleBackground,
   incomingBubbleBorderColor,
   incomingCaptionTextColor,
+  mediaClamp,
+  incomingChannelPost = false,
+  footer,
+  viewCountShortLabel,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
+  const maxW = mediaClamp?.maxWidth ?? MAX_BUBBLE_WIDTH;
+  const maxH = mediaClamp?.maxHeight ?? MAX_BUBBLE_HEIGHT;
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(() =>
     fixedSize && propWidth && propHeight
       ? { width: propWidth, height: propHeight }
-      : resolveKnownDisplaySize(propWidth, propHeight)
+      : resolveKnownDisplaySize(propWidth, propHeight, maxW, maxH)
   );
   const [imageLoaded, setImageLoaded] = useState(() =>
     normalizedUri.length > 0 && loadedImageUris.has(normalizedUri)
@@ -134,9 +149,12 @@ export function ImageBubble({
       setDisplaySize({ width: propWidth, height: propHeight });
       return;
     }
-    const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight);
+    const knownDisplaySize = resolveKnownDisplaySize(propWidth, propHeight, maxW, maxH);
     if (!normalizedUri) {
-      setDisplaySize(DEFAULT_PLACEHOLDER_SIZE);
+      setDisplaySize({
+        width: Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width),
+        height: Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height),
+      });
       return;
     }
     if (knownDisplaySize) {
@@ -149,19 +167,22 @@ export function ImageBubble({
       normalizedUri,
       (w, h) => {
         if (!cancelled) {
-          setDisplaySize(computeDisplaySize(w, h));
+          setDisplaySize(computeDisplaySize(w, h, maxW, maxH));
         }
       },
       () => {
         if (!cancelled) {
-          setDisplaySize(DEFAULT_PLACEHOLDER_SIZE);
+          setDisplaySize({
+            width: Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width),
+            height: Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height),
+          });
         }
       }
     );
     return () => {
       cancelled = true;
     };
-  }, [normalizedUri, propWidth, propHeight, fixedSize]);
+  }, [normalizedUri, propWidth, propHeight, fixedSize, maxW, maxH]);
 
   /** Avoid endless gray placeholder if decode callbacks never fire (seen on some Android builds). */
   useEffect(() => {
@@ -184,9 +205,11 @@ export function ImageBubble({
     setFullscreenVisible(false);
   }, []);
 
-  const w = displaySize?.width ?? DEFAULT_PLACEHOLDER_SIZE.width;
-  const h = displaySize?.height ?? DEFAULT_PLACEHOLDER_SIZE.height;
+  const w = displaySize?.width ?? Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width);
+  const h = displaySize?.height ?? Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height);
   const hasCaption = (caption ?? '').trim().length > 0;
+  const hasFooter = Boolean(footer);
+  const mediaBottomRounded = !hasCaption && !hasFooter;
 
   return (
     <>
@@ -195,6 +218,7 @@ export function ImageBubble({
           styles.container,
           centered && styles.containerCentered,
           embedded ? styles.containerEmbedded : isMe ? styles.bubbleMe : styles.bubbleOther,
+          incomingChannelPost && styles.containerChannelPost,
           !isMe && incomingBubbleBackground
             ? {
                 backgroundColor: incomingBubbleBackground,
@@ -217,6 +241,8 @@ export function ImageBubble({
             { width: w, height: h },
             isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
             embedded && styles.imageWrapperEmbedded,
+            incomingChannelPost &&
+              (mediaBottomRounded ? styles.imageWrapperChannelSolo : styles.imageWrapperChannelStacked),
           ]}
         >
           {!imageLoaded && !loadError ? (
@@ -253,7 +279,9 @@ export function ImageBubble({
               {viewCount != null ? (
                 <View style={styles.overlayMetric}>
                   <Feather name="eye" size={12} color="#FFFFFF" />
-                  <Text style={styles.overlayMetricText}>{viewCount}</Text>
+                  <Text style={styles.overlayMetricText}>
+                    {viewCountShortLabel ?? String(viewCount)}
+                  </Text>
                 </View>
               ) : null}
               {time ? (
@@ -274,6 +302,7 @@ export function ImageBubble({
           <Text
             style={[
               styles.caption,
+              incomingChannelPost && styles.captionChannel,
               isMe && styles.captionMe,
               isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
               !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
@@ -282,6 +311,8 @@ export function ImageBubble({
             {caption}
           </Text>
         ) : null}
+
+        {footer}
 
         {inlineReactions?.length ? (
           <MessageReactionInline
@@ -333,6 +364,14 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     alignSelf: 'flex-start',
   },
+  containerChannelPost: {
+    alignSelf: 'stretch',
+    width: '100%',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
   containerCentered: {
     alignSelf: 'center',
   },
@@ -366,6 +405,15 @@ const styles = StyleSheet.create({
   },
   imageWrapperEmbedded: {
     borderRadius: 0,
+  },
+  imageWrapperChannelSolo: {
+    borderRadius: 14,
+  },
+  imageWrapperChannelStacked: {
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -415,6 +463,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
     color: '#111827',
+  },
+  captionChannel: {
+    marginTop: 0,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+    fontSize: 15,
+    lineHeight: 21,
   },
   captionMe: {
     color: '#FFFFFF',

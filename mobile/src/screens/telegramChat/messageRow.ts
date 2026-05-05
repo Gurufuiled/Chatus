@@ -83,6 +83,26 @@ export function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: 
 }
 
 /**
+ * Same-time bubble chaining as {@link isSameGroup}; when `splitIncomingBySender` is true,
+ * incoming rows only chain if TDLib `senderUserId` matches (group chats with multiple people).
+ */
+export function isSameTelegramChain(
+  olderAdjacent: TelegramMessageRow | undefined,
+  newerMsg: TelegramMessageRow,
+  splitIncomingBySender: boolean,
+): boolean {
+  if (olderAdjacent == null) return false;
+  if (olderAdjacent.outgoing !== newerMsg.outgoing) return false;
+  if (Math.abs(olderAdjacent.dateMs - newerMsg.dateMs) > CHAT_MSG_GROUP_TIME_GAP_MS) return false;
+  if (splitIncomingBySender && !newerMsg.outgoing) {
+    const a = olderAdjacent.senderUserId ?? -1;
+    const b = newerMsg.senderUserId ?? -1;
+    return a === b;
+  }
+  return true;
+}
+
+/**
  * Returns true when two adjacent messages belong to the same visual group chain.
  * Groups by send direction (outgoing vs incoming) — not by actual sender identity —
  * which is correct for 1-to-1 chats; group chats with multiple senders need a

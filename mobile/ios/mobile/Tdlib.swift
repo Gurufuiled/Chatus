@@ -1,4 +1,4 @@
-import Foundation
+image.pngimport Foundation
 import React
 
 @objc(Tdlib)

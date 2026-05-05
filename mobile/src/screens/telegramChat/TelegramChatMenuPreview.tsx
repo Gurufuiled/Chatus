@@ -43,7 +43,15 @@ export function TelegramChatMenuPreviewBody({
   const replySnippet =
     row.replyToMessageId != null ? (
       <ReplyPreview
-        author={replyTarget ? (replyTarget.outgoing ? 'Вы' : headerTitle) : 'Исходное сообщение'}
+        author={
+          replyTarget
+            ? replyTarget.outgoing
+              ? 'Вы'
+              : isGroupChat && replyTarget.senderName
+                ? replyTarget.senderName
+                : headerTitle
+            : 'Исходное сообщение'
+        }
         text={replyTarget ? getTelegramReplyPreviewText(replyTarget) : 'Исходное сообщение недоступно'}
         accentColor={isMe ? withAlpha('#FFFFFF', 0.9) : colors.accent}
         backgroundColor={isMe ? withAlpha('#FFFFFF', 0.12) : colors.inputBackground}
@@ -107,7 +115,7 @@ export function TelegramChatMenuPreviewBody({
           bubbleMeColor={colors.bubbleMe}
           outgoingTextColor="#FFFFFF"
           outgoingMetaColor={colors.textSecondaryMuted}
-          outgoingAccentColor="#FFFFFF"
+          outgoingAccentColor={colors.accent}
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingDurationColor={colors.textSecondary}
