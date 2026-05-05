@@ -3,7 +3,7 @@ import { Alert, FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Tex
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { ChatsStackParamList } from '../navigation/types';
-import { InputBar } from '../components/InputBar';
+import { InputBar, type FilePickResult, type MediaPickResult } from '../components/InputBar';
 import { MessageTimeStatus } from '../components/MessageTimeStatus';
 import { VoiceBubble } from '../components/VoiceBubble';
 import { useTheme } from '../contexts/ThemeContext';
@@ -35,6 +35,21 @@ function getNestedRecord(value: unknown): Record<string, unknown> | null {
 
 function fileUriToPath(uri: string): string {
   return decodeURIComponent(uri.replace(/^file:\/\//, '')).replace(/\/+$/, '');
+}
+
+function getLocalInputFile(uri: string): Record<string, unknown> {
+  return {
+    '@type': 'inputFileLocal',
+    path: fileUriToPath(uri),
+  };
+}
+
+function formattedText(text?: string): Record<string, unknown> {
+  return {
+    '@type': 'formattedText',
+    text: text?.trim() ?? '',
+    entities: [],
+  };
 }
 
 function formatTime(timestamp: number) {
@@ -158,6 +173,21 @@ async function mapTdMessage(
     ...base,
     kind: 'service',
     text: previewForUnsupported(kind),
+  };
+}
+
+function optimisticOutgoingMessage(
+  text: string,
+  tempId = -Date.now(),
+): TelegramMessageRow {
+  return {
+    id: `temp-${Math.abs(tempId)}`,
+    messageId: tempId,
+    kind: 'service',
+    text,
+    outgoing: true,
+    dateMs: Date.now(),
+    status: 'sending',
   };
 }
 
@@ -429,6 +459,86 @@ export function TelegramChatScreen() {
     [chatId, ensureReady],
   );
 
+  const sendInputMessageContent = useCallback(
+    async (
+      inputMessageContent: Record<string, unknown>,
+      optimisticText: string,
+      failureTitle: string,
+    ) => {
+      if (!Number.isFinite(chatId)) return;
+      const optimistic = optimisticOutgoingMessage(optimisticText);
+      setMessages((prev) => upsertMessage(prev, optimistic));
+      try {
+        await ensureReady();
+        const response = (await tdlibClient.send({
+          '@type': 'sendMessage',
+          chat_id: chatId,
+          input_message_content: inputMessageContent,
+        })) as Record<string, unknown>;
+        throwIfTdError(response);
+        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
+        if (mapped) {
+          setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped));
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
+        Alert.alert(failureTitle, message);
+      }
+    },
+    [chatId, ensureReady],
+  );
+
+  const sendMedia = useCallback(
+    async (result: MediaPickResult) => {
+      if (result.kind === 'video') {
+        await sendInputMessageContent(
+          {
+            '@type': 'inputMessageVideo',
+            video: getLocalInputFile(result.uri),
+            duration: Math.max(1, Math.round((result.durationMs ?? 1000) / 1000)),
+            width: Math.max(1, Math.round(result.width ?? 1)),
+            height: Math.max(1, Math.round(result.height ?? 1)),
+            supports_streaming: true,
+            caption: formattedText(result.caption),
+          },
+          result.caption?.trim() ? `Видео: ${result.caption.trim()}` : 'Видео',
+          'Не удалось отправить видео',
+        );
+        return;
+      }
+
+      await sendInputMessageContent(
+        {
+          '@type': 'inputMessagePhoto',
+          photo: getLocalInputFile(result.uri),
+          width: Math.max(1, Math.round(result.width ?? 1)),
+          height: Math.max(1, Math.round(result.height ?? 1)),
+          caption: formattedText(result.caption),
+        },
+        result.caption?.trim() ? `Фото: ${result.caption.trim()}` : 'Фото',
+        'Не удалось отправить фото',
+      );
+    },
+    [sendInputMessageContent],
+  );
+
+  const sendFile = useCallback(
+    async (result: FilePickResult) => {
+      await sendInputMessageContent(
+        {
+          '@type': 'inputMessageDocument',
+          document: getLocalInputFile(result.uri),
+          disable_content_type_detection: false,
+          caption: formattedText(),
+        },
+        result.name.trim() || 'Файл',
+        'Не удалось отправить файл',
+      );
+    },
+    [sendInputMessageContent],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: TelegramMessageRow }) => {
       const isMe = item.outgoing;
@@ -525,7 +635,8 @@ export function TelegramChatScreen() {
       <InputBar
         onSendText={sendText}
         onSendVoice={sendVoice}
-        mediaRestriction="В Telegram-режиме сейчас доступны текст и голосовые."
+        onSendMedia={sendMedia}
+        onSendFile={sendFile}
         placeholder="Сообщение"
       />
     </KeyboardAvoidingView>
