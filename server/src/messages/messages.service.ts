@@ -23,6 +23,7 @@ import {
   type MappedMessage,
   type MappedMessageReaction,
 } from '../common/mappers';
+import { RelayPolicyConfig } from '../config';
 
 const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   voice: MediaType.voice,
@@ -78,6 +79,7 @@ export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
+    private readonly relayPolicy: RelayPolicyConfig,
   ) {}
 
   private getStatusRank(status: MessageStatus): number {
@@ -203,6 +205,7 @@ export class MessagesService {
 
     const prismaMsgType = this.toMessageType(msgType);
     const mediaItems = this.normalizeMediaItems(media);
+    const defaultTransport = this.relayPolicy.getDefaultTransport();
 
     const result = await this.prisma.$transaction(async (tx) => {
       const message = await tx.message.create({
@@ -220,7 +223,7 @@ export class MessagesService {
           forwardedFromSenderId: forwardedFrom?.forwarded_from_sender_id ?? null,
           isChannelPost: options?.isChannelPost ?? false,
           status: MessageStatus.sent,
-          transport: options?.transport ?? Transport.websocket,
+          transport: options?.transport ?? defaultTransport,
         },
       });
 

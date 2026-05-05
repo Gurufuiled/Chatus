@@ -3,9 +3,10 @@ import { MessagesController } from './messages.controller';
 import { MessagesService } from './messages.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PushModule } from '../push/push.module';
+import { RelayPolicyModule } from '../config';
 
 @Module({
-  imports: [PrismaModule, PushModule],
+  imports: [PrismaModule, PushModule, RelayPolicyModule],
   controllers: [MessagesController],
   providers: [MessagesService],
   exports: [MessagesService],
