@@ -47,6 +47,10 @@ type TelegramMessageRow = {
   height?: number;
   fileName?: string;
   fileSize?: number;
+  /** Display name of the sender – populated for incoming messages in group/supergroup chats. */
+  senderName?: string | null;
+  /** Post view count from TDLib `interaction_info.view_count` (channel posts). */
+  viewCount?: number;
 };
 
 function getNestedRecord(value: unknown): Record<string, unknown> | null {
@@ -225,6 +229,55 @@ async function downloadTdlibFile(fileId: number): Promise<string | null> {
   return path ? `file://${path}` : null;
 }
 
+// ─── Sender name resolution (for group messages) ─────────────────────────────
+
+/** Module-level cache: TDLib user_id → display name. Persists across screen mounts. */
+const userNameCache = new Map<number, string>();
+
+async function resolveUserName(userId: number): Promise<string> {
+  const cached = userNameCache.get(userId);
+  if (cached) return cached;
+  try {
+    const user = (await tdlibClient.send({
+      '@type': 'getUser',
+      user_id: userId,
+    })) as Record<string, unknown>;
+    throwIfTdError(user);
+    const firstName = typeof user.first_name === 'string' ? user.first_name.trim() : '';
+    const lastName = typeof user.last_name === 'string' ? user.last_name.trim() : '';
+    const name = [firstName, lastName].filter(Boolean).join(' ') || `User ${userId}`;
+    userNameCache.set(userId, name);
+    return name;
+  } catch {
+    return `User ${userId}`;
+  }
+}
+
+/**
+ * Resolves the display name for `message.sender_id`.
+ * Returns null for outgoing messages or unsupported sender types.
+ */
+async function getTdSenderName(raw: Record<string, unknown>): Promise<string | null> {
+  if (raw.is_outgoing === true) return null;
+  const sender = getNestedRecord(raw.sender_id);
+  if (!sender) return null;
+  if (sender['@type'] === 'messageSenderUser') {
+    const userId = typeof sender.user_id === 'number' ? sender.user_id : null;
+    if (userId == null) return null;
+    return resolveUserName(userId);
+  }
+  return null; // messageSenderChat – skip for now
+}
+
+/** Extracts post view count from `message.interaction_info`. */
+function getTdViewCount(raw: Record<string, unknown>): number | undefined {
+  const info = getNestedRecord(raw.interaction_info);
+  const count = info?.view_count;
+  return typeof count === 'number' && count > 0 ? count : undefined;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function loadLastReadOutboxMessageId(chatId: number): Promise<number> {
   const chat = (await tdlibClient.send({
     '@type': 'getChat',
@@ -245,6 +298,8 @@ async function mapTdMessage(
   const outgoing = raw.is_outgoing === true;
   const dateSec = typeof raw.date === 'number' ? raw.date : Math.floor(Date.now() / 1000);
   const caption = getFormattedText(content?.caption);
+  const senderName = outgoing ? null : await getTdSenderName(raw);
+  const viewCount = getTdViewCount(raw);
   const base = {
     id: String(id),
     messageId: id,
@@ -252,6 +307,8 @@ async function mapTdMessage(
     dateMs: dateSec * 1000,
     status: getTdMessageStatus(raw, lastReadOutboxMessageId),
     replyToMessageId: getReplyToMessageId(raw),
+    senderName: senderName ?? undefined,
+    viewCount,
   };
 
   if (kind === 'messageText') {
@@ -465,13 +522,19 @@ export function TelegramChatScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createTelegramChatStyles(colors), [colors]);
   const route = useRoute<RouteProp<ChatsStackParamList, 'TelegramChat'>>();
-  const { telegramChatId, title, avatarUri } = route.params;
+  const { telegramChatId, title, avatarUri, chatType: routeChatType } = route.params;
   const chatId = useMemo(() => Number.parseInt(telegramChatId, 10), [telegramChatId]);
+  const isChannel = routeChatType === 'channel';
+  const isGroupChat = routeChatType === 'group' || routeChatType === 'supergroup';
   const [messages, setMessages] = useState<TelegramMessageRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
+  /** Whether the current user can post in this chat (false for read-only broadcast channels). */
+  const [canPost, setCanPost] = useState(true);
+  /** Member or subscriber count for the chat header subtitle. */
+  const [memberCount, setMemberCount] = useState<number | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
   const lastReadOutboxMessageIdRef = useRef<number>(0);
   const mountedRef = useRef(true);
@@ -479,6 +542,14 @@ export function TelegramChatScreen() {
   const messagesRef = useRef<TelegramMessageRow[]>([]);
 
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
+  const headerSubtitle = useMemo(() => {
+    if (memberCount != null && memberCount > 0) {
+      return isChannel
+        ? `${memberCount.toLocaleString()} подписчиков`
+        : `${memberCount.toLocaleString()} участников`;
+    }
+    return null;
+  }, [isChannel, memberCount]);
   const messageById = useMemo(() => {
     const map = new Map<number, TelegramMessageRow>();
     for (const message of messages) {
@@ -510,6 +581,63 @@ export function TelegramChatScreen() {
       throw new Error(`Сессия Telegram не готова (${state ?? 'таймаут'})`);
     }
   }, []);
+
+  // Load posting permissions and member count once on mount (after ensureReady is defined)
+  useEffect(() => {
+    if (!Number.isFinite(chatId)) return;
+    let cancelled = false;
+
+    async function loadChatMeta() {
+      try {
+        await ensureReady();
+        const chat = (await tdlibClient.send({
+          '@type': 'getChat',
+          chat_id: chatId,
+        })) as Record<string, unknown>;
+        throwIfTdError(chat);
+        // Posting permissions: can_send_basic_messages=false means read-only channel
+        const perms = getNestedRecord(chat.permissions);
+        if (!cancelled) {
+          setCanPost(perms?.can_send_basic_messages !== false);
+        }
+        // Member/subscriber count via getSupergroup / getBasicGroup
+        const type = getNestedRecord(chat.type);
+        const typeKind = type?.['@type'];
+        if (typeKind === 'chatTypeSupergroup') {
+          const sgId = typeof type?.supergroup_id === 'number' ? type.supergroup_id : null;
+          if (sgId != null) {
+            const sg = (await tdlibClient.send({
+              '@type': 'getSupergroup',
+              supergroup_id: sgId,
+            })) as Record<string, unknown>;
+            throwIfTdError(sg);
+            if (!cancelled && typeof sg.member_count === 'number') {
+              setMemberCount(sg.member_count);
+            }
+          }
+        } else if (typeKind === 'chatTypeBasicGroup') {
+          const bgId = typeof type?.basic_group_id === 'number' ? type.basic_group_id : null;
+          if (bgId != null) {
+            const bg = (await tdlibClient.send({
+              '@type': 'getBasicGroup',
+              basic_group_id: bgId,
+            })) as Record<string, unknown>;
+            throwIfTdError(bg);
+            if (!cancelled && typeof bg.member_count === 'number') {
+              setMemberCount(bg.member_count);
+            }
+          }
+        }
+      } catch {
+        /* best-effort: permissions default to canPost=true */
+      }
+    }
+
+    void loadChatMeta();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, ensureReady]);
 
   const loadHistory = useCallback(
     async (older = false) => {
@@ -835,6 +963,35 @@ export function TelegramChatScreen() {
         }
       };
 
+      // Sender name header — shown for incoming messages when we have a name and the chat
+      // has multiple senders (group / supergroup). Rendered at the top of the bubble.
+      const senderNameNode =
+        !isMe && item.senderName && isGroupChat ? (
+          <Text style={styles.senderNameText} numberOfLines={1}>
+            {item.senderName}
+          </Text>
+        ) : null;
+
+      // Combined bubble header: sender name (if any) + reply snippet (if any).
+      // Passed as the `header` prop to media bubble components that already support it.
+      const bubbleHeader =
+        senderNameNode || replySnippet ? (
+          <>
+            {senderNameNode}
+            {replySnippet}
+          </>
+        ) : null;
+
+      // View count footer — shown for channel posts.
+      const viewCountFormatted =
+        item.viewCount != null
+          ? item.viewCount >= 1_000_000
+            ? `${(item.viewCount / 1_000_000).toFixed(1)}M`
+            : item.viewCount >= 1_000
+              ? `${(item.viewCount / 1_000).toFixed(1)}K`
+              : String(item.viewCount)
+          : null;
+
       // Shared row style: static layout + dynamic group-aware spacing
       const rowStyle = [
         styles.messageRow,
@@ -862,7 +1019,7 @@ export function TelegramChatScreen() {
               accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
             >
               <View style={[styles.bubble, textBubbleColorStyle]}>
-                {replySnippet}
+                {bubbleHeader}
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
                 <MessageTimeStatus
                   time={formatTime(item.dateMs)}
@@ -889,7 +1046,7 @@ export function TelegramChatScreen() {
               isMe={isMe}
               time={formatTime(item.dateMs)}
               status={item.status}
-              header={replySnippet}
+              header={bubbleHeader}
               bubbleMeColor={colors.bubbleMe}
               outgoingTextColor="#FFFFFF"
               outgoingMetaColor="rgba(255,255,255,0.72)"
@@ -917,7 +1074,7 @@ export function TelegramChatScreen() {
               caption={item.text}
               time={formatTime(item.dateMs)}
               status={item.status}
-              header={replySnippet}
+              header={bubbleHeader}
               bubbleMeColor={colors.bubbleMe}
               outgoingTextColor="#FFFFFF"
               incomingBubbleBackground={colors.bubbleOther}
@@ -945,7 +1102,7 @@ export function TelegramChatScreen() {
               caption={item.text}
               time={formatTime(item.dateMs)}
               status={item.status}
-              header={replySnippet}
+              header={bubbleHeader}
               bubbleMeColor={colors.bubbleMe}
               outgoingTextColor="#FFFFFF"
               incomingBubbleBackground={colors.bubbleOther}
@@ -972,7 +1129,7 @@ export function TelegramChatScreen() {
                 caption={item.text}
                 time={formatTime(item.dateMs)}
                 status={item.status}
-                header={replySnippet}
+                header={bubbleHeader}
                 bubbleMeColor={colors.bubbleMe}
                 outgoingTextColor="#FFFFFF"
                 outgoingMetaColor="rgba(255,255,255,0.72)"
@@ -995,9 +1152,14 @@ export function TelegramChatScreen() {
           accessibilityLabel={`${isMe ? 'Я' : headerTitle}: ${item.text || 'сообщение'}`}
         >
           <View style={[styles.bubble, textBubbleColorStyle]}>
-            {replySnippet}
+            {bubbleHeader}
             <View style={styles.bubbleContentRow}>
               <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
+              {viewCountFormatted ? (
+                <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>
+                  {`👁 ${viewCountFormatted}`}
+                </Text>
+              ) : null}
               <MessageTimeStatus
                 time={formatTime(item.dateMs)}
                 status={item.status}
@@ -1011,7 +1173,7 @@ export function TelegramChatScreen() {
         </Pressable>
       );
     },
-    [colors, headerTitle, messageById, styles],
+    [colors, headerTitle, isGroupChat, messageById, styles],
   );
 
   return (
@@ -1021,9 +1183,16 @@ export function TelegramChatScreen() {
     >
       <View style={styles.headerHint}>
         {avatarUri ? <Image source={{ uri: avatarUri }} style={styles.headerAvatar} /> : null}
-        <Text style={styles.headerHintText} numberOfLines={1}>
-          {headerTitle}
-        </Text>
+        <View style={styles.headerTitleBlock}>
+          <Text style={styles.headerHintText} numberOfLines={1}>
+            {headerTitle}
+          </Text>
+          {headerSubtitle ? (
+            <Text style={styles.headerSubtitleText} numberOfLines={1}>
+              {headerSubtitle}
+            </Text>
+          ) : null}
+        </View>
       </View>
       <FlatList
         data={messages}
@@ -1044,16 +1213,22 @@ export function TelegramChatScreen() {
         }
       />
       {loadingOlder ? <Text style={styles.loadingOlder}>Загружаем старые сообщения...</Text> : null}
-      <InputBar
-        onSendText={sendText}
-        onSendVoice={sendVoice}
-        onSendMedia={sendMedia}
-        onSendFile={sendFile}
-        replyToMessage={replyToInputMessage}
-        replyAuthorName={replyAuthorName}
-        onCancelReply={() => setReplyToMessageId(null)}
-        placeholder="Сообщение"
-      />
+      {canPost ? (
+        <InputBar
+          onSendText={sendText}
+          onSendVoice={sendVoice}
+          onSendMedia={sendMedia}
+          onSendFile={sendFile}
+          replyToMessage={replyToInputMessage}
+          replyAuthorName={replyAuthorName}
+          onCancelReply={() => setReplyToMessageId(null)}
+          placeholder="Сообщение"
+        />
+      ) : (
+        <View style={styles.readOnlyFooter} accessibilityLabel="Только для чтения">
+          <Text style={styles.readOnlyText}>Только для чтения</Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1157,6 +1332,43 @@ function createTelegramChatStyles(colors: ThemeColors) {
       textAlign: 'center',
       color: colors.textSecondary,
       fontSize: 12,
+    },
+    /** Two-line header when member/subscriber count is available. */
+    headerTitleBlock: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    headerSubtitleText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+    },
+    /** Sender name shown at the top of an incoming bubble in group/supergroup chats. */
+    senderNameText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.accent,
+      marginBottom: 2,
+    },
+    /** View count for channel posts (alongside time/status). */
+    viewCountText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    viewCountTextMe: {
+      color: 'rgba(255,255,255,0.72)',
+    },
+    /** Read-only footer shown for channels where the user cannot post. */
+    readOnlyFooter: {
+      paddingVertical: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+      backgroundColor: colors.toolbar,
+    },
+    readOnlyText: {
+      color: colors.textSecondary,
+      fontSize: 14,
     },
   });
 }

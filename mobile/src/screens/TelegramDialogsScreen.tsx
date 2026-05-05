@@ -4,7 +4,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 import { useTheme } from '../contexts/ThemeContext';
-import { telegramAccountStore, type TelegramDialogRow } from '../stores/telegramAccountStore';
+import { telegramAccountStore, type TelegramChatType, type TelegramDialogRow } from '../stores/telegramAccountStore';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
@@ -53,6 +53,30 @@ function getNestedRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
 }
 
+/**
+ * Resolves the TDLib `chat.type` object into our simplified `TelegramChatType`
+ * plus the internal group/supergroup id if present (used for member-count queries).
+ */
+function parseChatType(chat: Record<string, unknown>): {
+  chatType: TelegramChatType;
+  supergroupId?: number;
+  basicGroupId?: number;
+} {
+  const type = getNestedRecord(chat.type);
+  const kind = type?.['@type'];
+  if (kind === 'chatTypeSupergroup') {
+    const isChannel = type?.is_channel === true;
+    const supergroupId = typeof type?.supergroup_id === 'number' ? type.supergroup_id : undefined;
+    return { chatType: isChannel ? 'channel' : 'supergroup', supergroupId };
+  }
+  if (kind === 'chatTypeBasicGroup') {
+    const basicGroupId = typeof type?.basic_group_id === 'number' ? type.basic_group_id : undefined;
+    return { chatType: 'group', basicGroupId };
+  }
+  if (kind === 'chatTypeSecret') return { chatType: 'secret' };
+  return { chatType: 'private' };
+}
+
 function getChatAvatarFileId(chat: Record<string, unknown>): number | null {
   const photo = getNestedRecord(chat.photo);
   const small = getNestedRecord(photo?.small);
@@ -75,6 +99,35 @@ async function getLocalFilePath(fileId: number): Promise<string | null> {
   return path ? `file://${path}` : null;
 }
 
+async function loadMemberCount(
+  supergroupId?: number,
+  basicGroupId?: number,
+): Promise<number | undefined> {
+  try {
+    if (supergroupId != null) {
+      const sg = (await tdlibClient.send({
+        '@type': 'getSupergroup',
+        supergroup_id: supergroupId,
+      })) as Record<string, unknown>;
+      throwIfTdError(sg);
+      const n = sg.member_count;
+      return typeof n === 'number' ? n : undefined;
+    }
+    if (basicGroupId != null) {
+      const bg = (await tdlibClient.send({
+        '@type': 'getBasicGroup',
+        basic_group_id: basicGroupId,
+      })) as Record<string, unknown>;
+      throwIfTdError(bg);
+      const n = bg.member_count;
+      return typeof n === 'number' ? n : undefined;
+    }
+  } catch {
+    /* member count is best-effort */
+  }
+  return undefined;
+}
+
 async function loadChatRow(chatId: number): Promise<TelegramDialogRow> {
   try {
     const chat = (await tdlibClient.send({
@@ -88,6 +141,9 @@ async function loadChatRow(chatId: number): Promise<TelegramDialogRow> {
     const unreadCount = typeof chat.unread_count === 'number' ? chat.unread_count : 0;
     const avatarFileId = getChatAvatarFileId(chat);
     const avatarUri = avatarFileId != null ? await getLocalFilePath(avatarFileId).catch(() => null) : null;
+    const { chatType, supergroupId, basicGroupId } = parseChatType(chat);
+    // Load member count for groups/channels in parallel with avatar (already done).
+    const memberCount = await loadMemberCount(supergroupId, basicGroupId);
     return {
       id: idStr,
       chatId: idStr,
@@ -96,6 +152,8 @@ async function loadChatRow(chatId: number): Promise<TelegramDialogRow> {
       avatarUri,
       lastMessageAt: date,
       unreadCount,
+      chatType,
+      memberCount,
     };
   } catch {
     const idStr = String(chatId);
@@ -218,53 +276,82 @@ export function TelegramDialogsScreen() {
   const lastError = telegramAccountStore((s) => s.lastError);
 
   const renderItem = useCallback(
-    ({ item }: { item: TelegramDialogRow }) => (
-      <Pressable
-        onPress={() =>
-          navigation.navigate('TelegramChat', {
-            telegramChatId: item.chatId,
-            title: item.title,
-            avatarUri: item.avatarUri ?? null,
-          })
+    ({ item }: { item: TelegramDialogRow }) => {
+      const isChannel = item.chatType === 'channel';
+      const isGroup = item.chatType === 'group' || item.chatType === 'supergroup';
+      // Subtitle shown below the title: member/subscriber count for groups & channels
+      const subtitle = (() => {
+        if (item.memberCount != null && item.memberCount > 0) {
+          return isChannel
+            ? `${item.memberCount.toLocaleString()} подписчиков`
+            : `${item.memberCount.toLocaleString()} участников`;
         }
-        style={({ pressed }) => [rowStyles.row, pressed && rowStyles.rowPressed]}
-      >
-        {item.avatarUri ? (
-          <Image source={{ uri: item.avatarUri }} style={rowStyles.avatar} />
-        ) : (
-          <View style={[rowStyles.avatarPlaceholder, { backgroundColor: getAvatarColor(item.title) }]}>
-            <Text style={rowStyles.avatarPlaceholderText}>{(item.title.trim()[0] || '?').toUpperCase()}</Text>
-          </View>
-        )}
-        <View style={rowStyles.content}>
-          <View style={rowStyles.topRow}>
-            <Text style={rowStyles.title} numberOfLines={1}>
-              {item.title}
-            </Text>
-            {item.lastMessageAt || item.unreadCount ? (
-              <View style={rowStyles.metaColumn}>
-                {item.lastMessageAt ? (
-                  <Text style={rowStyles.timeLabel}>{formatChatTime(item.lastMessageAt)}</Text>
-                ) : null}
-                {item.unreadCount ? (
-                  <View style={[rowStyles.unreadBadge, item.unreadCount > 99 && rowStyles.unreadBadgeWide]}>
-                    <Text style={rowStyles.unreadBadgeText}>
-                      {item.unreadCount > 99 ? '99+' : String(item.unreadCount)}
-                    </Text>
-                  </View>
+        return item.lastMessagePreview;
+      })();
+
+      return (
+        <Pressable
+          onPress={() =>
+            navigation.navigate('TelegramChat', {
+              telegramChatId: item.chatId,
+              title: item.title,
+              avatarUri: item.avatarUri ?? null,
+              chatType: item.chatType ?? null,
+            })
+          }
+          style={({ pressed }) => [rowStyles.row, pressed && rowStyles.rowPressed]}
+        >
+          {item.avatarUri ? (
+            <Image source={{ uri: item.avatarUri }} style={rowStyles.avatar} />
+          ) : (
+            <View
+              style={[
+                rowStyles.avatarPlaceholder,
+                isChannel ? rowStyles.channelAvatarPlaceholder : { backgroundColor: getAvatarColor(item.title) },
+              ]}
+            >
+              <Text style={rowStyles.avatarPlaceholderText}>
+                {isChannel ? '📢' : (item.title.trim()[0] || '?').toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={rowStyles.content}>
+            <View style={rowStyles.topRow}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={rowStyles.title} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                {isChannel ? (
+                  <Text style={{ fontSize: 11, color: colors.accent }}>канал</Text>
+                ) : isGroup ? (
+                  <Text style={{ fontSize: 11, color: colors.textSecondary }}>группа</Text>
                 ) : null}
               </View>
+              {item.lastMessageAt || item.unreadCount ? (
+                <View style={rowStyles.metaColumn}>
+                  {item.lastMessageAt ? (
+                    <Text style={rowStyles.timeLabel}>{formatChatTime(item.lastMessageAt)}</Text>
+                  ) : null}
+                  {item.unreadCount ? (
+                    <View style={[rowStyles.unreadBadge, item.unreadCount > 99 && rowStyles.unreadBadgeWide]}>
+                      <Text style={rowStyles.unreadBadgeText}>
+                        {item.unreadCount > 99 ? '99+' : String(item.unreadCount)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+            {subtitle ? (
+              <Text style={rowStyles.preview} numberOfLines={1}>
+                {subtitle}
+              </Text>
             ) : null}
           </View>
-          {item.lastMessagePreview ? (
-            <Text style={rowStyles.preview} numberOfLines={1}>
-              {item.lastMessagePreview}
-            </Text>
-          ) : null}
-        </View>
-      </Pressable>
-    ),
-    [navigation, rowStyles],
+        </Pressable>
+      );
+    },
+    [colors.accent, colors.textSecondary, navigation, rowStyles],
   );
 
   const empty = useMemo(

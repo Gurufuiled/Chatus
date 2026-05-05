@@ -40,7 +40,7 @@ export type ChatsStackParamList = {
   ChannelType: { channelId: string };
   ChannelDiscussionSettings: { channelId: string };
   ChannelMonetization: { channelId: string };
-  TelegramChat: { telegramChatId: string; title?: string; avatarUri?: string | null };
+  TelegramChat: { telegramChatId: string; title?: string; avatarUri?: string | null; chatType?: string | null };
 };
 
 export type SettingsStackParamList = {

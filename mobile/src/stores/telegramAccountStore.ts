@@ -13,6 +13,16 @@ export type TelegramAuthStatus =
   | 'ready'
   | 'error';
 
+/**
+ * Simplified Telegram chat type resolved from TDLib `chat.type`.
+ * - `'private'`     → chatTypePrivate (1-to-1 with user)
+ * - `'group'`       → chatTypeBasicGroup (basic group ≤ 1000 members)
+ * - `'supergroup'`  → chatTypeSupergroup with is_channel = false (mega-group)
+ * - `'channel'`     → chatTypeSupergroup with is_channel = true (broadcast channel)
+ * - `'secret'`      → chatTypeSecret (E2E secret chat)
+ */
+export type TelegramChatType = 'private' | 'group' | 'supergroup' | 'channel' | 'secret';
+
 export type TelegramDialogRow = {
   id: string;
   title: string;
@@ -22,6 +32,10 @@ export type TelegramDialogRow = {
   unreadCount?: number;
   /** TDLib internal chat id as string */
   chatId: string;
+  /** Resolved chat type (undefined if not yet loaded). */
+  chatType?: TelegramChatType;
+  /** Member / subscriber count (undefined if not loaded). */
+  memberCount?: number;
 };
 
 type TelegramAccountState = {
