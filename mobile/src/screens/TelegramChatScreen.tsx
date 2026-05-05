@@ -1354,7 +1354,7 @@ function createTelegramChatStyles(colors: ThemeColors) {
     bottomChrome: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.separator,
-      backgroundColor: colors.toolbar,
+      backgroundColor: colors.composerSurface,
     },
     listContent: {
       paddingHorizontal: CHAT_MSG_HORIZONTAL_PADDING,
