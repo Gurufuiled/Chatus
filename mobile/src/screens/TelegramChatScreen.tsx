@@ -4,6 +4,7 @@ import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { ChatsStackParamList } from '../navigation/types';
 import { InputBar } from '../components/InputBar';
+import { MessageTimeStatus } from '../components/MessageTimeStatus';
 import { VoiceBubble } from '../components/VoiceBubble';
 import { useTheme } from '../contexts/ThemeContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
@@ -13,6 +14,7 @@ import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import type { ThemeColors } from '../theme/palettes';
 
 type TelegramMessageKind = 'text' | 'voice' | 'service';
+type TelegramMessageStatus = 'sending' | 'sent' | 'read' | 'failed';
 
 type TelegramMessageRow = {
   id: string;
@@ -21,7 +23,7 @@ type TelegramMessageRow = {
   text: string;
   outgoing: boolean;
   dateMs: number;
-  status: 'sending' | 'sent' | 'failed';
+  status: TelegramMessageStatus;
   voiceUri?: string | null;
   durationMs?: number;
   waveform?: number[];
@@ -54,6 +56,35 @@ function previewForUnsupported(kind: string | undefined): string {
   }
 }
 
+function getMessageId(raw: Record<string, unknown>): number | null {
+  const id = typeof raw.id === 'number' ? raw.id : Number(raw.id);
+  return Number.isFinite(id) ? id : null;
+}
+
+function getTdMessageStatus(
+  raw: Record<string, unknown>,
+  lastReadOutboxMessageId: number,
+): TelegramMessageStatus {
+  if (raw.is_outgoing !== true) return 'sent';
+
+  const sendingState = getNestedRecord(raw.sending_state);
+  const sendingStateType = sendingState?.['@type'];
+  if (sendingStateType === 'messageSendingStatePending') return 'sending';
+  if (sendingStateType === 'messageSendingStateFailed') return 'failed';
+
+  const id = getMessageId(raw);
+  if (id != null && id > 0 && lastReadOutboxMessageId > 0 && id <= lastReadOutboxMessageId) {
+    return 'read';
+  }
+
+  return 'sent';
+}
+
+function getLastReadOutboxMessageId(value: Record<string, unknown>): number {
+  const raw = value.last_read_outbox_message_id;
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : 0;
+}
+
 async function downloadTdlibFile(fileId: number): Promise<string | null> {
   const file = (await tdlibClient.send({
     '@type': 'downloadFile',
@@ -69,9 +100,21 @@ async function downloadTdlibFile(fileId: number): Promise<string | null> {
   return path ? `file://${path}` : null;
 }
 
-async function mapTdMessage(raw: Record<string, unknown>): Promise<TelegramMessageRow | null> {
-  const id = typeof raw.id === 'number' ? raw.id : Number(raw.id);
-  if (!Number.isFinite(id)) return null;
+async function loadLastReadOutboxMessageId(chatId: number): Promise<number> {
+  const chat = (await tdlibClient.send({
+    '@type': 'getChat',
+    chat_id: chatId,
+  })) as Record<string, unknown>;
+  throwIfTdError(chat);
+  return getLastReadOutboxMessageId(chat);
+}
+
+async function mapTdMessage(
+  raw: Record<string, unknown>,
+  lastReadOutboxMessageId: number,
+): Promise<TelegramMessageRow | null> {
+  const id = getMessageId(raw);
+  if (id == null) return null;
   const content = getNestedRecord(raw.content);
   const kind = content?.['@type'] as string | undefined;
   const outgoing = raw.is_outgoing === true;
@@ -81,7 +124,7 @@ async function mapTdMessage(raw: Record<string, unknown>): Promise<TelegramMessa
     messageId: id,
     outgoing,
     dateMs: dateSec * 1000,
-    status: 'sent' as const,
+    status: getTdMessageStatus(raw, lastReadOutboxMessageId),
   };
 
   if (kind === 'messageText') {
@@ -118,9 +161,41 @@ async function mapTdMessage(raw: Record<string, unknown>): Promise<TelegramMessa
   };
 }
 
-function upsertMessage(rows: TelegramMessageRow[], next: TelegramMessageRow): TelegramMessageRow[] {
-  const withoutSame = rows.filter((item) => item.id !== next.id && item.messageId !== next.messageId);
+function upsertMessage(
+  rows: TelegramMessageRow[],
+  next: TelegramMessageRow,
+  oldMessageId?: number | null,
+): TelegramMessageRow[] {
+  const withoutSame = rows.filter(
+    (item) =>
+      item.id !== next.id &&
+      item.messageId !== next.messageId &&
+      (oldMessageId == null || item.messageId !== oldMessageId),
+  );
   return [next, ...withoutSame].sort((a, b) => b.messageId - a.messageId);
+}
+
+function applyReadOutboxStatus(
+  rows: TelegramMessageRow[],
+  lastReadOutboxMessageId: number,
+): TelegramMessageRow[] {
+  return rows.map((item) => {
+    if (
+      !item.outgoing ||
+      item.messageId <= 0 ||
+      item.messageId > lastReadOutboxMessageId ||
+      item.status === 'sending' ||
+      item.status === 'failed' ||
+      item.status === 'read'
+    ) {
+      return item;
+    }
+    return { ...item, status: 'read' };
+  });
+}
+
+function markMessageFailed(rows: TelegramMessageRow[], messageId: number): TelegramMessageRow[] {
+  return rows.map((item) => (item.messageId === messageId ? { ...item, status: 'failed' } : item));
 }
 
 export function TelegramChatScreen() {
@@ -134,6 +209,7 @@ export function TelegramChatScreen() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
+  const lastReadOutboxMessageIdRef = useRef<number>(0);
   const mountedRef = useRef(true);
 
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
@@ -163,6 +239,11 @@ export function TelegramChatScreen() {
       }
       try {
         await ensureReady();
+        const lastReadOutboxMessageId = await loadLastReadOutboxMessageId(chatId);
+        lastReadOutboxMessageIdRef.current = Math.max(
+          lastReadOutboxMessageIdRef.current,
+          lastReadOutboxMessageId,
+        );
         const response = (await tdlibClient.send({
           '@type': 'getChatHistory',
           chat_id: chatId,
@@ -177,7 +258,7 @@ export function TelegramChatScreen() {
           await Promise.all(
             rawMessages
               .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
-              .map((item) => mapTdMessage(item)),
+              .map((item) => mapTdMessage(item, lastReadOutboxMessageIdRef.current)),
           )
         ).filter((item): item is TelegramMessageRow => item != null);
 
@@ -215,15 +296,37 @@ export function TelegramChatScreen() {
         try {
           const update = JSON.parse(json) as Record<string, unknown>;
           const type = update['@type'];
-          if (type !== 'updateNewMessage' && type !== 'updateMessageSendSucceeded') return;
-          const rawMessage =
-            type === 'updateMessageSendSucceeded'
-              ? getNestedRecord(update.message)
-              : getNestedRecord(update.message);
-          if (!rawMessage || rawMessage.chat_id !== chatId) return;
-          void mapTdMessage(rawMessage).then((row) => {
+          if (type === 'updateChatReadOutbox') {
+            if (update.chat_id !== chatId) return;
+            const lastReadOutboxMessageId = getLastReadOutboxMessageId(update);
+            if (lastReadOutboxMessageId <= lastReadOutboxMessageIdRef.current) return;
+            lastReadOutboxMessageIdRef.current = lastReadOutboxMessageId;
+            setMessages((prev) => applyReadOutboxStatus(prev, lastReadOutboxMessageId));
+            return;
+          }
+
+          if (
+            type !== 'updateNewMessage' &&
+            type !== 'updateMessageSendSucceeded' &&
+            type !== 'updateMessageSendFailed'
+          ) {
+            return;
+          }
+
+          const rawMessage = getNestedRecord(update.message);
+          const oldMessageId =
+            typeof update.old_message_id === 'number' && Number.isFinite(update.old_message_id)
+              ? update.old_message_id
+              : null;
+          if (!rawMessage || rawMessage.chat_id !== chatId) {
+            if (type === 'updateMessageSendFailed' && oldMessageId != null) {
+              setMessages((prev) => markMessageFailed(prev, oldMessageId));
+            }
+            return;
+          }
+          void mapTdMessage(rawMessage, lastReadOutboxMessageIdRef.current).then((row) => {
             if (!row || !mountedRef.current) return;
-            setMessages((prev) => upsertMessage(prev, row));
+            setMessages((prev) => upsertMessage(prev, row, oldMessageId));
           });
         } catch {
           /* ignore malformed TDLib updates */
@@ -263,7 +366,7 @@ export function TelegramChatScreen() {
           },
         })) as Record<string, unknown>;
         throwIfTdError(response);
-        const mapped = await mapTdMessage(response);
+        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
         if (mapped) {
           setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped));
         }
@@ -309,7 +412,7 @@ export function TelegramChatScreen() {
           },
         })) as Record<string, unknown>;
         throwIfTdError(response);
-        const mapped = await mapTdMessage(response);
+        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
         if (mapped) {
           setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), {
             ...mapped,
@@ -335,7 +438,14 @@ export function TelegramChatScreen() {
             <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
               <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
                 <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
-                <Text style={[styles.metaText, isMe && styles.metaTextMe]}>{formatTime(item.dateMs)}</Text>
+                <MessageTimeStatus
+                  time={formatTime(item.dateMs)}
+                  status={item.status}
+                  isMe={isMe}
+                  compact
+                  timeColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
+                  iconColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
+                />
               </View>
             </View>
           );
@@ -364,11 +474,17 @@ export function TelegramChatScreen() {
       return (
         <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
           <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleOther]}>
-            <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
-            <Text style={[styles.metaText, isMe && styles.metaTextMe]}>
-              {formatTime(item.dateMs)}
-              {item.status === 'sending' ? ' · ...' : item.status === 'failed' ? ' · !' : ''}
-            </Text>
+            <View style={styles.bubbleContentRow}>
+              <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
+              <MessageTimeStatus
+                time={formatTime(item.dateMs)}
+                status={item.status}
+                isMe={isMe}
+                compact
+                timeColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
+                iconColor={isMe ? 'rgba(255,255,255,0.72)' : colors.textSecondary}
+              />
+            </View>
           </View>
         </View>
       );
@@ -474,18 +590,16 @@ function createTelegramChatStyles(colors: ThemeColors) {
       color: colors.textPrimary,
       fontSize: 16,
       lineHeight: 21,
+      flexShrink: 1,
     },
     messageTextMe: {
       color: '#FFFFFF',
     },
-    metaText: {
-      alignSelf: 'flex-end',
-      marginTop: 3,
-      fontSize: 11,
-      color: colors.textSecondary,
-    },
-    metaTextMe: {
-      color: 'rgba(255,255,255,0.72)',
+    bubbleContentRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      flexWrap: 'wrap',
+      columnGap: 6,
     },
     empty: {
       padding: 24,
