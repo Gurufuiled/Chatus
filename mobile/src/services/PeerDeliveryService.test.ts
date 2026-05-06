@@ -1,16 +1,37 @@
+/**
+ * Pure inbound signaling DM frames — runnable with `npm run test:peer-delivery` (no RN bundler).
+ */
+
 import assert from 'node:assert/strict';
-import { PeerDeliveryService } from './PeerDeliveryService';
 
-async function run(): Promise<void> {
-  const result = await PeerDeliveryService.attemptTextMessage({
-    chatId: 'chat-1',
-    recipientUserId: 'user-2',
-    content: 'hello',
-    tempId: 'temp-1',
-    timeoutMs: 2500,
-  });
+import type { PeerDeliveryResult } from './peerDeliverySignal';
+import { dispatchRawPeerDeliverySignal, type PendingPeerDm } from './peerDeliverySignal';
 
-  assert.deepEqual(result, { ok: false, reason: 'not_implemented' });
+let resolved: PeerDeliveryResult | undefined;
+const noopTimer = setTimeout(() => undefined, 60_000) as ReturnType<typeof setTimeout>;
+
+const pending = new Map<string, PendingPeerDm>([
+  [
+    'ack-1',
+    {
+      resolve: (v) => {
+        resolved = v;
+      },
+      timer: noopTimer,
+    },
+  ],
+]);
+
+dispatchRawPeerDeliverySignal(
+  JSON.stringify({ type: 'dm_fallback', ack_key: 'ack-1' }),
+  pending,
+  [],
+);
+
+assert.strictEqual(resolved?.ok, false);
+if (!resolved?.ok) {
+  assert.strictEqual(resolved.reason, 'unavailable');
 }
 
-void run();
+assert.ok(!pending.has('ack-1'));
+clearTimeout(noopTimer);

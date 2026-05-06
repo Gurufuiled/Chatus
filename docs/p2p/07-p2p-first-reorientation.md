@@ -24,3 +24,11 @@
 4. при `not_implemented` / ошибке / отсутствии peer идёт текущий server fallback (`transport: websocket`, WebSocket или `sync_queue`).
 
 Stub пока всегда возвращает `not_implemented`; следующий коммит должен заменить его на signaling + DataChannel или другой согласованный peer-протокол.
+
+## Реальная signaling-relay цепочка (текущее состояние)
+
+1. **Порт 4002** — те же Nest `{ event, data }` сообщения, что для WebRTC звонков. `dm_send` / `dm_ack` входят как события; `dm_deliver`, `dm_sent`, `dm_fallback` уходят **сырой JSON** `{ type: ... }`.
+2. **Клиент** — `PeerDeliveryService`: отдельный сигнальный сокет, ожидание `dm_sent` / `dm_fallback`, доставка `dm_deliver` в `WebSocketProvider` + `dm_ack`.
+3. **Fallback** — `TransportService.sendMessage` после провала peer пишет в WS `send_message` с `relay_mailbox=true` для private-текста. Сервер в `MessagesService.createMessage` выставляет `mailboxExpiresAt`, если второй участник офлайна на realtime WS (`RealtimeService.isUserOnline`). Живые получатели не получают mailbox-TTL → нет второго прохода `mailbox_deliver` после обычного broadcast.
+4. **Offline pickup** — `MailboxService.deliverPendingToUser` при connect WS шлёт `mailbox_deliver`; клиент сохраняет и шлёт `mailbox_ack`; сервер тримит серверную копию. Суточный cron дополнительно чистит просроченные mailbox-строки.
+5. **Админ-политика** — `GET|PATCH /admin/relay-policy` + `system_configs`, доступ по `CHATUS_RELAY_POLICY_ADMIN_IDS` (comma-separated JWT `sub`).
