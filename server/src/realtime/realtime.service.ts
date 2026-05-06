@@ -68,4 +68,9 @@ export class RealtimeService {
       }
     });
   }
+
+  isUserOnline(userId: string): boolean {
+    const set = this.userSockets.get(userId);
+    return set != null && set.size > 0;
+  }
 }

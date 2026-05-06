@@ -15,6 +15,7 @@ import { ChatsService } from '../chats/chats.service';
 import { ChannelsService } from '../channels/channels.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ChatusFatherService } from '../mini-apps/chatus-father.service';
+import { MailboxService } from '../mailbox/mailbox.service';
 
 const WS_PORT = parseInt(process.env.WS_PORT ?? '4001', 10);
 
@@ -40,6 +41,7 @@ export class WebsocketGateway
     private readonly channelsService: ChannelsService,
     private readonly realtimeService: RealtimeService,
     private readonly chatusFatherService: ChatusFatherService,
+    private readonly mailboxService: MailboxService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -74,6 +76,9 @@ export class WebsocketGateway
 
       this.broadcastPresence(payload.sub, true, now);
       this.log.log(`User connected (WS) userId=${payload.sub}`);
+      void this.mailboxService.deliverPendingToUser(payload.sub).catch((err) =>
+        this.log.error(`Failed mailbox deliver userId=${payload.sub}`, err),
+      );
     } catch (err) {
       this.log.warn(
         `WS connection rejected: invalid token or DB error: ${err instanceof Error ? err.message : String(err)}`,
@@ -134,6 +139,7 @@ export class WebsocketGateway
       forwarded_from_name?: string | null;
       forwarded_from_chat_id?: string | null;
       forwarded_from_sender_id?: string | null;
+      relay_mailbox?: boolean;
       media?: {
         media_type?: string;
         url?: string;
@@ -177,6 +183,7 @@ export class WebsocketGateway
       forwarded_from_name: forwardedFromName,
       forwarded_from_chat_id: forwardedFromChatId,
       forwarded_from_sender_id: forwardedFromSenderId,
+      relay_mailbox: relayMailbox,
     } = payload;
     if (!chatId) return;
 
@@ -219,6 +226,9 @@ export class WebsocketGateway
           forwarded_from_name: forwardedFromName ?? null,
           forwarded_from_chat_id: forwardedFromChatId ?? null,
           forwarded_from_sender_id: forwardedFromSenderId ?? null,
+        },
+        {
+          relayMailbox: relayMailbox === true,
         },
       );
       const members = await this.prisma.chatMember.findMany({
@@ -356,6 +366,12 @@ export class WebsocketGateway
         err instanceof Error ? err.stack : String(err),
       );
     }
+  }
+
+  @SubscribeMessage('mailbox_ack')
+  async handleMailboxAck(client: AuthenticatedSocket, payload: { message_id?: string }) {
+    if (!client.userId || !payload?.message_id) return;
+    await this.mailboxService.markMailboxDelivered(payload.message_id, client.userId);
   }
 
   @SubscribeMessage('message')

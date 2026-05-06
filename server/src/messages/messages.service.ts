@@ -18,6 +18,8 @@ import {
   Transport,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
+import { AdminRelayPolicyService } from '../admin/admin-relay-policy.service';
 import { MESSAGE_RELATIONS_INCLUDE } from '../common/message-include';
 import {
   mapMessage,
@@ -79,6 +81,13 @@ export interface CreateMessageOptions {
   transport?: Transport;
   /** Caller-supplied chat type to skip an extra DB round-trip when already known. */
   chatType?: MailboxChatType;
+  /** When set, persists server mailbox TTL (private chat fallback). */
+  mailboxExpiresAt?: Date | null;
+  /**
+   * When true (e.g. 1:1 text via WS), TTL is computed if the peer is offline and policy TTL &gt; 0.
+   * Ignored when `mailboxExpiresAt` is explicitly provided as a Date.
+   */
+  relayMailbox?: boolean;
 }
 
 @Injectable()
@@ -89,6 +98,8 @@ export class MessagesService {
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
     private readonly relayPolicy: RelayPolicyConfig,
+    private readonly adminRelayPolicyService: AdminRelayPolicyService,
+    private readonly realtimeService: RealtimeService,
   ) {}
 
   private getStatusRank(status: MessageStatus): number {
@@ -247,6 +258,34 @@ export class MessagesService {
     this.enforceMediaMailboxPolicy(mediaItems, mailboxPolicy);
     const defaultTransport = this.relayPolicy.getDefaultTransport();
 
+    let mailboxExpiresAt: Date | null = null;
+    const explicitMailbox = options?.mailboxExpiresAt;
+    if (explicitMailbox instanceof Date) {
+      mailboxExpiresAt = explicitMailbox;
+    } else if (explicitMailbox === null) {
+      mailboxExpiresAt = null;
+    } else if (
+      options?.relayMailbox === true &&
+      chatTypeStr === 'private' &&
+      prismaMsgType === MessageType.text
+    ) {
+      const members = await this.prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true },
+      });
+      const peer = members.find((m) => m.userId !== senderId);
+      const overrides = await this.adminRelayPolicyService.getOverrides();
+      const ttlSec =
+        overrides.RELAY_TEXT_CACHE_SECONDS ?? mailboxPolicy.metadataCacheSeconds ?? 0;
+      if (
+        peer &&
+        ttlSec > 0 &&
+        !this.realtimeService.isUserOnline(peer.userId)
+      ) {
+        mailboxExpiresAt = new Date(Date.now() + ttlSec * 1000);
+      }
+    }
+
     if (process.env.NODE_ENV !== 'production') {
       this.logger.debug(
         `mailbox policy chatType=${chatTypeStr} msgType=${prismaMsgType} ` +
@@ -272,6 +311,7 @@ export class MessagesService {
           isChannelPost: options?.isChannelPost ?? false,
           status: MessageStatus.sent,
           transport: options?.transport ?? defaultTransport,
+          mailboxExpiresAt,
         },
       });
 
