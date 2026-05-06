@@ -24,7 +24,11 @@ import {
   type MappedMessage,
   type MappedMessageReaction,
 } from '../common/mappers';
-import { RelayPolicyConfig, type MailboxChatType } from '../config';
+import {
+  type EffectiveMessageCachePolicy,
+  RelayPolicyConfig,
+  type MailboxChatType,
+} from '../config';
 
 const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   voice: MediaType.voice,
@@ -196,6 +200,25 @@ export class MessagesService {
     });
   }
 
+  private enforceMediaMailboxPolicy(
+    mediaItems: CreateMessageMedia[],
+    policy: EffectiveMessageCachePolicy,
+  ): void {
+    if (policy.mediaMaxBytes == null || mediaItems.length === 0) {
+      return;
+    }
+
+    const oversized = mediaItems.find((item) => {
+      const size = item.file_size;
+      return typeof size === 'number' && Number.isFinite(size) && size > policy.mediaMaxBytes!;
+    });
+    if (!oversized) return;
+
+    throw new BadRequestException(
+      `Media file exceeds relay mailbox max size (${policy.mediaMaxBytes} bytes)`,
+    );
+  }
+
   async createMessage(
     chatId: string,
     senderId: string,
@@ -214,17 +237,23 @@ export class MessagesService {
           select: { chatType: true },
         }).then((r) => r?.chatType ?? 'private')) as MailboxChatType);
 
-    const mailboxPolicy = this.relayPolicy.getEffectiveCachePolicy(chatTypeStr);
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.debug(
-        `mailbox policy chatType=${chatTypeStr} ` +
-          `textCache=${mailboxPolicy.textCacheSeconds}s mediaCache=${mailboxPolicy.mediaCacheSeconds}s`,
-      );
-    }
-
     const prismaMsgType = this.toMessageType(msgType);
     const mediaItems = this.normalizeMediaItems(media);
+    const mailboxPolicy = this.relayPolicy.getEffectiveMessageCachePolicy(
+      chatTypeStr,
+      prismaMsgType,
+      mediaItems.length,
+    );
+    this.enforceMediaMailboxPolicy(mediaItems, mailboxPolicy);
     const defaultTransport = this.relayPolicy.getDefaultTransport();
+
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(
+        `mailbox policy chatType=${chatTypeStr} msgType=${prismaMsgType} ` +
+          `metadataCache=${mailboxPolicy.metadataCacheSeconds}s ` +
+          `blobCache=${mailboxPolicy.blobCacheSeconds ?? 'none'}s`,
+      );
+    }
 
     const result = await this.prisma.$transaction(async (tx) => {
       const message = await tx.message.create({

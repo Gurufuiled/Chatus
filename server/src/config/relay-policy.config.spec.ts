@@ -1,8 +1,10 @@
 import { Transport } from '@prisma/client';
 import {
+  computeEffectiveMessageCachePolicy,
   loadRelayPolicyFromEnv,
   RelayPolicyConfig,
   computeEffectiveCachePolicy,
+  hasMailboxMediaBlob,
 } from './relay-policy.config';
 
 describe('loadRelayPolicyFromEnv', () => {
@@ -146,6 +148,48 @@ describe('loadRelayPolicyFromEnv', () => {
     expect(config.getEffectiveCachePolicy('private')).toEqual({
       textCacheSeconds: 1000,
       mediaCacheSeconds: 0,
+    });
+  });
+
+  it('identifies message types that carry media blobs', () => {
+    expect(hasMailboxMediaBlob('text')).toBe(false);
+    expect(hasMailboxMediaBlob('system')).toBe(false);
+    expect(hasMailboxMediaBlob('image')).toBe(true);
+    expect(hasMailboxMediaBlob('voice')).toBe(true);
+    expect(hasMailboxMediaBlob('video_note')).toBe(true);
+    expect(hasMailboxMediaBlob('video')).toBe(true);
+    expect(hasMailboxMediaBlob('file')).toBe(true);
+    expect(hasMailboxMediaBlob('text', 1)).toBe(true);
+  });
+
+  it('resolves message-level metadata and blob cache policy', () => {
+    const snapshot = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+      RELAY_MEDIA_CACHE_SECONDS: '7200',
+      RELAY_MEDIA_RETAIN_UNTIL_DOWNLOAD: '0',
+      RELAY_MEDIA_MAX_BYTES: '1048576',
+      RELAY_CHANNEL_POST_RETENTION_SECONDS: '604800',
+      RELAY_CHANNEL_MEDIA_MIN_RETENTION_SECONDS: '86400',
+    });
+
+    expect(computeEffectiveMessageCachePolicy(snapshot, 'private', 'text')).toMatchObject({
+      metadataCacheSeconds: 3600,
+      blobCacheSeconds: null,
+      hasMediaBlob: false,
+      mediaRetainUntilDownload: false,
+      mediaMaxBytes: 1048576,
+    });
+
+    expect(computeEffectiveMessageCachePolicy(snapshot, 'private', 'image')).toMatchObject({
+      metadataCacheSeconds: 3600,
+      blobCacheSeconds: 7200,
+      hasMediaBlob: true,
+    });
+
+    expect(computeEffectiveMessageCachePolicy(snapshot, 'channel', 'video')).toMatchObject({
+      metadataCacheSeconds: 604800,
+      blobCacheSeconds: 86400,
+      hasMediaBlob: true,
     });
   });
 

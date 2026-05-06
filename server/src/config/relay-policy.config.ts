@@ -130,6 +130,32 @@ export type EffectiveCachePolicy = {
 /** Chat types understood by the policy resolver. */
 export type MailboxChatType = 'private' | 'group' | 'channel' | 'discussion';
 
+export type MailboxMessageType =
+  | 'text'
+  | 'image'
+  | 'voice'
+  | 'video_note'
+  | 'video'
+  | 'file'
+  | 'system';
+
+export type EffectiveMessageCachePolicy = EffectiveCachePolicy & {
+  messageType: MailboxMessageType | string;
+  metadataCacheSeconds: number;
+  blobCacheSeconds: number | null;
+  hasMediaBlob: boolean;
+  mediaRetainUntilDownload: boolean;
+  mediaMaxBytes: number | null;
+};
+
+const MEDIA_MESSAGE_TYPES = new Set<MailboxMessageType>([
+  'image',
+  'voice',
+  'video_note',
+  'video',
+  'file',
+]);
+
 export function computeEffectiveCachePolicy(
   snapshot: RelayPolicySnapshot,
   chatType: MailboxChatType | string,
@@ -151,6 +177,33 @@ export function computeEffectiveCachePolicy(
   return {
     textCacheSeconds: snapshot.textCacheSeconds,
     mediaCacheSeconds: snapshot.mediaCacheSeconds,
+  };
+}
+
+export function hasMailboxMediaBlob(
+  messageType: MailboxMessageType | string,
+  mediaCount = 0,
+): boolean {
+  return mediaCount > 0 || MEDIA_MESSAGE_TYPES.has(messageType as MailboxMessageType);
+}
+
+export function computeEffectiveMessageCachePolicy(
+  snapshot: RelayPolicySnapshot,
+  chatType: MailboxChatType | string,
+  messageType: MailboxMessageType | string,
+  mediaCount = 0,
+): EffectiveMessageCachePolicy {
+  const base = computeEffectiveCachePolicy(snapshot, chatType);
+  const hasMediaBlob = hasMailboxMediaBlob(messageType, mediaCount);
+
+  return {
+    ...base,
+    messageType,
+    metadataCacheSeconds: base.textCacheSeconds,
+    blobCacheSeconds: hasMediaBlob ? base.mediaCacheSeconds : null,
+    hasMediaBlob,
+    mediaRetainUntilDownload: snapshot.mediaRetainUntilDownload,
+    mediaMaxBytes: snapshot.mediaMaxBytes,
   };
 }
 
@@ -177,5 +230,13 @@ export class RelayPolicyConfig {
    */
   getEffectiveCachePolicy(chatType: MailboxChatType | string): EffectiveCachePolicy {
     return computeEffectiveCachePolicy(this.policy, chatType);
+  }
+
+  getEffectiveMessageCachePolicy(
+    chatType: MailboxChatType | string,
+    messageType: MailboxMessageType | string,
+    mediaCount = 0,
+  ): EffectiveMessageCachePolicy {
+    return computeEffectiveMessageCachePolicy(this.policy, chatType, messageType, mediaCount);
   }
 }

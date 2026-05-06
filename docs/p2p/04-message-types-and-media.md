@@ -18,6 +18,18 @@
 | file | `sendFileMessage`, `send_message_file` | `url`, `file_name`, `file_size` | `file` |
 | альбомы | отдельные ветки в `TransportService` / `SyncService` | несколько вложений | несколько `Media` |
 
+## Реализация фазы 4: серверная матрица mailbox
+
+На сервере матрица начинается в `RelayPolicyConfig`:
+
+- `computeEffectiveCachePolicy(chatType)` выбирает базовые TTL для private/group/channel/discussion.
+- `computeEffectiveMessageCachePolicy(chatType, msgType, mediaCount)` разделяет TTL metadata и blob:
+  - `metadataCacheSeconds` — срок хранения текстовой части/метаданных сообщения;
+  - `blobCacheSeconds` — срок хранения media blob, `null` для сообщений без media;
+  - `mediaRetainUntilDownload` и `mediaMaxBytes` берутся из `RELAY_MEDIA_*`.
+- `MessagesService.createMessage` применяет эту матрицу к server fallback / mailbox path. По умолчанию поведение не меняется: `RELAY_MEDIA_MAX_BYTES` пустой, TTL равны `0`.
+- Если задан `RELAY_MEDIA_MAX_BYTES`, server fallback отклоняет media item с `file_size` больше лимита до записи сообщения.
+
 ---
 
 ## Текст (`text`)
