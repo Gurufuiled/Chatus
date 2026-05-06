@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -18,6 +19,7 @@ import { MESSAGE_RELATIONS_INCLUDE } from '../common/message-include';
 import { mapChat, mapMessage } from '../common/mappers';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { RelayPolicyConfig } from '../config';
 import {
   MessagesService,
   type CreateMessageMedia,
@@ -83,10 +85,13 @@ const MEMBER_CHANNEL_PERMISSIONS: ChannelPermissions = {
 
 @Injectable()
 export class ChannelsService {
+  private readonly logger = new Logger(ChannelsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly messagesService: MessagesService,
     private readonly realtimeService: RealtimeService,
+    private readonly relayPolicy: RelayPolicyConfig,
   ) {}
 
   private mapChannelForUser(channel: ChannelWithRelations, userId: string) {
@@ -551,6 +556,15 @@ export class ChannelsService {
   }
 
   private async broadcastChannelPost(channelId: string, post: Awaited<ReturnType<MessagesService['createChannelPost']>>) {
+    const policy = this.relayPolicy.getChannelPostPolicy();
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(
+        `channel post policy retention=${policy.postRetentionSeconds}s ` +
+          `mediaMinRetention=${policy.mediaMinRetentionSeconds}s ` +
+          `fanoutMaxConcurrent=${policy.fanoutMaxConcurrent ?? 'unlimited'}`,
+      );
+    }
+
     await this.realtimeService.broadcastToChatMembers(channelId, {
       type: 'channel_post',
       channel_id: channelId,

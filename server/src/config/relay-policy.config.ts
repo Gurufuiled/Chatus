@@ -148,6 +148,12 @@ export type EffectiveMessageCachePolicy = EffectiveCachePolicy & {
   mediaMaxBytes: number | null;
 };
 
+export type ChannelPostPolicy = {
+  postRetentionSeconds: number;
+  mediaMinRetentionSeconds: number;
+  fanoutMaxConcurrent: number | null;
+};
+
 const MEDIA_MESSAGE_TYPES = new Set<MailboxMessageType>([
   'image',
   'voice',
@@ -207,6 +213,16 @@ export function computeEffectiveMessageCachePolicy(
   };
 }
 
+export function computeChannelPostPolicy(snapshot: RelayPolicySnapshot): ChannelPostPolicy {
+  const channelPolicy = computeEffectiveCachePolicy(snapshot, 'channel');
+
+  return {
+    postRetentionSeconds: channelPolicy.textCacheSeconds,
+    mediaMinRetentionSeconds: channelPolicy.mediaCacheSeconds,
+    fanoutMaxConcurrent: snapshot.fanoutMaxConcurrent,
+  };
+}
+
 @Injectable()
 export class RelayPolicyConfig {
   private readonly policy: RelayPolicySnapshot;
@@ -238,5 +254,9 @@ export class RelayPolicyConfig {
     mediaCount = 0,
   ): EffectiveMessageCachePolicy {
     return computeEffectiveMessageCachePolicy(this.policy, chatType, messageType, mediaCount);
+  }
+
+  getChannelPostPolicy(): ChannelPostPolicy {
+    return computeChannelPostPolicy(this.policy);
   }
 }

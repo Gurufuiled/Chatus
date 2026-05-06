@@ -81,6 +81,8 @@
 
 **Встраивание:** `channels.service.ts`, события `onChannelPost` на клиенте, возможно индексация последних N постов.
 
+**Текущий срез реализации:** `computeChannelPostPolicy` резолвит retention/fanout policy для постов канала; `ChannelsService` применяет её на publish/broadcast path без изменения дефолтного поведения.
+
 ---
 
 ## Фаза 6 — Мультидевайс и «ресинк через контакты»

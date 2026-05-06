@@ -86,6 +86,12 @@
 | `RELAY_CHANNEL_MEDIA_MIN_RETENTION_SECONDS` | int | — | Нижняя планка для медиа в публичных постах (чтобы не исчезало раньше текста превью). |
 | `RELAY_FANOUT_MAX_CONCURRENT` | int | — | Ограничение параллельной раздачи push/WS при большом числе подписчиков (защита сервера). |
 
+В текущей реализации эти значения резолвятся через `computeChannelPostPolicy`:
+
+- `postRetentionSeconds` берётся из `RELAY_CHANNEL_POST_RETENTION_SECONDS`, fallback — `RELAY_TEXT_CACHE_SECONDS`;
+- `mediaMinRetentionSeconds` берётся из `RELAY_CHANNEL_MEDIA_MIN_RETENTION_SECONDS`, fallback — `RELAY_MEDIA_CACHE_SECONDS`;
+- `fanoutMaxConcurrent` читает `RELAY_FANOUT_MAX_CONCURRENT`, пока используется как явная политика для fan-out слоя без изменения дефолтного broadcast.
+
 ---
 
 ## Клиент: конфиг по умолчанию

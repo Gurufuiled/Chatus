@@ -1,5 +1,6 @@
 import { Transport } from '@prisma/client';
 import {
+  computeChannelPostPolicy,
   computeEffectiveMessageCachePolicy,
   loadRelayPolicyFromEnv,
   RelayPolicyConfig,
@@ -190,6 +191,35 @@ describe('loadRelayPolicyFromEnv', () => {
       metadataCacheSeconds: 604800,
       blobCacheSeconds: 86400,
       hasMediaBlob: true,
+    });
+  });
+
+  it('resolves channel post retention and fanout policy', () => {
+    const snapshot = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+      RELAY_MEDIA_CACHE_SECONDS: '7200',
+      RELAY_CHANNEL_POST_RETENTION_SECONDS: '604800',
+      RELAY_CHANNEL_MEDIA_MIN_RETENTION_SECONDS: '86400',
+      RELAY_FANOUT_MAX_CONCURRENT: '16',
+    });
+
+    expect(computeChannelPostPolicy(snapshot)).toEqual({
+      postRetentionSeconds: 604800,
+      mediaMinRetentionSeconds: 86400,
+      fanoutMaxConcurrent: 16,
+    });
+  });
+
+  it('channel post policy falls back to generic cache settings by default', () => {
+    const snapshot = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+      RELAY_MEDIA_CACHE_SECONDS: '7200',
+    });
+
+    expect(computeChannelPostPolicy(snapshot)).toEqual({
+      postRetentionSeconds: 3600,
+      mediaMinRetentionSeconds: 7200,
+      fanoutMaxConcurrent: null,
     });
   });
 
