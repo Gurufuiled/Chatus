@@ -4,7 +4,7 @@
 
 import { WebSocketService } from './WebSocketService';
 import { SyncService } from './SyncService';
-import { PeerDeliveryService, type PeerDeliveryFailureReason } from './PeerDeliveryService';
+import { PeerDeliveryService, type PeerDeliveryResult } from './PeerDeliveryService';
 import { decideP2PTextAttempt } from './p2pSendDecision';
 import { SyncQueueDao } from '../db';
 import { apiUpload, apiUploadVoice, LARGE_MEDIA_UPLOAD_TIMEOUT_MS } from './apiClient';
@@ -328,6 +328,12 @@ class TransportServiceClass {
     });
   }
 
+  private isPrivateChatForRelayMailbox(chatId: string, msgType: string): boolean {
+    if (msgType !== 'text') return false;
+    const chat = chatStore.getState().chats.find((item) => item.id === chatId);
+    return chat?.chat_type === 'private';
+  }
+
   /** Доставка сообщений: WebSocket сервера, иначе офлайн-очередь. */
   getConnectionStatus(_chatId?: string): 'server' | 'offline' {
     if (WebSocketService.isConnected()) return 'server';
@@ -352,6 +358,9 @@ class TransportServiceClass {
         msg_type: msgType,
         client_temp_id: tempId,
         reply_to_id: replyToId,
+        ...(this.isPrivateChatForRelayMailbox(chatId, msgType)
+          ? { relay_mailbox: true as const }
+          : {}),
       });
       return;
     }
@@ -371,9 +380,9 @@ class TransportServiceClass {
     content: string,
     tempId: string,
     replyToId: string | null,
-  ): Promise<{ ok: true } | { ok: false; reason: PeerDeliveryFailureReason }> {
+  ): Promise<PeerDeliveryResult> {
     try {
-      const result = await PeerDeliveryService.attemptTextMessage({
+      return await PeerDeliveryService.attemptTextMessage({
         chatId,
         recipientUserId,
         content,
@@ -381,8 +390,6 @@ class TransportServiceClass {
         replyToId,
         timeoutMs: P2P_PEER_ATTEMPT_TIMEOUT_MS,
       });
-
-      return result.ok ? { ok: true } : result;
     } catch (error) {
       if (__DEV__) {
         console.warn('[TransportService] peer attempt threw', {
@@ -414,7 +421,13 @@ class TransportServiceClass {
         currentUserId: authStore.getState().user?.id ?? null,
       });
 
-      if (p2pDecision.attemptPeer) {
+      if (p2pDecision.attemptPeer === false) {
+        this.logP2PDecision('peer_skipped', {
+          chatId,
+          tempId,
+          reason: p2pDecision.reason,
+        });
+      } else {
         const peerResult = await this.attemptPeerTextMessage(
           chatId,
           p2pDecision.recipientUserId,
@@ -422,7 +435,14 @@ class TransportServiceClass {
           tempId,
           replyToId,
         );
-        if (peerResult.ok) {
+        if (peerResult.ok === false) {
+          this.logP2PDecision('peer_failed', {
+            chatId,
+            tempId,
+            recipientUserId: p2pDecision.recipientUserId,
+            reason: peerResult.reason,
+          });
+        } else {
           this.logP2PDecision('peer_success', {
             chatId,
             tempId,
@@ -434,19 +454,6 @@ class TransportServiceClass {
           });
           return;
         }
-
-        this.logP2PDecision('peer_failed', {
-          chatId,
-          tempId,
-          recipientUserId: p2pDecision.recipientUserId,
-          reason: peerResult.reason,
-        });
-      } else {
-        this.logP2PDecision('peer_skipped', {
-          chatId,
-          tempId,
-          reason: p2pDecision.reason,
-        });
       }
 
       this.logP2PDecision('server_fallback', {
