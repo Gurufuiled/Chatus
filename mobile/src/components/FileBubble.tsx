@@ -26,6 +26,7 @@ export interface FileBubbleProps {
   incomingFileNameColor?: string;
   incomingSecondaryTextColor?: string;
   incomingCaptionColor?: string;
+  style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
 }
 
 function formatFileSize(bytes?: number): string | null {
@@ -83,6 +84,7 @@ export function FileBubble({
   incomingFileNameColor,
   incomingSecondaryTextColor,
   incomingCaptionColor,
+  style,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
   const fileCaption = useMemo(
@@ -112,6 +114,7 @@ export function FileBubble({
             }
           : null,
         isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+        style,
       ]}
     >
       {header}

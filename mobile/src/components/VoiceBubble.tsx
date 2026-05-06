@@ -42,6 +42,7 @@ export interface VoiceBubbleProps {
   incomingBubbleBackground?: string;
   incomingBubbleBorderColor?: string;
   incomingDurationColor?: string;
+  style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -165,6 +166,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   incomingBubbleBackground,
   incomingBubbleBorderColor,
   incomingDurationColor,
+  style,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -265,6 +267,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
             }
           : null,
         isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+        style,
       ]}
     >
       {header}

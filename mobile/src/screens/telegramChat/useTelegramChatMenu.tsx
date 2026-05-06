@@ -3,7 +3,7 @@ import Feather from '@expo/vector-icons/Feather';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Keyboard, View } from 'react-native';
 import type { Message } from '../../stores/types';
-import type { ThemeColors } from '../../theme/palettes';
+import type { ThemeColors, ResolvedColorScheme } from '../../theme/palettes';
 import {
   estimateMenuCardHeight,
   getCopyableContent,
@@ -24,6 +24,7 @@ import {
 } from './tdlibChatActions';
 import type { TelegramChatStyles } from './telegramChatStyles';
 import type { TelegramMessageMenuState, TelegramMessageRow } from './types';
+import type { ChatTheme } from '../../theme/chatThemes';
 
 /** Совпадает с высотой полосы реакций + зазор над превью в `ChatContextMenuOverlay`. */
 const MENU_REACTION_STACK = 42 + 6;
@@ -47,6 +48,9 @@ type UseTelegramChatMenuParams = {
   ensureReady: () => Promise<void>;
   showMenuReactions?: boolean;
   onEnterSelection: (rowId: string) => void;
+  chatTheme?: ChatTheme;
+  resolvedScheme?: ResolvedColorScheme;
+  scrollTick?: number;
 };
 
 export function useTelegramChatMenu({
@@ -66,6 +70,9 @@ export function useTelegramChatMenu({
   ensureReady,
   showMenuReactions = true,
   onEnterSelection,
+  chatTheme: chatThemeProp,
+  resolvedScheme: resolvedSchemeProp,
+  scrollTick = 0,
 }: UseTelegramChatMenuParams) {
   const [menuState, setMenuState] = useState<TelegramMessageMenuState>(null);
   const menuAnim = useRef(new Animated.Value(0)).current;
@@ -357,10 +364,13 @@ export function useTelegramChatMenu({
           styles={styles}
           headerTitle={headerTitle}
           isGroupChat={isGroupChat}
+          chatTheme={chatThemeProp}
+          resolvedScheme={resolvedSchemeProp}
+          scrollTick={scrollTick}
         />
       );
     },
-    [colors, headerTitle, isGroupChat, messageById, messagesRef, styles],
+    [chatThemeProp, colors, headerTitle, isGroupChat, messageById, messagesRef, resolvedSchemeProp, scrollTick, styles],
   );
 
   return {

@@ -1,6 +1,7 @@
 import Feather from '@expo/vector-icons/Feather';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Image, Pressable, Text, View } from 'react-native';
+import { Alert, FlatList, Image, Pressable, Text, View, type ViewStyle } from 'react-native';
+import { BlurTargetView } from 'expo-blur';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -16,13 +17,18 @@ import { ReplyPreview } from '../components/ReplyPreview';
 import { TelegramChannelCommentsBar } from '../components/TelegramChannelCommentsBar';
 import { VideoBubble } from '../components/VideoBubble';
 import { VoiceBubble } from '../components/VoiceBubble';
+import {
+  MeBubbleChrome,
+  shouldUseDarkDefaultOutgoingBubbleGradient,
+} from '../components/OutgoingBubbleViewportGradient';
 import { useTheme } from '../contexts/ThemeContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import { uiStore } from '../stores/uiStore';
-import { DEFAULT_CHAT_THEME_ID } from '../theme/chatThemes';
+import { bubbleRadius } from '../theme/colors';
+import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
 import { withAlpha } from '../theme/stylePrimitives';
 import { ChatBackgroundPattern, SCREEN_HEIGHT, SCREEN_WIDTH } from './chatScreen.shared';
 import {
@@ -89,6 +95,7 @@ export function TelegramChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList, 'TelegramChat'>>();
   const insets = useSafeAreaInsets();
   const animatedKeyboard = useAnimatedKeyboard();
+  const blurTargetRef = useRef<View>(null);
 
   const inputDockAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }],
@@ -97,7 +104,7 @@ export function TelegramChatScreen() {
   const listKeyboardAnimatedStyle = useAnimatedStyle(() => ({
     marginBottom: Math.max(animatedKeyboard.height.value, 0),
   }));
-  const { colors } = useTheme();
+  const { colors, resolvedScheme } = useTheme();
   const styles = useMemo(() => createTelegramChatStyles(colors), [colors]);
   const headerChromeStyles = useMemo(
     () => createTelegramStackHeaderPresentationStyles(colors),
@@ -115,6 +122,10 @@ export function TelegramChatScreen() {
   const telegramWallpaperKey = `telegram:${telegramChatId}`;
   const storedWallpaperThemeId = uiStore((s) => s.chatThemeIdByChatId[telegramWallpaperKey]);
   const wallpaperThemeId = storedWallpaperThemeId ?? DEFAULT_CHAT_THEME_ID;
+  const chatTheme = useMemo(
+    () => getChatTheme(wallpaperThemeId, resolvedScheme),
+    [resolvedScheme, wallpaperThemeId],
+  );
   const chatId = useMemo(() => Number.parseInt(telegramChatId, 10), [telegramChatId]);
   const isChannel = routeChatType === 'channel';
   const isGroupChat = routeChatType === 'group' || routeChatType === 'supergroup';
@@ -140,6 +151,17 @@ export function TelegramChatScreen() {
   const messagesRef = useRef<TelegramMessageRow[]>([]);
   const listRef = useRef<FlatList<TelegramMessageRow>>(null);
   const [inputBarHeight, setInputBarHeight] = useState(88);
+  const [scrollTick, setScrollTick] = useState(0);
+  const lastScrollBumpAtRef = useRef(0);
+  const bumpScrollTickThrottled = useCallback(() => {
+    const now = Date.now();
+    if (now - lastScrollBumpAtRef.current < 48) return;
+    lastScrollBumpAtRef.current = now;
+    setScrollTick((t) => (t + 1) & 0xffff);
+  }, []);
+  const bumpScrollTickImmediate = useCallback(() => {
+    setScrollTick((t) => (t + 1) & 0xffff);
+  }, []);
 
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
   const headerSubtitle = useMemo(() => {
@@ -314,6 +336,9 @@ export function TelegramChatScreen() {
     ensureReady,
     showMenuReactions: true,
     onEnterSelection: enterTelegramSelection,
+    chatTheme,
+    resolvedScheme,
+    scrollTick,
   });
 
   const handleOpenTelegramMemberProfile = useCallback(
@@ -842,6 +867,16 @@ export function TelegramChatScreen() {
   const renderItem = useCallback(
     ({ item, index }: { item: TelegramMessageRow; index: number }) => {
       const isMe = item.outgoing;
+      const useViewportOutgoingGradient =
+        isMe && shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
+      const meBubbleFill =
+        isMe && useViewportOutgoingGradient ? '#00000000' : chatTheme.bubbleMe;
+      const outgoingBubbleTextColor =
+        isMe && useViewportOutgoingGradient ? chatTheme.bubbleMeText : '#FFFFFF';
+      const outgoingBubbleMetaColor =
+        isMe && useViewportOutgoingGradient ? chatTheme.bubbleMeMeta : colors.textSecondaryMuted;
+      const outgoingBubbleAccentColor =
+        isMe && useViewportOutgoingGradient ? chatTheme.bubbleMeAccent : colors.accent;
 
       const msgs = messagesRef.current;
       const isGroupedAbove = isSameTelegramChain(msgs[index + 1], item, isGroupChat);
@@ -874,8 +909,9 @@ export function TelegramChatScreen() {
         openTelegramMessageMenu(item);
       };
 
+      // Ник показываем только на ПЕРВОМ сообщении цепочки (!isGroupedAbove)
       const senderNameNode =
-        !isMe && item.senderName && isGroupChat ? (
+        !isMe && item.senderName && isGroupChat && !isGroupedAbove ? (
           <Text style={styles.senderNameText} numberOfLines={1}>
             {item.senderName}
           </Text>
@@ -919,7 +955,14 @@ export function TelegramChatScreen() {
         isMe ? styles.messageRowMe : styles.messageRowOther,
         { marginTop, marginBottom },
       ];
-      const pressableStyle = telegramSelectionMode ? undefined : rowStyle;
+      // В групповом чате входящие сообщения уже обёрнуты в groupIncomingContent (flexShrink:1),
+      // поэтому Pressable не должен получать rowStyle c flexDirection:row.
+      // Аналогично для канальных постов: они должны занимать всю ширину без flexDirection:row.
+      const pressableStyle = telegramSelectionMode
+        ? undefined
+        : (isGroupChat && !isMe) || channelIncoming
+          ? { marginTop, marginBottom }
+          : rowStyle;
       const pressableA11y = telegramSelectionMode
         ? {
             accessibilityRole: 'button' as const,
@@ -937,8 +980,10 @@ export function TelegramChatScreen() {
         if (isMe || !isGroupChat) return element;
         const seed = String(item.senderUserId ?? item.senderName ?? item.id);
         const avatarInitial = (item.senderName?.trim()[0] || '?').toUpperCase();
+        // Аватар — только на ПОСЛЕДНЕМ сообщении цепочки (isLastInGroup)
+        const showAvatar = isLastInGroup;
         const openProfile =
-          item.senderUserId != null && !telegramSelectionMode
+          showAvatar && item.senderUserId != null && !telegramSelectionMode
             ? () => void handleOpenTelegramMemberProfile(item)
             : undefined;
         return (
@@ -946,20 +991,24 @@ export function TelegramChatScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={
-                item.senderUserId != null ? `Профиль: ${item.senderName ?? 'Участник'}` : undefined
+                showAvatar && item.senderUserId != null
+                  ? `Профиль: ${item.senderName ?? 'Участник'}`
+                  : undefined
               }
-              disabled={item.senderUserId == null || telegramSelectionMode}
-              hitSlop={10}
+              disabled={!showAvatar || item.senderUserId == null || telegramSelectionMode}
+              hitSlop={showAvatar ? 10 : 0}
               onPress={openProfile}
               style={styles.groupAvatarSlot}
             >
-              {item.senderAvatarUri ? (
-                <Image source={{ uri: item.senderAvatarUri }} style={styles.groupAvatarImage} />
-              ) : (
-                <View style={[styles.groupAvatarFallback, { backgroundColor: telegramPeerAvatarColor(seed) }]}>
-                  <Text style={styles.groupAvatarInitial}>{avatarInitial}</Text>
-                </View>
-              )}
+              {showAvatar ? (
+                item.senderAvatarUri ? (
+                  <Image source={{ uri: item.senderAvatarUri }} style={styles.groupAvatarImage} />
+                ) : (
+                  <View style={[styles.groupAvatarFallback, { backgroundColor: telegramPeerAvatarColor(seed) }]}>
+                    <Text style={styles.groupAvatarInitial}>{avatarInitial}</Text>
+                  </View>
+                )
+              ) : null}
             </Pressable>
             <View style={styles.groupIncomingContent}>{element}</View>
           </View>
@@ -991,29 +1040,55 @@ export function TelegramChatScreen() {
         ? (isLastInGroup ? styles.bubbleMe : styles.bubbleMeChained)
         : (isLastInGroup ? styles.bubbleOther : styles.bubbleOtherChained);
 
+      const outgoingGradientBubbleStyle = [
+        styles.bubble,
+        isLastInGroup ? { borderBottomRightRadius: 6 } : null,
+      ];
+
       if (item.kind === 'voice') {
         if (!item.voiceUri) {
+          const placeholderBody = (
+            <>
+              {bubbleHeader}
+              <View style={styles.bubbleContentRow}>
+                <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
+                  Голосовое
+                  <Text style={{ fontSize: 12, color: 'transparent' }}>
+                    {'\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}
+                  </Text>
+                </Text>
+                <View style={{ position: 'absolute', bottom: -2, right: 0 }}>
+                  <MessageTimeStatus
+                    time={formatTime(item.dateMs)}
+                    status={item.status}
+                    isMe={isMe}
+                    compact
+                    timeColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+                    iconColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+                  />
+                </View>
+              </View>
+            </>
+          );
           return wrapSelectionShell(
             <Pressable
               {...pressableA11y}
               style={pressableStyle}
               accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
             >
-              <View
-                ref={(node) => setMessageContentRef(item.id, node)}
-                collapsable={false}
-                style={[styles.bubble, textBubbleColorStyle]}
-              >
-                {bubbleHeader}
-                <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
-                <MessageTimeStatus
-                  time={formatTime(item.dateMs)}
-                  status={item.status}
-                  isMe={isMe}
-                  compact
-                  timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-                  iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-                />
+              <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
+                {isMe && useViewportOutgoingGradient ? (
+                  <MeBubbleChrome
+                    active
+                    scrollTick={scrollTick}
+                    fillColor={chatTheme.bubbleMe}
+                    style={outgoingGradientBubbleStyle}
+                  >
+                    {placeholderBody}
+                  </MeBubbleChrome>
+                ) : (
+                  <View style={[styles.bubble, textBubbleColorStyle]}>{placeholderBody}</View>
+                )}
               </View>
             </Pressable>,
           );
@@ -1025,22 +1100,50 @@ export function TelegramChatScreen() {
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: голосовое сообщение`}
           >
             <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false}>
-              <VoiceBubble
-                uri={item.voiceUri}
-                waveform={item.waveform ?? []}
-                durationMs={item.durationMs ?? 0}
-                isMe={isMe}
-                time={formatTime(item.dateMs)}
-                status={item.status}
-                header={bubbleHeader}
-                bubbleMeColor={colors.bubbleMe}
-                outgoingTextColor="#FFFFFF"
-                outgoingMetaColor={colors.textSecondaryMuted}
-                outgoingAccentColor={colors.accent}
-                incomingBubbleBackground={colors.bubbleOther}
-                incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                incomingDurationColor={colors.textSecondary}
-              />
+              {isMe && useViewportOutgoingGradient ? (
+                <MeBubbleChrome
+                  active
+                  scrollTick={scrollTick}
+                  fillColor={chatTheme.bubbleMe}
+                  style={[{ alignSelf: 'flex-end' }, outgoingGradientBubbleStyle, { overflow: 'hidden' }]}
+                >
+                  <VoiceBubble
+                    uri={item.voiceUri}
+                    waveform={item.waveform ?? []}
+                    durationMs={item.durationMs ?? 0}
+                    isMe={isMe}
+                    time={formatTime(item.dateMs)}
+                    status={item.status}
+                    header={bubbleHeader}
+                    bubbleMeColor={meBubbleFill}
+                    outgoingTextColor={outgoingBubbleTextColor}
+                    outgoingMetaColor={outgoingBubbleMetaColor}
+                    outgoingAccentColor={outgoingBubbleAccentColor}
+                    incomingBubbleBackground={colors.bubbleOther}
+                    incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                    incomingDurationColor={colors.textSecondary}
+                    style={outgoingGradientBubbleStyle}
+                  />
+                </MeBubbleChrome>
+              ) : (
+                <VoiceBubble
+                  uri={item.voiceUri}
+                  waveform={item.waveform ?? []}
+                  durationMs={item.durationMs ?? 0}
+                  isMe={isMe}
+                  time={formatTime(item.dateMs)}
+                  status={item.status}
+                  header={bubbleHeader}
+                  bubbleMeColor={colors.bubbleMe}
+                  outgoingTextColor="#FFFFFF"
+                  outgoingMetaColor={colors.textSecondaryMuted}
+                  outgoingAccentColor={colors.accent}
+                  incomingBubbleBackground={colors.bubbleOther}
+                  incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                  incomingDurationColor={colors.textSecondary}
+                  style={textBubbleColorStyle}
+                />
+              )}
             </View>
           </Pressable>,
         );
@@ -1058,26 +1161,58 @@ export function TelegramChatScreen() {
               collapsable={false}
               style={channelIncoming ? styles.channelIncomingWrap : undefined}
             >
-              <ImageBubble
-                uri={item.mediaUri}
-                isMe={isMe}
-                width={item.width}
-                height={item.height}
-                caption={item.text}
-                time={formatTime(item.dateMs)}
-                status={item.status}
-                header={bubbleHeader}
-                bubbleMeColor={colors.bubbleMe}
-                outgoingTextColor="#FFFFFF"
-                incomingBubbleBackground={colors.bubbleOther}
-                incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                incomingCaptionTextColor={colors.textPrimary}
-                viewCount={item.viewCount}
-                viewCountShortLabel={viewCountFormatted ?? undefined}
-                mediaClamp={channelIncoming ? channelMediaClamp : undefined}
-                incomingChannelPost={channelIncoming}
-                footer={discussionFooter}
-              />
+              {isMe && useViewportOutgoingGradient ? (
+                <MeBubbleChrome
+                  active
+                  scrollTick={scrollTick}
+                  fillColor={chatTheme.bubbleMe}
+                  style={[{ alignSelf: 'flex-end' }, outgoingGradientBubbleStyle, { overflow: 'hidden' }]}
+                >
+                  <ImageBubble
+                    uri={item.mediaUri}
+                    isMe={isMe}
+                    width={item.width}
+                    height={item.height}
+                    caption={item.text}
+                    time={formatTime(item.dateMs)}
+                    status={item.status}
+                    header={bubbleHeader}
+                    bubbleMeColor={meBubbleFill}
+                    outgoingTextColor={outgoingBubbleTextColor}
+                    incomingBubbleBackground={colors.bubbleOther}
+                    incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                    incomingCaptionTextColor={colors.textPrimary}
+                    viewCount={item.viewCount}
+                    viewCountShortLabel={viewCountFormatted ?? undefined}
+                    mediaClamp={channelIncoming ? channelMediaClamp : undefined}
+                    incomingChannelPost={channelIncoming}
+                    footer={discussionFooter}
+                    style={outgoingGradientBubbleStyle}
+                  />
+                </MeBubbleChrome>
+              ) : (
+                <ImageBubble
+                  uri={item.mediaUri}
+                  isMe={isMe}
+                  width={item.width}
+                  height={item.height}
+                  caption={item.text}
+                  time={formatTime(item.dateMs)}
+                  status={item.status}
+                  header={bubbleHeader}
+                  bubbleMeColor={colors.bubbleMe}
+                  outgoingTextColor="#FFFFFF"
+                  incomingBubbleBackground={colors.bubbleOther}
+                  incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                  incomingCaptionTextColor={colors.textPrimary}
+                  viewCount={item.viewCount}
+                  viewCountShortLabel={viewCountFormatted ?? undefined}
+                    mediaClamp={channelIncoming ? channelMediaClamp : undefined}
+                    incomingChannelPost={channelIncoming}
+                    footer={discussionFooter}
+                    style={outgoingGradientBubbleStyle}
+                  />
+              )}
             </View>
           </Pressable>,
         );
@@ -1095,28 +1230,62 @@ export function TelegramChatScreen() {
               collapsable={false}
               style={channelIncoming ? styles.channelIncomingWrap : undefined}
             >
-              <VideoBubble
-                uri={item.mediaUri}
-                thumbnailUri={item.thumbnailUri ?? undefined}
-                isMe={isMe}
-                width={item.width}
-                height={item.height}
-                durationMs={item.durationMs ?? 0}
-                caption={item.text}
-                time={formatTime(item.dateMs)}
-                status={item.status}
-                header={bubbleHeader}
-                bubbleMeColor={colors.bubbleMe}
-                outgoingTextColor="#FFFFFF"
-                incomingBubbleBackground={colors.bubbleOther}
-                incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                incomingCaptionTextColor={colors.textPrimary}
-                viewCount={item.viewCount}
-                viewCountShortLabel={viewCountFormatted ?? undefined}
-                mediaClamp={channelIncoming ? channelMediaClamp : undefined}
-                incomingChannelPost={channelIncoming}
-                footer={discussionFooter}
-              />
+              {isMe && useViewportOutgoingGradient ? (
+                <MeBubbleChrome
+                  active
+                  scrollTick={scrollTick}
+                  fillColor={chatTheme.bubbleMe}
+                  style={[{ alignSelf: 'flex-end' }, outgoingGradientBubbleStyle, { overflow: 'hidden' }]}
+                >
+                  <VideoBubble
+                    uri={item.mediaUri}
+                    thumbnailUri={item.thumbnailUri ?? undefined}
+                    isMe={isMe}
+                    width={item.width}
+                    height={item.height}
+                    durationMs={item.durationMs ?? 0}
+                    caption={item.text}
+                    time={formatTime(item.dateMs)}
+                    status={item.status}
+                    header={bubbleHeader}
+                    bubbleMeColor={meBubbleFill}
+                    outgoingTextColor={outgoingBubbleTextColor}
+                    incomingBubbleBackground={colors.bubbleOther}
+                    incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                    incomingCaptionTextColor={colors.textPrimary}
+                    viewCount={item.viewCount}
+                    viewCountShortLabel={viewCountFormatted ?? undefined}
+                    mediaClamp={channelIncoming ? channelMediaClamp : undefined}
+                    incomingChannelPost={channelIncoming}
+                    footer={discussionFooter}
+                    style={outgoingGradientBubbleStyle}
+                  />
+                </MeBubbleChrome>
+              ) : (
+                <VideoBubble
+                  uri={item.mediaUri}
+                  thumbnailUri={item.thumbnailUri ?? undefined}
+                  isMe={isMe}
+                  width={item.width}
+                  height={item.height}
+                  durationMs={item.durationMs ?? 0}
+                  caption={item.text}
+                  time={formatTime(item.dateMs)}
+                  status={item.status}
+                  header={bubbleHeader}
+                  bubbleMeColor={colors.bubbleMe}
+                  outgoingTextColor="#FFFFFF"
+                  incomingBubbleBackground={colors.bubbleOther}
+                  incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                  incomingCaptionTextColor={colors.textPrimary}
+                  viewCount={item.viewCount}
+                  viewCountShortLabel={viewCountFormatted ?? undefined}
+                    mediaClamp={channelIncoming ? channelMediaClamp : undefined}
+                    incomingChannelPost={channelIncoming}
+                    footer={discussionFooter}
+                    style={outgoingGradientBubbleStyle}
+                  />
+              )}
             </View>
           </Pressable>,
         );
@@ -1130,29 +1299,143 @@ export function TelegramChatScreen() {
             accessibilityLabel={`${isMe ? 'Я' : headerTitle}: файл ${item.fileName ?? ''}`}
           >
             <View ref={(node) => setMessageContentRef(item.id, node)} collapsable={false} style={styles.fileBubbleWrap}>
-              <FileBubble
-                fileName={item.fileName ?? 'File'}
-                fileSize={item.fileSize}
-                uri={item.mediaUri ?? undefined}
-                isMe={isMe}
-                caption={item.text}
-                time={formatTime(item.dateMs)}
-                status={item.status}
-                header={bubbleHeader}
-                bubbleMeColor={colors.bubbleMe}
-                outgoingTextColor="#FFFFFF"
-                outgoingMetaColor={colors.textSecondaryMuted}
-                outgoingAccentColor="#FFFFFF"
-                incomingBubbleBackground={colors.bubbleOther}
-                incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                incomingFileNameColor={colors.textPrimary}
-                incomingSecondaryTextColor={colors.textSecondary}
-                incomingCaptionColor={colors.textPrimary}
-              />
+              {isMe && useViewportOutgoingGradient ? (
+                <MeBubbleChrome
+                  active
+                  scrollTick={scrollTick}
+                  fillColor={chatTheme.bubbleMe}
+                  style={[
+                    {
+                      alignSelf: 'flex-end',
+                      width: Math.min(SCREEN_WIDTH * 0.76, 320),
+                      maxWidth: '100%',
+                    },
+                    outgoingGradientBubbleStyle,
+                    { overflow: 'hidden' },
+                  ]}
+                >
+                  <FileBubble
+                    fileName={item.fileName ?? 'File'}
+                    fileSize={item.fileSize}
+                    uri={item.mediaUri ?? undefined}
+                    isMe={isMe}
+                    caption={item.text}
+                    time={formatTime(item.dateMs)}
+                    status={item.status}
+                    header={bubbleHeader}
+                    bubbleMeColor={meBubbleFill}
+                    outgoingTextColor={outgoingBubbleTextColor}
+                    outgoingMetaColor={outgoingBubbleMetaColor}
+                    outgoingAccentColor={outgoingBubbleAccentColor}
+                    incomingBubbleBackground={colors.bubbleOther}
+                    incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                    incomingFileNameColor={colors.textPrimary}
+                    incomingSecondaryTextColor={colors.textSecondary}
+                    incomingCaptionColor={colors.textPrimary}
+                    style={outgoingGradientBubbleStyle}
+                  />
+                </MeBubbleChrome>
+              ) : (
+                <FileBubble
+                  fileName={item.fileName ?? 'File'}
+                  fileSize={item.fileSize}
+                  uri={item.mediaUri ?? undefined}
+                  isMe={isMe}
+                  caption={item.text}
+                  time={formatTime(item.dateMs)}
+                  status={item.status}
+                  header={bubbleHeader}
+                  bubbleMeColor={colors.bubbleMe}
+                  outgoingTextColor="#FFFFFF"
+                  outgoingMetaColor={colors.textSecondaryMuted}
+                  outgoingAccentColor="#FFFFFF"
+                  incomingBubbleBackground={colors.bubbleOther}
+                  incomingBubbleBorderColor={colors.bubbleOtherBorder}
+                  incomingFileNameColor={colors.textPrimary}
+                  incomingSecondaryTextColor={colors.textSecondary}
+                  incomingCaptionColor={colors.textPrimary}
+                  style={textBubbleColorStyle}
+                />
+              )}
             </View>
           </Pressable>,
         );
       }
+
+      const discussionFooterPaddingReset =
+        discussionFooter != null
+          ? ({ paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' as const } satisfies ViewStyle)
+          : null;
+
+      const textBubbleSolidStyle = [
+        styles.bubble,
+        textBubbleColorStyle,
+        channelIncoming && styles.channelIncomingBubble,
+        discussionFooterPaddingReset,
+      ];
+
+      const textBubbleGradientStyle = [
+        styles.bubble,
+        isLastInGroup ? { borderBottomRightRadius: 6 } : null,
+        channelIncoming && styles.channelIncomingBubble,
+        discussionFooterPaddingReset,
+      ];
+
+      // Telegram-style: текст + невидимый спейсер (занимает место времени) в одной строке,
+      // а время абсолютно прилипает вниз-справа поверх спейсера.
+      const metaNode = (
+        <MessageTimeStatus
+          time={formatTime(item.dateMs)}
+          status={item.status}
+          isMe={isMe}
+          compact
+          timeColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+          iconColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+        />
+      );
+
+      const textBubbleBody = (
+        <>
+          {discussionFooter ? (
+            <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
+              {bubbleHeader}
+              <View style={styles.bubbleContentRow}>
+                <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
+                  {item.text || ' '}
+                  {viewCountFormatted ? (
+                    <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{` \uD83D\uDC41 ${viewCountFormatted}`}</Text>
+                  ) : null}
+                  <Text style={{ fontSize: 12, color: 'transparent' }}>
+                    {'\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}
+                  </Text>
+                </Text>
+                <View style={{ position: 'absolute', bottom: -2, right: 0 }}>
+                  {metaNode}
+                </View>
+              </View>
+            </View>
+          ) : (
+            <>
+              {bubbleHeader}
+              <View style={styles.bubbleContentRow}>
+                <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
+                  {item.text || ' '}
+                  {viewCountFormatted ? (
+                    <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{` \uD83D\uDC41 ${viewCountFormatted}`}</Text>
+                  ) : null}
+                  <Text style={{ fontSize: 12, color: 'transparent' }}>
+                    {'\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}
+                  </Text>
+                </Text>
+                <View style={{ position: 'absolute', bottom: -2, right: 0 }}>
+                  {metaNode}
+                </View>
+              </View>
+            </>
+          )}
+          {discussionFooter}
+        </>
+      );
 
       return wrapSelectionShell(
         <Pressable
@@ -1163,61 +1446,29 @@ export function TelegramChatScreen() {
           <View
             ref={(node) => setMessageContentRef(item.id, node)}
             collapsable={false}
-            style={[
-              styles.bubble,
-              textBubbleColorStyle,
-              channelIncoming && styles.channelIncomingBubble,
-              discussionFooter ? { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' } : null,
-            ]}
+            style={isMe ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }}
           >
-            {discussionFooter ? (
-              <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
-                {bubbleHeader}
-                <View style={styles.bubbleContentRow}>
-                  <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
-                  {viewCountFormatted ? (
-                    <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>
-                      {`👁 ${viewCountFormatted}`}
-                    </Text>
-                  ) : null}
-                  <MessageTimeStatus
-                    time={formatTime(item.dateMs)}
-                    status={item.status}
-                    isMe={isMe}
-                    compact
-                    timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-                    iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-                  />
-                </View>
-              </View>
+            {isMe && useViewportOutgoingGradient ? (
+              <MeBubbleChrome
+                active
+                scrollTick={scrollTick}
+                fillColor={chatTheme.bubbleMe}
+                style={textBubbleGradientStyle}
+              >
+                {textBubbleBody}
+              </MeBubbleChrome>
             ) : (
-              <>
-                {bubbleHeader}
-                <View style={styles.bubbleContentRow}>
-                  <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.text || ' '}</Text>
-                  {viewCountFormatted ? (
-                    <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>
-                      {`👁 ${viewCountFormatted}`}
-                    </Text>
-                  ) : null}
-                  <MessageTimeStatus
-                    time={formatTime(item.dateMs)}
-                    status={item.status}
-                    isMe={isMe}
-                    compact
-                    timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-                    iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-                  />
-                </View>
-              </>
+              <View style={textBubbleSolidStyle}>{textBubbleBody}</View>
             )}
-            {discussionFooter}
           </View>
         </Pressable>,
       );
     },
     [
+      bumpScrollTickImmediate,
+      bumpScrollTickThrottled,
       channelMediaClamp,
+      chatTheme,
       colors,
       handleOpenDiscussion,
       handleOpenTelegramMemberProfile,
@@ -1226,6 +1477,8 @@ export function TelegramChatScreen() {
       isGroupChat,
       messageById,
       openTelegramMessageMenu,
+      resolvedScheme,
+      scrollTick,
       selectedTelegramIdSet,
       setMessageContentRef,
       styles,
@@ -1237,7 +1490,7 @@ export function TelegramChatScreen() {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1, backgroundColor: colors.chatBackground }}>
-        <View style={styles.flexChatBody}>
+        <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.flexChatBody}>
           <View style={styles.wallpaperLayer} pointerEvents="none">
             <ChatBackgroundPattern themeId={wallpaperThemeId} />
           </View>
@@ -1258,6 +1511,9 @@ export function TelegramChatScreen() {
               onRefresh={() => void loadHistory(false)}
               onEndReached={() => void loadHistory(true)}
               onEndReachedThreshold={0.3}
+              onScroll={bumpScrollTickThrottled}
+              onMomentumScrollEnd={bumpScrollTickImmediate}
+              onScrollEndDrag={bumpScrollTickImmediate}
               onScrollToIndexFailed={(info) => {
                 setTimeout(() => {
                   listRef.current?.scrollToIndex({
@@ -1379,7 +1635,7 @@ export function TelegramChatScreen() {
               )}
             </View>
           </Reanimated.View>
-        </View>
+        </BlurTargetView>
       </View>
       <ChatContextMenuOverlay
         menuState={menuState}
@@ -1388,6 +1644,7 @@ export function TelegramChatScreen() {
         menuAnim={menuAnim}
         screenWidth={SCREEN_WIDTH}
         showReactions
+        blurTargetRef={blurTargetRef}
         onClose={closeMenu}
         onMenuAction={handleTelegramMenuAction}
         onPickReaction={handleTelegramPickReaction}

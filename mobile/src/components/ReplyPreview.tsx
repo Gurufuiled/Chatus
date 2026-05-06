@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   content: {
-    flex: 1,
+    flexShrink: 1,
     paddingHorizontal: 10,
     paddingVertical: 8,
     minWidth: 0,

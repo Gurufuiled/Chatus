@@ -69,9 +69,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       backgroundColor: 'transparent',
     },
     bottomChrome: {
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.separator,
-      backgroundColor: colors.composerSurface,
+      backgroundColor: 'transparent',
     },
     /** Абсолютный док композера у нижнего края — совместно с `useAnimatedKeyboard` как в `ChatScreen`. */
     composerDockAbsolute: {
@@ -98,6 +96,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     },
     bubble: {
       maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
+      minWidth: 48,
       borderRadius: 18,
       paddingHorizontal: 12,
       paddingVertical: 8,
@@ -130,10 +129,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       color: '#FFFFFF',
     },
     bubbleContentRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      flexWrap: 'wrap',
-      columnGap: 6,
+      position: 'relative',
     },
     fileBubbleWrap: {
       maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,

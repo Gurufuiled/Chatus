@@ -13,6 +13,12 @@ import { formatTime } from './composer';
 import { getTelegramReplyPreviewText, getTelegramReplyThumbnailUri } from './messageRow';
 import type { TelegramChatStyles } from './telegramChatStyles';
 import type { TelegramMessageRow } from './types';
+import {
+  MeBubbleChrome,
+  shouldUseDarkDefaultOutgoingBubbleGradient,
+} from '../../components/OutgoingBubbleViewportGradient';
+import type { ChatTheme } from '../../theme/chatThemes';
+import type { ResolvedColorScheme } from '../../theme/palettes';
 
 export type TelegramChatMenuPreviewProps = {
   message: Message;
@@ -23,6 +29,9 @@ export type TelegramChatMenuPreviewProps = {
   styles: TelegramChatStyles;
   headerTitle: string;
   isGroupChat: boolean;
+  chatTheme?: ChatTheme;
+  resolvedScheme?: ResolvedColorScheme;
+  scrollTick?: number;
 };
 
 export function TelegramChatMenuPreviewBody({
@@ -34,10 +43,20 @@ export function TelegramChatMenuPreviewBody({
   styles,
   headerTitle,
   isGroupChat,
+  chatTheme: chatThemeProp,
+  resolvedScheme: resolvedSchemeProp,
+  scrollTick = 0,
 }: TelegramChatMenuPreviewProps) {
   if (!row || row.id !== message.id) return <View />;
   const fixedWidthStyle = forcedWidth ? { width: forcedWidth, maxWidth: forcedWidth } : undefined;
   const isMe = row.outgoing;
+  const usePreviewOutgoingGradient =
+    isMe &&
+    chatThemeProp != null &&
+    resolvedSchemeProp != null &&
+    shouldUseDarkDefaultOutgoingBubbleGradient(chatThemeProp, resolvedSchemeProp);
+  const meBubbleFill =
+    isMe && usePreviewOutgoingGradient ? '#00000000' : colors.bubbleMe;
   const replyTarget =
     row.replyToMessageId != null ? messageById.get(row.replyToMessageId) ?? null : null;
   const replySnippet =
@@ -73,7 +92,9 @@ export function TelegramChatMenuPreviewBody({
         {replySnippet}
       </>
     ) : null;
-  const textBubbleColorStyle = isMe ? styles.bubbleMe : styles.bubbleOther;
+  const textBubbleColorStyle = isMe
+    ? (usePreviewOutgoingGradient ? undefined : styles.bubbleMe)
+    : styles.bubbleOther;
   const viewCountFormatted =
     row.viewCount != null
       ? row.viewCount >= 1_000_000
@@ -112,7 +133,7 @@ export function TelegramChatMenuPreviewBody({
           time={formatTime(row.dateMs)}
           status={row.status}
           header={bubbleHeader}
-          bubbleMeColor={colors.bubbleMe}
+          bubbleMeColor={meBubbleFill}
           outgoingTextColor="#FFFFFF"
           outgoingMetaColor={colors.textSecondaryMuted}
           outgoingAccentColor={colors.accent}
@@ -196,15 +217,20 @@ export function TelegramChatMenuPreviewBody({
     );
   }
 
-  return (
-    <View style={fixedWidthStyle}>
-      <View style={[styles.bubble, textBubbleColorStyle]}>
-        {bubbleHeader}
-        <View style={styles.bubbleContentRow}>
-          <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{row.text || ' '}</Text>
+  const textBubbleBody = (
+    <>
+      {bubbleHeader}
+      <View style={styles.bubbleContentRow}>
+        <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
+          {row.text || ' '}
           {viewCountFormatted ? (
-            <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{`👁 ${viewCountFormatted}`}</Text>
+            <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{` 👁 ${viewCountFormatted}`}</Text>
           ) : null}
+          <Text style={{ fontSize: 12, color: 'transparent' }}>
+            {'\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}
+          </Text>
+        </Text>
+        <View style={{ position: 'absolute', bottom: -2, right: 0 }}>
           <MessageTimeStatus
             time={formatTime(row.dateMs)}
             status={row.status}
@@ -214,6 +240,29 @@ export function TelegramChatMenuPreviewBody({
             iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
           />
         </View>
+      </View>
+    </>
+  );
+
+  if (isMe && usePreviewOutgoingGradient) {
+    return (
+      <View style={fixedWidthStyle}>
+        <MeBubbleChrome
+          active
+          scrollTick={scrollTick}
+          fillColor={chatThemeProp!.bubbleMe}
+          style={[styles.bubble, { borderBottomRightRadius: 6 }]}
+        >
+          {textBubbleBody}
+        </MeBubbleChrome>
+      </View>
+    );
+  }
+
+  return (
+    <View style={fixedWidthStyle}>
+      <View style={[styles.bubble, textBubbleColorStyle]}>
+        {textBubbleBody}
       </View>
     </View>
   );

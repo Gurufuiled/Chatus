@@ -58,8 +58,8 @@ export interface ImageBubbleProps {
   /** Channel incoming post: stretch card, flush media top corners, optional footer bar. */
   incomingChannelPost?: boolean;
   footer?: React.ReactNode;
-  /** Short label for views in overlay (e.g. `60.8K`) — defaults to raw viewCount. */
   viewCountShortLabel?: string;
+  style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
 }
 
 function computeDisplaySize(
@@ -125,6 +125,7 @@ export function ImageBubble({
   incomingChannelPost = false,
   footer,
   viewCountShortLabel,
+  style,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const maxW = mediaClamp?.maxWidth ?? MAX_BUBBLE_WIDTH;
@@ -207,6 +208,10 @@ export function ImageBubble({
 
   const w = displaySize?.width ?? Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width);
   const h = displaySize?.height ?? Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height);
+  // Для канальных постов: ширина фото = вся карточка, высота вычисляется из аспекта (как в Telegram).
+  const channelImageW = maxW; // примерная ширина карточки канала
+  const channelAspect = w > 0 && h > 0 ? h / w : 9 / 16;
+  const channelImageH = Math.min(Math.round(channelImageW * channelAspect), maxH);
   const hasCaption = (caption ?? '').trim().length > 0;
   const hasFooter = Boolean(footer);
   const mediaBottomRounded = !hasCaption && !hasFooter;
@@ -225,8 +230,9 @@ export function ImageBubble({
                 borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
               }
             : null,
-          isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
-        ]}
+        isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+        style,
+      ]}
       >
         {header ? (
           <View style={{ maxWidth: w, alignSelf: 'flex-start' }}>{header}</View>
@@ -238,7 +244,9 @@ export function ImageBubble({
           onPress={handlePress}
           style={[
             styles.imageWrapper,
-            { width: w, height: h },
+            incomingChannelPost
+              ? { width: '100%', height: channelImageH }
+              : { width: w, height: h },
             isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
             embedded && styles.imageWrapperEmbedded,
             incomingChannelPost &&
@@ -270,7 +278,12 @@ export function ImageBubble({
               setLoadError(false);
               setImageLoaded(true);
             }}
-            style={[styles.image, { width: w, height: h }]}
+            style={[
+              styles.image,
+              incomingChannelPost
+                ? { width: '100%', height: channelImageH }
+                : { width: w, height: h },
+            ]}
             contentFit={contentFit}
           />
 

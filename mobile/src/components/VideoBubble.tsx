@@ -70,6 +70,7 @@ export interface VideoBubbleProps {
   incomingChannelPost?: boolean;
   footer?: React.ReactNode;
   viewCountShortLabel?: string;
+  style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
 }
 
 function computeDisplaySize(
@@ -439,6 +440,7 @@ export function VideoBubble({
   incomingChannelPost = false,
   footer,
   viewCountShortLabel,
+  style,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -562,8 +564,9 @@ export function VideoBubble({
                 borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
               }
             : null,
-          isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
-        ]}
+        isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+        style,
+      ]}
       >
         {header}
 
