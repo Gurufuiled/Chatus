@@ -348,12 +348,16 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
   switch (action) {
     case 'send_message_text': {
       const p = payload as PayloadText;
+      const relayMailbox =
+        (p.msgType ?? 'text') === 'text' &&
+        chatStore.getState().chats.find((c) => c.id === p.chatId)?.chat_type === 'private';
       WebSocketService.sendEvent('send_message', {
         chat_id: p.chatId,
         content: p.content,
         msg_type: p.msgType ?? 'text',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...(relayMailbox ? { relay_mailbox: true as const } : {}),
       });
       return;
     }

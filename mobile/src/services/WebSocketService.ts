@@ -13,6 +13,7 @@ type WebSocketMessage = {
 
 export type WebSocketEventHandlers = {
   onNewMessage?: (payload: WebSocketMessage) => void;
+  onMailboxDeliver?: (payload: WebSocketMessage) => void;
   onChannelPost?: (payload: WebSocketMessage) => void;
   onDiscussionMessage?: (payload: WebSocketMessage) => void;
   onMessageReactionsUpdated?: (payload: WebSocketMessage) => void;
@@ -134,6 +135,9 @@ class WebSocketServiceClass {
       case 'message':
       case 'new_message':
         this.handlers.onNewMessage?.(msg);
+        break;
+      case 'mailbox_deliver':
+        this.handlers.onMailboxDeliver?.(msg);
         break;
       case 'channel_post':
         this.handlers.onChannelPost?.(msg);

@@ -16,7 +16,8 @@ import { messageStore } from '../stores/messageStore';
 import { chatStore } from '../stores/chatStore';
 import { channelStore } from '../stores/channelStore';
 import { uiStore } from '../stores/uiStore';
-import { ChatDao } from '../db';
+import { ChatDao, MessageDao } from '../db';
+import { PeerDeliveryService } from '../services/PeerDeliveryService';
 import type { Message } from '../stores/types';
 import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
@@ -289,6 +290,68 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    const unsub = PeerDeliveryService.onDmDeliver((payload) => {
+      void (async () => {
+        const ts = typeof payload.sent_at === 'number' ? payload.sent_at : Date.now();
+        const mapped: Message = {
+          id: payload.temp_id,
+          chat_id: payload.chat_id,
+          sender_id: payload.from_user_id,
+          msg_type: 'text',
+          content: payload.content,
+          reply_to_id: payload.reply_to_id ?? null,
+          thread_root_message_id: null,
+          is_channel_post: 0,
+          view_count: 0,
+          comment_count: 0,
+          is_edited: 0,
+          is_deleted: 0,
+          status: 'delivered',
+          transport: normalizeMessageTransport('p2p'),
+          server_id: null,
+          created_at: ts,
+          updated_at: ts,
+        };
+        const dao = new MessageDao();
+        try {
+          await dao.insert(mapped);
+        } catch {
+          /* duplicate insert */
+        }
+        messageStore.getState().prependMessage(payload.chat_id, mapped);
+        updateChatLastMessage(payload.chat_id, mapped);
+
+        const currentUserId = authStore.getState().user?.id ?? null;
+        if (payload.from_user_id !== currentUserId) {
+          const messageChat = chatStore.getState().chats.find((item) => item.id === payload.chat_id);
+
+          const selectedChatId = chatStore.getState().selectedChatId;
+          if (selectedChatId === payload.chat_id) {
+            chatStore.getState().clearUnread(payload.chat_id);
+          } else {
+            chatStore.getState().incrementUnread(payload.chat_id);
+            const chatTitle =
+              messageChat?.local_contact_name?.trim() ||
+              messageChat?.peer_display_name ||
+              messageChat?.name ||
+              'Chat';
+            uiStore.getState().showPushNotification({
+              chatId: payload.chat_id,
+              title: chatTitle,
+              messagePreview: buildMessagePreview(mapped),
+              avatarUrl: messageChat?.avatar_url ?? undefined,
+              messageType: mapped.msg_type,
+            });
+          }
+        }
+
+        PeerDeliveryService.sendDmAck(payload.ack_key);
+      })();
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       WebSocketService.disconnect();
       SignalingService.disconnect();
@@ -311,6 +374,56 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         onDisconnected: () => {
           uiStore.getState().bumpTransportStatus();
         },
+        onMailboxDeliver: (payload) => {
+          void (async () => {
+            const msg = (payload as { message?: ServerMessagePayload }).message;
+            if (!msg?.chat_id || !msg?.id) return;
+            const mapped = mapServerMessageToMessage(msg);
+            const dao = new MessageDao();
+            try {
+              await dao.insert(mapped);
+            } catch {
+              /* duplicate */
+            }
+            messageStore.getState().prependMessage(msg.chat_id, mapped);
+            updateChatLastMessage(msg.chat_id, mapped);
+
+            const currentUserId = authStore.getState().user?.id ?? null;
+            if (msg.sender_id !== currentUserId) {
+              const messageChat = chatStore.getState().chats.find((item) => item.id === msg.chat_id);
+              const shouldSendReceipts =
+                messageChat?.chat_type === 'private' || messageChat?.chat_type === 'group';
+
+              const selectedChatId = chatStore.getState().selectedChatId;
+              if (selectedChatId === msg.chat_id) {
+                chatStore.getState().clearUnread(msg.chat_id);
+              } else {
+                chatStore.getState().incrementUnread(msg.chat_id);
+
+                const chatTitle =
+                  messageChat?.local_contact_name?.trim() ||
+                  messageChat?.peer_display_name ||
+                  messageChat?.name ||
+                  'Chat';
+
+                uiStore.getState().showPushNotification({
+                  chatId: msg.chat_id,
+                  title: chatTitle,
+                  messagePreview: buildMessagePreview(mapped),
+                  avatarUrl: messageChat?.avatar_url ?? mapped.sender_avatar_url ?? undefined,
+                  messageType: mapped.msg_type,
+                });
+              }
+
+              if (shouldSendReceipts) {
+                sendMessageAck(msg.chat_id, msg.id, 'delivered');
+              }
+            }
+
+            WebSocketService.sendEvent('mailbox_ack', { message_id: msg.id });
+          })();
+        },
+
         onNewMessage: (payload) => {
           const msg = (payload as { message?: ServerMessagePayload }).message;
           if (!msg?.chat_id || !msg?.id) return;
