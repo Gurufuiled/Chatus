@@ -317,6 +317,7 @@ model Message {
   isDeleted              Boolean       @default(false) @map("is_deleted")
   status                 MessageStatus @default(pending)
   transport              Transport?    // p2p or websocket
+  mailboxExpiresAt       DateTime?     @map("mailbox_expires_at")
   createdAt              DateTime      @default(now()) @map("created_at")
   updatedAt              DateTime      @updatedAt @map("updated_at")
 
@@ -338,7 +339,16 @@ model Message {
   @@index([forwardedFromChatId])
   @@index([forwardedFromSenderId])
   @@index([createdAt])
+  @@index([mailboxExpiresAt])
   @@map("messages")
+}
+
+model SystemConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
 }
 
 model MessageReaction {
