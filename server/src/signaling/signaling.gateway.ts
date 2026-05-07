@@ -29,10 +29,14 @@ export class SignalingGateway
   private readonly userSockets = new Map<string, Set<AuthenticatedSocket>>();
   private readonly log = new Logger(SignalingGateway.name);
 
-  /** ack_key → pending sender ack for dm_send */
+  /** ack_key → pending sender ack for dm_send (only expected recipient may dm_ack) */
   private readonly pendingDms = new Map<
     string,
-    { resolve: (acked: boolean) => void; timer: ReturnType<typeof setTimeout> }
+    {
+      resolve: (acked: boolean) => void;
+      timer: ReturnType<typeof setTimeout>;
+      recipientUserId: string;
+    }
   >();
 
   constructor(
@@ -112,6 +116,12 @@ export class SignalingGateway
 
     const timeoutMs = typeof payload.timeout_ms === 'number' ? payload.timeout_ms : 2500;
     if (typeof content !== 'string') return;
+    if (typeof tempId !== 'string' || tempId.trim().length === 0) {
+      client.send(
+        JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'invalid_temp_id' }),
+      );
+      return;
+    }
 
     const chat = await this.prisma.chat.findFirst({
       where: { id: chatId, chatType: ChatType.private },
@@ -142,7 +152,7 @@ export class SignalingGateway
         this.pendingDms.delete(ackKey);
         resolve(false);
       }, Math.min(timeoutMs, 10_000));
-      this.pendingDms.set(ackKey, { resolve, timer });
+      this.pendingDms.set(ackKey, { resolve, timer, recipientUserId: recipientId });
 
       const deliverPayload = JSON.stringify({
         type: 'dm_deliver',
@@ -168,15 +178,19 @@ export class SignalingGateway
 
   @SubscribeMessage('dm_ack')
   handleDmAck(client: AuthenticatedSocket, payload: { ack_key?: string }) {
-    void client;
     const key = payload?.ack_key;
-    if (!key) return;
+    if (!key || !client.userId) return;
     const pending = this.pendingDms.get(key);
-    if (pending) {
-      clearTimeout(pending.timer);
-      this.pendingDms.delete(key);
-      pending.resolve(true);
+    if (!pending) return;
+    if (pending.recipientUserId !== client.userId) {
+      this.log.warn(
+        `dm_ack ignored: ack_key=${key} expected recipient=${pending.recipientUserId} got=${client.userId}`,
+      );
+      return;
     }
+    clearTimeout(pending.timer);
+    this.pendingDms.delete(key);
+    pending.resolve(true);
   }
 
   private sendToUser(userId: string, data: string) {

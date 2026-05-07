@@ -1,6 +1,5 @@
 /**
- * WebRTC signaling (звонки): WebSocket на порт 4002, JWT, авто-переподключение.
- * Ретрансляция offer/answer/ice между абонентами.
+ * WebRTC signaling (звонки) и relay личных текстов (dm_*): один WebSocket на порт 4002.
  */
 
 import { getSignalingUrl } from '../config';
@@ -44,6 +43,10 @@ class SignalingServiceClass {
   private handlers: SignalingEventHandlers = {};
   private listeners = new Set<SignalingEventHandlers>();
   private whenConnectedResolvers: Array<() => void> = [];
+  /** Raw JSON frames from server for dm_sent / dm_fallback / dm_deliver (same socket as calls). */
+  private peerDeliveryRawListeners = new Set<(raw: string) => void>();
+  /** Fired when signaling socket closes (reconnect may follow). */
+  private socketCloseListeners = new Set<() => void>();
 
   setHandlers(handlers: SignalingEventHandlers): void {
     this.handlers = { ...this.handlers, ...handlers };
@@ -54,6 +57,22 @@ class SignalingServiceClass {
     return () => {
       this.listeners.delete(handlers);
     };
+  }
+
+  /** Subscribe to inbound DM relay frames (same connection as WebRTC signaling). */
+  addPeerDeliveryRawListener(listener: (raw: string) => void): () => void {
+    this.peerDeliveryRawListeners.add(listener);
+    return () => this.peerDeliveryRawListeners.delete(listener);
+  }
+
+  /** Subscribe to socket close (pending DM sends should fail). */
+  addSocketCloseListener(listener: () => void): () => void {
+    this.socketCloseListeners.add(listener);
+    return () => this.socketCloseListeners.delete(listener);
+  }
+
+  private notifySocketClose(): void {
+    this.socketCloseListeners.forEach((fn) => fn());
   }
 
   private emit<K extends keyof SignalingEventHandlers>(
@@ -143,6 +162,7 @@ class SignalingServiceClass {
 
     this.ws.onclose = () => {
       this.ws = null;
+      this.notifySocketClose();
       if (!this.manualDisconnect && authStore.getState().accessToken) {
         this.scheduleReconnect();
       }
@@ -172,6 +192,11 @@ class SignalingServiceClass {
     const fromUserId = msg?.from_user_id as string | undefined;
 
     if (!type) return;
+
+    if (type === 'dm_sent' || type === 'dm_fallback' || type === 'dm_deliver') {
+      this.peerDeliveryRawListeners.forEach((listener) => listener(data));
+      return;
+    }
 
     switch (type) {
       case 'offer':
@@ -313,6 +338,22 @@ class SignalingServiceClass {
 
   sendCallBusy(targetUserId: string): void {
     this.sendEvent('call_busy', { target_user_id: targetUserId });
+  }
+
+  sendDmSend(body: {
+    ack_key: string;
+    recipient_user_id: string;
+    chat_id: string;
+    content: string;
+    temp_id: string;
+    reply_to_id?: string | null;
+    timeout_ms: number;
+  }): void {
+    this.sendEvent('dm_send', body as unknown as Record<string, unknown>);
+  }
+
+  sendDmAck(ackKey: string): void {
+    this.sendEvent('dm_ack', { ack_key: ackKey });
   }
 
   isConnected(): boolean {
