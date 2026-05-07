@@ -127,6 +127,9 @@ class SignalingServiceClass {
       this.ws = null;
     }
 
+    // Handlers were cleared; onclose will not run — same cleanup as a normal socket loss (e.g. pending dm_send).
+    this.notifySocketClose();
+
     this.reconnectAttempt = 0;
     this.manualDisconnect = false;
     this.doConnect(token);
