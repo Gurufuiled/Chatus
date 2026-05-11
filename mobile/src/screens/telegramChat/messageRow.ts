@@ -74,7 +74,7 @@ export function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: 
     is_edited: 0,
     is_deleted: 0,
     status: row.status,
-    transport: 'telegram',
+    transport: 'websocket',
     server_id: null,
     created_at: row.dateMs,
     updated_at: row.dateMs,
