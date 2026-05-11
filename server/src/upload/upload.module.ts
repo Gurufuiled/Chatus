@@ -6,5 +6,6 @@ import { RustMediaWorkerService } from './rust-media-worker.service';
 @Module({
   controllers: [UploadController],
   providers: [UploadService, RustMediaWorkerService],
+  exports: [UploadService],
 })
 export class UploadModule {}

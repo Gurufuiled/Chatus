@@ -84,7 +84,8 @@ export async function runDbTest(): Promise<void> {
     is_edited: 0,
     is_deleted: 0,
     status: 'sent',
-    transport: 'server',
+    // @ts-expect-error Intentionally exercising legacy persisted transport input.
+    transport: 'api',
     server_id: null,
     created_at: now,
     updated_at: now,
@@ -92,6 +93,9 @@ export async function runDbTest(): Promise<void> {
   const msg = await messageDao.getById('msg-1');
   if (!msg || msg.content !== 'Hello') {
     throw new Error('Message insert/select failed');
+  }
+  if (msg.transport !== 'websocket') {
+    throw new Error('Message transport normalization failed');
   }
 
   // Cleanup

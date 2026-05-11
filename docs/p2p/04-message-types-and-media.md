@@ -1,8 +1,8 @@
-# Типы сообщений и медиа: где встраивать гибридную доставку
+# Типы сообщений и медиа: где встраивать P2P-first и fallback
 
-Соответствие типам в Prisma / клиенте: `text`, `image`, `voice`, `video_note`, `video`, `file`, `system` (system обычно не участвует в P2P-экспериментах пользователя).
+Соответствие типам в Prisma / клиенте: `text`, `image`, `voice`, `video_note`, `video`, `file`, `system` (system обычно только через сервер).
 
-Ниже — для каждого типа: **текущий путь**, **что менять при внедрении relay/P2P-метаданных**, **риски**.
+**Цель:** в **личке 1:1** по возможности передавать контент по **peer**; при фолбэке — текущий путь через сервер (upload + `send_message`). Ниже для каждого типа: **текущий путь**, **что менять**, **риски**.
 
 ---
 
@@ -17,6 +17,18 @@
 | video | `sendVideoMessage`, `send_message_video` | `url`, `thumbnail_url`, размеры, длительность | `video` |
 | file | `sendFileMessage`, `send_message_file` | `url`, `file_name`, `file_size` | `file` |
 | альбомы | отдельные ветки в `TransportService` / `SyncService` | несколько вложений | несколько `Media` |
+
+## Реализация фазы 4: серверная матрица mailbox
+
+На сервере матрица начинается в `RelayPolicyConfig`:
+
+- `computeEffectiveCachePolicy(chatType)` выбирает базовые TTL для private/group/channel/discussion.
+- `computeEffectiveMessageCachePolicy(chatType, msgType, mediaCount)` разделяет TTL metadata и blob:
+  - `metadataCacheSeconds` — срок хранения текстовой части/метаданных сообщения;
+  - `blobCacheSeconds` — срок хранения media blob, `null` для сообщений без media;
+  - `mediaRetainUntilDownload` и `mediaMaxBytes` берутся из `RELAY_MEDIA_*`.
+- `MessagesService.createMessage` применяет эту матрицу к server fallback / mailbox path. По умолчанию поведение не меняется: `RELAY_MEDIA_MAX_BYTES` пустой, TTL равны `0`.
+- Если задан `RELAY_MEDIA_MAX_BYTES`, server fallback отклоняет media item с `file_size` больше лимита до записи сообщения.
 
 ---
 

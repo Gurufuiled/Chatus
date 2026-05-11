@@ -15,6 +15,7 @@ export type {
   ChatMemberRow,
   MessageRow,
   MediaRow,
+  LineSyncEventRow,
   SyncQueueRow,
 } from './types';
 
@@ -25,3 +26,4 @@ export { ChatMemberDao } from './dao/ChatMemberDao';
 export { MessageDao } from './dao/MessageDao';
 export { MediaDao } from './dao/MediaDao';
 export { SyncQueueDao } from './dao/SyncQueueDao';
+export { LineSyncEventDao } from './dao/LineSyncEventDao';

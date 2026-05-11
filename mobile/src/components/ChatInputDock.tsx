@@ -29,6 +29,7 @@ type ChatInputDockProps = {
   mediaRestriction?: string | null;
   commentCooldownEndsAt?: number | null;
   onCommentCooldownClear?: () => void;
+  replyPeerFirstLineId?: string | null;
 };
 
 export function ChatInputDock({
@@ -50,6 +51,7 @@ export function ChatInputDock({
   mediaRestriction = null,
   commentCooldownEndsAt = null,
   onCommentCooldownClear,
+  replyPeerFirstLineId = null,
 }: ChatInputDockProps) {
   return (
     <Reanimated.View onLayout={onLayout} style={[animatedStyle, { overflow: 'visible' }]}>
@@ -70,6 +72,7 @@ export function ChatInputDock({
         mediaRestriction={mediaRestriction}
         commentCooldownEndsAt={commentCooldownEndsAt}
         onCommentCooldownClear={onCommentCooldownClear}
+        replyPeerFirstLineId={replyPeerFirstLineId}
       />
     </Reanimated.View>
   );

@@ -746,7 +746,7 @@ export function ChannelProfileScreen() {
                   onPress={() => setSelectedMediaIndex(index)}
                   style={({ pressed }) => [styles.mediaTile, pressed && styles.mediaTilePressed]}
                 >
-                  <MediaTilePreview item={item} />
+                  <MediaTilePreview item={item} peerFirstLineId={channelId} />
                   {item.kind === 'video' ? (
                     <View style={styles.mediaPlayBadge}>
                       <Feather name="play" size={15} color="#FFFFFF" style={styles.mediaPlayIcon} />

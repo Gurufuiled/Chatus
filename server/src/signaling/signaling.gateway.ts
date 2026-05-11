@@ -9,6 +9,7 @@ import { Server } from 'ws';
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { ChatType } from '@prisma/client';
 
 const SIGNALING_PORT = parseInt(process.env.SIGNALING_PORT ?? '4002', 10);
 
@@ -27,6 +28,16 @@ export class SignalingGateway
 
   private readonly userSockets = new Map<string, Set<AuthenticatedSocket>>();
   private readonly log = new Logger(SignalingGateway.name);
+
+  /** ack_key → pending sender ack for dm_send (only expected recipient may dm_ack) */
+  private readonly pendingDms = new Map<
+    string,
+    {
+      resolve: (acked: boolean) => void;
+      timer: ReturnType<typeof setTimeout>;
+      recipientUserId: string;
+    }
+  >();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -80,6 +91,199 @@ export class SignalingGateway
       if (set.size === 0) this.userSockets.delete(userId);
     }
     this.log.log(`User disconnected (signaling) userId=${userId}`);
+  }
+
+  @SubscribeMessage('dm_send')
+  async handleDmSend(
+    client: AuthenticatedSocket,
+    payload: {
+      ack_key: string;
+      recipient_user_id: string;
+      chat_id: string;
+      content: string;
+      temp_id: string;
+      reply_to_id?: string | null;
+      timeout_ms?: number;
+    },
+  ) {
+    if (!client.userId) return;
+    const ackKey = payload?.ack_key;
+    const recipientId = payload?.recipient_user_id;
+    const chatId = payload?.chat_id;
+    const content = payload?.content;
+    const tempId = payload?.temp_id;
+    if (!ackKey || !recipientId || !chatId || !client.userId) return;
+
+    const timeoutMs = typeof payload.timeout_ms === 'number' ? payload.timeout_ms : 2500;
+    if (typeof content !== 'string') return;
+    if (typeof tempId !== 'string' || tempId.trim().length === 0) {
+      client.send(
+        JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'invalid_temp_id' }),
+      );
+      return;
+    }
+
+    const chat = await this.prisma.chat.findFirst({
+      where: {
+        id: chatId,
+        chatType: { in: [ChatType.private, ChatType.group] },
+      },
+      select: {
+        members: { select: { userId: true } },
+      },
+    });
+    if (!chat) {
+      client.send(JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'invalid_chat' }));
+      return;
+    }
+    const ids = new Set(chat.members.map((m) => m.userId));
+    if (!ids.has(client.userId) || !ids.has(recipientId)) {
+      client.send(JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'invalid_chat' }));
+      return;
+    }
+
+    const recipientSockets = this.userSockets.get(recipientId);
+    if (!recipientSockets || recipientSockets.size === 0) {
+      client.send(
+        JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'recipient_offline' }),
+      );
+      return;
+    }
+
+    const acked = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingDms.delete(ackKey);
+        resolve(false);
+      }, Math.min(timeoutMs, 10_000));
+      this.pendingDms.set(ackKey, { resolve, timer, recipientUserId: recipientId });
+
+      const deliverPayload = JSON.stringify({
+        type: 'dm_deliver',
+        ack_key: ackKey,
+        from_user_id: client.userId,
+        chat_id: chatId,
+        content,
+        temp_id: tempId,
+        reply_to_id: payload.reply_to_id ?? null,
+        sent_at: Date.now(),
+      });
+      recipientSockets.forEach((sock) => {
+        if (sock.readyState === 1) sock.send(deliverPayload);
+      });
+    });
+
+    if (acked) {
+      client.send(JSON.stringify({ type: 'dm_sent', ack_key: ackKey, transport: 'p2p' }));
+    } else {
+      client.send(JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'ack_timeout' }));
+    }
+  }
+
+  @SubscribeMessage('dm_ack')
+  handleDmAck(client: AuthenticatedSocket, payload: { ack_key?: string }) {
+    const key = payload?.ack_key;
+    if (!key || !client.userId) return;
+    const pending = this.pendingDms.get(key);
+    if (!pending) return;
+    if (pending.recipientUserId !== client.userId) {
+      this.log.warn(
+        `dm_ack ignored: ack_key=${key} expected recipient=${pending.recipientUserId} got=${client.userId}`,
+      );
+      return;
+    }
+    clearTimeout(pending.timer);
+    this.pendingDms.delete(key);
+    pending.resolve(true);
+  }
+
+  @SubscribeMessage('line_sync_send')
+  handleLineSyncSend(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      message?: unknown;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload || payload.message == null) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync',
+        from_user_id: client.userId,
+        message: payload.message,
+      }),
+    );
+  }
+
+  @SubscribeMessage('line_sync_dc_offer')
+  handleLineSyncDataChannelOffer(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      session_id?: string;
+      offer?: RTCSessionDescriptionInit;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload.session_id || !payload.offer) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync_dc_offer',
+        from_user_id: client.userId,
+        session_id: payload.session_id,
+        offer: payload.offer,
+      }),
+    );
+  }
+
+  @SubscribeMessage('line_sync_dc_answer')
+  handleLineSyncDataChannelAnswer(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      session_id?: string;
+      answer?: RTCSessionDescriptionInit;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload.session_id || !payload.answer) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync_dc_answer',
+        from_user_id: client.userId,
+        session_id: payload.session_id,
+        answer: payload.answer,
+      }),
+    );
+  }
+
+  @SubscribeMessage('line_sync_dc_ice')
+  handleLineSyncDataChannelIce(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      session_id?: string;
+      candidate?: RTCIceCandidateInit | null;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload.session_id) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync_dc_ice',
+        from_user_id: client.userId,
+        session_id: payload.session_id,
+        candidate: payload.candidate ?? null,
+      }),
+    );
   }
 
   private sendToUser(userId: string, data: string) {

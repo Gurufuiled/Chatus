@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import type { Message } from '../stores/types';
 import { buildSearchHighlightChildren } from '../utils/searchHighlightText';
+import { usePeerFirstResolvedUri } from './peerFirstMedia';
 
 export type ReplyPreviewMode = 'composer' | 'bubble';
 
@@ -62,6 +63,8 @@ type ReplyPreviewProps = {
   textColor?: string;
   authorColor?: string;
   thumbnailUri?: string | null;
+  /** LineSync line id (same as chat id) for peer-first thumbnail fetch. */
+  peerFirstLineId?: string | null;
   /** Lowercase trimmed query; highlights case-insensitive matches in `text`. */
   searchHighlightQuery?: string;
   onPress?: () => void;
@@ -77,12 +80,14 @@ export function ReplyPreview({
   textColor,
   authorColor,
   thumbnailUri,
+  peerFirstLineId,
   searchHighlightQuery,
   onPress,
   onClose,
 }: ReplyPreviewProps) {
   const isComposer = mode === 'composer';
-  const hasThumbnail = !!thumbnailUri?.trim();
+  const resolvedThumbnailUri = usePeerFirstResolvedUri(peerFirstLineId, thumbnailUri);
+  const hasThumbnail = !!resolvedThumbnailUri?.trim();
   const q = searchHighlightQuery?.trim() ?? '';
   const textChildren =
     q.length > 0 ? buildSearchHighlightChildren(text, q.toLowerCase()) : text;
@@ -102,7 +107,7 @@ export function ReplyPreview({
       <View style={[styles.accent, { backgroundColor: accentColor }]} />
       {hasThumbnail ? (
         <Image
-          source={{ uri: thumbnailUri! }}
+          source={{ uri: resolvedThumbnailUri }}
           style={[styles.thumbnail, isComposer ? styles.thumbnailComposer : styles.thumbnailBubble]}
         />
       ) : null}

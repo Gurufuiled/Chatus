@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 12;
+export const DB_VERSION = 15;
 
 export const SCHEMA_SQL = `
 -- users
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS messages (
   is_edited INTEGER DEFAULT 0,
   is_deleted INTEGER DEFAULT 0,
   status TEXT DEFAULT 'sending',
-  transport TEXT DEFAULT 'server',
+  transport TEXT DEFAULT 'websocket',
   server_id TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -174,4 +174,21 @@ CREATE TABLE IF NOT EXISTS locally_hidden_messages (
   PRIMARY KEY (chat_id, message_id)
 );
 CREATE INDEX IF NOT EXISTS idx_locally_hidden_chat ON locally_hidden_messages(chat_id);
+
+-- LineSync: local durable event log (first slice stores message.create, etc.)
+CREATE TABLE IF NOT EXISTS line_sync_events (
+  event_id TEXT PRIMARY KEY,
+  line_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  author_user_id TEXT,
+  created_at INTEGER NOT NULL,
+  logical_clock INTEGER NOT NULL,
+  signature TEXT,
+  sync_state TEXT NOT NULL DEFAULT 'pending',
+  server_message_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_line_sync_line ON line_sync_events(line_id);
+CREATE INDEX IF NOT EXISTS idx_line_sync_line_created ON line_sync_events(line_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_line_sync_state ON line_sync_events(sync_state);
 `;

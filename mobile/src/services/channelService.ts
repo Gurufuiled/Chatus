@@ -2,6 +2,7 @@ import { resolveMediaUrl } from '../config';
 import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
+import { normalizeMessageTransport } from '../utils/messageTransport';
 import type { ChannelDetail } from '../stores/channelStore';
 
 export type ChannelPermissions = {
@@ -291,7 +292,7 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
     is_edited: api.is_edited ? 1 : 0,
     is_deleted: api.is_deleted ? 1 : 0,
     status: api.status,
-    transport: api.transport ?? 'ws',
+    transport: normalizeMessageTransport(api.transport),
     server_id: null,
     created_at: api.created_at,
     updated_at: api.updated_at,

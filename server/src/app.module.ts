@@ -15,6 +15,10 @@ import { SignalingModule } from './signaling/signaling.module';
 import { ChannelsModule } from './channels/channels.module';
 import { MiniAppsModule } from './mini-apps/mini-apps.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { MailboxModule } from './mailbox/mailbox.module';
+import { AdminModule } from './admin/admin.module';
+import { LineSyncModule } from './linesync/linesync.module';
 
 @Module({
   imports: [
@@ -28,6 +32,10 @@ import { FeedbackModule } from './feedback/feedback.module';
     MiniAppsModule,
     FeedbackModule,
     UploadModule,
+    ScheduleModule.forRoot(),
+    MailboxModule,
+    AdminModule,
+    LineSyncModule,
     WebsocketModule,
     SignalingModule,
   ],

@@ -962,6 +962,7 @@ export function ChatProfileScreen() {
           onOpenMedia={setSelectedMediaIndex}
           onOpenVideoNote={setFloatingVideoNote}
           onOpenActionMenu={openActionMenu}
+          peerFirstLineId={chatId}
         />
       </Animated.ScrollView>
       <ChatProfileOverlayLayer

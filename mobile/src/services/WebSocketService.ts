@@ -13,6 +13,7 @@ type WebSocketMessage = {
 
 export type WebSocketEventHandlers = {
   onNewMessage?: (payload: WebSocketMessage) => void;
+  onMailboxDeliver?: (payload: WebSocketMessage) => void;
   onChannelPost?: (payload: WebSocketMessage) => void;
   onDiscussionMessage?: (payload: WebSocketMessage) => void;
   onMessageReactionsUpdated?: (payload: WebSocketMessage) => void;
@@ -21,6 +22,7 @@ export type WebSocketEventHandlers = {
   onMessageDeleted?: (payload: WebSocketMessage) => void;
   onChatDeleted?: (payload: WebSocketMessage) => void;
   onChatPinnedMessageUpdated?: (payload: WebSocketMessage) => void;
+  onLineTail?: (payload: WebSocketMessage) => void;
   onTyping?: (payload: WebSocketMessage) => void;
   onPresence?: (payload: WebSocketMessage) => void;
   onError?: (payload: WebSocketMessage) => void;
@@ -135,6 +137,9 @@ class WebSocketServiceClass {
       case 'new_message':
         this.handlers.onNewMessage?.(msg);
         break;
+      case 'mailbox_deliver':
+        this.handlers.onMailboxDeliver?.(msg);
+        break;
       case 'channel_post':
         this.handlers.onChannelPost?.(msg);
         break;
@@ -159,6 +164,9 @@ class WebSocketServiceClass {
         break;
       case 'chat_pinned_message_updated':
         this.handlers.onChatPinnedMessageUpdated?.(msg);
+        break;
+      case 'line_tail':
+        this.handlers.onLineTail?.(msg);
         break;
       case 'typing':
         this.handlers.onTyping?.(msg);

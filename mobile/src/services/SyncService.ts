@@ -13,6 +13,7 @@ import { authStore } from '../stores/authStore';
 import { uiStore } from '../stores/uiStore';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
+import { normalizeMessageTransport } from '../utils/messageTransport';
 
 const MAX_RETRIES = 5;
 
@@ -24,6 +25,11 @@ function getUploadBaseUrl(): string {
 function toFullUrl(baseUrl: string, url: string): string {
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+function privateRelayMailboxFields(chatId: string): { relay_mailbox: true } | Record<string, never> {
+  const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+  return chat?.chat_type === 'private' ? { relay_mailbox: true as const } : {};
 }
 
 function getSafeFileContent(content: string | null | undefined, fileName?: string | null): string | null {
@@ -188,7 +194,7 @@ interface ApiMessage {
   is_edited?: number;
   is_deleted?: number;
   status: string;
-  transport?: string;
+  transport?: string | null;
   server_id?: string | null;
   created_at: number | string;
   updated_at?: number | string;
@@ -260,7 +266,7 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
     is_edited: api.is_edited ?? 0,
     is_deleted: api.is_deleted ?? 0,
     status: api.status,
-    transport: api.transport ?? 'ws',
+    transport: normalizeMessageTransport(api.transport),
     server_id: api.server_id ?? null,
     created_at: createdAt,
     updated_at: updatedAt,
@@ -347,12 +353,16 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
   switch (action) {
     case 'send_message_text': {
       const p = payload as PayloadText;
+      const relayMailbox =
+        (p.msgType ?? 'text') === 'text' &&
+        chatStore.getState().chats.find((c) => c.id === p.chatId)?.chat_type === 'private';
       WebSocketService.sendEvent('send_message', {
         chat_id: p.chatId,
         content: p.content,
         msg_type: p.msgType ?? 'text',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...(relayMailbox ? { relay_mailbox: true as const } : {}),
       });
       return;
     }
@@ -372,6 +382,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'voice',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           duration_ms: resolvedDurationMs || undefined,
@@ -384,6 +395,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           mime_type: result.mime_type,
           file_name: result.file_name,
           file_size: result.file_size,
+          sha256: result.sha256,
         },
       });
       return;
@@ -410,6 +422,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'video_note',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           duration_ms: resolvedDurationMs || undefined,
@@ -420,6 +433,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           file_size: result.file_size,
           width: result.width ?? undefined,
           height: result.height ?? undefined,
+          sha256: result.sha256,
         },
       });
       markOptimisticVideoNoteDispatched(p.chatId, p.tempId, {
@@ -451,6 +465,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'image',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           thumbnail_url: result.thumbnail_path
@@ -461,6 +476,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           mime_type: result.mime_type,
           file_name: result.file_name,
           file_size: result.file_size,
+          sha256: result.sha256,
         },
       });
       return;
@@ -491,6 +507,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'video',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           thumbnail_url: result.thumbnail_path
@@ -502,6 +519,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           mime_type: result.mime_type,
           file_name: result.file_name,
           file_size: result.file_size,
+          sha256: result.sha256,
         },
       });
       return;
@@ -548,6 +566,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             mime_type: result.mime_type,
             file_name: result.file_name,
             file_size: result.file_size,
+            sha256: result.sha256,
           };
         })
       );
@@ -558,6 +577,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: media[0]?.media_type === 'video' ? 'video' : 'image',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media,
       });
       return;
@@ -579,11 +599,13 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'file',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           file_name: result.file_name,
           file_size: result.file_size,
           mime_type: result.mime_type,
+          sha256: result.sha256,
         },
       });
       return;

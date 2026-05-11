@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PushService } from '../push/push.service';
@@ -17,12 +18,20 @@ import {
   Transport,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
+import { AdminRelayPolicyService } from '../admin/admin-relay-policy.service';
 import { MESSAGE_RELATIONS_INCLUDE } from '../common/message-include';
 import {
   mapMessage,
   type MappedMessage,
   type MappedMessageReaction,
 } from '../common/mappers';
+import {
+  type EffectiveMessageCachePolicy,
+  RelayPolicyConfig,
+  type MailboxChatType,
+} from '../config';
+import { LineSyncCacheService } from '../linesync/linesync-cache.service';
 
 const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   voice: MediaType.voice,
@@ -55,6 +64,7 @@ export interface CreateMessageMedia {
   height?: number;
   file_name?: string;
   file_size?: number;
+  sha256?: string;
   mime_type?: string;
 }
 
@@ -71,13 +81,28 @@ export interface CreateMessageOptions {
   threadRootMessageId?: string | null;
   isChannelPost?: boolean;
   transport?: Transport;
+  /** Caller-supplied chat type to skip an extra DB round-trip when already known. */
+  chatType?: MailboxChatType;
+  /** When set, persists server mailbox TTL (private chat fallback). */
+  mailboxExpiresAt?: Date | null;
+  /**
+   * When true (e.g. 1:1 text via WS), TTL is computed if the peer is offline and policy TTL &gt; 0.
+   * Ignored when `mailboxExpiresAt` is explicitly provided as a Date.
+   */
+  relayMailbox?: boolean;
 }
 
 @Injectable()
 export class MessagesService {
+  private readonly logger = new Logger(MessagesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
+    private readonly relayPolicy: RelayPolicyConfig,
+    private readonly adminRelayPolicyService: AdminRelayPolicyService,
+    private readonly realtimeService: RealtimeService,
+    private readonly lineSyncCacheService: LineSyncCacheService,
   ) {}
 
   private getStatusRank(status: MessageStatus): number {
@@ -189,6 +214,25 @@ export class MessagesService {
     });
   }
 
+  private enforceMediaMailboxPolicy(
+    mediaItems: CreateMessageMedia[],
+    policy: EffectiveMessageCachePolicy,
+  ): void {
+    if (policy.mediaMaxBytes == null || mediaItems.length === 0) {
+      return;
+    }
+
+    const oversized = mediaItems.find((item) => {
+      const size = item.file_size;
+      return typeof size === 'number' && Number.isFinite(size) && size > policy.mediaMaxBytes!;
+    });
+    if (!oversized) return;
+
+    throw new BadRequestException(
+      `Media file exceeds relay mailbox max size (${policy.mediaMaxBytes} bytes)`,
+    );
+  }
+
   async createMessage(
     chatId: string,
     senderId: string,
@@ -201,8 +245,66 @@ export class MessagesService {
   ): Promise<MappedMessage> {
     await this.ensureChatMember(chatId, senderId);
 
+    const chatTypeStr: MailboxChatType = options?.chatType
+      ?? ((await this.prisma.chat.findUnique({
+          where: { id: chatId },
+          select: { chatType: true },
+        }).then((r) => r?.chatType ?? 'private')) as MailboxChatType);
+
     const prismaMsgType = this.toMessageType(msgType);
     const mediaItems = this.normalizeMediaItems(media);
+    const mailboxPolicy = this.relayPolicy.getEffectiveMessageCachePolicy(
+      chatTypeStr,
+      prismaMsgType,
+      mediaItems.length,
+    );
+    this.enforceMediaMailboxPolicy(mediaItems, mailboxPolicy);
+    const defaultTransport = this.relayPolicy.getDefaultTransport();
+
+    let mailboxExpiresAt: Date | null = null;
+    const explicitMailbox = options?.mailboxExpiresAt;
+    if (explicitMailbox instanceof Date) {
+      mailboxExpiresAt = explicitMailbox;
+    } else if (explicitMailbox === null) {
+      mailboxExpiresAt = null;
+    } else if (
+      options?.relayMailbox === true &&
+      chatTypeStr === 'private' &&
+      prismaMsgType !== MessageType.system
+    ) {
+      const members = await this.prisma.chatMember.findMany({
+        where: { chatId },
+        select: { userId: true },
+      });
+      const peer = members.find((m) => m.userId !== senderId);
+      const overrides = await this.adminRelayPolicyService.getOverrides();
+      if (peer && !this.realtimeService.isUserOnline(peer.userId)) {
+        if (prismaMsgType === MessageType.text) {
+          const ttlSec =
+            overrides.RELAY_TEXT_CACHE_SECONDS ?? mailboxPolicy.metadataCacheSeconds ?? 0;
+          if (ttlSec > 0) {
+            mailboxExpiresAt = new Date(Date.now() + ttlSec * 1000);
+          }
+        } else {
+          const mediaTtlSec =
+            overrides.RELAY_MEDIA_CACHE_SECONDS ??
+            mailboxPolicy.blobCacheSeconds ??
+            mailboxPolicy.mediaCacheSeconds ??
+            0;
+          if (typeof mediaTtlSec === 'number' && mediaTtlSec > 0) {
+            mailboxExpiresAt = new Date(Date.now() + mediaTtlSec * 1000);
+          }
+        }
+      }
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(
+        `mailbox policy chatType=${chatTypeStr} msgType=${prismaMsgType} ` +
+          `metadataCache=${mailboxPolicy.metadataCacheSeconds}s ` +
+          `blobCache=${mailboxPolicy.blobCacheSeconds ?? 'none'}s`,
+      );
+    }
 
     const result = await this.prisma.$transaction(async (tx) => {
       const message = await tx.message.create({
@@ -220,7 +322,8 @@ export class MessagesService {
           forwardedFromSenderId: forwardedFrom?.forwarded_from_sender_id ?? null,
           isChannelPost: options?.isChannelPost ?? false,
           status: MessageStatus.sent,
-          transport: options?.transport ?? Transport.websocket,
+          transport: options?.transport ?? defaultTransport,
+          mailboxExpiresAt,
         },
       });
 
@@ -235,6 +338,7 @@ export class MessagesService {
             fileName: item.file_name ?? null,
             mimeType: item.mime_type ?? null,
             fileSize: item.file_size ?? null,
+            sha256: item.sha256 ?? null,
             width: item.width ?? null,
             height: item.height ?? null,
             durationMs: item.duration_ms ?? null,
@@ -268,6 +372,13 @@ export class MessagesService {
       include: MESSAGE_INCLUDE,
     });
     const mapped = this.mapMessageForUser(withMedia!, senderId);
+    await this.lineSyncCacheService.upsertMessageCreateEvent(withMedia!).catch((error) => {
+      this.logger.warn(
+        `Failed to write LineSync cache event for message ${result.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
     void this.pushService.notifyNewMessage(chatId, senderId).catch(() => undefined);
     return mapped;
   }
@@ -290,6 +401,7 @@ export class MessagesService {
     return this.createMessage(channelId, senderId, msgType, content, media, null, undefined, {
       isChannelPost: true,
       transport: Transport.websocket,
+      chatType: 'channel',
     });
   }
 

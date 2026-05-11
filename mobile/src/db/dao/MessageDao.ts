@@ -5,10 +5,18 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { MessageRow } from '../types';
 import { getDatabase } from '../../services/DatabaseService';
+import { normalizeMessageTransport } from '../../utils/messageTransport';
 
 export class MessageDao {
   private get db(): SQLiteDatabase {
     return getDatabase();
+  }
+
+  private normalizeRow(row: MessageRow): MessageRow {
+    return {
+      ...row,
+      transport: normalizeMessageTransport(row.transport),
+    };
   }
 
   async insert(row: MessageRow): Promise<void> {
@@ -28,7 +36,7 @@ export class MessageDao {
       row.is_edited ?? 0,
       row.is_deleted ?? 0,
       row.status ?? 'sending',
-      row.transport ?? 'server',
+      normalizeMessageTransport(row.transport),
       row.server_id ?? null,
       row.created_at,
       row.updated_at
@@ -40,7 +48,7 @@ export class MessageDao {
       'SELECT * FROM messages WHERE id = ?',
       id
     );
-    return row ?? null;
+    return row ? this.normalizeRow(row) : null;
   }
 
   async getByServerId(serverId: string): Promise<MessageRow | null> {
@@ -48,7 +56,7 @@ export class MessageDao {
       'SELECT * FROM messages WHERE server_id = ?',
       serverId
     );
-    return row ?? null;
+    return row ? this.normalizeRow(row) : null;
   }
 
   async update(row: Partial<MessageRow> & { id: string }): Promise<void> {
@@ -67,7 +75,7 @@ export class MessageDao {
     for (const f of fields) {
       if (row[f] !== undefined) {
         updates.push(`${f} = ?`);
-        values.push(row[f] ?? null);
+        values.push(f === 'transport' ? normalizeMessageTransport(row[f]) : (row[f] ?? null));
       }
     }
     if (updates.length === 0) return;
@@ -88,12 +96,14 @@ export class MessageDao {
       ? 'SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?'
       : 'SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at DESC';
     const args = limit ? [chatId, limit] : [chatId];
-    return this.db.getAllAsync<MessageRow>(sql, ...args);
+    const rows = await this.db.getAllAsync<MessageRow>(sql, ...args);
+    return rows.map((row) => this.normalizeRow(row));
   }
 
   async getPendingOrFailed(): Promise<MessageRow[]> {
-    return this.db.getAllAsync<MessageRow>(
+    const rows = await this.db.getAllAsync<MessageRow>(
       "SELECT * FROM messages WHERE status IN ('sending','failed')"
     );
+    return rows.map((row) => this.normalizeRow(row));
   }
 }

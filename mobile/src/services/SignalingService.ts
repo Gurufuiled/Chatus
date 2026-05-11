@@ -1,6 +1,5 @@
 /**
- * WebRTC signaling (звонки): WebSocket на порт 4002, JWT, авто-переподключение.
- * Ретрансляция offer/answer/ice между абонентами.
+ * WebRTC signaling (звонки) и relay личных текстов (dm_*): один WebSocket на порт 4002.
  */
 
 import { getSignalingUrl } from '../config';
@@ -44,6 +43,14 @@ class SignalingServiceClass {
   private handlers: SignalingEventHandlers = {};
   private listeners = new Set<SignalingEventHandlers>();
   private whenConnectedResolvers: Array<() => void> = [];
+  /** Raw JSON frames from server for dm_sent / dm_fallback / dm_deliver (same socket as calls). */
+  private peerDeliveryRawListeners = new Set<(raw: string) => void>();
+  /** Raw JSON frames from server for LineSync peer summary/patch messages. */
+  private lineSyncRawListeners = new Set<(raw: string) => void>();
+  /** Raw JSON frames from server for LineSync WebRTC DataChannel negotiation. */
+  private lineSyncDataChannelRawListeners = new Set<(raw: string) => void>();
+  /** Fired when signaling socket closes (reconnect may follow). */
+  private socketCloseListeners = new Set<() => void>();
 
   setHandlers(handlers: SignalingEventHandlers): void {
     this.handlers = { ...this.handlers, ...handlers };
@@ -54,6 +61,34 @@ class SignalingServiceClass {
     return () => {
       this.listeners.delete(handlers);
     };
+  }
+
+  /** Subscribe to inbound DM relay frames (same connection as WebRTC signaling). */
+  addPeerDeliveryRawListener(listener: (raw: string) => void): () => void {
+    this.peerDeliveryRawListeners.add(listener);
+    return () => this.peerDeliveryRawListeners.delete(listener);
+  }
+
+  /** Subscribe to inbound LineSync peer frames (same connection as WebRTC signaling). */
+  addLineSyncRawListener(listener: (raw: string) => void): () => void {
+    this.lineSyncRawListeners.add(listener);
+    return () => this.lineSyncRawListeners.delete(listener);
+  }
+
+  /** Subscribe to LineSync DataChannel negotiation frames. */
+  addLineSyncDataChannelRawListener(listener: (raw: string) => void): () => void {
+    this.lineSyncDataChannelRawListeners.add(listener);
+    return () => this.lineSyncDataChannelRawListeners.delete(listener);
+  }
+
+  /** Subscribe to socket close (pending DM sends should fail). */
+  addSocketCloseListener(listener: () => void): () => void {
+    this.socketCloseListeners.add(listener);
+    return () => this.socketCloseListeners.delete(listener);
+  }
+
+  private notifySocketClose(): void {
+    this.socketCloseListeners.forEach((fn) => fn());
   }
 
   private emit<K extends keyof SignalingEventHandlers>(
@@ -108,6 +143,9 @@ class SignalingServiceClass {
       this.ws = null;
     }
 
+    // Handlers were cleared; onclose will not run — same cleanup as a normal socket loss (e.g. pending dm_send).
+    this.notifySocketClose();
+
     this.reconnectAttempt = 0;
     this.manualDisconnect = false;
     this.doConnect(token);
@@ -143,6 +181,7 @@ class SignalingServiceClass {
 
     this.ws.onclose = () => {
       this.ws = null;
+      this.notifySocketClose();
       if (!this.manualDisconnect && authStore.getState().accessToken) {
         this.scheduleReconnect();
       }
@@ -172,6 +211,25 @@ class SignalingServiceClass {
     const fromUserId = msg?.from_user_id as string | undefined;
 
     if (!type) return;
+
+    if (type === 'dm_sent' || type === 'dm_fallback' || type === 'dm_deliver') {
+      this.peerDeliveryRawListeners.forEach((listener) => listener(data));
+      return;
+    }
+
+    if (type === 'line_sync') {
+      this.lineSyncRawListeners.forEach((listener) => listener(data));
+      return;
+    }
+
+    if (
+      type === 'line_sync_dc_offer' ||
+      type === 'line_sync_dc_answer' ||
+      type === 'line_sync_dc_ice'
+    ) {
+      this.lineSyncDataChannelRawListeners.forEach((listener) => listener(data));
+      return;
+    }
 
     switch (type) {
       case 'offer':
@@ -313,6 +371,65 @@ class SignalingServiceClass {
 
   sendCallBusy(targetUserId: string): void {
     this.sendEvent('call_busy', { target_user_id: targetUserId });
+  }
+
+  sendDmSend(body: {
+    ack_key: string;
+    recipient_user_id: string;
+    chat_id: string;
+    content: string;
+    temp_id: string;
+    reply_to_id?: string | null;
+    timeout_ms: number;
+  }): void {
+    this.sendEvent('dm_send', body as unknown as Record<string, unknown>);
+  }
+
+  sendDmAck(ackKey: string): void {
+    this.sendEvent('dm_ack', { ack_key: ackKey });
+  }
+
+  sendLineSync(targetUserId: string, message: unknown): void {
+    this.sendEvent('line_sync_send', {
+      target_user_id: targetUserId,
+      message,
+    });
+  }
+
+  sendLineSyncDataChannelOffer(
+    targetUserId: string,
+    sessionId: string,
+    offer: RTCSessionDescriptionInit,
+  ): void {
+    this.sendEvent('line_sync_dc_offer', {
+      target_user_id: targetUserId,
+      session_id: sessionId,
+      offer,
+    });
+  }
+
+  sendLineSyncDataChannelAnswer(
+    targetUserId: string,
+    sessionId: string,
+    answer: RTCSessionDescriptionInit,
+  ): void {
+    this.sendEvent('line_sync_dc_answer', {
+      target_user_id: targetUserId,
+      session_id: sessionId,
+      answer,
+    });
+  }
+
+  sendLineSyncDataChannelIce(
+    targetUserId: string,
+    sessionId: string,
+    candidate: RTCIceCandidateInit | null,
+  ): void {
+    this.sendEvent('line_sync_dc_ice', {
+      target_user_id: targetUserId,
+      session_id: sessionId,
+      candidate,
+    });
   }
 
   isConnected(): boolean {
