@@ -36,6 +36,7 @@ import {
 } from '../services/attachmentGalleryDiskCache';
 import { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 import { buildReplyPreviewText, getReplyPreviewThumbnailUri } from './ReplyPreview';
+import { usePeerFirstResolvedUri } from './peerFirstMedia';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
 
 export interface MediaPickResult {
@@ -90,6 +91,8 @@ export interface InputBarProps {
   commentCooldownEndsAt?: number | null;
   /** Вызывается, когда таймер дошёл до нуля (скрыть состояние в родителе) */
   onCommentCooldownClear?: () => void;
+  /** LineSync line id (chat id) — peer-first превью ответа в композере. */
+  replyPeerFirstLineId?: string | null;
 }
 
 type AttachmentAction = {
@@ -186,6 +189,7 @@ export function InputBar({
   mediaRestriction = null,
   commentCooldownEndsAt = null,
   onCommentCooldownClear,
+  replyPeerFirstLineId = null,
 }: InputBarProps) {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createInputBarStyles(themeColors), [themeColors]);
@@ -233,6 +237,10 @@ export function InputBar({
   const isVideoEntryMode = canUseVideoNotes && recordingEntryModeState === 'video';
   const replyPreviewText = buildReplyPreviewText(replyToMessage);
   const replyPreviewThumbnailUri = getReplyPreviewThumbnailUri(replyToMessage);
+  const resolvedReplyThumbnailUri = usePeerFirstResolvedUri(
+    replyPeerFirstLineId,
+    replyPreviewThumbnailUri
+  );
 
   const setVoiceRecordMode = useCallback((mode: VoiceRecordMode) => {
     voiceRecordModeRef.current = mode;
@@ -1371,9 +1379,9 @@ export function InputBar({
               <View style={styles.replyComposerWrap}>
                 <View style={styles.replyComposerInline}>
                   <View style={styles.replyComposerAccent} />
-                  {replyPreviewThumbnailUri ? (
+                  {resolvedReplyThumbnailUri.trim() ? (
                     <Image
-                      source={{ uri: replyPreviewThumbnailUri }}
+                      source={{ uri: resolvedReplyThumbnailUri }}
                       style={styles.replyComposerThumbnail}
                     />
                   ) : null}

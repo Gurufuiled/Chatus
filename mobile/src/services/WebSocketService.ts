@@ -22,6 +22,7 @@ export type WebSocketEventHandlers = {
   onMessageDeleted?: (payload: WebSocketMessage) => void;
   onChatDeleted?: (payload: WebSocketMessage) => void;
   onChatPinnedMessageUpdated?: (payload: WebSocketMessage) => void;
+  onLineTail?: (payload: WebSocketMessage) => void;
   onTyping?: (payload: WebSocketMessage) => void;
   onPresence?: (payload: WebSocketMessage) => void;
   onError?: (payload: WebSocketMessage) => void;
@@ -163,6 +164,9 @@ class WebSocketServiceClass {
         break;
       case 'chat_pinned_message_updated':
         this.handlers.onChatPinnedMessageUpdated?.(msg);
+        break;
+      case 'line_tail':
+        this.handlers.onLineTail?.(msg);
         break;
       case 'typing':
         this.handlers.onTyping?.(msg);

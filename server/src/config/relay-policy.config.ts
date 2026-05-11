@@ -16,6 +16,8 @@ export interface RelayPolicySnapshot {
   channelPostRetentionSeconds: number | null;
   channelMediaMinRetentionSeconds: number | null;
   fanoutMaxConcurrent: number | null;
+  lineSyncTailCount: number;
+  lineSyncTailTtlSeconds: number;
   defaultTransport: Transport;
 }
 
@@ -79,17 +81,20 @@ function parseRelayMode(env: NodeJS.ProcessEnv): RelayMode {
 export function loadRelayPolicyFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): RelayPolicySnapshot {
+  /** Default 86400 (1 day): private-chat text mailbox TTL when peer is offline; set to 0 to disable. */
+  const textCacheSeconds = parseNonNegativeInt(env, 'RELAY_TEXT_CACHE_SECONDS', 86400) ?? 86400;
   return {
     peerAttemptTimeoutMs: parsePositiveInt(env, 'P2P_PEER_ATTEMPT_TIMEOUT_MS', 2500),
     peerMetricsEnabled: parseBoolean(env, 'P2P_PEER_METRICS_ENABLED', true),
     mode: parseRelayMode(env),
-    textCacheSeconds: parseNonNegativeInt(env, 'RELAY_TEXT_CACHE_SECONDS', 0) ?? 0,
+    textCacheSeconds,
     deleteAfterAllDevicesAck: parseBoolean(
       env,
       'RELAY_DELETE_AFTER_ALL_DEVICES_ACK',
       false,
     ),
-    mediaCacheSeconds: parseNonNegativeInt(env, 'RELAY_MEDIA_CACHE_SECONDS', 0) ?? 0,
+    /** Default 86400 (1 day): mailbox fallback media TTL when peer is offline; set to 0 to disable. */
+    mediaCacheSeconds: parseNonNegativeInt(env, 'RELAY_MEDIA_CACHE_SECONDS', 86400) ?? 86400,
     mediaRetainUntilDownload: parseBoolean(
       env,
       'RELAY_MEDIA_RETAIN_UNTIL_DOWNLOAD',
@@ -116,6 +121,9 @@ export function loadRelayPolicyFromEnv(
       'RELAY_FANOUT_MAX_CONCURRENT',
       null,
     ),
+    lineSyncTailCount: parsePositiveInt(env, 'LINE_SYNC_TAIL_COUNT', 10),
+    lineSyncTailTtlSeconds:
+      parseNonNegativeInt(env, 'LINE_SYNC_TAIL_TTL_SECONDS', textCacheSeconds) ?? textCacheSeconds,
     defaultTransport: Transport.websocket,
   };
 }
@@ -152,6 +160,11 @@ export type ChannelPostPolicy = {
   postRetentionSeconds: number;
   mediaMinRetentionSeconds: number;
   fanoutMaxConcurrent: number | null;
+};
+
+export type LineSyncTailPolicy = {
+  retainLastN: number;
+  ttlSeconds: number;
 };
 
 const MEDIA_MESSAGE_TYPES = new Set<MailboxMessageType>([
@@ -223,6 +236,13 @@ export function computeChannelPostPolicy(snapshot: RelayPolicySnapshot): Channel
   };
 }
 
+export function computeLineSyncTailPolicy(snapshot: RelayPolicySnapshot): LineSyncTailPolicy {
+  return {
+    retainLastN: snapshot.lineSyncTailCount,
+    ttlSeconds: snapshot.lineSyncTailTtlSeconds,
+  };
+}
+
 @Injectable()
 export class RelayPolicyConfig {
   private readonly policy: RelayPolicySnapshot;
@@ -258,5 +278,9 @@ export class RelayPolicyConfig {
 
   getChannelPostPolicy(): ChannelPostPolicy {
     return computeChannelPostPolicy(this.policy);
+  }
+
+  getLineSyncTailPolicy(): LineSyncTailPolicy {
+    return computeLineSyncTailPolicy(this.policy);
   }
 }

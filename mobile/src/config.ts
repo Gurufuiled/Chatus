@@ -14,6 +14,8 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_P2P_FIRST_ENABLED'
   | 'EXPO_PUBLIC_P2P_PEER_ATTEMPT_TIMEOUT_MS'
   | 'EXPO_PUBLIC_LOGINUS_CLIENT_ID'
+  /** JSON array `[{"urls":"stun:..."},…]` — ICE/STUN/TURN for WebRTC (calls + LineSync DC). */
+  | 'EXPO_PUBLIC_WEBRTC_ICE_SERVERS_JSON'
   /** Plain hostname or IPv4 — physical iPhone cannot reach Mac `localhost`; set LAN IP when using http://localhost in EXPO_PUBLIC_API_URL. */
   | 'EXPO_PUBLIC_IOS_DEV_HOST'
   /** JSON манифест (например raw.githubusercontent.com/Gurufuiled/Chatus/main/config/client-update-manifest.json). Пусто — проверка отключена. */
@@ -131,6 +133,52 @@ export function getSignalingUrl(): string {
     return `${protocol}//${url.hostname}:4002`;
   } catch {
     return 'ws://localhost:4002';
+  }
+}
+
+/** ICE servers for RTCPeerConnection (voice/video calls + LineSync blob DataChannel). */
+export type WebRtcIceServerConfig = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
+
+const DEFAULT_WEBRTC_ICE_SERVERS: WebRtcIceServerConfig[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+];
+
+/**
+ * Optional `EXPO_PUBLIC_WEBRTC_ICE_SERVERS_JSON`: JSON array, e.g.
+ * `[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:…","username":"…","credential":"…"}]`
+ */
+export function getWebRtcIceServers(): WebRtcIceServerConfig[] {
+  const raw = readExpoPublic('EXPO_PUBLIC_WEBRTC_ICE_SERVERS_JSON')?.trim();
+  if (!raw) return DEFAULT_WEBRTC_ICE_SERVERS;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_WEBRTC_ICE_SERVERS;
+    const out: WebRtcIceServerConfig[] = [];
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      let urls: string | string[] | undefined;
+      if (typeof e.urls === 'string') {
+        urls = e.urls;
+      } else if (Array.isArray(e.urls)) {
+        const strings = e.urls.filter((u): u is string => typeof u === 'string');
+        if (strings.length > 0) urls = strings;
+      } else if (typeof e.url === 'string') {
+        urls = e.url;
+      }
+      if (!urls || (Array.isArray(urls) && urls.length === 0)) continue;
+      const row: WebRtcIceServerConfig = Array.isArray(urls) ? { urls } : { urls };
+      if (typeof e.username === 'string' && e.username.length > 0) row.username = e.username;
+      if (typeof e.credential === 'string' && e.credential.length > 0) row.credential = e.credential;
+      out.push(row);
+    }
+    return out.length > 0 ? out : DEFAULT_WEBRTC_ICE_SERVERS;
+  } catch {
+    return DEFAULT_WEBRTC_ICE_SERVERS;
   }
 }
 

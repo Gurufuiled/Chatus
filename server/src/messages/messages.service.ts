@@ -31,6 +31,7 @@ import {
   RelayPolicyConfig,
   type MailboxChatType,
 } from '../config';
+import { LineSyncCacheService } from '../linesync/linesync-cache.service';
 
 const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   voice: MediaType.voice,
@@ -63,6 +64,7 @@ export interface CreateMessageMedia {
   height?: number;
   file_name?: string;
   file_size?: number;
+  sha256?: string;
   mime_type?: string;
 }
 
@@ -100,6 +102,7 @@ export class MessagesService {
     private readonly relayPolicy: RelayPolicyConfig,
     private readonly adminRelayPolicyService: AdminRelayPolicyService,
     private readonly realtimeService: RealtimeService,
+    private readonly lineSyncCacheService: LineSyncCacheService,
   ) {}
 
   private getStatusRank(status: MessageStatus): number {
@@ -267,7 +270,7 @@ export class MessagesService {
     } else if (
       options?.relayMailbox === true &&
       chatTypeStr === 'private' &&
-      prismaMsgType === MessageType.text
+      prismaMsgType !== MessageType.system
     ) {
       const members = await this.prisma.chatMember.findMany({
         where: { chatId },
@@ -275,14 +278,23 @@ export class MessagesService {
       });
       const peer = members.find((m) => m.userId !== senderId);
       const overrides = await this.adminRelayPolicyService.getOverrides();
-      const ttlSec =
-        overrides.RELAY_TEXT_CACHE_SECONDS ?? mailboxPolicy.metadataCacheSeconds ?? 0;
-      if (
-        peer &&
-        ttlSec > 0 &&
-        !this.realtimeService.isUserOnline(peer.userId)
-      ) {
-        mailboxExpiresAt = new Date(Date.now() + ttlSec * 1000);
+      if (peer && !this.realtimeService.isUserOnline(peer.userId)) {
+        if (prismaMsgType === MessageType.text) {
+          const ttlSec =
+            overrides.RELAY_TEXT_CACHE_SECONDS ?? mailboxPolicy.metadataCacheSeconds ?? 0;
+          if (ttlSec > 0) {
+            mailboxExpiresAt = new Date(Date.now() + ttlSec * 1000);
+          }
+        } else {
+          const mediaTtlSec =
+            overrides.RELAY_MEDIA_CACHE_SECONDS ??
+            mailboxPolicy.blobCacheSeconds ??
+            mailboxPolicy.mediaCacheSeconds ??
+            0;
+          if (typeof mediaTtlSec === 'number' && mediaTtlSec > 0) {
+            mailboxExpiresAt = new Date(Date.now() + mediaTtlSec * 1000);
+          }
+        }
       }
     }
 
@@ -326,6 +338,7 @@ export class MessagesService {
             fileName: item.file_name ?? null,
             mimeType: item.mime_type ?? null,
             fileSize: item.file_size ?? null,
+            sha256: item.sha256 ?? null,
             width: item.width ?? null,
             height: item.height ?? null,
             durationMs: item.duration_ms ?? null,
@@ -359,6 +372,13 @@ export class MessagesService {
       include: MESSAGE_INCLUDE,
     });
     const mapped = this.mapMessageForUser(withMedia!, senderId);
+    await this.lineSyncCacheService.upsertMessageCreateEvent(withMedia!).catch((error) => {
+      this.logger.warn(
+        `Failed to write LineSync cache event for message ${result.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
     void this.pushService.notifyNewMessage(chatId, senderId).catch(() => undefined);
     return mapped;
   }

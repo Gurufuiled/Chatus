@@ -29,13 +29,15 @@ import {
   ChatContextMenuOverlay,
   ChatForwardSheet,
   InteractiveChatBackShell,
-  FileBubble,
-  ImageBubble,
   LoadErrorState,
-  VideoBubble,
-  VideoNoteBubble,
-  VoiceBubble,
 } from '../components';
+import {
+  PeerFirstFileBubble,
+  PeerFirstImageBubble,
+  PeerFirstVideoBubble,
+  PeerFirstVideoNoteBubble,
+  PeerFirstVoiceBubble,
+} from '../components/peerFirstMedia';
 import type { FilePickResult, MediaAlbumPickResult, MediaPickResult } from '../components/InputBar';
 import type { ChatsStackParamList } from '../navigation/types';
 import {
@@ -69,6 +71,7 @@ import {
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
+import { usePeerFirstResolvedUri } from '../components/peerFirstMedia';
 
 type Route = RouteProp<ChatsStackParamList, 'ChannelFeed'>;
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelFeed'>;
@@ -209,6 +212,8 @@ type ChannelAlbumOptions = {
   onTilePress?: (index: number) => void;
   /** Muted icon on album tile fallback (theme). */
   mutedIcon?: string;
+  /** LineSync line id (channel chat id) for peer-first tiles. */
+  lineSyncLineId?: string;
 };
 
 type ChannelFeedStyles = ReturnType<typeof createChannelFeedStyles>;
@@ -613,14 +618,17 @@ function createChannelFeedStyles(c: ThemeColors) {
 
 /** Album tiles must load remote URLs without gallery permission — show fallback on failure instead of blank white. */
 function ChannelAlbumTileImage({
-  uri,
+  lineSyncLineId,
+  rawUri,
   st,
   mutedIcon,
 }: {
-  uri: string;
+  lineSyncLineId: string;
+  rawUri: string;
   st: ChannelFeedStyles;
   mutedIcon: string;
 }) {
+  const uri = usePeerFirstResolvedUri(lineSyncLineId, rawUri);
   const [failed, setFailed] = React.useState(false);
   if (failed) {
     return (
@@ -659,6 +667,7 @@ function renderChannelMediaAlbum(
   const caption = item.content?.trim() ?? '';
   const hasCaption = caption.length > 0;
   const mutedIcon = options?.mutedIcon ?? '#9CA3AF';
+  const lineSyncLineId = options?.lineSyncLineId ?? item.chat_id ?? '';
 
   const renderTile = (mediaItem: VisualMediaItem, index: number, style: object) => {
     const kind = getVisualMediaKind(item, mediaItem);
@@ -666,13 +675,17 @@ function renderChannelMediaAlbum(
       kind === 'video'
         ? mediaItem.thumbnail_url || mediaItem.remote_url
         : mediaItem.remote_url;
-    const uri = resolveMediaUrl(rawUri ?? null) ?? rawUri ?? '';
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
 
     const tileContent = (
       <>
-        <ChannelAlbumTileImage uri={uri} st={st} mutedIcon={mutedIcon} />
+        <ChannelAlbumTileImage
+          lineSyncLineId={lineSyncLineId}
+          rawUri={(rawUri ?? '').trim()}
+          st={st}
+          mutedIcon={mutedIcon}
+        />
         {kind === 'video' ? (
           <View style={st.channelAlbumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
@@ -1692,12 +1705,14 @@ export function ChannelFeedScreen() {
           ? item.media?.filter((entry) => entry.remote_url?.trim()).length ?? 0
           : 0;
       const time = formatTime(item.created_at);
+      const lineId = item.chat_id || channelId;
 
       if (visualMediaCount > 1) {
         return renderChannelMediaAlbum(item, time, styles, {
           visualMediaWidth: options?.visualMediaWidth,
           onTilePress: (idx) => openChannelFeedMediaViewer(item, idx),
           mutedIcon: c.textSecondary,
+          lineSyncLineId: lineId,
         });
       }
 
@@ -1707,8 +1722,9 @@ export function ChannelFeedScreen() {
       if (item.msg_type === 'voice' && voiceUri) {
         const m0 = item.media?.[0];
         return (
-          <VoiceBubble
-            uri={voiceUri}
+          <PeerFirstVoiceBubble
+            lineId={lineId}
+            serverUri={voiceUri}
             waveform={m0?.waveform ?? []}
             durationMs={m0?.duration_ms ?? 0}
             isMe={false}
@@ -1723,30 +1739,38 @@ export function ChannelFeedScreen() {
         );
       }
 
-      if (item.msg_type === 'video_note' && remoteUri) {
-        return (
-          <VideoNoteBubble
-            messageId={item.id}
-            uri={remoteUri}
-            thumbnailUri={thumbUri ?? undefined}
-            durationMs={media?.duration_ms ?? 0}
-            isMe={false}
-            embedded
-            time={time}
-            status={item.status}
-            registerPlaybackState={false}
-          />
-        );
+      if (item.msg_type === 'video_note' && media) {
+        const noteUri =
+          resolveVoiceMessageUri(item) ??
+          (remoteUri ? resolveMediaUrl(remoteUri.trim() || null) ?? remoteUri : '');
+        if (noteUri.trim()) {
+          return (
+            <PeerFirstVideoNoteBubble
+              lineId={lineId}
+              serverUri={noteUri}
+              messageId={item.id}
+              thumbnailUri={thumbUri ?? undefined}
+              durationMs={media.duration_ms ?? 0}
+              isMe={false}
+              embedded
+              time={time}
+              status={item.status}
+              registerPlaybackState={false}
+            />
+          );
+        }
       }
 
       if (item.msg_type === 'image' && remoteUri) {
         const caption = item.content?.trim() ?? '';
         const hasCaption = caption.length > 0;
         const mediaSize = resolveVisualMediaSize(media, options?.visualMediaWidth);
+        const imageUri = resolveMediaUrl(remoteUri.trim() || null) ?? remoteUri;
         return (
           <>
-            <ImageBubble
-              uri={remoteUri}
+            <PeerFirstImageBubble
+              lineId={lineId}
+              serverUri={imageUri}
               isMe={false}
               embedded
               centered
@@ -1780,10 +1804,12 @@ export function ChannelFeedScreen() {
         const caption = item.content?.trim() ?? '';
         const hasCaption = caption.length > 0;
         const mediaSize = resolveVisualMediaSize(media, options?.visualMediaWidth);
+        const videoUri = resolveMediaUrl(remoteUri.trim() || null) ?? remoteUri;
         return (
           <>
-            <VideoBubble
-              uri={remoteUri}
+            <PeerFirstVideoBubble
+              lineId={lineId}
+              serverUri={videoUri}
               thumbnailUri={thumbUri ?? undefined}
               isMe={false}
               embedded
@@ -1815,11 +1841,13 @@ export function ChannelFeedScreen() {
       }
 
       if (item.msg_type === 'file' && remoteUri) {
+        const fileUri = resolveMediaUrl(remoteUri.trim() || null) ?? remoteUri;
         return (
-          <FileBubble
+          <PeerFirstFileBubble
+            lineId={lineId}
+            serverUri={fileUri}
             fileName={media?.file_name ?? item.content ?? 'Файл'}
             fileSize={media?.file_size}
-            uri={remoteUri}
             isMe={false}
             caption={item.content}
             time={time}
@@ -1846,7 +1874,7 @@ export function ChannelFeedScreen() {
         </>
       );
     },
-    [openChannelFeedMediaViewer, styles, c]
+    [openChannelFeedMediaViewer, styles, c, channelId]
   );
 
   const renderPostExtras = React.useCallback(

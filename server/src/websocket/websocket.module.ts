@@ -7,6 +7,7 @@ import { ChannelsModule } from '../channels/channels.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { MiniAppsModule } from '../mini-apps/mini-apps.module';
 import { MailboxModule } from '../mailbox/mailbox.module';
+import { LineSyncModule } from '../linesync/linesync.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { MailboxModule } from '../mailbox/mailbox.module';
     RealtimeModule,
     MiniAppsModule,
     MailboxModule,
+    LineSyncModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET!,
       signOptions: {

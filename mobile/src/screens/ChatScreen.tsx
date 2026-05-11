@@ -17,7 +17,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Image } from 'expo-image';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,7 +31,10 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
+import { LineSyncEventDao } from '../db';
+import { buildPendingLineSyncRowFromOutgoingMessage } from '../services/lineSyncEventBuilder';
 import { canForwardMessage, TransportService } from '../services/TransportService';
+import { LineSyncService, LINE_SYNC_GROUP_TAIL_LIMIT, LINE_SYNC_PRIVATE_TAIL_LIMIT } from '../services/LineSyncService';
 import { SyncService } from '../services/SyncService';
 import { WebSocketService } from '../services/WebSocketService';
 import { uiStore } from '../stores/uiStore';
@@ -74,7 +76,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { withAlpha } from '../theme/colors';
 import { buildChatScreenStyles, type ChatScreenStyleSet } from './chatScreen.styles';
 import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatTheme, type ChatThemeId } from '../theme/chatThemes';
-import { bubbleRadius } from '../theme/stylePrimitives';
+import { makeOptimisticTempMessageId } from '../utils/optimisticTempMessageId';
+import { getGroupLineSyncPeerUserId } from '../utils/groupLineSyncPeer';
 import {
   ChatBackgroundPattern,
   EMPTY_MESSAGES,
@@ -88,6 +91,7 @@ import {
   MENU_HEIGHT,
   MENU_WIDTH,
   estimateMenuCardHeight,
+  getPrivateChatPeerUserId,
   REPLIED_VOICE_BUBBLE_WIDTH,
   resolveForwardedSenderAvatarUrl,
   SCREEN_HEIGHT,
@@ -95,9 +99,26 @@ import {
 } from './chatScreen.shared';
 import { formatMediaDuration, formatPlaybackElapsedDuration } from '../utils/mediaDuration';
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
+import { bubbleRadius } from '../theme/stylePrimitives';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import { hideOthersMessageOnlyOnDevice } from '../services/locallyHiddenMessages';
+import {
+  PeerFirstAlbumImage,
+  PeerFirstFileBubble,
+  PeerFirstImageBubble,
+  PeerFirstVideoBubble,
+  PeerFirstVideoNoteBubble,
+  PeerFirstVoiceBubble,
+} from '../components/peerFirstMedia';
+
+function warnLineSyncLocalInsert(reason: string, detail?: unknown): void {
+  if (detail !== undefined) {
+    console.warn(`[LineSync] ${reason}`, detail);
+  } else {
+    console.warn(`[LineSync] ${reason}`);
+  }
+}
 
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
 type ChatNavigation = NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
@@ -176,12 +197,15 @@ function MediaAlbumBubble({
     const kind = getVisualMediaKind(message, item);
     const rawUri =
       kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
-    const uri = resolveMediaUrl(rawUri?.trim() ?? null) ?? rawUri ?? '';
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
     return (
       <View key={`${item.remote_url}-${index}`} style={[msgStyles.albumTile, style]}>
-        <Image source={{ uri }} style={msgStyles.albumImage} contentFit="cover" cachePolicy="disk" />
+        <PeerFirstAlbumImage
+          lineId={message.chat_id}
+          rawUri={rawUri ?? ''}
+          style={msgStyles.albumImage}
+        />
         {kind === 'video' ? (
           <View style={msgStyles.albumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
@@ -406,6 +430,18 @@ export function ChatScreen() {
   const messageContentRefs = useRef<Record<string, View | null>>({});
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentReadReceiptIdsRef = useRef<Set<string>>(new Set());
+  /** One successful server tail merge per focus spell per chatId (avoid duplicate GET while staying on screen). */
+  const privateServerTailFetchedRef = useRef<string | null>(null);
+  /** One successful LINE_SUMMARY send to peer per focus spell per chatId. */
+  const privatePeerSummarySentRef = useRef<string | null>(null);
+  /** Bumped when LineSync bootstrap effect re-runs so stale async work skips ref updates. */
+  const privateLineSyncGenRef = useRef(0);
+  /** Bumped when group LineSync tail effect re-runs so stale async work skips ref updates. */
+  const groupLineSyncGenRef = useRef(0);
+  /** One successful server tail merge per focus spell per chatId — group chats (C2). */
+  const groupServerTailFetchedRef = useRef<string | null>(null);
+  /** One successful LINE_SUMMARY send to a group peer per focus spell per chatId (C3). */
+  const groupPeerSummarySentRef = useRef<string | null>(null);
 
   const messages = messageStore(
     useCallback(
@@ -568,6 +604,26 @@ export function ChatScreen() {
   );
   const canForwardSelectedMessages = forwardableSelectedMessages.length > 0;
 
+  /** Stable signature when private chat `members` hydrate (peer id becomes available). */
+  const privatePeerMembersSignature = useMemo(() => {
+    if (currentChat?.chat_type !== 'private') return '';
+    return (currentChat.members ?? [])
+      .map((m) => m.user_id)
+      .filter(Boolean)
+      .sort()
+      .join('|');
+  }, [currentChat?.chat_type, currentChat?.members]);
+
+  /** Stable signature when group chat `members` hydrate (peer choice for LineSync). */
+  const groupPeerMembersSignature = useMemo(() => {
+    if (currentChat?.chat_type !== 'group') return '';
+    return (currentChat.members ?? [])
+      .map((m) => m.user_id)
+      .filter(Boolean)
+      .sort()
+      .join('|');
+  }, [currentChat?.chat_type, currentChat?.members]);
+
   useEffect(() => {
     const existing = messageStore.getState().messagesByChatId[chatId];
     const hasOnlyOptimisticMessages =
@@ -616,6 +672,112 @@ export function ChatScreen() {
       };
     }, [chatId])
   );
+
+  useEffect(() => {
+    privateServerTailFetchedRef.current = null;
+    privatePeerSummarySentRef.current = null;
+    groupServerTailFetchedRef.current = null;
+    groupPeerSummarySentRef.current = null;
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!isFocused) {
+      privateServerTailFetchedRef.current = null;
+      privatePeerSummarySentRef.current = null;
+      groupServerTailFetchedRef.current = null;
+      groupPeerSummarySentRef.current = null;
+    }
+  }, [isFocused]);
+
+  /**
+   * Private chat: merge server LineSync cache tail, then send LINE_SUMMARY to peer so missing events
+   * can be requested/applied (handled in LineSyncService).
+   */
+  useEffect(() => {
+    if (currentChat?.chat_type !== 'private') return;
+    if (!chatId?.trim()) return;
+    if (!isFocused) return;
+
+    const gen = (privateLineSyncGenRef.current += 1);
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      void (async () => {
+        try {
+          if (privateServerTailFetchedRef.current !== chatId) {
+            await LineSyncService.fetchServerTail(chatId, LINE_SYNC_PRIVATE_TAIL_LIMIT);
+            if (gen !== privateLineSyncGenRef.current) return;
+            privateServerTailFetchedRef.current = chatId;
+          }
+        } catch (err) {
+          warnLineSyncLocalInsert('fetchServerTail', err);
+        }
+
+        if (gen !== privateLineSyncGenRef.current) return;
+        if (privatePeerSummarySentRef.current === chatId) return;
+
+        const uid = authStore.getState().user?.id ?? null;
+        const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+        const peerId = getPrivateChatPeerUserId(chat, uid);
+        if (!peerId) return;
+
+        const summary = await LineSyncService.sendSummaryToPeer(peerId, chatId);
+        if (gen !== privateLineSyncGenRef.current) return;
+        if (summary) {
+          privatePeerSummarySentRef.current = chatId;
+        }
+      })();
+    });
+
+    return () => task.cancel();
+  }, [chatId, currentChat?.chat_type, isFocused, currentUserId, privatePeerMembersSignature]);
+
+  /**
+   * Group chat: merge server LineSync cache tail, then LINE_SUMMARY to a chosen peer so
+   * LINE_PATCH_REQUEST / LINE_PATCH can backfill older than the server window (C3).
+   */
+  useEffect(() => {
+    if (currentChat?.chat_type !== 'group') return;
+    if (!chatId?.trim()) return;
+    if (!isFocused) return;
+
+    const gen = (groupLineSyncGenRef.current += 1);
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      void (async () => {
+        try {
+          if (groupServerTailFetchedRef.current !== chatId) {
+            await LineSyncService.fetchServerTail(chatId, LINE_SYNC_GROUP_TAIL_LIMIT);
+            if (gen !== groupLineSyncGenRef.current) return;
+            groupServerTailFetchedRef.current = chatId;
+          }
+        } catch (err) {
+          warnLineSyncLocalInsert('fetchServerTail (group)', err);
+        }
+
+        if (gen !== groupLineSyncGenRef.current) return;
+
+        const uid = authStore.getState().user?.id ?? null;
+        const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+        const peerId = getGroupLineSyncPeerUserId(chat, uid);
+        if (!peerId) return;
+
+        const summaryDedupeKey = `${chatId}|${peerId}`;
+        if (groupPeerSummarySentRef.current === summaryDedupeKey) return;
+
+        const summary = await LineSyncService.sendSummaryToPeer(
+          peerId,
+          chatId,
+          LINE_SYNC_GROUP_TAIL_LIMIT,
+        );
+        if (gen !== groupLineSyncGenRef.current) return;
+        if (summary) {
+          groupPeerSummarySentRef.current = summaryDedupeKey;
+        }
+      })();
+    });
+
+    return () => task.cancel();
+  }, [chatId, currentChat?.chat_type, isFocused, currentUserId, groupPeerMembersSignature]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -980,7 +1142,7 @@ export function ChatScreen() {
   const handleSendText = useCallback(
     (text: string) => {
       if (!currentUserId) return;
-      const tempId = `temp-${Date.now()}`;
+      const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
       const msg: Message = {
@@ -999,7 +1161,20 @@ export function ChatScreen() {
         updated_at: now,
       };
       messageStore.getState().prependMessage(chatId, msg);
-      void TransportService.sendMessage(chatId, text, 'text', tempId, activeReplyId);
+      void (async () => {
+        try {
+          const inserted = await new LineSyncEventDao().insert(
+            buildPendingLineSyncRowFromOutgoingMessage(msg)
+          );
+          if (!inserted) {
+            warnLineSyncLocalInsert('local event insert skipped (duplicate event_id)', msg.id);
+          }
+        } catch (err) {
+          warnLineSyncLocalInsert('local event insert failed', err);
+        } finally {
+          void TransportService.sendMessage(chatId, text, 'text', tempId, activeReplyId);
+        }
+      })();
       setReplyToMessageId(null);
     },
     [chatId, currentUserId, replyToMessageId]
@@ -1008,7 +1183,7 @@ export function ChatScreen() {
   const handleSendVoice = useCallback(
     async (result: { uri: string; waveform: number[]; durationMs: number }) => {
       if (!currentUserId) return;
-      const tempId = `temp-${Date.now()}`;
+      const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
       const msg: Message = {
@@ -1046,7 +1221,7 @@ export function ChatScreen() {
   const handleSendVideoNote = useCallback(
     async (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
       if (!currentUserId) return;
-      const tempId = `temp-${Date.now()}`;
+      const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
       const msg: Message = {
@@ -1101,7 +1276,7 @@ export function ChatScreen() {
       caption?: string;
     }) => {
       if (!currentUserId) return;
-      const tempId = `temp-${Date.now()}`;
+      const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
       const msg: Message = {
@@ -1184,7 +1359,7 @@ export function ChatScreen() {
       const items = result.items.slice(0, 10);
       if (items.length === 0) return;
 
-      const tempId = `temp-${Date.now()}`;
+      const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
       const msg: Message = {
@@ -1249,7 +1424,7 @@ export function ChatScreen() {
           size: result.size,
           mimeType: result.mimeType,
         },
-        `temp-${Date.now()}`,
+        makeOptimisticTempMessageId(),
         activeReplyId
       );
     },
@@ -1682,6 +1857,7 @@ export function ChatScreen() {
           }
           authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
           thumbnailUri={getReplyPreviewThumbnailUri(replied)}
+          peerFirstLineId={replied?.chat_id ?? chatId}
         />
       );
     };
@@ -1809,8 +1985,9 @@ export function ChatScreen() {
       const voiceUri =
         resolveVoiceMessageUri(item) ?? item.media[0].remote_url ?? `file://${item.id}`;
       const voiceContent = (
-        <VoiceBubble
-          uri={voiceUri}
+        <PeerFirstVoiceBubble
+          lineId={item.chat_id}
+          serverUri={voiceUri}
           waveform={item.media[0].waveform ?? []}
           durationMs={item.media[0].duration_ms ?? 0}
           isMe={isMe}
@@ -1902,7 +2079,8 @@ export function ChatScreen() {
     if (item.msg_type === 'video_note' && item.media?.[0]) {
       const media = item.media[0];
       const rawVideo = media.remote_url?.trim() ?? '';
-      const videoUri = resolveMediaUrl(rawVideo || null) ?? rawVideo;
+      const videoUri =
+        resolveVoiceMessageUri(item) ?? resolveMediaUrl(rawVideo || null) ?? rawVideo;
       if (!videoUri) return null;
       const thumbNote = media.thumbnail_url
         ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
@@ -1911,9 +2089,10 @@ export function ChatScreen() {
       const replySnippet = renderReplySnippet();
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const videoContent = (
-        <VideoNoteBubble
+        <PeerFirstVideoNoteBubble
+          lineId={item.chat_id}
+          serverUri={videoUri}
           messageId={item.id}
-          uri={videoUri}
           thumbnailUri={thumbNote}
           durationMs={media.duration_ms ?? 0}
           isMe={isMe}
@@ -2088,8 +2267,9 @@ export function ChatScreen() {
       const replySnippet = renderReplySnippet();
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const imageContent = (
-        <ImageBubble
-          uri={imageUri}
+        <PeerFirstImageBubble
+          lineId={item.chat_id}
+          serverUri={imageUri}
           isMe={isMe}
           width={media?.width}
           height={media?.height}
@@ -2187,8 +2367,9 @@ export function ChatScreen() {
       const replySnippet = renderReplySnippet();
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const videoContent = (
-        <VideoBubble
-          uri={videoUri}
+        <PeerFirstVideoBubble
+          lineId={item.chat_id}
+          serverUri={videoUri}
           thumbnailUri={thumbVideo}
           isMe={isMe}
           width={media?.width}
@@ -2284,10 +2465,11 @@ export function ChatScreen() {
           ? resolveMediaUrl(rawFile) ?? rawFile
           : undefined;
       const fileBubbleEl = (
-        <FileBubble
+        <PeerFirstFileBubble
+          lineId={item.chat_id}
+          serverUri={fileUri ?? ''}
           fileName={item.media[0].file_name ?? 'File'}
           fileSize={item.media[0].file_size}
-          uri={fileUri}
           isMe={isMe}
           caption={item.content ?? undefined}
           time={formatTime(item.created_at)}
@@ -2617,6 +2799,7 @@ export function ChatScreen() {
             replyAuthorName={replyAuthorName}
             onCancelReply={clearReplyState}
             isScreenFocused={isFocused}
+            replyPeerFirstLineId={replyToMessage?.chat_id ?? chatId}
           />
         )}
       </BlurTargetView>

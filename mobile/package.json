@@ -5,8 +5,14 @@
   "scripts": {
     "postinstall": "patch-package",
     "build": "npx tsc --noEmit",
+    "test": "node scripts/run-unit-tests.mjs",
+    "test:unit": "node scripts/run-unit-tests.mjs",
     "test:peer-delivery": "npx tsx src/services/PeerDeliveryService.test.ts",
     "test:p2p-send-decision": "npx tsx src/services/p2pSendDecision.test.ts",
+    "test:line-sync-protocol": "npx tsx src/services/lineSyncProtocol.test.ts",
+    "test:linesync-media-resolver": "npx tsx src/services/LineSyncMediaResolver.test.ts",
+    "test:line-sync-ws": "npx tsx src/services/lineSyncWebSocket.test.ts",
+    "test:line-sync-event-builder": "npx tsx src/services/lineSyncEventBuilder.test.ts",
     "test:transport": "npx tsx src/utils/messageTransport.test.ts",
     "test:voice": "npx tsx src/services/VoiceRecorderService.test.ts",
     "test:voice-gesture": "npx tsc --noEmit",
@@ -74,6 +80,7 @@
     "@types/react": "~19.2.2",
     "cross-env": "^7.0.3",
     "patch-package": "^8.0.1",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.2"
   },
   "overrides": {

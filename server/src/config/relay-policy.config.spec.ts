@@ -2,6 +2,7 @@ import { Transport } from '@prisma/client';
 import {
   computeChannelPostPolicy,
   computeEffectiveMessageCachePolicy,
+  computeLineSyncTailPolicy,
   loadRelayPolicyFromEnv,
   RelayPolicyConfig,
   computeEffectiveCachePolicy,
@@ -9,20 +10,22 @@ import {
 } from './relay-policy.config';
 
 describe('loadRelayPolicyFromEnv', () => {
-  it('keeps current relay behaviour by default', () => {
+  it('loads default relay policy (private text + media mailbox TTL 1 day)', () => {
     expect(loadRelayPolicyFromEnv({})).toEqual({
       peerAttemptTimeoutMs: 2500,
       peerMetricsEnabled: true,
       mode: 'standard',
-      textCacheSeconds: 0,
+      textCacheSeconds: 86400,
       deleteAfterAllDevicesAck: false,
-      mediaCacheSeconds: 0,
+      mediaCacheSeconds: 86400,
       mediaRetainUntilDownload: true,
       mediaMaxBytes: null,
       groupTextCacheSeconds: null,
       channelPostRetentionSeconds: null,
       channelMediaMinRetentionSeconds: null,
       fanoutMaxConcurrent: null,
+      lineSyncTailCount: 10,
+      lineSyncTailTtlSeconds: 86400,
       defaultTransport: Transport.websocket,
     });
   });
@@ -42,6 +45,8 @@ describe('loadRelayPolicyFromEnv', () => {
         RELAY_CHANNEL_POST_RETENTION_SECONDS: '604800',
         RELAY_CHANNEL_MEDIA_MIN_RETENTION_SECONDS: '86400',
         RELAY_FANOUT_MAX_CONCURRENT: '8',
+        LINE_SYNC_TAIL_COUNT: '25',
+        LINE_SYNC_TAIL_TTL_SECONDS: '900',
       }),
     ).toMatchObject({
       peerAttemptTimeoutMs: 1500,
@@ -56,27 +61,29 @@ describe('loadRelayPolicyFromEnv', () => {
       channelPostRetentionSeconds: 604800,
       channelMediaMinRetentionSeconds: 86400,
       fanoutMaxConcurrent: 8,
+      lineSyncTailCount: 25,
+      lineSyncTailTtlSeconds: 900,
     });
   });
 
-  it('returns default policy (all zeros / no TTL) for all chat types when no overrides set', () => {
+  it('returns default text+media TTL for all chat types when no overrides set', () => {
     const snapshot = loadRelayPolicyFromEnv({});
 
     expect(computeEffectiveCachePolicy(snapshot, 'private')).toEqual({
-      textCacheSeconds: 0,
-      mediaCacheSeconds: 0,
+      textCacheSeconds: 86400,
+      mediaCacheSeconds: 86400,
     });
     expect(computeEffectiveCachePolicy(snapshot, 'group')).toEqual({
-      textCacheSeconds: 0,
-      mediaCacheSeconds: 0,
+      textCacheSeconds: 86400,
+      mediaCacheSeconds: 86400,
     });
     expect(computeEffectiveCachePolicy(snapshot, 'channel')).toEqual({
-      textCacheSeconds: 0,
-      mediaCacheSeconds: 0,
+      textCacheSeconds: 86400,
+      mediaCacheSeconds: 86400,
     });
     expect(computeEffectiveCachePolicy(snapshot, 'discussion')).toEqual({
-      textCacheSeconds: 0,
-      mediaCacheSeconds: 0,
+      textCacheSeconds: 86400,
+      mediaCacheSeconds: 86400,
     });
   });
 
@@ -144,11 +151,11 @@ describe('loadRelayPolicyFromEnv', () => {
 
     expect(config.getEffectiveCachePolicy('group')).toEqual({
       textCacheSeconds: 500,
-      mediaCacheSeconds: 0,
+      mediaCacheSeconds: 86400,
     });
     expect(config.getEffectiveCachePolicy('private')).toEqual({
       textCacheSeconds: 1000,
-      mediaCacheSeconds: 0,
+      mediaCacheSeconds: 86400,
     });
   });
 
@@ -223,6 +230,26 @@ describe('loadRelayPolicyFromEnv', () => {
     });
   });
 
+  it('resolves LineSync cache-tail policy', () => {
+    const explicit = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+      LINE_SYNC_TAIL_COUNT: '15',
+      LINE_SYNC_TAIL_TTL_SECONDS: '1800',
+    });
+    expect(computeLineSyncTailPolicy(explicit)).toEqual({
+      retainLastN: 15,
+      ttlSeconds: 1800,
+    });
+
+    const fallback = loadRelayPolicyFromEnv({
+      RELAY_TEXT_CACHE_SECONDS: '3600',
+    });
+    expect(new RelayPolicyConfig(fallback).getLineSyncTailPolicy()).toEqual({
+      retainLastN: 10,
+      ttlSeconds: 3600,
+    });
+  });
+
   it('falls back on invalid values without changing defaults', () => {
     expect(
       loadRelayPolicyFromEnv({
@@ -234,16 +261,20 @@ describe('loadRelayPolicyFromEnv', () => {
         RELAY_MEDIA_CACHE_SECONDS: '10s',
         RELAY_MEDIA_RETAIN_UNTIL_DOWNLOAD: 'maybe',
         RELAY_MEDIA_MAX_BYTES: '',
+        LINE_SYNC_TAIL_COUNT: '0',
+        LINE_SYNC_TAIL_TTL_SECONDS: '-1',
       }),
     ).toMatchObject({
       peerAttemptTimeoutMs: 2500,
       peerMetricsEnabled: true,
       mode: 'standard',
-      textCacheSeconds: 0,
+      textCacheSeconds: 86400,
       deleteAfterAllDevicesAck: false,
-      mediaCacheSeconds: 0,
+      mediaCacheSeconds: 86400,
       mediaRetainUntilDownload: true,
       mediaMaxBytes: null,
+      lineSyncTailCount: 10,
+      lineSyncTailTtlSeconds: 86400,
       defaultTransport: Transport.websocket,
     });
   });

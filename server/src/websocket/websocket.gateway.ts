@@ -16,6 +16,7 @@ import { ChannelsService } from '../channels/channels.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ChatusFatherService } from '../mini-apps/chatus-father.service';
 import { MailboxService } from '../mailbox/mailbox.service';
+import { LineSyncCacheService } from '../linesync/linesync-cache.service';
 
 const WS_PORT = parseInt(process.env.WS_PORT ?? '4001', 10);
 
@@ -42,6 +43,7 @@ export class WebsocketGateway
     private readonly realtimeService: RealtimeService,
     private readonly chatusFatherService: ChatusFatherService,
     private readonly mailboxService: MailboxService,
+    private readonly lineSyncCacheService: LineSyncCacheService,
   ) {}
 
   async handleConnection(client: AuthenticatedSocket, ...args: unknown[]) {
@@ -282,6 +284,50 @@ export class WebsocketGateway
         })}`,
         err instanceof Error ? err.stack : String(err),
       );
+    }
+  }
+
+  @SubscribeMessage('line_tail_request')
+  async handleLineTailRequest(
+    client: AuthenticatedSocket,
+    payload: {
+      line_id?: string;
+      limit?: number;
+      request_id?: string;
+    },
+  ) {
+    if (!client.userId) return;
+    const lineId = typeof payload?.line_id === 'string' ? payload.line_id.trim() : '';
+    if (!lineId) {
+      client.send(JSON.stringify({
+        type: 'line_tail',
+        request_id: payload?.request_id ?? null,
+        line_id: null,
+        error: 'line_id_required',
+      }));
+      return;
+    }
+
+    const rawLimit = typeof payload.limit === 'number' && Number.isFinite(payload.limit)
+      ? Math.floor(payload.limit)
+      : undefined;
+    const limit = rawLimit ? Math.max(1, Math.min(rawLimit, 100)) : undefined;
+
+    try {
+      const events = await this.lineSyncCacheService.getTailForUser(lineId, client.userId, limit);
+      client.send(JSON.stringify({
+        type: 'line_tail',
+        request_id: payload?.request_id ?? null,
+        line_id: lineId,
+        events,
+      }));
+    } catch (error) {
+      client.send(JSON.stringify({
+        type: 'line_tail',
+        request_id: payload?.request_id ?? null,
+        line_id: lineId,
+        error: error instanceof Error ? error.message : 'line_tail_failed',
+      }));
     }
   }
 

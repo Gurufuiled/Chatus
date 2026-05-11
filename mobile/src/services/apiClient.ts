@@ -162,6 +162,7 @@ export interface ApiUploadResult {
   file_name: string;
   mime_type: string;
   file_size: number;
+  sha256?: string;
   media_kind?: string;
   width?: number | null;
   height?: number | null;

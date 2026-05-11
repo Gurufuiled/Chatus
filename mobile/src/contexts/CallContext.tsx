@@ -34,7 +34,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import Reanimated, { clamp, runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
-import { resolveAvatarUrl } from '../config';
+import { getWebRtcIceServers, resolveAvatarUrl } from '../config';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS, type CallGlyph } from '../icons/telegram';
 import { SignalingService } from '../services/SignalingService';
 import { VoicePlayerService } from '../services/VoicePlayerService';
@@ -88,7 +88,6 @@ type PendingOffer = {
   callKind: CallKind;
 };
 
-const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
 const OUTGOING_TIMEOUT_MS = 30000;
 
 /** Круглый превью своего видео (PiP): размер и отступы при перетаскивании. */
@@ -848,7 +847,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const createPeerConnection = useCallback(
     async (remoteUserId: string, withVideo: boolean) => {
       const localStream = await ensureLocalMediaStream(withVideo);
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      const pc = new RTCPeerConnection({ iceServers: getWebRtcIceServers() });
 
       localStream.getTracks().forEach((track) => {
         const sender = pc.addTrack(track, localStream);

@@ -68,7 +68,7 @@ class PeerDeliveryServiceClass {
       return { ok: false, reason: 'not_connected' };
     }
 
-    const ackKey = `${input.tempId}-${Date.now()}`;
+    const ackKey = `${input.tempId}:${input.recipientUserId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
 
     return new Promise<PeerDeliveryResult>((resolve) => {
       const timer = setTimeout(() => {

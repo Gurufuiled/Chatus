@@ -3,7 +3,7 @@ import {
   BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { MAX_FILE_SIZE } from './upload.constants';
@@ -28,6 +28,7 @@ export class UploadService {
     file_name: string;
     mime_type: string;
     file_size: number;
+    sha256: string;
     media_kind: string;
     width: number | null;
     height: number | null;
@@ -60,6 +61,7 @@ export class UploadService {
     const fs = await import('fs/promises');
     const buf = file.buffer;
     if (!buf) throw new BadRequestException('File buffer is empty');
+    const sha256 = createHash('sha256').update(buf).digest('hex');
     try {
       await fs.writeFile(filepath, buf);
     } catch {
@@ -78,6 +80,7 @@ export class UploadService {
       file_name: inspected?.file_name ?? file.originalname,
       mime_type: inspected?.mime_type ?? file.mimetype,
       file_size: inspected?.file_size ?? file.size,
+      sha256,
       media_kind: inspected?.kind ?? this.inferFallbackKind(file.mimetype),
       width: inspected?.width ?? null,
       height: inspected?.height ?? null,
@@ -92,5 +95,22 @@ export class UploadService {
     if (mimetype.startsWith('audio/')) return 'voice';
     if (mimetype.startsWith('video/')) return 'video';
     return 'file';
+  }
+
+  /**
+   * Best-effort delete of a file under local `uploads/` (mailbox trim / ack).
+   * Accepts `/uploads/<file>` or full URL containing that path.
+   */
+  async tryDeleteServerStoredUpload(remoteUrlOrPath: string | null | undefined): Promise<void> {
+    if (!remoteUrlOrPath || typeof remoteUrlOrPath !== 'string') return;
+    const trimmed = remoteUrlOrPath.trim();
+    const m = trimmed.match(/\/uploads\/([^?#]+)/);
+    if (!m?.[1]) return;
+    const safeName = m[1].replace(/\\/g, '/').split('/').pop();
+    if (!safeName || safeName.includes('..')) return;
+
+    const filepath = join(this.uploadPath, safeName);
+    const fs = await import('fs/promises');
+    await fs.unlink(filepath).catch(() => undefined);
   }
 }

@@ -1,6 +1,6 @@
 /**
  * Unit tests for VoiceRecorderService.
- * Focus: dbToNormalized logic (0 at -160dB, 1 at 0dB, clamping).
+ * Focus: dbToNormalized maps -55..0 dB to 0..1 (see waveformUtils); below -55 → 0.
  * Run: npx tsx src/services/VoiceRecorderService.test.ts
  * Native recording (expo-av) requires device; not tested here.
  */
@@ -23,18 +23,19 @@ function assertClose(actual: number, expected: number, tolerance: number, msg: s
 }
 
 function runTests(): void {
-  // 0 at -160 dB (minimum/silence)
+  // Silence / below effective range (maps to clamp at METERING_MIN_DB → 0)
   assert(dbToNormalized(-160) === 0, 'dbToNormalized(-160) should be 0');
+  assert(dbToNormalized(-80) === 0, 'dbToNormalized(-80) should be 0 (below -55 dB floor)');
+  assert(dbToNormalized(-56) === 0, 'dbToNormalized(-56) should be 0');
 
   // 1 at 0 dB (maximum)
   assert(dbToNormalized(0) === 1, 'dbToNormalized(0) should be 1');
 
-  // 0.5 at -80 dB (midpoint)
-  assert(dbToNormalized(-80) === 0.5, 'dbToNormalized(-80) should be 0.5');
+  // Midpoint of -55..0 is -27.5 dB → 0.5
+  assertClose(dbToNormalized(-27.5), 0.5, 1e-10, 'dbToNormalized(-27.5) should be ~0.5');
 
-  // Clamp below -160
+  // Clamp below metering range (treated as silence)
   assert(dbToNormalized(-200) === 0, 'dbToNormalized(-200) should clamp to 0');
-  assert(dbToNormalized(-161) === 0, 'dbToNormalized(-161) should clamp to 0');
 
   // Clamp above 0
   assert(dbToNormalized(10) === 1, 'dbToNormalized(10) should clamp to 1');
@@ -48,9 +49,9 @@ function runTests(): void {
   assert(dbToNormalized(Infinity) === 0, 'dbToNormalized(Infinity) should be 0');
   assert(dbToNormalized(-Infinity) === 0, 'dbToNormalized(-Infinity) should be 0');
 
-  // Linear interpolation
-  assertClose(dbToNormalized(-120), 0.25, 1e-5, 'dbToNormalized(-120)');
-  assertClose(dbToNormalized(-40), 0.75, 1e-5, 'dbToNormalized(-40)');
+  // Linear interpolation within -55..0
+  assertClose(dbToNormalized(-40), (15 / 55), 1e-10, 'dbToNormalized(-40)');
+  assertClose(dbToNormalized(-15), (40 / 55), 1e-10, 'dbToNormalized(-15)');
 
   // Resample keeps requested size
   const resampled = resampleWaveform([0, 0.2, 0.4, 0.6, 0.8, 1], 3);

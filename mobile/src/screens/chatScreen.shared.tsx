@@ -32,6 +32,16 @@ export const OVERLAY_BOTTOM_INSET = 110;
 export const REPLIED_VOICE_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 290);
 const GROUP_AUTHOR_COLORS = ['#8B5CF6', '#EC4899', '#F97316', '#0EA5E9', '#10B981', '#EAB308'];
 
+/** Other participant in a 1:1 chat (LineSync peer handshake). */
+export function getPrivateChatPeerUserId(
+  chat: { chat_type?: string; members?: { user_id: string }[] } | null | undefined,
+  currentUserId: string | null,
+): string | null {
+  if (!chat || chat.chat_type !== 'private' || !currentUserId) return null;
+  const peer = (chat.members ?? []).find((m) => m.user_id && m.user_id !== currentUserId);
+  return peer?.user_id ?? null;
+}
+
 export function formatTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });

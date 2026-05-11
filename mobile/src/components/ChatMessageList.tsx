@@ -28,18 +28,21 @@ import Reanimated, {
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors, withAlpha } from '../theme/colors';
 import type { ChatTheme } from '../theme/chatThemes';
-import { FileBubble } from './FileBubble';
 import { ForwardHeader } from './ForwardHeader';
-import { ImageBubble } from './ImageBubble';
 import { MessageTimeStatus } from './MessageTimeStatus';
 import {
   ReplyPreview,
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from './ReplyPreview';
-import { VideoBubble } from './VideoBubble';
-import { VideoNoteBubble } from './VideoNoteBubble';
-import { VoiceBubble } from './VoiceBubble';
+import {
+  PeerFirstAlbumImage,
+  PeerFirstFileBubble,
+  PeerFirstImageBubble,
+  PeerFirstVideoBubble,
+  PeerFirstVideoNoteBubble,
+  PeerFirstVoiceBubble,
+} from './peerFirstMedia';
 import { MessageReactionInline } from './MessageReactionInline';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
@@ -134,6 +137,7 @@ function getVisualMediaKind(message: Message, media: VisualMediaItem): 'image' |
 
 function MediaAlbumBubble({
   message,
+  lineId,
   isMe,
   time,
   status,
@@ -150,6 +154,7 @@ function MediaAlbumBubble({
   incomingCaptionMeta,
 }: {
   message: Message;
+  lineId: string;
   isMe: boolean;
   time: string;
   status: string;
@@ -179,7 +184,6 @@ function MediaAlbumBubble({
     const kind = getVisualMediaKind(message, item);
     const rawUri =
       kind === 'video' ? item.thumbnail_url || item.remote_url : item.remote_url;
-    const uri = resolveMediaUrl(rawUri?.trim() ?? null) ?? rawUri ?? '';
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
 
@@ -191,7 +195,11 @@ function MediaAlbumBubble({
         onPress={() => onOpenMedia?.(media, index)}
         style={[styles.albumTile, style]}
       >
-        <Image source={{ uri }} style={styles.albumImage} contentFit="cover" cachePolicy="disk" transition={100} />
+        <PeerFirstAlbumImage
+          lineId={lineId}
+          rawUri={rawUri?.trim() ?? ''}
+          style={styles.albumImage}
+        />
         {kind === 'video' ? (
           <View style={styles.albumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />
@@ -798,6 +806,7 @@ const MessageRow = React.memo(function MessageRow({
         }
         authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
         thumbnailUri={replyThumbnailUri}
+        peerFirstLineId={repliedMessage?.chat_id ?? chatId}
         searchHighlightQuery={searchHighlightQuery}
         onPress={onReplyPreviewPress ? () => onReplyPreviewPress(bodyItem.reply_to_id!) : undefined}
       />
@@ -1064,8 +1073,9 @@ const MessageRow = React.memo(function MessageRow({
       const voiceUri =
         resolveVoiceMessageUri(bodyItem) ?? bodyItem.media[0].remote_url ?? `file://${bodyItem.id}`;
       const voiceContent = (
-        <VoiceBubble
-          uri={voiceUri}
+        <PeerFirstVoiceBubble
+          lineId={chatId}
+          serverUri={voiceUri}
           waveform={bodyItem.media[0].waveform ?? []}
           durationMs={bodyItem.media[0].duration_ms ?? 0}
           isMe={isMe}
@@ -1169,7 +1179,9 @@ const MessageRow = React.memo(function MessageRow({
 
     if (bodyItem.msg_type === 'video_note' && bodyItem.media?.[0]) {
       const media = bodyItem.media[0];
-      const videoUri = media.remote_url?.trim() ?? '';
+      const rawVideo = media.remote_url?.trim() ?? '';
+      const videoUri =
+        resolveVoiceMessageUri(bodyItem) ?? resolveMediaUrl(rawVideo || null) ?? rawVideo;
       if (!videoUri) return null;
 
       const replySnippet = renderReplySnippet();
@@ -1188,10 +1200,15 @@ const MessageRow = React.memo(function MessageRow({
       }
 
       const videoContent = (
-        <VideoNoteBubble
+        <PeerFirstVideoNoteBubble
+          lineId={chatId}
+          serverUri={videoUri}
           messageId={bodyItem.id}
-          uri={videoUri}
-          thumbnailUri={media.thumbnail_url ?? undefined}
+          thumbnailUri={
+            media.thumbnail_url
+              ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+              : undefined
+          }
           durationMs={media.duration_ms ?? 0}
           isMe={isMe}
           time={formatTime(bodyItem.created_at)}
@@ -1291,6 +1308,7 @@ const MessageRow = React.memo(function MessageRow({
       const albumContent = (
         <MediaAlbumBubble
           message={bodyItem}
+          lineId={bodyItem.chat_id || chatId}
           isMe={isMe}
           time={formatTime(bodyItem.created_at)}
           status={bodyItem.status}
@@ -1386,8 +1404,9 @@ const MessageRow = React.memo(function MessageRow({
       const replySnippet = renderReplySnippet();
       const topHeader = replySnippet ? null : renderIncomingHeader();
       const imageContent = (
-        <ImageBubble
-          uri={imageUri}
+        <PeerFirstImageBubble
+          lineId={chatId}
+          serverUri={imageUri}
           isMe={isMe}
           width={media?.width}
           height={media?.height}
@@ -1500,8 +1519,9 @@ const MessageRow = React.memo(function MessageRow({
         ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
         : undefined;
       const videoContent = (
-        <VideoBubble
-          uri={videoUri}
+        <PeerFirstVideoBubble
+          lineId={chatId}
+          serverUri={videoUri}
           thumbnailUri={thumbResolved}
           isMe={isMe}
           width={media?.width}
@@ -1612,10 +1632,11 @@ const MessageRow = React.memo(function MessageRow({
           ? resolveMediaUrl(rawFile) ?? rawFile
           : undefined;
       const fileBubbleEl = (
-        <FileBubble
+        <PeerFirstFileBubble
+          lineId={chatId}
+          serverUri={fileUri ?? ''}
           fileName={bodyItem.media[0].file_name ?? 'File'}
           fileSize={bodyItem.media[0].file_size}
-          uri={fileUri}
           isMe={isMe}
           caption={bodyItem.content ?? undefined}
           time={formatTime(bodyItem.created_at)}

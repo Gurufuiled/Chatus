@@ -160,6 +160,22 @@ export interface MediaRow {
   created_at: number;
 }
 
+/** Local LineSync durable log row; payload_json holds protocol-shaped JSON (e.g. message.create). */
+export interface LineSyncEventRow {
+  event_id: string;
+  line_id: string;
+  event_type: string;
+  payload_json: string;
+  author_user_id: string | null;
+  created_at: number;
+  logical_clock: number;
+  signature: string | null;
+  /** e.g. pending | synced | failed — local semantics only until transport consumes the log. */
+  sync_state: string;
+  /** Server-assigned message id after optimistic `msg:<tempId>` is acknowledged; event_id stays `msg:<tempId>`. */
+  server_message_id?: string | null;
+}
+
 export interface SyncQueueRow {
   id: number;
   user_id: string | null;

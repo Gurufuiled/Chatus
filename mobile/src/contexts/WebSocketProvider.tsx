@@ -16,13 +16,16 @@ import { messageStore } from '../stores/messageStore';
 import { chatStore } from '../stores/chatStore';
 import { channelStore } from '../stores/channelStore';
 import { uiStore } from '../stores/uiStore';
-import { ChatDao, MessageDao } from '../db';
+import { ChatDao, MessageDao, LineSyncEventDao } from '../db';
 import { PeerDeliveryService } from '../services/PeerDeliveryService';
+import { LineSyncDataChannelService } from '../services/LineSyncDataChannelService';
+import { LineSyncService } from '../services/LineSyncService';
 import type { Message } from '../stores/types';
 import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
 import { normalizeMessageTransport } from '../utils/messageTransport';
 import { buildMessageListPreviewText } from '../utils/messageListPreview';
+import { buildPendingLineSyncRowForText, shouldLinkLineSyncOptimisticEchoToServer } from '../services/lineSyncEventBuilder';
 
 /** Server message payload shape (MappedMessage from backend) */
 interface ServerMessagePayload {
@@ -177,6 +180,35 @@ function buildMessagePreview(msg: Message): string {
   return buildMessageListPreviewText(msg);
 }
 
+function warnLineSyncLocalInsert(reason: string, detail?: unknown): void {
+  if (detail !== undefined) console.warn(`[LineSync] ${reason}`, detail);
+  else console.warn(`[LineSync] ${reason}`);
+}
+
+/** Incoming text-only; skips non-text. Caller enforces sender policy (avoid own echoes vs optimistic msg:<tempId>). */
+function scheduleInboundTextLineSyncFromMappedMessage(mapped: Message): void {
+  const row = buildPendingLineSyncRowForText({
+    id: mapped.id,
+    chat_id: mapped.chat_id,
+    sender_id: mapped.sender_id,
+    msg_type: mapped.msg_type,
+    content: mapped.content ?? null,
+    reply_to_id: mapped.reply_to_id ?? null,
+    created_at: mapped.created_at,
+  });
+  if (!row) return;
+  void new LineSyncEventDao()
+    .insert(row)
+    .then((inserted) => {
+      if (!inserted) {
+        warnLineSyncLocalInsert('local event insert skipped (duplicate event_id)', mapped.id);
+      }
+    })
+    .catch((err) => {
+      warnLineSyncLocalInsert('local event insert failed', err);
+    });
+}
+
 function updateChatLastMessage(chatId: string, mapped: Message): void {
   const chat = chatStore.getState().chats.find((c) => c.id === chatId);
   if (!chat) {
@@ -260,17 +292,29 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   // Reconnect WebSocket when network goes from offline to online (not on initial null->true)
   useEffect(() => {
     const wasOffline = prevNetworkConnectedRef.current === false;
+    const wasOnline = prevNetworkConnectedRef.current === true;
     const isNowOnline = isNetworkConnected === true;
+    const isNowOffline = isNetworkConnected === false;
     prevNetworkConnectedRef.current = isNetworkConnected;
 
     if (wasOffline && isNowOnline && isAuthenticated) {
       WebSocketService.connect();
+      LineSyncDataChannelService.closeAllSessions();
+    }
+    if (wasOnline && isNowOffline && isAuthenticated) {
+      LineSyncDataChannelService.closeAllSessions();
     }
   }, [isNetworkConnected, isAuthenticated]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       const previousState = appStateRef.current;
+
+      // LineSync blob DataChannel: stale ICE after minimize; next ensureOpen renegotiates (D1).
+      if (nextState === 'background' && isAuthenticated) {
+        LineSyncDataChannelService.closeAllSessions();
+      }
+
       appStateRef.current = nextState;
 
       const cameToForeground =
@@ -322,7 +366,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         updateChatLastMessage(payload.chat_id, mapped);
 
         const currentUserId = authStore.getState().user?.id ?? null;
-        if (payload.from_user_id !== currentUserId) {
+        if (currentUserId && payload.from_user_id !== currentUserId) {
+          scheduleInboundTextLineSyncFromMappedMessage(mapped);
           const messageChat = chatStore.getState().chats.find((item) => item.id === payload.chat_id);
 
           const selectedChatId = chatStore.getState().selectedChatId;
@@ -389,7 +434,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             updateChatLastMessage(msg.chat_id, mapped);
 
             const currentUserId = authStore.getState().user?.id ?? null;
-            if (msg.sender_id !== currentUserId) {
+            if (currentUserId && msg.sender_id !== currentUserId) {
+              scheduleInboundTextLineSyncFromMappedMessage(mapped);
               const messageChat = chatStore.getState().chats.find((item) => item.id === msg.chat_id);
               const shouldSendReceipts =
                 messageChat?.chat_type === 'private' || messageChat?.chat_type === 'group';
@@ -495,12 +541,34 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               updated_at: mapped.updated_at,
               ...(media ? { media } : {}),
             });
+            if (
+              clientTempId &&
+              shouldLinkLineSyncOptimisticEchoToServer({
+                msgType: msg.msg_type,
+                matchedByClientTempId: !!sendingByTempId,
+              })
+            ) {
+              void new LineSyncEventDao()
+                .linkServerMessageIdForOptimisticTemp(clientTempId, mapped.id)
+                .then((outcome) => {
+                  if (outcome === 'conflict') {
+                    warnLineSyncLocalInsert('optimistic server_message_id conflict', {
+                      client_temp_id: clientTempId,
+                      server_message_id: mapped.id,
+                    });
+                  }
+                })
+                .catch((err) => {
+                  warnLineSyncLocalInsert('optimistic→server LineSync link failed', err);
+                });
+            }
           } else {
             if (__DEV__) console.log('[WS onNewMessage] recipient: prependMessage', { chat_id: msg.chat_id, content: mapped.content });
             messageStore.getState().prependMessage(msg.chat_id, mapped);
           }
           updateChatLastMessage(msg.chat_id, mapped);
-          if (msg.sender_id !== currentUserId) {
+          if (currentUserId && msg.sender_id !== currentUserId) {
+            scheduleInboundTextLineSyncFromMappedMessage(mapped);
             const messageChat = chatStore
               .getState()
               .chats.find((item) => item.id === msg.chat_id);
@@ -742,6 +810,32 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             is_online: is_online ?? false,
             last_seen: last_seen ?? previousPresence?.last_seen,
           });
+        },
+
+        onLineTail: (payload) => {
+          void (async () => {
+            try {
+              await LineSyncService.mergeLineTailWebSocketMessage(payload);
+            } catch (err) {
+              let lineHint = '';
+              if (
+                typeof __DEV__ !== 'undefined' &&
+                __DEV__ &&
+                payload &&
+                typeof payload === 'object' &&
+                'line_id' in payload
+              ) {
+                const lid = (payload as { line_id?: unknown }).line_id;
+                if (typeof lid === 'string' && lid.trim().length > 0) {
+                  lineHint = lid.trim();
+                }
+              }
+              console.warn(
+                '[WebSocket] line_tail merge failed' + (lineHint ? ` line_id=${lineHint}` : ''),
+                err
+              );
+            }
+          })();
         },
 
         onError: (payload) => {

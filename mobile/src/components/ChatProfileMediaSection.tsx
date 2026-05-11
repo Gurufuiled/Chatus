@@ -27,6 +27,7 @@ import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
 } from '../utils/videoThumbnail';
+import { usePeerFirstResolvedUri } from './peerFirstMedia';
 
 export type ProfileTabKey = 'media' | 'files' | 'voice' | 'links';
 
@@ -76,6 +77,8 @@ type ChatProfileMediaSectionProps = {
   onOpenMedia: (index: number) => void;
   onOpenVideoNote: (item: VoiceItem) => void;
   onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
+  /** LineSync line id (chat id) — peer-first thumbnails in the media grid. */
+  peerFirstLineId?: string | null;
 };
 
 const TAB_LABELS: Record<ProfileTabKey, string> = {
@@ -215,17 +218,27 @@ const FileRow = React.memo(function FileRow({
 });
 
 /** Сетка превью — переиспользуется в профиле канала */
-export const MediaTilePreview = React.memo(function MediaTilePreview({ item }: { item: MediaTile }) {
+export const MediaTilePreview = React.memo(function MediaTilePreview({
+  item,
+  peerFirstLineId,
+}: {
+  item: MediaTile;
+  peerFirstLineId?: string | null;
+}) {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(
     () => createChatProfileMediaSectionStyles(themeColors),
     [themeColors],
   );
+  const isVideo = item.kind === 'video';
+  /** Peer-first только для явного thumbnail URL; иначе извлечение кадра из `item.uri` через useVideoPreviewUri. */
+  const thumbUrlForPeer = isVideo ? item.previewUri?.trim() ?? '' : item.uri;
+  const peerResolvedThumb = usePeerFirstResolvedUri(peerFirstLineId, thumbUrlForPeer || null);
   const generatedPreviewUri = useVideoPreviewUri(
-    item.kind === 'video' ? item.uri : null,
-    item.previewUri
+    isVideo ? item.uri : null,
+    isVideo && item.previewUri?.trim() ? peerResolvedThumb : null
   );
-  const previewUri = item.kind === 'video' ? generatedPreviewUri : item.previewUri ?? item.uri;
+  const previewUri = isVideo ? generatedPreviewUri || peerResolvedThumb : peerResolvedThumb;
 
   if (!previewUri) {
     return (
@@ -432,6 +445,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
   onOpenMedia,
   onOpenVideoNote,
   onOpenActionMenu,
+  peerFirstLineId,
 }: ChatProfileMediaSectionProps) {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(
@@ -471,7 +485,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
               delayLongPress={220}
               style={({ pressed }) => [styles.mediaTile, pressed && styles.mediaTilePressed]}
             >
-              <MediaTilePreview item={item} />
+              <MediaTilePreview item={item} peerFirstLineId={peerFirstLineId} />
               {item.kind === 'video' ? (
                 <View style={styles.mediaPlayBadge}>
                   <Feather name="play" size={15} color="#FFFFFF" style={styles.voicePlayIcon} />
@@ -565,6 +579,7 @@ export const ChatProfileMediaSection = React.memo(function ChatProfileMediaSecti
     onOpenActionMenu,
     onOpenMedia,
     onOpenVideoNote,
+    peerFirstLineId,
     styles,
     voiceItems,
   ]);

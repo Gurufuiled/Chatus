@@ -49,17 +49,19 @@ import {
   ChatContextMenuOverlay,
   ChatInputDock,
   InteractiveChatBackShell,
-  FileBubble,
-  ImageBubble,
   LoadErrorState,
   MessageTimeStatus,
   ReplyPreview,
-  VideoBubble,
-  VideoNoteBubble,
-  VoiceBubble,
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from '../components';
+import {
+  PeerFirstFileBubble,
+  PeerFirstImageBubble,
+  PeerFirstVideoBubble,
+  PeerFirstVideoNoteBubble,
+  PeerFirstVoiceBubble,
+} from '../components/peerFirstMedia';
 import type { FilePickResult, MediaPickResult } from '../components/InputBar';
 import {
   ChatBackgroundPattern,
@@ -327,6 +329,8 @@ type DiscussionMessageBubbleProps = {
   item: Message;
   isMe: boolean;
   repliedMessage: Message | null;
+  /** LineSync line id (= discussion chat id). */
+  lineSyncLineId: string;
   forcedWidth?: number;
   setContentRef?: (node: View | null) => void;
   onLongPress?: () => void;
@@ -338,6 +342,7 @@ function DiscussionMessageBubble({
   item,
   isMe,
   repliedMessage,
+  lineSyncLineId,
   forcedWidth,
   setContentRef,
   onLongPress,
@@ -372,6 +377,7 @@ function DiscussionMessageBubble({
         }
         authorColor={isMe ? '#FFD08A' : resolvedScheme === 'dark' ? c.accent : '#D1782B'}
         thumbnailUri={getReplyPreviewThumbnailUri(repliedMessage)}
+        peerFirstLineId={repliedMessage?.chat_id ?? lineSyncLineId}
         onPress={onReplyPreviewPress && item.reply_to_id ? () => onReplyPreviewPress(item.reply_to_id!) : undefined}
       />
     );
@@ -397,8 +403,9 @@ function DiscussionMessageBubble({
       return (
         <View style={st.mediaWrap}>
           {replySnippet}
-          <VoiceBubble
-            uri={voiceUri}
+          <PeerFirstVoiceBubble
+            lineId={lineSyncLineId}
+            serverUri={voiceUri}
             waveform={media.waveform ?? []}
             durationMs={media.duration_ms ?? 0}
             isMe={isMe}
@@ -410,30 +417,32 @@ function DiscussionMessageBubble({
       );
     }
 
-    if (item.msg_type === 'video_note' && media?.remote_url) {
-      const vnUri =
-        resolveVoiceMessageUri(item) ??
-        resolveMediaUrl(media.remote_url) ??
-        media.remote_url;
-      const vnThumb = media.thumbnail_url
-        ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
-        : undefined;
-      return (
-        <View style={st.mediaWrap}>
-          {replySnippet}
-          <VideoNoteBubble
-            messageId={item.id}
-            uri={vnUri}
-            thumbnailUri={vnThumb}
-            durationMs={media.duration_ms ?? 0}
-            isMe={isMe}
-            time={time}
-            status={displayStatus}
-            embedded={!!replySnippet}
-            registerPlaybackState={false}
-          />
-        </View>
-      );
+    if (item.msg_type === 'video_note' && media) {
+      const vnBase =
+        resolveVoiceMessageUri(item) ?? media.remote_url?.trim() ?? '';
+      if (vnBase) {
+        const vnUri = resolveMediaUrl(vnBase || null) ?? vnBase;
+        const vnThumb = media.thumbnail_url
+          ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
+          : undefined;
+        return (
+          <View style={st.mediaWrap}>
+            {replySnippet}
+            <PeerFirstVideoNoteBubble
+              lineId={lineSyncLineId}
+              serverUri={vnUri}
+              messageId={item.id}
+              thumbnailUri={vnThumb}
+              durationMs={media.duration_ms ?? 0}
+              isMe={isMe}
+              time={time}
+              status={displayStatus}
+              embedded={!!replySnippet}
+              registerPlaybackState={false}
+            />
+          </View>
+        );
+      }
     }
 
     if (item.msg_type === 'image' && media?.remote_url) {
@@ -441,8 +450,9 @@ function DiscussionMessageBubble({
       return (
         <View style={st.mediaWrap}>
           {replySnippet}
-          <ImageBubble
-            uri={imgUri}
+          <PeerFirstImageBubble
+            lineId={lineSyncLineId}
+            serverUri={imgUri}
             isMe={isMe}
             width={media.width}
             height={media.height}
@@ -463,8 +473,9 @@ function DiscussionMessageBubble({
       return (
         <View style={st.mediaWrap}>
           {replySnippet}
-          <VideoBubble
-            uri={vidUri}
+          <PeerFirstVideoBubble
+            lineId={lineSyncLineId}
+            serverUri={vidUri}
             thumbnailUri={vidThumb}
             isMe={isMe}
             width={media.width}
@@ -488,10 +499,11 @@ function DiscussionMessageBubble({
       return (
         <View style={st.mediaWrap}>
           {replySnippet}
-          <FileBubble
+          <PeerFirstFileBubble
+            lineId={lineSyncLineId}
+            serverUri={fileUri ?? ''}
             fileName={media.file_name ?? item.content ?? 'File'}
             fileSize={media.file_size}
-            uri={fileUri}
             isMe={isMe}
             caption={item.content ?? undefined}
             time={time}
@@ -569,19 +581,28 @@ function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDis
   }, [post]);
 
   if (!post) return null;
+  const lineId = post.chat_id;
   const time = formatTime(post.created_at);
   const media = post.media?.[0];
   const text = post.content?.trim() ?? '';
   const isVisualMedia = post.msg_type === 'image' || post.msg_type === 'video';
   const captionText = isVisualMedia ? text : '';
+  const originalVideoNoteUri =
+    post.msg_type === 'video_note' && media
+      ? (() => {
+          const b = resolveVoiceMessageUri(post) ?? media.remote_url?.trim() ?? '';
+          return b ? resolveMediaUrl(b || null) ?? b : '';
+        })()
+      : '';
 
   return (
     <>
     <View style={st.originalPostWrap}>
       <View style={st.originalPostAlign}>
         {post.msg_type === 'image' && media?.remote_url ? (
-          <ImageBubble
-            uri={resolveMediaUrl(media.remote_url) ?? media.remote_url}
+          <PeerFirstImageBubble
+            lineId={lineId}
+            serverUri={resolveMediaUrl(media.remote_url) ?? media.remote_url}
             isMe={false}
             width={media.width}
             height={media.height}
@@ -594,8 +615,9 @@ function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDis
           />
         ) : null}
         {post.msg_type === 'video' && media?.remote_url ? (
-          <VideoBubble
-            uri={resolveMediaUrl(media.remote_url) ?? media.remote_url}
+          <PeerFirstVideoBubble
+            lineId={lineId}
+            serverUri={resolveMediaUrl(media.remote_url) ?? media.remote_url}
             thumbnailUri={
               media.thumbnail_url
                 ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
@@ -613,8 +635,9 @@ function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDis
           />
         ) : null}
         {post.msg_type === 'voice' && media ? (
-          <VoiceBubble
-            uri={
+          <PeerFirstVoiceBubble
+            lineId={lineId}
+            serverUri={
               resolveVoiceMessageUri(post) ??
               media.remote_url ??
               `file://${post.id}`
@@ -627,10 +650,11 @@ function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDis
             viewCount={post.view_count ?? 0}
           />
         ) : null}
-        {post.msg_type === 'video_note' && media?.remote_url ? (
-          <VideoNoteBubble
+        {post.msg_type === 'video_note' && media && originalVideoNoteUri ? (
+          <PeerFirstVideoNoteBubble
+            lineId={lineId}
+            serverUri={originalVideoNoteUri}
             messageId={post.id}
-            uri={resolveVoiceMessageUri(post) ?? resolveMediaUrl(media.remote_url) ?? media.remote_url}
             thumbnailUri={
               media.thumbnail_url
                 ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
@@ -644,10 +668,15 @@ function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDis
           />
         ) : null}
         {post.msg_type === 'file' && media ? (
-          <FileBubble
+          <PeerFirstFileBubble
+            lineId={lineId}
+            serverUri={
+              media.remote_url?.trim()
+                ? resolveMediaUrl(media.remote_url) ?? media.remote_url
+                : ''
+            }
             fileName={media.file_name ?? post.content ?? 'File'}
             fileSize={media.file_size}
-            uri={media.remote_url ?? undefined}
             isMe={false}
             caption={text || undefined}
             time={time}
@@ -1196,6 +1225,7 @@ export function ChannelDiscussionScreen() {
             item={item}
             isMe={isMe}
             repliedMessage={replied}
+            lineSyncLineId={thread?.discussion_chat_id ?? ''}
             st={styles}
             setContentRef={(node) => setContentRef(item.id, node)}
             onLongPress={() => openMessageMenu(item)}
@@ -1208,7 +1238,7 @@ export function ChannelDiscussionScreen() {
         </View>
       </ReplySwipeWrapper>
     );
-  }, [canSwipeReply, c.accent, currentUserId, messageById, openMessageMenu, setContentRef, sortedMessages, styles, thread?.can_comment]);
+  }, [canSwipeReply, c.accent, currentUserId, messageById, openMessageMenu, setContentRef, sortedMessages, styles, thread?.can_comment, thread?.discussion_chat_id]);
 
   const renderMenuPreviewBody = React.useCallback((item: Message, forcedWidth?: number) => {
     const replied = item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null;
@@ -1217,11 +1247,12 @@ export function ChannelDiscussionScreen() {
         item={item}
         isMe={item.sender_id === currentUserId}
         repliedMessage={replied}
+        lineSyncLineId={thread?.discussion_chat_id ?? ''}
         forcedWidth={forcedWidth}
         st={styles}
       />
     );
-  }, [currentUserId, messageById, styles]);
+  }, [currentUserId, messageById, styles, thread?.discussion_chat_id]);
 
   return (
     <View style={[styles.container, styles.discussionRootTransparent]}>
@@ -1280,6 +1311,7 @@ export function ChannelDiscussionScreen() {
             }
             commentCooldownEndsAt={commentCooldownEndsAt}
             onCommentCooldownClear={clearCommentCooldown}
+            replyPeerFirstLineId={replyToMessage?.chat_id ?? thread?.discussion_chat_id ?? null}
           />
         ) : null}
       </BlurTargetView>

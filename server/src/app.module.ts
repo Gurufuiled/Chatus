@@ -18,6 +18,7 @@ import { FeedbackModule } from './feedback/feedback.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MailboxModule } from './mailbox/mailbox.module';
 import { AdminModule } from './admin/admin.module';
+import { LineSyncModule } from './linesync/linesync.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AdminModule } from './admin/admin.module';
     ScheduleModule.forRoot(),
     MailboxModule,
     AdminModule,
+    LineSyncModule,
     WebsocketModule,
     SignalingModule,
   ],

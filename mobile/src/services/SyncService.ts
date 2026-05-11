@@ -27,6 +27,11 @@ function toFullUrl(baseUrl: string, url: string): string {
   return `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
+function privateRelayMailboxFields(chatId: string): { relay_mailbox: true } | Record<string, never> {
+  const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+  return chat?.chat_type === 'private' ? { relay_mailbox: true as const } : {};
+}
+
 function getSafeFileContent(content: string | null | undefined, fileName?: string | null): string | null {
   const normalizedFileName = fileName?.trim();
   if (normalizedFileName) return normalizedFileName;
@@ -377,6 +382,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'voice',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           duration_ms: resolvedDurationMs || undefined,
@@ -389,6 +395,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           mime_type: result.mime_type,
           file_name: result.file_name,
           file_size: result.file_size,
+          sha256: result.sha256,
         },
       });
       return;
@@ -415,6 +422,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'video_note',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           duration_ms: resolvedDurationMs || undefined,
@@ -425,6 +433,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           file_size: result.file_size,
           width: result.width ?? undefined,
           height: result.height ?? undefined,
+          sha256: result.sha256,
         },
       });
       markOptimisticVideoNoteDispatched(p.chatId, p.tempId, {
@@ -456,6 +465,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'image',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           thumbnail_url: result.thumbnail_path
@@ -466,6 +476,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           mime_type: result.mime_type,
           file_name: result.file_name,
           file_size: result.file_size,
+          sha256: result.sha256,
         },
       });
       return;
@@ -496,6 +507,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'video',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           thumbnail_url: result.thumbnail_path
@@ -507,6 +519,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
           mime_type: result.mime_type,
           file_name: result.file_name,
           file_size: result.file_size,
+          sha256: result.sha256,
         },
       });
       return;
@@ -553,6 +566,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
             mime_type: result.mime_type,
             file_name: result.file_name,
             file_size: result.file_size,
+            sha256: result.sha256,
           };
         })
       );
@@ -563,6 +577,7 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: media[0]?.media_type === 'video' ? 'video' : 'image',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media,
       });
       return;
@@ -584,11 +599,13 @@ async function executeAction(action: string, payload: unknown): Promise<void> {
         msg_type: 'file',
         client_temp_id: p.tempId,
         reply_to_id: p.replyToId ?? null,
+        ...privateRelayMailboxFields(p.chatId),
         media: {
           url: fullUrl,
           file_name: result.file_name,
           file_size: result.file_size,
           mime_type: result.mime_type,
+          sha256: result.sha256,
         },
       });
       return;

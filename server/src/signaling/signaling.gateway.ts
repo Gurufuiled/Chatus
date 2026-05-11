@@ -124,7 +124,10 @@ export class SignalingGateway
     }
 
     const chat = await this.prisma.chat.findFirst({
-      where: { id: chatId, chatType: ChatType.private },
+      where: {
+        id: chatId,
+        chatType: { in: [ChatType.private, ChatType.group] },
+      },
       select: {
         members: { select: { userId: true } },
       },
@@ -191,6 +194,96 @@ export class SignalingGateway
     clearTimeout(pending.timer);
     this.pendingDms.delete(key);
     pending.resolve(true);
+  }
+
+  @SubscribeMessage('line_sync_send')
+  handleLineSyncSend(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      message?: unknown;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload || payload.message == null) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync',
+        from_user_id: client.userId,
+        message: payload.message,
+      }),
+    );
+  }
+
+  @SubscribeMessage('line_sync_dc_offer')
+  handleLineSyncDataChannelOffer(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      session_id?: string;
+      offer?: RTCSessionDescriptionInit;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload.session_id || !payload.offer) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync_dc_offer',
+        from_user_id: client.userId,
+        session_id: payload.session_id,
+        offer: payload.offer,
+      }),
+    );
+  }
+
+  @SubscribeMessage('line_sync_dc_answer')
+  handleLineSyncDataChannelAnswer(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      session_id?: string;
+      answer?: RTCSessionDescriptionInit;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload.session_id || !payload.answer) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync_dc_answer',
+        from_user_id: client.userId,
+        session_id: payload.session_id,
+        answer: payload.answer,
+      }),
+    );
+  }
+
+  @SubscribeMessage('line_sync_dc_ice')
+  handleLineSyncDataChannelIce(
+    client: AuthenticatedSocket,
+    payload: {
+      target_user_id?: string;
+      session_id?: string;
+      candidate?: RTCIceCandidateInit | null;
+    },
+  ) {
+    if (!client.userId) return;
+    const targetUserId = payload?.target_user_id;
+    if (!targetUserId || !payload.session_id) return;
+    this.sendToUser(
+      targetUserId,
+      JSON.stringify({
+        type: 'line_sync_dc_ice',
+        from_user_id: client.userId,
+        session_id: payload.session_id,
+        candidate: payload.candidate ?? null,
+      }),
+    );
   }
 
   private sendToUser(userId: string, data: string) {

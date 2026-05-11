@@ -20,6 +20,9 @@
 | [05-env-and-config.md](./05-env-and-config.md) | Переменные `RELAY_*` для данных **на сервере** после фолбэка |
 | [06-unified-inbox-telegram-scope.md](./06-unified-inbox-telegram-scope.md) | Единый инбокс с Telegram и границы |
 | [07-p2p-first-reorientation.md](./07-p2p-first-reorientation.md) | Таблица переориентации уже сделанных server-first правок на peer-first + fallback |
+| [08-linesync-protocol-draft.md](./08-linesync-protocol-draft.md) | Черновик LineSync: события line, ACL, peer blob + server fallback |
+| [09-linesync-implementation-plan.md](./09-linesync-implementation-plan.md) | План внедрения LineSync по этапам и журнал прогресса |
+| [10-server-copy-only-offline-mailbox.md](./10-server-copy-only-offline-mailbox.md) | Цель: нет долговременной серверной копии при онлайн-peer; офлайн — mailbox с TTL и удалением (чеклист работ) |
 | [Задача: единый список чатов](../tasks/unified-inbox-chatus-telegram.md) | Смешанный список Chatus + TG |
 
 ## Быстрый консенсус для команды

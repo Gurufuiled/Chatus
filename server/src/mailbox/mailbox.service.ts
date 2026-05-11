@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { mapMessage } from '../common/mappers';
 import { MESSAGE_RELATIONS_INCLUDE } from '../common/message-include';
+import { UploadService } from '../upload/upload.service';
 
 @Injectable()
 export class MailboxService {
@@ -13,6 +14,7 @@ export class MailboxService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly uploadService: UploadService,
   ) {}
 
   /** Push pending mailbox rows to a user who just opened the chat WebSocket. */
@@ -63,6 +65,9 @@ export class MailboxService {
     if (!msg) return;
     const isMember = msg.chat.members.some((m) => m.userId === userId);
     if (!isMember || msg.senderId === userId) return;
+    if (msg.mailboxExpiresAt == null) return;
+
+    await this.deleteMailboxUploadFilesForMessage(messageId);
 
     await this.prisma.message.update({
       where: { id: messageId },
@@ -74,6 +79,16 @@ export class MailboxService {
   @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async pruneExpiredMailboxMessages(): Promise<void> {
     const now = new Date();
+    const expired = await this.prisma.message.findMany({
+      where: {
+        mailboxExpiresAt: { not: null, lt: now },
+        isDeleted: false,
+      },
+      select: { id: true },
+    });
+    for (const row of expired) {
+      await this.deleteMailboxUploadFilesForMessage(row.id);
+    }
     const result = await this.prisma.message.updateMany({
       where: {
         mailboxExpiresAt: { not: null, lt: now },
@@ -83,6 +98,18 @@ export class MailboxService {
     });
     if (result.count > 0) {
       this.log.log(`Pruned ${result.count} expired mailbox messages`);
+    }
+  }
+
+  private async deleteMailboxUploadFilesForMessage(messageId: string): Promise<void> {
+    const msg = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { media: true },
+    });
+    if (!msg?.media?.length) return;
+    for (const m of msg.media) {
+      await this.uploadService.tryDeleteServerStoredUpload(m.remoteUrl);
+      await this.uploadService.tryDeleteServerStoredUpload(m.thumbnailUrl);
     }
   }
 }
