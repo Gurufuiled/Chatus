@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import { Transport } from '@prisma/client';
 
 export type RelayMode = 'standard' | 'minimal' | 'pop_like';
@@ -243,12 +242,12 @@ export function computeLineSyncTailPolicy(snapshot: RelayPolicySnapshot): LineSy
   };
 }
 
-@Injectable()
 export class RelayPolicyConfig {
   private readonly policy: RelayPolicySnapshot;
 
-  constructor(snapshot?: RelayPolicySnapshot) {
-    this.policy = snapshot ?? loadRelayPolicyFromEnv();
+  /** Pass a snapshot from tests; in Nest use `RelayPolicyModule` factory (loads from `process.env`). */
+  constructor(snapshot: RelayPolicySnapshot) {
+    this.policy = snapshot;
   }
 
   getPolicy(): RelayPolicySnapshot {

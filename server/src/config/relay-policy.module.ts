@@ -1,8 +1,13 @@
 import { Module } from '@nestjs/common';
-import { RelayPolicyConfig } from './relay-policy.config';
+import { loadRelayPolicyFromEnv, RelayPolicyConfig } from './relay-policy.config';
 
 @Module({
-  providers: [RelayPolicyConfig],
+  providers: [
+    {
+      provide: RelayPolicyConfig,
+      useFactory: () => new RelayPolicyConfig(loadRelayPolicyFromEnv()),
+    },
+  ],
   exports: [RelayPolicyConfig],
 })
 export class RelayPolicyModule {}
