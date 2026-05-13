@@ -46,7 +46,7 @@ export function createChatListRowStyles(c: ThemeColors) {
     },
     topRow: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'space-between',
       gap: 8,
     },
@@ -55,6 +55,8 @@ export function createChatListRowStyles(c: ThemeColors) {
       fontWeight: '600',
       color: c.textPrimary,
       flex: 1,
+      paddingTop: 1,
+      includeFontPadding: false,
     },
     metaWrap: {
       flexDirection: 'row',
@@ -65,22 +67,24 @@ export function createChatListRowStyles(c: ThemeColors) {
     metaColumn: {
       marginLeft: 8,
       alignItems: 'flex-end',
-      justifyContent: 'center',
+      justifyContent: 'flex-start',
       minWidth: 42,
     },
     timeLabel: {
       fontSize: typography.dialogTime,
       color: c.textSecondary,
+      includeFontPadding: false,
     },
     preview: {
-      marginTop: 3,
+      marginTop: 2,
       fontSize: typography.dialogPreview,
       color: c.textSecondary,
+      includeFontPadding: false,
     },
     unreadBadge: {
       minWidth: 20,
       height: 20,
-      marginTop: 5,
+      marginTop: 2,
       paddingHorizontal: 6,
       borderRadius: 999,
       alignItems: 'center',
