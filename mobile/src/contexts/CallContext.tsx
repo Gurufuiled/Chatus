@@ -705,7 +705,6 @@ const CallOverlay = React.memo(function CallOverlay({
             </Reanimated.View>
           </GestureDetector>
         ) : null}
-      </View>
       </GestureHandlerRootView>
     </Modal>
   );
