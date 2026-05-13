@@ -65,6 +65,7 @@ import {
   MeBubbleChrome,
   shouldUseDarkDefaultOutgoingBubbleGradient,
 } from './OutgoingBubbleViewportGradient';
+import { CHAT_MSG_GROUP_TIME_GAP_MS } from '../presentation/telegramChatUi';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
@@ -631,6 +632,10 @@ type MessageRowProps = {
   scrollTick: number;
   /** Lowercase trimmed; empty = no highlights. */
   searchHighlightQuery: string;
+  /** Сосед с большим индексом в `messages` (старее по времени при newest-first) — для цепочки в группе. */
+  groupOlderAdjacent: Message | undefined;
+  /** Сосед с меньшим индексом (новее) — для цепочки в группе. */
+  groupNewerAdjacent: Message | undefined;
 };
 
 const AUTHOR_TAG_STYLES: Record<
@@ -666,6 +671,40 @@ function expandHexColor(hexInput: string): string {
   const full =
     h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6);
   return full.length === 6 ? `#${full}` : '#4C7FE5';
+}
+
+/** Смежные сообщения в одной «цепочке» (как Telegram): интервал времени + в группе один отправитель для входящих. */
+function isSameChatusGroupRunAdjacent(
+  olderMsg: Message | undefined,
+  newerMsg: Message | undefined,
+  splitIncomingBySender: boolean,
+  currentUserId: string | null,
+): boolean {
+  if (!olderMsg || !newerMsg) return false;
+  const olderIsMe = olderMsg.sender_id === currentUserId;
+  const newerIsMe = newerMsg.sender_id === currentUserId;
+  if (olderIsMe !== newerIsMe) return false;
+  if (Math.abs(olderMsg.created_at - newerMsg.created_at) > CHAT_MSG_GROUP_TIME_GAP_MS) return false;
+  if (splitIncomingBySender && !newerIsMe) {
+    return olderMsg.sender_id === newerMsg.sender_id;
+  }
+  return true;
+}
+
+/** Ближайший видимый (не удалённый) сосед в списке newest-first: `older` — больший индекс, `newer` — меньший. */
+function getGroupChainNeighbor(
+  messages: Message[],
+  index: number,
+  direction: 'older' | 'newer',
+): Message | undefined {
+  const step = direction === 'older' ? 1 : -1;
+  let i = index + step;
+  while (i >= 0 && i < messages.length) {
+    const m = messages[i];
+    if (m.is_deleted !== 1) return m;
+    i += step;
+  }
+  return undefined;
 }
 
 /** Сервер может отдавать preset (blue|green|…) или произвольный #hex. */
@@ -728,11 +767,21 @@ const MessageRow = React.memo(function MessageRow({
   resolvedScheme,
   scrollTick,
   searchHighlightQuery,
+  groupOlderAdjacent,
+  groupNewerAdjacent,
 }: MessageRowProps) {
   const lastTapAtRef = useRef(0);
   const { colors: themeColors } = useTheme();
   const isMe = item.sender_id === currentUserId;
   const bodyItem = item;
+  const isGroupIncoming = isGroupChat && !isMe;
+  const isGroupedAbove =
+    isGroupIncoming &&
+    isSameChatusGroupRunAdjacent(groupOlderAdjacent, item, true, currentUserId);
+  const isGroupedBelow =
+    isGroupIncoming &&
+    isSameChatusGroupRunAdjacent(item, groupNewerAdjacent, true, currentUserId);
+  const showGroupAvatarImage = isGroupIncoming && bodyItem.is_deleted !== 1 && !isGroupedBelow;
   const useViewportOutgoingGradient =
     isMe &&
     bodyItem.is_deleted !== 1 &&
@@ -750,8 +799,7 @@ const MessageRow = React.memo(function MessageRow({
     () => resolveAvatarUrl(authorPresentation.avatarUrl ?? null),
     [authorPresentation.avatarUrl]
   );
-  const showAuthorName = isGroupChat && !isMe && bodyItem.is_deleted !== 1;
-  const showAuthorAvatar = isGroupChat && !isMe;
+  const showAuthorName = isGroupIncoming && bodyItem.is_deleted !== 1 && !isGroupedAbove;
   const showOwnGroupAuthorTag =
     isGroupChat &&
     isMe &&
@@ -955,7 +1003,7 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.channelLinkOuter,
-              showAuthorAvatar && styles.groupMessageSurface,
+              isGroupIncoming && styles.groupMessageSurface,
             ]}
           >
             {renderIncomingHeader()}
@@ -989,7 +1037,7 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.bubble,
-              showAuthorAvatar && styles.groupMessageSurface,
+              isGroupIncoming && styles.groupMessageSurface,
               styles.bubbleOther,
               {
                 backgroundColor: themeColors.bubbleOther,
@@ -1033,7 +1081,7 @@ const MessageRow = React.memo(function MessageRow({
           fillColor={chatTheme.bubbleMe}
           style={[
             styles.bubble,
-            showAuthorAvatar && styles.groupMessageSurface,
+            isGroupIncoming && styles.groupMessageSurface,
             !useViewportOutgoingGradient ? styles.bubbleMe : null,
           ]}
         >
@@ -1103,8 +1151,8 @@ const MessageRow = React.memo(function MessageRow({
             <View
               style={[
                 styles.repliedMediaBubble,
-                { width: repliedVoiceBubbleWidth, maxWidth: showAuthorAvatar ? '100%' : '82%' },
-                showAuthorAvatar && styles.groupMessageSurface,
+                { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : '82%' },
+                isGroupIncoming && styles.groupMessageSurface,
                 styles.repliedMediaBubbleOther,
                 {
                   backgroundColor: themeColors.bubbleOther,
@@ -1126,8 +1174,8 @@ const MessageRow = React.memo(function MessageRow({
               fillColor={chatTheme.bubbleMe}
               style={[
                 styles.repliedMediaBubble,
-                { width: repliedVoiceBubbleWidth, maxWidth: showAuthorAvatar ? '100%' : '82%' },
-                showAuthorAvatar && styles.groupMessageSurface,
+                { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : '82%' },
+                isGroupIncoming && styles.groupMessageSurface,
                 bubbleRadius.mine,
               ]}
             >
@@ -1141,8 +1189,8 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
-              { width: repliedVoiceBubbleWidth, maxWidth: showAuthorAvatar ? '100%' : '82%' },
-              showAuthorAvatar && styles.groupMessageSurface,
+              { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : '82%' },
+              isGroupIncoming && styles.groupMessageSurface,
               styles.repliedMediaBubbleMe,
               { backgroundColor: chatTheme.bubbleMe },
             ]}
@@ -1158,7 +1206,7 @@ const MessageRow = React.memo(function MessageRow({
         <View
           style={[
             styles.mediaStack,
-            showAuthorAvatar && styles.groupMessageSurface,
+            isGroupIncoming && styles.groupMessageSurface,
           ]}
         >
           {isMe && useViewportOutgoingGradient ? (
@@ -1234,8 +1282,8 @@ const MessageRow = React.memo(function MessageRow({
             <View
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 styles.repliedMediaBubbleOther,
                 {
                   backgroundColor: themeColors.bubbleOther,
@@ -1257,8 +1305,8 @@ const MessageRow = React.memo(function MessageRow({
               fillColor={chatTheme.bubbleMe}
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 bubbleRadius.mine,
                 { overflow: 'hidden' },
               ]}
@@ -1273,8 +1321,8 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
-              showAuthorAvatar && styles.groupMessageSurface,
-              showAuthorAvatar && styles.groupRepliedMediaBubble,
+              isGroupIncoming && styles.groupMessageSurface,
+              isGroupIncoming && styles.groupRepliedMediaBubble,
               styles.repliedMediaBubbleMe,
               { backgroundColor: chatTheme.bubbleMe },
             ]}
@@ -1290,7 +1338,7 @@ const MessageRow = React.memo(function MessageRow({
         <View
           style={[
             styles.mediaStack,
-            showAuthorAvatar && styles.groupMessageSurface,
+            isGroupIncoming && styles.groupMessageSurface,
           ]}
         >
           {videoContent}
@@ -1332,8 +1380,8 @@ const MessageRow = React.memo(function MessageRow({
             <View
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 styles.repliedMediaBubbleOther,
                 {
                   backgroundColor: themeColors.bubbleOther,
@@ -1355,8 +1403,8 @@ const MessageRow = React.memo(function MessageRow({
               fillColor={chatTheme.bubbleMe}
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 bubbleRadius.mine,
               ]}
             >
@@ -1370,8 +1418,8 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
-              showAuthorAvatar && styles.groupMessageSurface,
-              showAuthorAvatar && styles.groupRepliedMediaBubble,
+              isGroupIncoming && styles.groupMessageSurface,
+              isGroupIncoming && styles.groupRepliedMediaBubble,
               styles.repliedMediaBubbleMe,
               { backgroundColor: chatTheme.bubbleMe },
             ]}
@@ -1387,7 +1435,7 @@ const MessageRow = React.memo(function MessageRow({
         <View
           style={[
             styles.mediaStack,
-            showAuthorAvatar && styles.groupMessageSurface,
+            isGroupIncoming && styles.groupMessageSurface,
           ]}
         >
           {albumContent}
@@ -1433,8 +1481,8 @@ const MessageRow = React.memo(function MessageRow({
             <View
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 styles.repliedMediaBubbleOther,
                 {
                   backgroundColor: themeColors.bubbleOther,
@@ -1456,8 +1504,8 @@ const MessageRow = React.memo(function MessageRow({
               fillColor={chatTheme.bubbleMe}
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 bubbleRadius.mine,
               ]}
             >
@@ -1471,8 +1519,8 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
-              showAuthorAvatar && styles.groupMessageSurface,
-              showAuthorAvatar && styles.groupRepliedMediaBubble,
+              isGroupIncoming && styles.groupMessageSurface,
+              isGroupIncoming && styles.groupRepliedMediaBubble,
               styles.repliedMediaBubbleMe,
               { backgroundColor: chatTheme.bubbleMe },
             ]}
@@ -1488,7 +1536,7 @@ const MessageRow = React.memo(function MessageRow({
         <View
           style={[
             styles.mediaStack,
-            showAuthorAvatar && styles.groupMessageSurface,
+            isGroupIncoming && styles.groupMessageSurface,
           ]}
         >
           {isMe && useViewportOutgoingGradient ? (
@@ -1550,8 +1598,8 @@ const MessageRow = React.memo(function MessageRow({
             <View
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 styles.repliedMediaBubbleOther,
                 {
                   backgroundColor: themeColors.bubbleOther,
@@ -1573,8 +1621,8 @@ const MessageRow = React.memo(function MessageRow({
               fillColor={chatTheme.bubbleMe}
               style={[
                 styles.repliedMediaBubble,
-                showAuthorAvatar && styles.groupMessageSurface,
-                showAuthorAvatar && styles.groupRepliedMediaBubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                isGroupIncoming && styles.groupRepliedMediaBubble,
                 bubbleRadius.mine,
               ]}
             >
@@ -1588,8 +1636,8 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
-              showAuthorAvatar && styles.groupMessageSurface,
-              showAuthorAvatar && styles.groupRepliedMediaBubble,
+              isGroupIncoming && styles.groupMessageSurface,
+              isGroupIncoming && styles.groupRepliedMediaBubble,
               styles.repliedMediaBubbleMe,
               { backgroundColor: chatTheme.bubbleMe },
             ]}
@@ -1605,7 +1653,7 @@ const MessageRow = React.memo(function MessageRow({
         <View
           style={[
             styles.mediaStack,
-            showAuthorAvatar && styles.groupMessageSurface,
+            isGroupIncoming && styles.groupMessageSurface,
           ]}
         >
           {isMe && useViewportOutgoingGradient ? (
@@ -1662,7 +1710,7 @@ const MessageRow = React.memo(function MessageRow({
         <View
           style={[
             styles.fileStack,
-            showAuthorAvatar && styles.groupFileStack,
+            isGroupIncoming && styles.groupFileStack,
           ]}
         >
           {replySnippet}
@@ -1692,29 +1740,44 @@ const MessageRow = React.memo(function MessageRow({
     return bubbleCore();
   };
 
+  const handleMessageRowPress = () => {
+    if (selectionMode) {
+      onPressMessage(item.id);
+      return;
+    }
+    if (!allowReactions || item.is_deleted === 1) return;
+    const now = Date.now();
+    if (now - lastTapAtRef.current < 380) {
+      lastTapAtRef.current = 0;
+      onToggleReaction(item.id, DOUBLE_TAP_REACTION_EMOJI);
+      return;
+    }
+    lastTapAtRef.current = now;
+  };
+
+  const handleMessageRowLongPress =
+    selectionMode || item.is_deleted === 1 ? undefined : () => onLongPressMessage(item);
+
+  const bubblePressableProps = {
+    delayLongPress: 220 as const,
+    onPress: handleMessageRowPress,
+    onLongPress: handleMessageRowLongPress,
+  };
+
+  const groupAvatarVisual =
+    authorAvatarUri != null && authorAvatarUri !== '' ? (
+      <Image source={{ uri: authorAvatarUri }} style={styles.groupAvatarImage} contentFit="cover" cachePolicy="disk" />
+    ) : (
+      <View style={[styles.groupAvatarFallback, { backgroundColor: authorColor }]}>
+        <Text style={styles.groupAvatarInitial}>{authorPresentation.initial}</Text>
+      </View>
+    );
+
   const card = (
-    <Pressable
-      delayLongPress={220}
-      onPress={() => {
-        if (selectionMode) {
-          onPressMessage(item.id);
-          return;
-        }
-        if (!allowReactions || item.is_deleted === 1) return;
-        const now = Date.now();
-        if (now - lastTapAtRef.current < 380) {
-          lastTapAtRef.current = 0;
-          onToggleReaction(item.id, DOUBLE_TAP_REACTION_EMOJI);
-          return;
-        }
-        lastTapAtRef.current = now;
-      }}
-      onLongPress={selectionMode ? undefined : () => onLongPressMessage(item)}
-      style={styles.messagePressable}
-    >
+    <View style={styles.messagePressable}>
       <View style={styles.messageRowShell}>
         {selectionMode ? (
-          <View style={styles.selectionIndicatorSlot}>
+          <Pressable onPress={handleMessageRowPress} style={styles.selectionIndicatorSlot}>
             <Reanimated.View style={selectionIndicatorScaleStyle}>
               <View
                 style={[
@@ -1727,52 +1790,68 @@ const MessageRow = React.memo(function MessageRow({
                 </Reanimated.View>
               </View>
             </Reanimated.View>
-          </View>
+          </Pressable>
         ) : null}
 
-        <View style={styles.messageCardColumn}>
-          <View
-            style={[
-              styles.messageWrap,
-              selectionMode && styles.messageWrapSelection,
-              isMe ? styles.messageWrapMe : styles.messageWrapOther,
-            ]}
-          >
-            {showAuthorAvatar ? (
+        {isGroupIncoming ? (
+          <View style={styles.messageCardColumn}>
+            <View
+              style={[
+                styles.messageWrap,
+                selectionMode && styles.messageWrapSelection,
+                isMe ? styles.messageWrapMe : styles.messageWrapOther,
+              ]}
+            >
               <View style={styles.groupIncomingRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Профиль: ${authorName}`}
-                  hitSlop={10}
-                  onPress={() => {
-                    navigation.navigate('ChatProfile', {
-                      chatId,
-                      userId: item.sender_id,
-                    });
-                  }}
-                  style={styles.groupAvatarSlot}
-                >
-                  {authorAvatarUri ? (
-                    <Image source={{ uri: authorAvatarUri }} style={styles.groupAvatarImage} contentFit="cover" cachePolicy="disk" />
-                  ) : (
-                    <View style={[styles.groupAvatarFallback, { backgroundColor: authorColor }]}>
-                      <Text style={styles.groupAvatarInitial}>{authorPresentation.initial}</Text>
-                    </View>
-                  )}
-                </Pressable>
-                <View
-                  ref={(node) => setContentRef(item.id, node)}
-                  collapsable={false}
-                  style={[
-                    styles.messageContentMeasure,
-                    styles.groupIncomingContent,
-                    isHighlighted && styles.messageContentHighlighted,
-                  ]}
-                >
-                  {renderBody()}
+                <View style={styles.groupAvatarSlot}>
+                  {showGroupAvatarImage ? (
+                    selectionMode ? (
+                      <View>{groupAvatarVisual}</View>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          authorName.trim().length > 0 ? `Профиль: ${authorName}` : 'Профиль участника'
+                        }
+                        accessibilityHint="Открывает профиль участника"
+                        hitSlop={10}
+                        onPress={() => {
+                          navigation.navigate('ChatProfile', {
+                            chatId,
+                            userId: item.sender_id,
+                          });
+                        }}
+                      >
+                        {groupAvatarVisual}
+                      </Pressable>
+                    )
+                  ) : null}
                 </View>
+                <Pressable style={{ flex: 1, minWidth: 0 }} {...bubblePressableProps}>
+                  <View
+                    ref={(node) => setContentRef(item.id, node)}
+                    collapsable={false}
+                    style={[
+                      styles.messageContentMeasure,
+                      styles.groupIncomingContent,
+                      isHighlighted && styles.messageContentHighlighted,
+                    ]}
+                  >
+                    {renderBody()}
+                  </View>
+                </Pressable>
               </View>
-            ) : (
+            </View>
+          </View>
+        ) : (
+          <Pressable style={styles.messageCardColumn} {...bubblePressableProps}>
+            <View
+              style={[
+                styles.messageWrap,
+                selectionMode && styles.messageWrapSelection,
+                isMe ? styles.messageWrapMe : styles.messageWrapOther,
+              ]}
+            >
               <View
                 ref={(node) => setContentRef(item.id, node)}
                 collapsable={false}
@@ -1783,11 +1862,11 @@ const MessageRow = React.memo(function MessageRow({
               >
                 {renderBody()}
               </View>
-            )}
-          </View>
-        </View>
+            </View>
+          </Pressable>
+        )}
       </View>
-    </Pressable>
+    </View>
   );
 
   if (!shouldUseOuterReplySwipe) {
@@ -1823,7 +1902,9 @@ const MessageRow = React.memo(function MessageRow({
     prev.onForwardHeaderPress === next.onForwardHeaderPress &&
     prev.onReplyPreviewPress === next.onReplyPreviewPress &&
     prev.onOpenAlbumMedia === next.onOpenAlbumMedia &&
-    prev.onToggleReaction === next.onToggleReaction
+    prev.onToggleReaction === next.onToggleReaction &&
+    prev.groupOlderAdjacent === next.groupOlderAdjacent &&
+    prev.groupNewerAdjacent === next.groupNewerAdjacent
   );
 });
 
@@ -1892,67 +1973,73 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     setAlbumViewerState(null);
   }, []);
 
-  const renderMessageRow = React.useCallback(({ item }: { item: Message }) => (
-    <MessageRow
-      item={item}
-      chatId={chatId}
-      isGroupChat={isGroupChat}
-      currentUserId={currentUserId}
-      repliedMessage={
-        item.reply_to_id ? messageByIdRef.current.get(item.reply_to_id) ?? null : null
-      }
-      selectionMode={selectionMode}
-      isSelected={selectedMessageIdSet.has(item.id)}
-      isHighlighted={highlightedMessageId === item.id}
-      canSwipe={canSwipeReply(item)}
-      onReply={() => onSwipeReply(item)}
-      allowReactions={allowReactions}
-      onToggleReaction={onToggleReaction}
-      onPressMessage={onMessagePress}
-      onLongPressMessage={onMessageLongPress}
-      onOpenAlbumMedia={handleOpenAlbumMedia}
-      onForwardHeaderPress={onForwardHeaderPress}
-      onReplyPreviewPress={onReplyPreviewPress}
-      setContentRef={setContentRef}
-      formatTime={formatTime}
-      getMessageAuthorPresentation={getMessageAuthorPresentation}
-      getMessageAuthorName={getMessageAuthorName}
-      getDeletedPlaceholder={getDeletedPlaceholder}
-      repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
-      chatTheme={chatTheme}
-      navigation={navigation}
-      resolvedScheme={resolvedScheme}
-      scrollTick={scrollTick}
-      searchHighlightQuery={searchHighlightQuery}
-    />
-  ), [
-    allowReactions,
-    canSwipeReply,
-    chatId,
-    chatTheme,
-    currentUserId,
-    formatTime,
-    getMessageAuthorPresentation,
-    getDeletedPlaceholder,
-    getMessageAuthorName,
-    handleOpenAlbumMedia,
-    highlightedMessageId,
-    searchHighlightQuery,
-    isGroupChat,
-    navigation,
-    onMessageLongPress,
-    onForwardHeaderPress,
-    onToggleReaction,
-    onMessagePress,
-    onReplyPreviewPress,
-    onSwipeReply,
-    repliedVoiceBubbleWidth,
-    resolvedScheme,
-    scrollTick,
-    selectionMode,
-    selectedMessageIdSet,
-    setContentRef,
-  ]);
+  const renderMessageRow = React.useCallback(
+    ({ item, index }: { item: Message; index: number }) => (
+      <MessageRow
+        item={item}
+        chatId={chatId}
+        isGroupChat={isGroupChat}
+        currentUserId={currentUserId}
+        repliedMessage={
+          item.reply_to_id ? messageByIdRef.current.get(item.reply_to_id) ?? null : null
+        }
+        selectionMode={selectionMode}
+        isSelected={selectedMessageIdSet.has(item.id)}
+        isHighlighted={highlightedMessageId === item.id}
+        canSwipe={canSwipeReply(item)}
+        onReply={() => onSwipeReply(item)}
+        allowReactions={allowReactions}
+        onToggleReaction={onToggleReaction}
+        onPressMessage={onMessagePress}
+        onLongPressMessage={onMessageLongPress}
+        onOpenAlbumMedia={handleOpenAlbumMedia}
+        onForwardHeaderPress={onForwardHeaderPress}
+        onReplyPreviewPress={onReplyPreviewPress}
+        setContentRef={setContentRef}
+        formatTime={formatTime}
+        getMessageAuthorPresentation={getMessageAuthorPresentation}
+        getMessageAuthorName={getMessageAuthorName}
+        getDeletedPlaceholder={getDeletedPlaceholder}
+        repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
+        chatTheme={chatTheme}
+        navigation={navigation}
+        resolvedScheme={resolvedScheme}
+        scrollTick={scrollTick}
+        searchHighlightQuery={searchHighlightQuery}
+        groupOlderAdjacent={getGroupChainNeighbor(messages, index, 'older')}
+        groupNewerAdjacent={getGroupChainNeighbor(messages, index, 'newer')}
+      />
+    ),
+    [
+      allowReactions,
+      canSwipeReply,
+      chatId,
+      chatTheme,
+      currentUserId,
+      formatTime,
+      getMessageAuthorPresentation,
+      getDeletedPlaceholder,
+      getMessageAuthorName,
+      handleOpenAlbumMedia,
+      highlightedMessageId,
+      searchHighlightQuery,
+      isGroupChat,
+      messages,
+      navigation,
+      onMessageLongPress,
+      onForwardHeaderPress,
+      onToggleReaction,
+      onMessagePress,
+      onReplyPreviewPress,
+      onSwipeReply,
+      repliedVoiceBubbleWidth,
+      resolvedScheme,
+      scrollTick,
+      selectionMode,
+      selectedMessageIdSet,
+      setContentRef,
+    ],
+  );
 
   const keyExtractor = React.useCallback((message: Message) => message.id, []);
 

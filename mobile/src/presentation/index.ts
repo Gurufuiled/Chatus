@@ -1,3 +1,4 @@
+export { getChatListTitle } from './chatTitle';
 export {
   CHAT_LIST_AVATAR_GAP,
   CHAT_LIST_AVATAR_SIZE,

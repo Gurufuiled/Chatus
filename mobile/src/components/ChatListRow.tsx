@@ -7,6 +7,7 @@ import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
 import { createChatListRowStyles } from './chatListRow.styles';
 import { MessageStatusIcon } from './MessageTimeStatus';
+import { getChatListTitle } from '../presentation';
 
 const AVATAR_COLORS = [
   '#5B8DEF',
@@ -80,11 +81,7 @@ export const ChatListRow = React.memo(function ChatListRow({
     }
   }, [lastMessageMetaKey]);
 
-  const title =
-    chat.local_contact_name?.trim() ||
-    chat.peer_display_name ||
-    chat.name ||
-    (chat.chat_type === 'channel' ? 'Канал' : 'Chat');
+  const title = getChatListTitle(chat);
   const preview =
     chat.last_message_preview ||
     (chat.chat_type === 'channel' ? chat.description || 'Канал' : null);

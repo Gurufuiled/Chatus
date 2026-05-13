@@ -46,7 +46,7 @@ import { ChatDao } from '../db';
 import type { ChatsStackParamList } from '../navigation/types';
 import type { ApiUser } from '../services/AuthService';
 import { getUserProfile } from '../services/profileService';
-import { deleteChat } from '../services/chatService';
+import { createOrFindChat, deleteChat } from '../services/chatService';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
 import { messageStore } from '../stores/messageStore';
@@ -59,6 +59,7 @@ import {
 } from './chatProfileScreen.styles';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
+import { findPrivateChatWithPeer, getPrivateChatPeerUserId } from './chatScreen.shared';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -446,11 +447,17 @@ export function ChatProfileScreen() {
     };
   }, [isHeroExpanded, scrollY]);
 
+  const chats = chatStore((s) => s.chats);
+  const privateChatForContact = useMemo(
+    () => findPrivateChatWithPeer(userId, currentUserId),
+    [chats, userId, currentUserId],
+  );
+
   const originalDisplayName = buildDisplayName(
     profile,
     chatTitle ?? chat?.peer_display_name ?? chat?.name ?? ''
   );
-  const localContactName = chat?.local_contact_name?.trim() ?? '';
+  const localContactName = privateChatForContact?.local_contact_name?.trim() ?? '';
   const displayName = localContactName || originalDisplayName;
   const handleLabel = profile?.handle?.trim() ? `@${profile.handle.trim()}` : null;
   const avatarUrl = resolveAvatarUrl(profile?.avatar_url ?? chat?.avatar_url);
@@ -650,25 +657,61 @@ export function ChatProfileScreen() {
       .join(' ')
       .trim();
     const localName = nextName.length > 0 ? nextName : null;
-    const updatedChat = {
-      ...chat,
+
+    let targetPrivate =
+      chat.chat_type === 'private' && getPrivateChatPeerUserId(chat, currentUserId) === userId
+        ? chat
+        : findPrivateChatWithPeer(userId, currentUserId);
+
+    try {
+      if (!targetPrivate) {
+        targetPrivate = await createOrFindChat(userId);
+        chatStore.getState().addOrUpdateChat(targetPrivate);
+      }
+    } catch {
+      setIsEditContactVisible(false);
+      Alert.alert('Не удалось сохранить имя', 'Попробуй еще раз чуть позже.');
+      return;
+    }
+
+    const updatedPrivate = {
+      ...targetPrivate,
       local_contact_name: localName,
     };
 
-    chatStore.getState().updateChat(updatedChat);
+    chatStore.getState().updateChat(updatedPrivate);
     setIsEditContactVisible(false);
     navigation.setParams({ chatTitle: localName ?? originalDisplayName });
 
     try {
       await new ChatDao().update({
-        id: chat.id,
+        id: targetPrivate.id,
         local_contact_name: localName,
       });
     } catch {
-      chatStore.getState().updateChat(chat);
+      chatStore.getState().updateChat(targetPrivate);
       Alert.alert('Не удалось сохранить имя', 'Попробуй еще раз чуть позже.');
+      return;
     }
-  }, [chat, firstNameDraft, lastNameDraft, navigation, originalDisplayName]);
+
+    if (chat.chat_type !== 'private' && chat.id !== targetPrivate.id && chat.local_contact_name) {
+      const clearedGroup = { ...chat, local_contact_name: null };
+      chatStore.getState().updateChat(clearedGroup);
+      try {
+        await new ChatDao().update({ id: chat.id, local_contact_name: null });
+      } catch {
+        /* best-effort */
+      }
+    }
+  }, [
+    chat,
+    currentUserId,
+    firstNameDraft,
+    lastNameDraft,
+    navigation,
+    originalDisplayName,
+    userId,
+  ]);
 
   const openThemePicker = useCallback(() => {
     closeMoreMenu(() => {

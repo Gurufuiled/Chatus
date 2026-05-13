@@ -24,7 +24,6 @@ import Reanimated, {
   FadeInDown,
   FadeOutDown,
   useAnimatedKeyboard,
-  useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -99,6 +98,10 @@ import {
 } from './chatScreen.shared';
 import { formatMediaDuration, formatPlaybackElapsedDuration } from '../utils/mediaDuration';
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
+import {
+  useChatComposerDockPaddingBottom,
+  useChatComposerKeyboardLiftStyles,
+} from '../utils/chatComposerKeyboard';
 import { bubbleRadius } from '../theme/stylePrimitives';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
@@ -408,10 +411,12 @@ export function ChatScreen() {
   const { currentVoiceUri, status: voiceStatus } = useVoicePlayerState();
   const activeVideoNote = useVideoNotePlayer();
   const insets = useSafeAreaInsets();
+  const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
   const listRef = useRef<FlatList<Message> | null>(null);
   const blurTargetRef = useRef<View | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
-  const animatedKeyboard = useAnimatedKeyboard();
+  const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
   const [inputBarHeight, setInputBarHeight] = useState(82);
   const [selectionActionBarHeight, setSelectionActionBarHeight] = useState(104);
   const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null);
@@ -1058,7 +1063,7 @@ export function ChatScreen() {
         Math.max(MENU_HEIGHT, estimateMenuCardHeight(2)) + 10;
 
       const bottomSafety = 28;
-      const composerOffset = inputBarHeight + Math.max(insets.bottom, 12);
+      const composerOffset = inputBarHeight + Math.max(composerDockPaddingBottom, 12);
       const effectiveBottom = SCREEN_HEIGHT - (composerOffset + bottomSafety);
 
       const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
@@ -1109,7 +1114,7 @@ export function ChatScreen() {
         placement,
       });
     });
-  }, [currentUserId, insets.bottom, insets.top, inputBarHeight]);
+  }, [composerDockPaddingBottom, currentUserId, insets.top, inputBarHeight]);
 
   const closeMenu = useCallback(() => {
     Animated.timing(menuAnim, {
@@ -1795,14 +1800,6 @@ export function ChatScreen() {
       setSelectionActionBarHeight(nextHeight);
     }
   }, [selectionActionBarHeight]);
-
-  const inputBarAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }],
-  }));
-
-  const listWrapAnimatedStyle = useAnimatedStyle(() => ({
-    marginBottom: Math.max(animatedKeyboard.height.value, 0),
-  }));
 
   const canSwipeReply = useCallback((message: Message) => {
     if (selectionMode) return false;
@@ -2664,7 +2661,7 @@ export function ChatScreen() {
             <View
               style={[
                 styles.searchMatchCounterPill,
-                { bottom: inputBarHeight + Math.max(insets.bottom, 8) + 6 },
+                { bottom: inputBarHeight + composerDockPaddingBottom + 6 },
               ]}
             >
               <Text style={styles.searchMatchCounterText}>
@@ -2706,7 +2703,7 @@ export function ChatScreen() {
             <View
               style={[
                 styles.selectionDockRow,
-                { paddingBottom: Math.max(insets.bottom, 10) },
+                { paddingBottom: composerDockPaddingBottom + 2 },
               ]}
             >
               <Pressable
@@ -2786,7 +2783,7 @@ export function ChatScreen() {
             animatedStyle={[
               styles.inputBarWrap,
               inputBarAnimatedStyle,
-              { paddingBottom: Math.max(insets.bottom, 8) },
+              { paddingBottom: composerDockPaddingBottom },
             ]}
             onSendText={handleSendText}
             onSendVoice={handleSendVoice}

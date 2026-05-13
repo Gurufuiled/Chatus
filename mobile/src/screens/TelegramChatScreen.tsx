@@ -6,7 +6,11 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import {
+  useChatComposerDockPaddingBottom,
+  useChatComposerKeyboardLiftStyles,
+} from '../utils/chatComposerKeyboard';
+import Reanimated, { useAnimatedKeyboard } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
 import { FileBubble } from '../components/FileBubble';
@@ -94,16 +98,10 @@ function tdlibRawMessageMatchesActiveThread(
 export function TelegramChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList, 'TelegramChat'>>();
   const insets = useSafeAreaInsets();
-  const animatedKeyboard = useAnimatedKeyboard();
+  const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
+  const { dockAnimatedStyle: inputDockAnimatedStyle, listWrapAnimatedStyle: listKeyboardAnimatedStyle } =
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
   const blurTargetRef = useRef<View>(null);
-
-  const inputDockAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }],
-  }));
-
-  const listKeyboardAnimatedStyle = useAnimatedStyle(() => ({
-    marginBottom: Math.max(animatedKeyboard.height.value, 0),
-  }));
   const { colors, resolvedScheme } = useTheme();
   const styles = useMemo(() => createTelegramChatStyles(colors), [colors]);
   const headerChromeStyles = useMemo(
@@ -1534,7 +1532,7 @@ export function TelegramChatScreen() {
           </Reanimated.View>
           <Reanimated.View style={[styles.composerDockAbsolute, inputDockAnimatedStyle]}>
             <View
-              style={[styles.bottomChrome, !telegramSelectionMode ? { paddingBottom: insets.bottom } : null]}
+              style={[styles.bottomChrome, !telegramSelectionMode ? { paddingBottom: composerDockPaddingBottom } : null]}
               onLayout={(e) => {
                 const h = e.nativeEvent.layout.height;
                 if (h > 0) setInputBarHeight(Math.ceil(h));

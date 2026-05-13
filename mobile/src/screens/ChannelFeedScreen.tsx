@@ -14,9 +14,13 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
-import Reanimated, { runOnJS, useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import Reanimated, { runOnJS, useAnimatedKeyboard } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  useChatComposerDockPaddingBottom,
+  useChatComposerKeyboardLiftStyles,
+} from '../utils/chatComposerKeyboard';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { BlurTargetView } from 'expo-blur';
@@ -856,7 +860,9 @@ export function ChannelFeedScreen() {
   const postContentRefs = React.useRef<Record<string, View | null>>({});
   const menuAnim = React.useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
-  const animatedKeyboard = useAnimatedKeyboard();
+  const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
+  const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
   const { channelId, inviteToken: routeInviteToken } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
   const linkResolve = channelStore((state) => state.linkResolveByChannelId[channelId]);
@@ -1674,14 +1680,6 @@ export function ChannelFeedScreen() {
     closeMenu();
   }, [activeMenuMessage, closeMenu, handleReaction]);
 
-  const inputBarAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }],
-  }));
-
-  const listWrapAnimatedStyle = useAnimatedStyle(() => ({
-    marginBottom: Math.max(animatedKeyboard.height.value, 0),
-  }));
-
   const handleInputBarLayout = React.useCallback((event: LayoutChangeEvent) => {
     const nextHeight = Math.ceil(event.nativeEvent.layout.height);
     if (nextHeight > 0 && nextHeight !== inputBarHeight) {
@@ -2156,7 +2154,7 @@ export function ChannelFeedScreen() {
                 ? {
                     paddingBottom:
                       inputBarHeight +
-                      Math.max(insets.bottom, 8) +
+                      composerDockPaddingBottom +
                       12 +
                       (showPublicSubscribePill ? 56 : 0),
                   }
@@ -2175,7 +2173,11 @@ export function ChannelFeedScreen() {
         <View
           style={[
             styles.subscribePillWrap,
-            { bottom: Math.max(insets.bottom, 10) + (detail?.can_post ? inputBarHeight : 0) },
+            {
+              bottom:
+                Math.max(composerDockPaddingBottom, 10) +
+                (detail?.can_post ? inputBarHeight : 0),
+            },
           ]}
           pointerEvents="box-none"
         >
@@ -2203,7 +2205,7 @@ export function ChannelFeedScreen() {
           animatedStyle={[
             styles.inputBarWrap,
             inputBarAnimatedStyle,
-            { paddingBottom: Math.max(insets.bottom, 8) },
+            { paddingBottom: composerDockPaddingBottom },
           ]}
           placeholder="Публикация"
           onSendText={handleSendText}

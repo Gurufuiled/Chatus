@@ -19,6 +19,9 @@ mobile/metro-*.bundle.js
 mobile/metro-*.hbc
 mobile/dist-*/
 
+# Cursor hook: флаг «нужен reviewer» (локально)
+.cursor/hooks/.pending-review
+
 # IDE / OS
 .DS_Store
 *.orig.*

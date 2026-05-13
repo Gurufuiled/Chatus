@@ -1,5 +1,5 @@
 import React from 'react';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createNativeStackNavigator, type NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import {
@@ -34,6 +34,7 @@ import type { ChatsStackParamList } from './types';
 import { resolveAvatarUrl } from '../config';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
+import type { Chat } from '../stores/types';
 import { inboxModeStore } from '../stores/inboxModeStore';
 import { uiStore } from '../stores/uiStore';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
@@ -111,6 +112,112 @@ function ChatHeaderTitle({
           </Text>
         ) : null}
       </View>
+    </View>
+  );
+}
+
+const GROUP_HEADER_MEMBER_CHIP = 28;
+const GROUP_HEADER_MEMBER_OVERLAP = 10;
+const GROUP_HEADER_MEMBERS_MAX = 5;
+
+const MEMBER_CHIP_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
+
+function memberChipColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    h = seed.charCodeAt(i) + ((h << 5) - h);
+  }
+  return MEMBER_CHIP_COLORS[Math.abs(h) % MEMBER_CHIP_COLORS.length] ?? MEMBER_CHIP_COLORS[0];
+}
+
+function getGroupMemberDisplayName(m: NonNullable<Chat['members']>[number]): string {
+  return (
+    m.user?.display_name?.trim() ||
+    m.user?.username?.trim() ||
+    m.user?.handle?.trim() ||
+    m.user_id?.trim() ||
+    'Участник'
+  );
+}
+
+function GroupChatHeaderMembers({
+  members,
+  currentUserId,
+  chatId,
+  navigation,
+  stackStyles,
+  headerBorderColor,
+}: {
+  members: NonNullable<Chat['members']>;
+  currentUserId: string | null;
+  chatId: string;
+  navigation: NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
+  stackStyles: ReturnType<typeof createChatsStackStyles>;
+  headerBorderColor: string;
+}) {
+  const ordered = React.useMemo(() => {
+    const list = members.filter((m) => m.user_id?.trim());
+    const others = list.filter((m) => m.user_id !== currentUserId);
+    const me = list.find((m) => m.user_id === currentUserId);
+    return [...others, ...(me ? [me] : [])];
+  }, [members, currentUserId]);
+
+  if (ordered.length === 0) return null;
+
+  const shown = ordered.slice(0, GROUP_HEADER_MEMBERS_MAX);
+  const overflow = ordered.length - shown.length;
+
+  return (
+    <View style={stackStyles.groupHeaderMembersRow} accessibilityRole="toolbar">
+      {shown.map((m, index) => {
+        const name = getGroupMemberDisplayName(m);
+        const uri = resolveAvatarUrl(m.user?.avatar_url ?? null);
+        const initial = (name.trim()[0] || '?').toUpperCase();
+        return (
+          <Pressable
+            key={m.user_id}
+            accessibilityRole="button"
+            accessibilityLabel={`Профиль: ${name}`}
+            hitSlop={6}
+            onPress={() =>
+              navigation.navigate('ChatProfile', {
+                chatId,
+                userId: m.user_id,
+                chatTitle: name,
+              })
+            }
+            style={[
+              stackStyles.groupHeaderMemberPressable,
+              index > 0 && { marginLeft: -GROUP_HEADER_MEMBER_OVERLAP },
+              { zIndex: shown.length - index },
+            ]}
+          >
+            {uri ? (
+              <Image source={{ uri }} style={[stackStyles.groupHeaderMemberAvatar, { borderColor: headerBorderColor }]} />
+            ) : (
+              <View
+                style={[
+                  stackStyles.groupHeaderMemberAvatar,
+                  stackStyles.groupHeaderMemberAvatarPlaceholder,
+                  { borderColor: headerBorderColor, backgroundColor: memberChipColor(m.user_id) },
+                ]}
+              >
+                <Text style={stackStyles.groupHeaderMemberInitial}>{initial}</Text>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+      {overflow > 0 ? (
+        <View
+          style={[
+            stackStyles.groupHeaderOverflow,
+            { marginLeft: -GROUP_HEADER_MEMBER_OVERLAP, zIndex: 0 },
+          ]}
+        >
+          <Text style={stackStyles.groupHeaderOverflowText}>+{overflow}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -214,21 +321,34 @@ export function ChatsStack() {
             headerBackTitle: 'Назад',
             headerTitleAlign: 'left',
             headerTitle: () => (
-              <Pressable
-                onPress={isGroupChat || peerId ? openProfile : undefined}
-                disabled={!isGroupChat && !peerId}
-                style={({ pressed }) => [
-                  stackStyles.headerTitlePressable,
-                  pressed && (isGroupChat || peerId) && stackStyles.headerPressablePressed,
-                ]}
-              >
-                <ChatHeaderTitle
-                  title={title}
-                  subtitle={subtitle}
-                  avatarUrl={avatarUrl}
-                  stackStyles={stackStyles}
-                />
-              </Pressable>
+              <View style={stackStyles.chatHeaderTitleRoot}>
+                <Pressable
+                  onPress={isGroupChat || peerId ? openProfile : undefined}
+                  disabled={!isGroupChat && !peerId}
+                  style={({ pressed }) => [
+                    stackStyles.headerTitlePressable,
+                    stackStyles.chatHeaderTitlePressableFlex,
+                    pressed && (isGroupChat || peerId) && stackStyles.headerPressablePressed,
+                  ]}
+                >
+                  <ChatHeaderTitle
+                    title={title}
+                    subtitle={subtitle}
+                    avatarUrl={avatarUrl}
+                    stackStyles={stackStyles}
+                  />
+                </Pressable>
+                {isGroupChat && chat?.members && chat.members.length > 0 ? (
+                  <GroupChatHeaderMembers
+                    members={chat.members}
+                    currentUserId={currentUserId}
+                    chatId={route.params.chatId}
+                    navigation={navigation}
+                    stackStyles={stackStyles}
+                    headerBorderColor={colors.toolbar}
+                  />
+                ) : null}
+              </View>
             ),
           };
         }}
@@ -408,7 +528,52 @@ export function ChatsStack() {
 }
 
 function createChatsStackStyles(colors: ThemeColors) {
+  const chip = GROUP_HEADER_MEMBER_CHIP;
+  const chipR = chip / 2;
   return StyleSheet.create({
+  chatHeaderTitleRoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+  },
+  chatHeaderTitlePressableFlex: {
+    flex: 1,
+    minWidth: 0,
+  },
+  groupHeaderMembersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    paddingLeft: 2,
+    maxWidth: '42%',
+  },
+  groupHeaderMemberPressable: {},
+  groupHeaderMemberAvatar: {
+    width: chip,
+    height: chip,
+    borderRadius: chipR,
+    borderWidth: 2,
+  },
+  groupHeaderMemberAvatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupHeaderMemberInitial: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  groupHeaderOverflow: {
+    marginLeft: 2,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  groupHeaderOverflowText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/flag-pending-review.mjs"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node .cursor/hooks/flag-pending-review.mjs"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/stop-invoke-reviewer.mjs",
+        "loop_limit": 8
+      }
+    ]
+  }
+}

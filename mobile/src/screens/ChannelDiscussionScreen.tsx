@@ -27,6 +27,10 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  useChatComposerDockPaddingBottom,
+  useChatComposerKeyboardLiftStyles,
+} from '../utils/chatComposerKeyboard';
 import type { ChatsStackParamList } from '../navigation/types';
 import {
   fetchDiscussionThread,
@@ -729,7 +733,9 @@ export function ChannelDiscussionScreen() {
   const { colors: c } = useTheme();
   const styles = useMemo(() => createChannelDiscussionStyles(c), [c]);
   const insets = useSafeAreaInsets();
-  const animatedKeyboard = useAnimatedKeyboard();
+  const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
+  const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
   const blurTargetRef = React.useRef<View | null>(null);
   const listRef = React.useRef<FlatList<Message> | null>(null);
   const contentRefs = React.useRef<Record<string, View | null>>({});
@@ -1195,9 +1201,6 @@ export function ChannelDiscussionScreen() {
     }
   }, [inputBarHeight]);
 
-  const inputBarAnimatedStyle = useAnimatedStyle(() => ({ transform: [{ translateY: -Math.max(animatedKeyboard.height.value, 0) }] }));
-  const listWrapAnimatedStyle = useAnimatedStyle(() => ({ marginBottom: Math.max(animatedKeyboard.height.value, 0) }));
-
   const renderRow = React.useCallback(({ item }: { item: Message }) => {
     const isMe = item.sender_id === currentUserId;
     const avatarUri = resolveAvatarUrl(item.sender_avatar_url ?? null);
@@ -1278,7 +1281,7 @@ export function ChannelDiscussionScreen() {
             refreshing={loading}
             onRefresh={() => void load()}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={[styles.listContent, { paddingBottom: (thread?.can_comment ? inputBarHeight : 16) + Math.max(insets.bottom, 8) }]}
+              contentContainerStyle={[styles.listContent, { paddingBottom: (thread?.can_comment ? inputBarHeight : 16) + composerDockPaddingBottom }]}
               ListHeaderComponent={<OriginalPostHeader post={thread?.post ?? null} st={styles} />}
               ListEmptyComponent={!loading ? <Text style={styles.emptyText}>Комментариев пока нет</Text> : null}
             />
@@ -1288,7 +1291,7 @@ export function ChannelDiscussionScreen() {
         {thread?.can_comment ? (
           <ChatInputDock
             onLayout={handleInputBarLayout}
-            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle, { paddingBottom: Math.max(insets.bottom, 8) }]}
+            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle, { paddingBottom: composerDockPaddingBottom }]}
             placeholder="Прокомментировать"
             onSendText={handleSendText}
             onSendVoice={handleSendVoice}

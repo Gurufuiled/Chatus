@@ -3,7 +3,7 @@ import { Dimensions } from 'react-native';
 import { lightPalette } from '../theme/palettes';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
-import type { Message } from '../stores/types';
+import type { Chat, Message } from '../stores/types';
 import { ChatWallpaper } from '../theme/chatThemes';
 
 export const EMPTY_MESSAGES: Message[] = [];
@@ -40,6 +40,24 @@ export function getPrivateChatPeerUserId(
   if (!chat || chat.chat_type !== 'private' || !currentUserId) return null;
   const peer = (chat.members ?? []).find((m) => m.user_id && m.user_id !== currentUserId);
   return peer?.user_id ?? null;
+}
+
+/** Личный чат 1:1 с указанным пользователем (если уже есть в сторе). */
+export function findPrivateChatWithPeer(
+  peerUserId: string,
+  currentUserId: string | null,
+): Chat | null {
+  const id = peerUserId.trim();
+  if (!id) return null;
+  const chats = chatStore.getState().chats;
+  return (
+    chats.find(
+      (c) =>
+        c.chat_type === 'private' &&
+        c.members?.some((m) => m.user_id === id) &&
+        (!currentUserId || c.members?.some((m) => m.user_id === currentUserId)),
+    ) ?? null
+  );
 }
 
 export function formatTime(ts: number): string {
@@ -185,7 +203,11 @@ export function getMessageAuthorPresentation(
 
   if (chat?.chat_type === 'group') {
     const member = chat.members?.find((item) => item.user_id === message.sender_id);
+    const peerLocal = message.sender_id?.trim()
+      ? findPrivateChatWithPeer(message.sender_id, currentUserId)?.local_contact_name?.trim() ?? null
+      : null;
     const name =
+      peerLocal ||
       member?.user?.display_name?.trim() ||
       member?.user?.username?.trim() ||
       member?.user?.handle?.trim() ||

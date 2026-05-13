@@ -1,0 +1,19 @@
+---
+description: После правок кода — ревью агентом reviewer
+globs: ["**/*.{ts,tsx,js,jsx,mjs,cjs}", "**/*.rs", "**/*.kt", "**/*.swift"]
+alwaysApply: true
+---
+
+## Обязательно (в этом же чате агента)
+
+После **любого** изменения кода (в т.ч. если хук уже прислал авто follow-up): выполни ревью по `@.cursor/agents/reviewer.md` — вызов Task с `subagent_type` **`reviewer`**, **без** параметра `model` (берётся `composer-2` из агента). Устрани 🔴 и 🟡 или явно зафиксируй отказ.
+
+## Автоматика в проекте
+
+В репозитории **`.cursor/hooks.json`**:
+
+- **`afterFileEdit`** — основной триггер: Cursor вызывает его после правки файла агентом; скрипт ставит флаг.
+- **`postToolUse`** — запасной путь для инструментов, которые меняют файлы, но не проходят через `afterFileEdit`.
+- **`stop`** — при `status: "completed"` и наличии флага подставляет **follow-up** с требованием вызвать Task `reviewer` по `@.cursor/agents/reviewer.md` (без `model` в Task).
+
+Нужны **Node.js** в PATH, **включённые Hooks** в настройках Cursor и **trusted workspace** (иначе проектные хуки могут не выполняться). Файл-флаг `.cursor/hooks/.pending-review` в `.gitignore`. После смены `hooks.json` иногда нужен **перезапуск Cursor**. Проверка: **Hooks** в Output / вкладка Hooks в настройках.

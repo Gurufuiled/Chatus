@@ -17,7 +17,7 @@ import { ChatListActionsMenu, ChatListRow, ChatListSkeleton, type ChatListMenuSt
 import { resolveAvatarUrl } from '../config';
 import { ChatDao } from '../db/dao/ChatDao';
 import type { ChatsStackParamList } from '../navigation/types';
-import { computeChatListMenuPosition } from '../presentation';
+import { computeChatListMenuPosition, getChatListTitle } from '../presentation';
 import type { ApiUser } from '../services/AuthService';
 import { createOrFindChat } from '../services/chatService';
 import { searchChannels } from '../services/channelService';
@@ -48,15 +48,6 @@ function ChatSeparator({ listStyles }: { listStyles: ChatListStyleSet }) {
   return <View style={listStyles.separator} />;
 }
 
-function getChatTitle(chat: Chat) {
-  return (
-    chat.local_contact_name?.trim() ||
-    chat.peer_display_name ||
-    chat.name ||
-    (chat.chat_type === 'channel' ? 'Канал' : 'Chat')
-  );
-}
-
 function isChannelPreviewRequired(channel: Chat, currentUserId: string | null) {
   if (channel.chat_type !== 'channel') return false;
   if (channel.created_by && channel.created_by === currentUserId) return false;
@@ -84,7 +75,7 @@ function sortChatsForList(chats: Chat[]) {
 
 function matchesChatQuery(chat: Chat, normalizedQuery: string) {
   const haystack = [
-    getChatTitle(chat),
+    getChatListTitle(chat),
     chat.last_message_preview,
     chat.description,
     chat.chat_type === 'channel' ? 'канал channel' : null,
@@ -316,7 +307,7 @@ export function ChatListScreen() {
         chatStore.getState().addOrUpdateChat(chat);
         navigation.navigate('Chat', {
           chatId: chat.id,
-          chatTitle: getChatTitle(chat),
+          chatTitle: getChatListTitle(chat),
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

@@ -26,6 +26,7 @@ import { decodeServerWaveform } from '../services/waveformTransport';
 import { normalizeMessageTransport } from '../utils/messageTransport';
 import { buildMessageListPreviewText } from '../utils/messageListPreview';
 import { buildPendingLineSyncRowForText, shouldLinkLineSyncOptimisticEchoToServer } from '../services/lineSyncEventBuilder';
+import { getChatListTitle } from '../presentation';
 
 /** Server message payload shape (MappedMessage from backend) */
 interface ServerMessagePayload {
@@ -375,11 +376,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             chatStore.getState().clearUnread(payload.chat_id);
           } else {
             chatStore.getState().incrementUnread(payload.chat_id);
-            const chatTitle =
-              messageChat?.local_contact_name?.trim() ||
-              messageChat?.peer_display_name ||
-              messageChat?.name ||
-              'Chat';
+            const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
             uiStore.getState().showPushNotification({
               chatId: payload.chat_id,
               title: chatTitle,
@@ -446,11 +443,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               } else {
                 chatStore.getState().incrementUnread(msg.chat_id);
 
-                const chatTitle =
-                  messageChat?.local_contact_name?.trim() ||
-                  messageChat?.peer_display_name ||
-                  messageChat?.name ||
-                  'Chat';
+                const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
 
                 uiStore.getState().showPushNotification({
                   chatId: msg.chat_id,
@@ -584,11 +577,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             } else {
               chatStore.getState().incrementUnread(msg.chat_id);
               
-              const chatTitle = 
-                messageChat?.local_contact_name?.trim() || 
-                messageChat?.peer_display_name || 
-                messageChat?.name || 
-                'Chat';
+              const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
 
               uiStore.getState().showPushNotification({
                 chatId: msg.chat_id,
