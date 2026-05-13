@@ -65,6 +65,13 @@ export function createChatListRowStyles(c: ThemeColors) {
       justifyContent: 'flex-end',
       marginLeft: 8,
     },
+    /** Колонка времени + бейджа (список Telegram и экраны без нижнего ряда превью). */
+    metaColumn: {
+      marginLeft: 8,
+      alignItems: 'flex-end',
+      justifyContent: 'flex-start',
+      minWidth: 42,
+    },
     bottomRow: {
       flexDirection: 'row',
       alignItems: 'center',

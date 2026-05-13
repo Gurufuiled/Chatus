@@ -31,7 +31,7 @@ import {
   View,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Reanimated, { clamp, runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Reanimated, { clamp, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
 import { getWebRtcIceServers, resolveAvatarUrl } from '../config';
@@ -478,7 +478,7 @@ const CallOverlay = React.memo(function CallOverlay({
 
   const uiOpacity = useSharedValue(1);
   useEffect(() => {
-    uiOpacity.value = Reanimated.withTiming(isUiVisible ? 1 : 0, { duration: 250 });
+    uiOpacity.value = withTiming(isUiVisible ? 1 : 0, { duration: 250 });
   }, [isUiVisible, uiOpacity]);
 
   const uiAnimatedStyle = useAnimatedStyle(() => ({
