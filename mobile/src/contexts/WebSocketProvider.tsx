@@ -210,22 +210,79 @@ function scheduleInboundTextLineSyncFromMappedMessage(mapped: Message): void {
     });
 }
 
-function updateChatLastMessage(chatId: string, mapped: Message): void {
-  const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+type UpdateChatLastMessageOutcome = {
+  /** Чата не было в сторе до `refreshChats` (гонка или первое появление в списке). */
+  chatRowWasMissing: boolean;
+};
+
+/**
+ * Обновляет превью последнего сообщения в списке чатов. Если чата ещё нет в сторе — ждём
+ * `refreshChats`, иначе `incrementUnread` в колбэках срабатывает по пустому списку и бейдж не появляется.
+ */
+async function updateChatLastMessage(
+  chatId: string,
+  mapped: Message,
+): Promise<UpdateChatLastMessageOutcome> {
+  let chat = chatStore.getState().chats.find((c) => c.id === chatId);
   if (!chat) {
-    // Chat not in list (e.g. recipient got first message) - refresh chats then fetch messages
-    if (__DEV__) console.log('[updateChatLastMessage] chat not found, refreshChats + fetchMessages', chatId);
-    SyncService.refreshChats()
-      .then(() => SyncService.fetchMessagesForChat(chatId))
-      .catch(() => {});
-    return;
+    if (__DEV__) {
+      console.log('[updateChatLastMessage] chat not in store; await refreshChats', chatId);
+    }
+    try {
+      await SyncService.refreshChats();
+    } catch {
+      // ignore
+    }
+    chat = chatStore.getState().chats.find((c) => c.id === chatId);
+    if (!chat) {
+      void SyncService.fetchMessagesForChat(chatId);
+      if (__DEV__) {
+        console.warn('[updateChatLastMessage] chat still missing after refresh', chatId);
+      }
+      return { chatRowWasMissing: true };
+    }
+    chatStore.getState().updateChat({
+      ...chat,
+      last_message_id: mapped.id,
+      last_message_at: mapped.created_at,
+      last_message_preview: buildMessagePreview(mapped),
+    });
+    void SyncService.fetchMessagesForChat(chatId);
+    return { chatRowWasMissing: true };
   }
+
   chatStore.getState().updateChat({
     ...chat,
     last_message_id: mapped.id,
     last_message_at: mapped.created_at,
     last_message_preview: buildMessagePreview(mapped),
   });
+  return { chatRowWasMissing: false };
+}
+
+/** Не дублируем unread, если после refresh сервер уже отдал ненулевой счётчик. */
+function bumpInboundUnreadAfterLastMessage(
+  chatId: string,
+  mapped: Message,
+  outcome: UpdateChatLastMessageOutcome,
+): void {
+  const currentUserId = authStore.getState().user?.id ?? null;
+  if (!currentUserId || mapped.sender_id === currentUserId) return;
+
+  const selectedChatId = chatStore.getState().selectedChatId;
+  if (selectedChatId === chatId) {
+    chatStore.getState().clearUnread(chatId);
+    return;
+  }
+
+  if (outcome.chatRowWasMissing) {
+    const row = chatStore.getState().chats.find((c) => c.id === chatId);
+    if (row && (row.unread_count ?? 0) === 0) {
+      chatStore.getState().incrementUnread(chatId);
+    }
+  } else {
+    chatStore.getState().incrementUnread(chatId);
+  }
 }
 
 function sendMessageAck(
@@ -364,18 +421,15 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           /* duplicate insert */
         }
         messageStore.getState().prependMessage(payload.chat_id, mapped);
-        updateChatLastMessage(payload.chat_id, mapped);
+        const lastMsgOutcome = await updateChatLastMessage(payload.chat_id, mapped);
 
         const currentUserId = authStore.getState().user?.id ?? null;
         if (currentUserId && payload.from_user_id !== currentUserId) {
           scheduleInboundTextLineSyncFromMappedMessage(mapped);
+          bumpInboundUnreadAfterLastMessage(payload.chat_id, mapped, lastMsgOutcome);
           const messageChat = chatStore.getState().chats.find((item) => item.id === payload.chat_id);
 
-          const selectedChatId = chatStore.getState().selectedChatId;
-          if (selectedChatId === payload.chat_id) {
-            chatStore.getState().clearUnread(payload.chat_id);
-          } else {
-            chatStore.getState().incrementUnread(payload.chat_id);
+          if (chatStore.getState().selectedChatId !== payload.chat_id) {
             const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
             uiStore.getState().showPushNotification({
               chatId: payload.chat_id,
@@ -428,7 +482,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               /* duplicate */
             }
             messageStore.getState().prependMessage(msg.chat_id, mapped);
-            updateChatLastMessage(msg.chat_id, mapped);
+            const lastMsgOutcome = await updateChatLastMessage(msg.chat_id, mapped);
 
             const currentUserId = authStore.getState().user?.id ?? null;
             if (currentUserId && msg.sender_id !== currentUserId) {
@@ -437,12 +491,9 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               const shouldSendReceipts =
                 messageChat?.chat_type === 'private' || messageChat?.chat_type === 'group';
 
-              const selectedChatId = chatStore.getState().selectedChatId;
-              if (selectedChatId === msg.chat_id) {
-                chatStore.getState().clearUnread(msg.chat_id);
-              } else {
-                chatStore.getState().incrementUnread(msg.chat_id);
+              bumpInboundUnreadAfterLastMessage(msg.chat_id, mapped, lastMsgOutcome);
 
+              if (chatStore.getState().selectedChatId !== msg.chat_id) {
                 const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
 
                 uiStore.getState().showPushNotification({
@@ -464,6 +515,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         },
 
         onNewMessage: (payload) => {
+          void (async () => {
           const msg = (payload as { message?: ServerMessagePayload }).message;
           if (!msg?.chat_id || !msg?.id) return;
           // Deduplication and optimistic match in a single pass
@@ -513,7 +565,6 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             console.log('[WS onNewMessage] message from server', { id: msg.id, chat_id: msg.chat_id, content: msg.content, msg_type: msg.msg_type });
           }
           const mapped = mapServerMessageToMessage(msg);
-          const selectedChatId = chatStore.getState().selectedChatId;
           const sending = sendingByTempId ?? oldestSendingCandidate;
           if (sending) {
             const mergedMedia = mergeMediaOnOptimisticAck(sending, mapped);
@@ -559,7 +610,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             if (__DEV__) console.log('[WS onNewMessage] recipient: prependMessage', { chat_id: msg.chat_id, content: mapped.content });
             messageStore.getState().prependMessage(msg.chat_id, mapped);
           }
-          updateChatLastMessage(msg.chat_id, mapped);
+          const lastMsgOutcome = await updateChatLastMessage(msg.chat_id, mapped);
           if (currentUserId && msg.sender_id !== currentUserId) {
             scheduleInboundTextLineSyncFromMappedMessage(mapped);
             const messageChat = chatStore
@@ -572,11 +623,9 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               sendMessageAck(msg.chat_id, msg.id, 'delivered');
             }
 
-            if (selectedChatId === msg.chat_id) {
-              chatStore.getState().clearUnread(msg.chat_id);
-            } else {
-              chatStore.getState().incrementUnread(msg.chat_id);
-              
+            bumpInboundUnreadAfterLastMessage(msg.chat_id, mapped, lastMsgOutcome);
+
+            if (chatStore.getState().selectedChatId !== msg.chat_id) {
               const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
 
               uiStore.getState().showPushNotification({
@@ -588,6 +637,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               });
             }
           }
+          })();
         },
 
         onChannelPost: (payload) => {
