@@ -29,7 +29,7 @@ export type ChatComposerAnimatedKeyboard = {
  * контент сдвигается), для Android этот флаг нужно будет снова включать или определять режим
  * динамически — иначе композер окажется под клавиатурой. Сейчас явно ориентируемся на resize.
  */
-export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = Platform.OS !== 'android';
+export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = true;
 
 /**
  * Стили смещения абсолютного дока и нижнего отступа списка относительно клавиатуры.

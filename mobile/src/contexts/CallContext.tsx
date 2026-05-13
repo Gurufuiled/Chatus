@@ -91,7 +91,7 @@ type PendingOffer = {
 const OUTGOING_TIMEOUT_MS = 30000;
 
 /** Круглый превью своего видео (PiP): размер и отступы при перетаскивании. */
-const VIDEO_PIP_SIZE = 112;
+const VIDEO_PIP_SIZE = 124;
 const VIDEO_PIP_MARGIN = 8;
 
 const CallContext = createContext<CallContextType | null>(null);
@@ -431,6 +431,60 @@ const CallOverlay = React.memo(function CallOverlay({
     pipVideoUrl && callState?.localStreamUrl && pipVideoUrl === callState.localStreamUrl
   );
 
+  const [isUiVisible, setIsUiVisible] = useState(true);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  }, []);
+
+  const resetHideTimer = useCallback(() => {
+    clearHideTimer();
+    if (callState?.phase === 'active' && callState?.callKind === 'video') {
+      hideTimerRef.current = setTimeout(() => setIsUiVisible(false), 3500);
+    }
+  }, [callState?.phase, callState?.callKind, clearHideTimer]);
+
+  const toggleUi = useCallback(() => {
+    if (callState?.phase !== 'active' || callState?.callKind !== 'video') return;
+    setIsUiVisible((visible) => {
+      if (visible) {
+        clearHideTimer();
+        return false;
+      }
+      return true;
+    });
+  }, [callState?.phase, callState?.callKind, clearHideTimer]);
+
+  useEffect(() => {
+    if (callState?.phase === 'active' && callState?.callKind === 'video') {
+      setIsUiVisible(true);
+      resetHideTimer();
+    } else {
+      setIsUiVisible(true);
+      clearHideTimer();
+    }
+    return clearHideTimer;
+  }, [callState?.phase, callState?.callKind, resetHideTimer, clearHideTimer]);
+
+  useEffect(() => {
+    if (isUiVisible && callState?.phase === 'active' && callState?.callKind === 'video') {
+      resetHideTimer();
+    }
+  }, [isUiVisible, callState?.phase, callState?.callKind, resetHideTimer]);
+
+  const uiOpacity = useSharedValue(1);
+  useEffect(() => {
+    uiOpacity.value = Reanimated.withTiming(isUiVisible ? 1 : 0, { duration: 250 });
+  }, [isUiVisible, uiOpacity]);
+
+  const uiAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: uiOpacity.value,
+  }));
+
   const boundsW = useSharedValue(screenWidth);
   const boundsH = useSharedValue(screenHeight);
   const minPipTop = useSharedValue(Math.max(insets.top, 20) + 40);
@@ -531,10 +585,14 @@ const CallOverlay = React.memo(function CallOverlay({
               <View style={styles.backgroundGlowBottom} />
             </>
           )}
-          <View style={[styles.backgroundVeil, showVideoStage && styles.videoVeil]} />
-          <View
+          <Pressable style={StyleSheet.absoluteFill} onPress={toggleUi}>
+            <Reanimated.View style={[styles.backgroundVeil, showVideoStage && styles.videoVeil, uiAnimatedStyle]} />
+          </Pressable>
+          <Reanimated.View
+            pointerEvents={isUiVisible ? 'box-none' : 'none'}
             style={[
               styles.screenContent,
+              uiAnimatedStyle,
               {
                 paddingTop: Math.max(insets.top, 20) + 22,
                 paddingBottom: Math.max(insets.bottom, 20) + 18,
@@ -542,7 +600,7 @@ const CallOverlay = React.memo(function CallOverlay({
               },
             ]}
           >
-            <View style={styles.topMeta}>
+            <View style={styles.topMeta} pointerEvents="box-none">
               <Text style={styles.topMetaText}>
                 {callState?.callKind === 'video' ? 'Видео' : 'Звонок'}
               </Text>
@@ -557,9 +615,9 @@ const CallOverlay = React.memo(function CallOverlay({
                 </View>
               )
             ) : null}
-            <Text style={styles.name}>{callState?.displayName ?? ''}</Text>
-            <Text style={styles.status}>{statusText}</Text>
-            <Text style={styles.phaseCaption}>{phaseCaption}</Text>
+            <Text style={[styles.name, showVideoStage && styles.nameVideo]}>{callState?.displayName ?? ''}</Text>
+            <Text style={[styles.status, showVideoStage && styles.statusVideo]}>{statusText}</Text>
+            {!showVideoStage ? <Text style={styles.phaseCaption}>{phaseCaption}</Text> : null}
           </View>
           <View style={styles.bottomDock}>
             {showUtilityControls ? (
@@ -626,6 +684,7 @@ const CallOverlay = React.memo(function CallOverlay({
               </View>
             )}
           </View>
+          </Reanimated.View>
         </View>
         {showPip ? (
           <GestureDetector gesture={pipGesture}>
@@ -1471,6 +1530,8 @@ const styles = StyleSheet.create({
   videoPipRtc: {
     width: VIDEO_PIP_SIZE,
     height: VIDEO_PIP_SIZE,
+    borderRadius: VIDEO_PIP_SIZE / 2,
+    overflow: 'hidden',
   },
   screenContent: {
     flex: 1,
@@ -1498,8 +1559,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   centerStageVideo: {
+    position: 'absolute',
+    top: Math.max(StatusBar.currentHeight || 20, 20) + 20,
+    left: 20,
+    alignItems: 'flex-start',
     justifyContent: 'flex-start',
-    paddingTop: 64,
   },
   avatar: {
     width: 136,
@@ -1531,12 +1595,29 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
   },
+  nameVideo: {
+    marginTop: 0,
+    fontSize: 20,
+    lineHeight: 24,
+    textAlign: 'left',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
   status: {
     marginTop: 10,
     fontSize: 18,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.88)',
     textAlign: 'center',
+  },
+  statusVideo: {
+    marginTop: 4,
+    fontSize: 14,
+    textAlign: 'left',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   phaseCaption: {
     marginTop: 8,

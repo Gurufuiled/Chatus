@@ -123,38 +123,38 @@ export const ChatListRow = React.memo(function ChatListRow({
           <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
-          {timeLabel || showUnreadBadge ? (
-            <View style={styles.metaColumn}>
-              <View style={styles.metaWrap}>
-                {isLastMessageMine ? (
-                  <MessageStatusIcon
-                    status={lastMessageStatus}
-                    isMe
-                    compact
-                    iconColor={statusIconColor}
-                  />
-                ) : null}
-                {timeLabel ? <Text style={styles.timeLabel}>{timeLabel}</Text> : null}
-              </View>
-              {showUnreadBadge ? (
-                <View
-                  style={[
-                    styles.unreadBadge,
-                    chat.is_muted === 1 && styles.unreadBadgeMuted,
-                    unreadCount > 99 && styles.unreadBadgeWide,
-                  ]}
-                >
-                  <Text style={styles.unreadBadgeText}>{unreadLabel}</Text>
-                </View>
+          {timeLabel || isLastMessageMine ? (
+            <View style={styles.metaWrap}>
+              {isLastMessageMine ? (
+                <MessageStatusIcon
+                  status={lastMessageStatus}
+                  isMe
+                  compact
+                  iconColor={statusIconColor}
+                />
               ) : null}
+              {timeLabel ? <Text style={styles.timeLabel}>{timeLabel}</Text> : null}
             </View>
           ) : null}
         </View>
-        {preview ? (
-          <Text style={styles.preview} numberOfLines={1}>
-            {preview}
-          </Text>
-        ) : null}
+        <View style={styles.bottomRow}>
+          {preview ? (
+            <Text style={styles.preview} numberOfLines={1}>
+              {preview}
+            </Text>
+          ) : <View style={styles.previewPlaceholder} />}
+          {showUnreadBadge ? (
+            <View
+              style={[
+                styles.unreadBadge,
+                chat.is_muted === 1 && styles.unreadBadgeMuted,
+                unreadCount > 99 && styles.unreadBadgeWide,
+              ]}
+            >
+              <Text style={styles.unreadBadgeText}>{unreadLabel}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );

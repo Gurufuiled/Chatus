@@ -139,7 +139,7 @@ export function ChatContextMenuOverlay({
   const reactionBarSurface = isDark
     ? withAlpha(themeColors.inputBackgroundSolid, 0.96)
     : 'rgba(255,255,255,0.96)';
-  const reactionCheckBg = isDark ? withAlpha(themeColors.accent, 0.42) : '#CDE0C0';
+  const reactionCheckBg = isDark ? withAlpha(themeColors.accent, 0.42) : 'rgba(0, 200, 83, 0.28)';
   const menuCardSurface = isDark
     ? withAlpha(themeColors.inputBackgroundSolid, 0.94)
     : 'rgba(255,255,255,0.94)';

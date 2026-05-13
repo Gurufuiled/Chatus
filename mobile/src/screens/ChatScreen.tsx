@@ -74,7 +74,13 @@ import type { Message } from '../stores/types';
 import { useTheme } from '../contexts/ThemeContext';
 import { withAlpha } from '../theme/colors';
 import { buildChatScreenStyles, type ChatScreenStyleSet } from './chatScreen.styles';
-import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatTheme, type ChatThemeId } from '../theme/chatThemes';
+import {
+  DEFAULT_CHAT_THEME_ID,
+  getChatTheme,
+  getOutgoingReactionAccent,
+  type ChatTheme,
+  type ChatThemeId,
+} from '../theme/chatThemes';
 import { makeOptimisticTempMessageId } from '../utils/optimisticTempMessageId';
 import { getGroupLineSyncPeerUserId } from '../utils/groupLineSyncPeer';
 import {
@@ -1996,7 +2002,7 @@ export function ChatScreen() {
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingDurationColor={!isMe ? themeColors.textSecondary : undefined}
@@ -2277,7 +2283,7 @@ export function ChatScreen() {
           header={forwardHeader}
           bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
@@ -2379,7 +2385,7 @@ export function ChatScreen() {
           header={forwardHeader}
           bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
@@ -2476,7 +2482,7 @@ export function ChatScreen() {
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingFileNameColor={!isMe ? themeColors.textPrimary : undefined}

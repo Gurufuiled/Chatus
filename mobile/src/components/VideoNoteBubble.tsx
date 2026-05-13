@@ -1274,6 +1274,15 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         />
       ) : null}
 
+      {/* 
+        On some Android devices (e.g. Samsung), expo-video's VideoView swallows 
+        touches even if pointerEvents='none' or nativeControls={false}.
+        An invisible view over it guarantees the touch bubbles up to the Pressable. 
+      */}
+      {Platform.OS === 'android' ? (
+        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' }} />
+      ) : null}
+
       <Reanimated.View pointerEvents="none" style={[styles.centerBadge, centerBadgeStyle]}>
         <View style={styles.centerPlayGlyph} />
       </Reanimated.View>

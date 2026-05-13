@@ -63,12 +63,13 @@ export function createChatListRowStyles(c: ThemeColors) {
       alignItems: 'center',
       gap: 2,
       justifyContent: 'flex-end',
-    },
-    metaColumn: {
       marginLeft: 8,
-      alignItems: 'flex-end',
-      justifyContent: 'flex-start',
-      minWidth: 42,
+    },
+    bottomRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 2,
     },
     timeLabel: {
       fontSize: typography.dialogTime,
@@ -76,15 +77,18 @@ export function createChatListRowStyles(c: ThemeColors) {
       includeFontPadding: false,
     },
     preview: {
-      marginTop: 2,
+      flex: 1,
       fontSize: typography.dialogPreview,
       color: c.textSecondary,
       includeFontPadding: false,
+      paddingRight: 8,
+    },
+    previewPlaceholder: {
+      flex: 1,
     },
     unreadBadge: {
       minWidth: 20,
       height: 20,
-      marginTop: 2,
       paddingHorizontal: 6,
       borderRadius: 999,
       alignItems: 'center',

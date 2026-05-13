@@ -18,7 +18,11 @@ const CHAT_THEME_IMAGE_ASSETS = {
   meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.jpg'),
   frost: require('../assets/chat-themes/bg_snow_doodle.jpg'),
   sunset: require('../assets/chat-themes/bg_holiday_doodle.jpg'),
-  /** Тёмная тема приложения: «ночной doodle» по умолчанию для «Без темы». */
+  /** Светлая «Без темы»: зелёный градиент + те же doodle-силуэты, что у тёмного варианта. */
+  defaultLightDoodle: require('../assets/chat-themes/bg_default_light_doodle.png'),
+  /** Тёмная «Без темы»: бордово-угольный фон + персиковые линии (референс v3 dark). */
+  defaultDarkDoodle: require('../assets/chat-themes/bg_default_dark_doodle.png'),
+  /** Резерв (старый night); пресеты meadow/frost/sunset не используют. */
   night: require('../assets/chat-themes/bg_night_doodle.png'),
 } as const;
 
@@ -31,6 +35,8 @@ export type ChatTheme = {
   bubbleMeText: string;
   bubbleMeMeta: string;
   bubbleMeAccent: string;
+  /** Исходящие: чипы реакций; если не задан — `bubbleMeAccent`. */
+  reactionMeAccent?: string;
   replyBubbleMe: string;
   replyAccentMe: string;
   replyTextMe: string;
@@ -55,22 +61,27 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
   default: {
     id: 'default',
     name: 'Без темы',
-    bubbleMe: '#3390EC',
+    /** Исходящий бабл — зелёный как в Telegram под дефолтные зелёные обои. */
+    bubbleMe: '#5CBF4F',
     bubbleMeText: '#FFFFFF',
-    bubbleMeMeta: 'rgba(255,255,255,0.8)',
-    bubbleMeAccent: '#2B7DD1',
-    replyBubbleMe: '#6A9EFF',
-    replyAccentMe: '#DFF2A8',
-    replyTextMe: 'rgba(255,255,255,0.88)',
-    replyAuthorMe: '#FFD08A',
-    forwardHeaderMeSub: 'rgba(255,255,255,0.52)',
-    forwardHeaderMe: 'rgba(255,255,255,0.94)',
-    deletedBubbleMe: '#D8E8F9',
-    deletedTextMe: '#426789',
+    bubbleMeMeta: 'rgba(255,255,255,0.88)',
+    /** Акценты внутри бабла (ссылки, волна голоса) — чуть темнее основного зелёного. */
+    bubbleMeAccent: '#3A9A3A',
+    /** Чипы реакций на своих сообщениях — заметнее «кислотный» зелёный. */
+    reactionMeAccent: '#00C853',
+    replyBubbleMe: '#7FD96E',
+    replyAccentMe: '#FFF9C4',
+    replyTextMe: 'rgba(255,255,255,0.92)',
+    replyAuthorMe: '#FFF3B0',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+    forwardHeaderMe: 'rgba(255,255,255,0.96)',
+    deletedBubbleMe: '#C8E6C9',
+    deletedTextMe: '#2E6B32',
     canvasColor: '#E8F4D6',
-    wallpaperKind: 'default-image',
-    wallpaperBase: '#E8F4D6',
-    wallpaperTint: 'rgba(244, 251, 224, 0.14)',
+    wallpaperKind: 'asset-image',
+    wallpaperBase: '#E5F0D5',
+    wallpaperTint: 'rgba(255, 255, 255, 0.06)',
+    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.defaultLightDoodle,
     previewBadge: '×',
   },
   meadow: {
@@ -161,9 +172,9 @@ const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
   deletedTextMe: 'rgba(255,255,255,0.65)',
   canvasColor: '#141820',
   wallpaperKind: 'asset-image',
-  wallpaperBase: '#141820',
-  wallpaperTint: 'rgba(255,255,255,0.035)',
-  wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.night,
+  wallpaperBase: '#1A1218',
+  wallpaperTint: 'rgba(255,255,255,0.03)',
+  wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.defaultDarkDoodle,
   previewBadge: '×',
 };
 
@@ -180,6 +191,11 @@ export function getChatTheme(
     return DEFAULT_CHAT_THEME_DARK;
   }
   return CHAT_THEMES[id];
+}
+
+/** Акцент для чипов реакций на исходящих (если задан `reactionMeAccent`). */
+export function getOutgoingReactionAccent(theme: ChatTheme): string {
+  return theme.reactionMeAccent ?? theme.bubbleMeAccent;
 }
 
 function getChatWallpaperSource(theme: ChatTheme): ImageSourcePropType {

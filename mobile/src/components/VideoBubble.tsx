@@ -477,27 +477,10 @@ export function VideoBubble({
       return;
     }
 
-    let cancelled = false;
-    RNImage.getSize(
-      posterUri,
-      (width, height) => {
-        if (!cancelled) {
-          setDisplaySize(computeDisplaySize(width, height, maxW, maxH));
-        }
-      },
-      () => {
-        if (!cancelled) {
-          setDisplaySize({
-            width: Math.min(maxW, DEFAULT_VIDEO_SIZE.width),
-            height: Math.min(maxH, DEFAULT_VIDEO_SIZE.height),
-          });
-        }
-      }
-    );
-
-    return () => {
-      cancelled = true;
-    };
+    setDisplaySize({
+      width: Math.min(maxW, DEFAULT_VIDEO_SIZE.width),
+      height: Math.min(maxH, DEFAULT_VIDEO_SIZE.height),
+    });
   }, [generatedThumbnailUri, normalizedThumbnailUri, propHeight, propWidth, fixedSize, maxW, maxH]);
 
   useEffect(() => {
@@ -584,7 +567,17 @@ export function VideoBubble({
           ]}
         >
           {posterUri ? (
-            <Image source={{ uri: posterUri }} style={styles.poster} contentFit="cover" cachePolicy="disk" />
+            <Image 
+              source={{ uri: posterUri }} 
+              style={styles.poster} 
+              contentFit="cover" 
+              cachePolicy="memory-disk"
+              onLoad={(e) => {
+                if (!propWidth || !propHeight) {
+                  setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
+                }
+              }}
+            />
           ) : (
             <View style={styles.posterFallback} />
           )}

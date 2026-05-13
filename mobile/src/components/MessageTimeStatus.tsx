@@ -120,11 +120,11 @@ export function MessageStatusIcon({
 
   const resolvedIconColor = getResolvedIconColor(isMe, iconColor);
 
-  if (status === 'delivered' || status === 'read') {
+  if (status === 'read') {
     return <DoubleCheckIcon compact={compact} color={resolvedIconColor} />;
   }
 
-  if (status === 'sent') {
+  if (status === 'sent' || status === 'delivered') {
     return <SingleCheckIcon compact={compact} color={resolvedIconColor} />;
   }
 

@@ -27,7 +27,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import type { Message } from '../stores/types';
 import { bubbleRadius, colors, withAlpha } from '../theme/colors';
-import type { ChatTheme } from '../theme/chatThemes';
+import { getOutgoingReactionAccent, type ChatTheme } from '../theme/chatThemes';
 import { ForwardHeader } from './ForwardHeader';
 import { MessageTimeStatus } from './MessageTimeStatus';
 import {
@@ -1135,7 +1135,7 @@ const MessageRow = React.memo(function MessageRow({
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
@@ -1465,7 +1465,7 @@ const MessageRow = React.memo(function MessageRow({
           header={topHeader}
           bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
@@ -1582,7 +1582,7 @@ const MessageRow = React.memo(function MessageRow({
           header={topHeader}
           bubbleMeColor={meBubbleFill}
           outgoingTextColor={chatTheme.bubbleMeText}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
@@ -1694,7 +1694,7 @@ const MessageRow = React.memo(function MessageRow({
           outgoingTextColor={chatTheme.bubbleMeText}
           outgoingMetaColor={chatTheme.bubbleMeMeta}
           outgoingAccentColor={chatTheme.bubbleMeAccent}
-          reactionAccentColor={chatTheme.bubbleMeAccent}
+          reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
           allowMessageReactions={allowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}

@@ -227,10 +227,25 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
     [avatarUrl, isExpanded, onToggleHeroExpanded]
   );
 
+  const heroCardPaddingTopCollapsed = Math.max(insets.top + 8, 18);
+  const topBarTotalHeight = 50; // minHeight 48 + marginBottom 2
+
   const heroCardStyle = useAnimatedStyle(() => ({
-    paddingTop: interpolate(progress.value, [0, 1], [Math.max(insets.top + 8, 18), insets.top]),
+    paddingTop: 0,
     paddingBottom: interpolate(progress.value, [0, 1], [18, 16]),
-  }), [insets.top]);
+  }), []);
+
+  const topBarStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    top: heroCardPaddingTopCollapsed,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  }), [heroCardPaddingTopCollapsed]);
+
+  const avatarContainerStyle = useAnimatedStyle(() => ({
+    marginTop: interpolate(progress.value, [0, 1], [heroCardPaddingTopCollapsed + topBarTotalHeight, 0]),
+  }), [heroCardPaddingTopCollapsed]);
 
   const heroFrameStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [HERO_COLLAPSED_SIZE, expandedHeroWidth]),
@@ -251,7 +266,36 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
 
   return (
     <Reanimated.View style={[styles.heroCard, heroCardStyle]}>
-      <View style={styles.topBar}>
+      <Reanimated.View style={avatarContainerStyle}>
+        <GestureDetector gesture={heroGesture}>
+          <Pressable
+            onPress={onToggleHeroExpanded}
+            disabled={!avatarUrl}
+            style={({ pressed }) => [
+              styles.avatarPressable,
+              pressed && avatarUrl ? styles.avatarPressablePressed : null,
+            ]}
+          >
+            <Reanimated.View
+              style={[
+                styles.avatarFrame,
+                heroFrameStyle,
+                !avatarUrl ? { backgroundColor: avatarColor } : null,
+              ]}
+            >
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarMedia} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarFallbackText}>{initial}</Text>
+                </View>
+              )}
+            </Reanimated.View>
+          </Pressable>
+        </GestureDetector>
+      </Reanimated.View>
+
+      <Reanimated.View style={[styles.topBar, topBarStyle]}>
         <Pressable
           onPress={onBackPress}
           hitSlop={10}
@@ -266,34 +310,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
         >
           <Text style={styles.editBubbleText}>Изм.</Text>
         </Pressable>
-      </View>
-
-      <GestureDetector gesture={heroGesture}>
-        <Pressable
-          onPress={onToggleHeroExpanded}
-          disabled={!avatarUrl}
-          style={({ pressed }) => [
-            styles.avatarPressable,
-            pressed && avatarUrl ? styles.avatarPressablePressed : null,
-          ]}
-        >
-          <Reanimated.View
-            style={[
-              styles.avatarFrame,
-              heroFrameStyle,
-              !avatarUrl ? { backgroundColor: avatarColor } : null,
-            ]}
-          >
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarMedia} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>{initial}</Text>
-              </View>
-            )}
-          </Reanimated.View>
-        </Pressable>
-      </GestureDetector>
+      </Reanimated.View>
 
       <Reanimated.View style={[styles.heroContent, heroContentStyle]}>
         <Text style={styles.name}>{displayName}</Text>

@@ -163,26 +163,11 @@ export function ImageBubble({
       return;
     }
 
-    let cancelled = false;
-    RNImage.getSize(
-      normalizedUri,
-      (w, h) => {
-        if (!cancelled) {
-          setDisplaySize(computeDisplaySize(w, h, maxW, maxH));
-        }
-      },
-      () => {
-        if (!cancelled) {
-          setDisplaySize({
-            width: Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width),
-            height: Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height),
-          });
-        }
-      }
-    );
-    return () => {
-      cancelled = true;
-    };
+    // Вместо блокирующего RNImage.getSize ждем onLoad от expo-image
+    setDisplaySize({
+      width: Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width),
+      height: Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height),
+    });
   }, [normalizedUri, propWidth, propHeight, fixedSize, maxW, maxH]);
 
   /** Avoid endless gray placeholder if decode callbacks never fire (seen on some Android builds). */
@@ -266,14 +251,17 @@ export function ImageBubble({
           <Image
             source={{ uri: normalizedUri }}
             transition={150}
-            cachePolicy="disk"
+            cachePolicy="memory-disk"
             onError={() => {
               setLoadError(true);
               setImageLoaded(true);
             }}
-            onLoad={() => {
+            onLoad={(e) => {
               if (normalizedUri) {
                 loadedImageUris.add(normalizedUri);
+              }
+              if (!propWidth || !propHeight) {
+                setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
               }
               setLoadError(false);
               setImageLoaded(true);
