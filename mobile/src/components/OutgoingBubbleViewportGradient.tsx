@@ -137,7 +137,5 @@ export function MeBubbleChrome({ active, scrollTick, fillColor, style, children 
 
 const styles = StyleSheet.create({
   foreground: {
-    position: 'relative',
-    zIndex: 1,
   },
 });

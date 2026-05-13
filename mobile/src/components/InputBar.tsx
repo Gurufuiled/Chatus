@@ -77,6 +77,7 @@ export interface InputBarProps {
   replyAuthorName?: string | null;
   onCancelReply?: () => void;
   isScreenFocused?: boolean;
+  onVoiceActiveChange?: (isActive: boolean) => void;
   /**
    * Если задано — голосовые/видео-кружки отключены, а при попытке записи
    * показывается telegram-style всплывающая подсказка с этим текстом.
@@ -234,6 +235,10 @@ export function InputBar({
   const isVoiceRecording = voiceRecordModeState !== 'idle';
   const isVoiceLocked = voiceRecordModeState === 'locked';
   const canUseVideoNotes = onSendVideoNote != null;
+
+  React.useEffect(() => {
+    props.onVoiceActiveChange?.(isVoiceRecording);
+  }, [isVoiceRecording, props.onVoiceActiveChange]);
   const isVideoEntryMode = canUseVideoNotes && recordingEntryModeState === 'video';
   const replyPreviewText = buildReplyPreviewText(replyToMessage);
   const replyPreviewThumbnailUri = getReplyPreviewThumbnailUri(replyToMessage);

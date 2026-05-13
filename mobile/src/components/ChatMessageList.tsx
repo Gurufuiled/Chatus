@@ -800,11 +800,6 @@ const MessageRow = React.memo(function MessageRow({
     [authorPresentation.avatarUrl]
   );
   const showAuthorName = isGroupIncoming && bodyItem.is_deleted !== 1 && !isGroupedAbove;
-  const showOwnGroupAuthorTag =
-    isGroupChat &&
-    isMe &&
-    bodyItem.is_deleted !== 1 &&
-    !!(authorPresentation.tag?.trim() ?? '');
   const inlineReactionList =
     selectionMode || !(bodyItem.reactions?.length ?? 0) ? undefined : bodyItem.reactions;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
@@ -917,43 +912,11 @@ const MessageRow = React.memo(function MessageRow({
     );
   };
 
-  /** В группе для своих сообщений — имя + тег над баблом (если тег задан на сервере). */
-  const renderOwnGroupAuthorLabel = (options?: { forceLightText?: boolean }) => {
-    if (!showOwnGroupAuthorTag) return null;
-    const tag = (authorPresentation.tag ?? '').trim();
-    const tagPalette = getAuthorTagStyle(authorPresentation.tagColor);
-
-    return (
-      <View style={[styles.authorLabelRow, styles.authorLabelRowOutgoingGroup]}>
-        <Text
-          style={[
-            styles.authorLabel,
-            options?.forceLightText ? { color: '#FFFFFF' } : { color: chatTheme.bubbleMeText }
-          ]}
-          numberOfLines={1}
-        >
-          {authorName}
-        </Text>
-        <View style={[styles.authorTagChip, { backgroundColor: tagPalette.bubble }]}>
-          <Text style={[styles.authorTagText, { color: tagPalette.text }]} numberOfLines={1}>
-            {tag}
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
   const renderIncomingHeader = (options?: { suppressForwardHeader?: boolean; forceLightText?: boolean }) => {
     if (isMe) {
       const forward = options?.suppressForwardHeader ? null : renderForwardHeader(options);
-      const ownTagRow = renderOwnGroupAuthorLabel(options);
-      if (!ownTagRow && !forward) return null;
-      return (
-        <>
-          {ownTagRow}
-          {forward}
-        </>
-      );
+      if (!forward) return null;
+      return <>{forward}</>;
     }
 
     const authorLabel = renderAuthorLabel(options);

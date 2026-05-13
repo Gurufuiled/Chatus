@@ -1,6 +1,6 @@
 import React from 'react';
+import { Image } from 'expo-image';
 import {
-  ImageBackground,
   StyleSheet,
   Text,
   View,
@@ -15,12 +15,13 @@ import { useOptionalTheme, useTheme } from '../contexts/ThemeContext';
 const DEFAULT_CHAT_BACKGROUND = require('../../chat/chat-bg.png');
 
 const CHAT_THEME_IMAGE_ASSETS = {
-  meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.jpg'),
-  frost: require('../assets/chat-themes/bg_snow_doodle.jpg'),
-  sunset: require('../assets/chat-themes/bg_holiday_doodle.jpg'),
+  /** 1536² PNG (апскейл + лёгкое зерно против JPEG-полос при cover на экране). */
+  meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.png'),
+  frost: require('../assets/chat-themes/bg_snow_doodle.png'),
+  sunset: require('../assets/chat-themes/bg_holiday_doodle.png'),
   /** Светлая «Без темы»: зелёный градиент + те же doodle-силуэты, что у тёмного варианта. */
   defaultLightDoodle: require('../assets/chat-themes/bg_default_light_doodle.png'),
-  /** Тёмная «Без темы»: бордово-угольный фон + персиковые линии (референс v3 dark). */
+  /** Тёмная «Без темы»: 1536×1024 PNG (раньше был мелкий JPEG → полосы на градиенте). */
   defaultDarkDoodle: require('../assets/chat-themes/bg_default_dark_doodle.png'),
   /** Резерв (старый night); пресеты meadow/frost/sunset не используют. */
   night: require('../assets/chat-themes/bg_night_doodle.png'),
@@ -173,7 +174,7 @@ const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
   canvasColor: '#141820',
   wallpaperKind: 'asset-image',
   wallpaperBase: '#1A1218',
-  wallpaperTint: 'rgba(255,255,255,0.03)',
+  wallpaperTint: 'rgba(255,255,255,0.02)',
   wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.defaultDarkDoodle,
   previewBadge: '×',
 };
@@ -235,15 +236,15 @@ export function ChatWallpaper({
         style,
       ]}
     >
-      <ImageBackground
+      <Image
         source={source}
-        resizeMode="cover"
-        style={styles.wallpaperRoot}
-        imageStyle={[styles.wallpaperImage, rounded && styles.wallpaperRounded]}
-      >
-        <View style={[styles.overlay, { backgroundColor: tintColor }]} />
-        {children}
-      </ImageBackground>
+        contentFit="cover"
+        style={[StyleSheet.absoluteFillObject, styles.wallpaperImage, rounded && styles.wallpaperRounded]}
+        cachePolicy="memory-disk"
+        transition={0}
+      />
+      <View style={[styles.overlay, { backgroundColor: tintColor }]} />
+      {children}
     </View>
   );
 }
@@ -264,12 +265,14 @@ export const ChatThemePreview = React.memo(function ChatThemePreview({
   return (
     <View style={[styles.previewCard, selected && styles.previewCardSelected]}>
       <View style={styles.previewSurface}>
-        <ImageBackground
-          source={source}
-          resizeMode="cover"
-          style={styles.previewInner}
-          imageStyle={styles.previewInnerImage}
-        >
+        <View style={styles.previewInner}>
+          <Image
+            source={source}
+            contentFit="cover"
+            style={[StyleSheet.absoluteFillObject, styles.previewInnerImage]}
+            cachePolicy="memory-disk"
+            transition={0}
+          />
           <View style={[styles.previewOverlay, { backgroundColor: 'rgba(255,255,255,0.01)' }]} />
           <View style={styles.previewGlassChip} />
           <View style={styles.previewBubbleOther} />
@@ -278,7 +281,7 @@ export const ChatThemePreview = React.memo(function ChatThemePreview({
           <View style={styles.previewBadgeWrap}>
             <Text style={styles.previewBadgeText}>{theme.previewBadge}</Text>
           </View>
-        </ImageBackground>
+        </View>
       </View>
     </View>
   );

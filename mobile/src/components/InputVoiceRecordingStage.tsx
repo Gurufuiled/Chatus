@@ -14,6 +14,7 @@ import { VoiceRecorderService } from '../services/VoiceRecorderService';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
 import { withAlpha } from '../theme/stylePrimitives';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const LIVE_WAVEFORM_BAR_COUNT = 28;
 const LIVE_WAVEFORM_FALLBACK = Array(LIVE_WAVEFORM_BAR_COUNT).fill(0.06);
@@ -41,7 +42,7 @@ function VoiceSendIcon() {
   return <Feather name="arrow-up" size={20} color="#FFFFFF" />;
 }
 
-function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean) {
+function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean, bottomInset: number) {
   const bubbleBg = c.composerSurface;
   const bubbleBorder = c.composerBorder;
   const lockBubbleBg = c.inputBackgroundSolid;
@@ -197,11 +198,13 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean) {
       opacity: 0.96,
     },
     recordingBottomCancelBar: {
-      minHeight: 52,
-      borderRadius: 26,
+      minHeight: 52 + Math.max(bottomInset, 12) + 10,
+      paddingBottom: Math.max(bottomInset, 12) + 10,
       backgroundColor: bottomBarBg,
-      borderWidth: 1,
+      borderTopWidth: StyleSheet.hairlineWidth,
       borderColor: bottomBarBorder,
+      marginHorizontal: -10,
+      marginBottom: -(Math.max(bottomInset, 12) + 10),
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
@@ -232,10 +235,11 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
   onSend,
 }: InputVoiceRecordingStageProps) {
   const { colors: themeColors, resolvedScheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const isDark = resolvedScheme === 'dark';
   const styles = useMemo(
-    () => createVoiceRecordingStyles(themeColors, isDark),
-    [themeColors, isDark],
+    () => createVoiceRecordingStyles(themeColors, isDark, insets.bottom),
+    [themeColors, isDark, insets.bottom],
   );
 
   const waveColors = useMemo(

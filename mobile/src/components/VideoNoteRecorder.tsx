@@ -355,14 +355,23 @@ export function VideoNoteRecorder({
           ]}
         >
           <View style={styles.stageWrap}>
-            <View style={styles.circleShell}>
+            <Pressable 
+              style={styles.circleShell}
+              accessibilityRole="button"
+              accessibilityLabel="Отправить видеокружок"
+              onPress={() => {
+                if (isRecording && !isPreparing) {
+                  handleSend();
+                }
+              }}
+            >
               {circleContent}
               {isPreparing ? (
                 <View style={styles.loadingOverlay}>
                   <ActivityIndicator size="large" color="#FFFFFF" />
                 </View>
               ) : null}
-            </View>
+            </Pressable>
 
             <View style={styles.rightRail}>
               <Pressable

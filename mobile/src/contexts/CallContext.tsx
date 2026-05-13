@@ -91,8 +91,9 @@ type PendingOffer = {
 const OUTGOING_TIMEOUT_MS = 30000;
 
 /** Круглый превью своего видео (PiP): размер и отступы при перетаскивании. */
-const VIDEO_PIP_SIZE = 124;
-const VIDEO_PIP_MARGIN = 8;
+const VIDEO_PIP_WIDTH = 110;
+const VIDEO_PIP_HEIGHT = 150;
+const VIDEO_PIP_MARGIN = 16;
 
 const CallContext = createContext<CallContextType | null>(null);
 
@@ -495,14 +496,14 @@ const CallOverlay = React.memo(function CallOverlay({
     minPipTop.value = Math.max(insets.top, 20) + 40;
   }, [screenWidth, screenHeight, insets.top, boundsW, boundsH, minPipTop]);
 
-  const pipLeft = useSharedValue(Math.max(VIDEO_PIP_MARGIN, screenWidth - VIDEO_PIP_SIZE - 18));
+  const pipLeft = useSharedValue(Math.max(VIDEO_PIP_MARGIN, screenWidth - VIDEO_PIP_WIDTH - 18));
   const pipTop = useSharedValue(Math.max(insets.top, 20) + 72);
   const pipDragStartL = useSharedValue(0);
   const pipDragStartT = useSharedValue(0);
 
   useEffect(() => {
-    const maxL = screenWidth - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN;
-    const maxT = screenHeight - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN;
+    const maxL = screenWidth - VIDEO_PIP_WIDTH - VIDEO_PIP_MARGIN;
+    const maxT = screenHeight - VIDEO_PIP_HEIGHT - VIDEO_PIP_MARGIN;
     pipLeft.value = clamp(pipLeft.value, VIDEO_PIP_MARGIN, maxL);
     pipTop.value = clamp(pipTop.value, minPipTop.value, maxT);
   }, [screenWidth, screenHeight, pipLeft, pipTop, minPipTop]);
@@ -523,11 +524,11 @@ const CallOverlay = React.memo(function CallOverlay({
           .onUpdate((e) => {
             const maxL = Math.max(
               VIDEO_PIP_MARGIN,
-              boundsW.value - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN
+              boundsW.value - VIDEO_PIP_WIDTH - VIDEO_PIP_MARGIN
             );
             const maxT = Math.max(
               minPipTop.value + 8,
-              boundsH.value - VIDEO_PIP_SIZE - VIDEO_PIP_MARGIN
+              boundsH.value - VIDEO_PIP_HEIGHT - VIDEO_PIP_MARGIN
             );
             pipLeft.value = clamp(
               pipDragStartL.value + e.translationX,
@@ -551,8 +552,8 @@ const CallOverlay = React.memo(function CallOverlay({
     position: 'absolute' as const,
     left: pipLeft.value,
     top: pipTop.value,
-    width: VIDEO_PIP_SIZE,
-    height: VIDEO_PIP_SIZE,
+    width: VIDEO_PIP_WIDTH,
+    height: VIDEO_PIP_HEIGHT,
     zIndex: 24,
   }));
 
@@ -588,11 +589,10 @@ const CallOverlay = React.memo(function CallOverlay({
           <Pressable style={StyleSheet.absoluteFill} onPress={toggleUi}>
             <Reanimated.View style={[styles.backgroundVeil, showVideoStage && styles.videoVeil, uiAnimatedStyle]} />
           </Pressable>
-          <Reanimated.View
-            pointerEvents={isUiVisible ? 'box-none' : 'none'}
+          <View
+            pointerEvents="box-none"
             style={[
               styles.screenContent,
-              uiAnimatedStyle,
               {
                 paddingTop: Math.max(insets.top, 20) + 22,
                 paddingBottom: Math.max(insets.bottom, 20) + 18,
@@ -600,25 +600,32 @@ const CallOverlay = React.memo(function CallOverlay({
               },
             ]}
           >
-            <View style={styles.topMeta} pointerEvents="box-none">
-              <Text style={styles.topMetaText}>
-                {callState?.callKind === 'video' ? 'Видео' : 'Звонок'}
-              </Text>
-            </View>
-          <View style={[styles.centerStage, showVideoStage && styles.centerStageVideo]}>
-            {!showVideoStage ? (
-              callState?.avatarUrl ? (
-                <Image source={{ uri: callState.avatarUrl }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarFallbackText}>{initial}</Text>
+            <Reanimated.View
+              pointerEvents={isUiVisible ? 'box-none' : 'none'}
+              style={[{ flex: 1 }, uiAnimatedStyle]}
+            >
+              {!showVideoStage && (
+                <View style={styles.topMeta} pointerEvents="box-none">
+                  <Text style={styles.topMetaText}>
+                    {callState?.callKind === 'video' ? 'Видео' : 'Звонок'}
+                  </Text>
                 </View>
-              )
-            ) : null}
-            <Text style={[styles.name, showVideoStage && styles.nameVideo]}>{callState?.displayName ?? ''}</Text>
-            <Text style={[styles.status, showVideoStage && styles.statusVideo]}>{statusText}</Text>
-            {!showVideoStage ? <Text style={styles.phaseCaption}>{phaseCaption}</Text> : null}
-          </View>
+              )}
+              <View style={[styles.centerStage, showVideoStage && styles.centerStageVideo]}>
+                {!showVideoStage ? (
+                  callState?.avatarUrl ? (
+                    <Image source={{ uri: callState.avatarUrl }} style={styles.avatar} />
+                  ) : (
+                    <View style={styles.avatarFallback}>
+                      <Text style={styles.avatarFallbackText}>{initial}</Text>
+                    </View>
+                  )
+                ) : null}
+                <Text style={[styles.name, showVideoStage && styles.nameVideo]}>{callState?.displayName ?? ''}</Text>
+                <Text style={[styles.status, showVideoStage && styles.statusVideo]}>{statusText}</Text>
+                {!showVideoStage ? <Text style={styles.phaseCaption}>{phaseCaption}</Text> : null}
+              </View>
+            </Reanimated.View>
           <View style={styles.bottomDock}>
             {showUtilityControls ? (
               <View style={[styles.controlsRow, { gap: controlsLayout.rowGap }]}>
@@ -684,7 +691,7 @@ const CallOverlay = React.memo(function CallOverlay({
               </View>
             )}
           </View>
-          </Reanimated.View>
+          </View>
         </View>
         {showPip ? (
           <GestureDetector gesture={pipGesture}>
@@ -1502,9 +1509,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#050A12',
   },
   videoPipShell: {
-    width: VIDEO_PIP_SIZE,
-    height: VIDEO_PIP_SIZE,
-    borderRadius: VIDEO_PIP_SIZE / 2,
+    width: VIDEO_PIP_WIDTH,
+    height: VIDEO_PIP_HEIGHT,
+    borderRadius: 12,
     backgroundColor: '#101827',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
@@ -1513,23 +1520,23 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   videoPipClip: {
-    width: VIDEO_PIP_SIZE,
-    height: VIDEO_PIP_SIZE,
-    borderRadius: VIDEO_PIP_SIZE / 2,
+    width: VIDEO_PIP_WIDTH,
+    height: VIDEO_PIP_HEIGHT,
+    borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#101827',
   },
   videoPipRing: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: VIDEO_PIP_SIZE / 2,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.82)',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.2)',
     backgroundColor: 'transparent',
   },
   videoPipRtc: {
-    width: VIDEO_PIP_SIZE,
-    height: VIDEO_PIP_SIZE,
-    borderRadius: VIDEO_PIP_SIZE / 2,
+    width: VIDEO_PIP_WIDTH,
+    height: VIDEO_PIP_HEIGHT,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   screenContent: {
@@ -1558,11 +1565,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   centerStageVideo: {
-    position: 'absolute',
-    top: Math.max(StatusBar.currentHeight || 20, 20) + 20,
-    left: 20,
-    alignItems: 'flex-start',
+    flex: 0,
+    alignItems: 'center',
     justifyContent: 'flex-start',
+    marginTop: 10,
   },
   avatar: {
     width: 136,
@@ -1596,12 +1602,12 @@ const styles = StyleSheet.create({
   },
   nameVideo: {
     marginTop: 0,
-    fontSize: 20,
-    lineHeight: 24,
-    textAlign: 'left',
-    textShadowColor: 'rgba(0,0,0,0.4)',
+    fontSize: 22,
+    lineHeight: 26,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 4,
   },
   status: {
     marginTop: 10,
@@ -1612,11 +1618,11 @@ const styles = StyleSheet.create({
   },
   statusVideo: {
     marginTop: 4,
-    fontSize: 14,
-    textAlign: 'left',
-    textShadowColor: 'rgba(0,0,0,0.4)',
+    fontSize: 16,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 4,
   },
   phaseCaption: {
     marginTop: 8,

@@ -99,8 +99,9 @@ export function TelegramChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList, 'TelegramChat'>>();
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
+  const isVoiceRecordingShared = Reanimated.useSharedValue(false);
   const { dockAnimatedStyle: inputDockAnimatedStyle, listWrapAnimatedStyle: listKeyboardAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), isVoiceRecordingShared);
   const blurTargetRef = useRef<View>(null);
   const { colors, resolvedScheme } = useTheme();
   const styles = useMemo(() => createTelegramChatStyles(colors), [colors]);
@@ -1624,6 +1625,9 @@ export function TelegramChatScreen() {
                   replyToMessage={replyToInputMessage}
                   replyAuthorName={replyAuthorName}
                   onCancelReply={() => setReplyToMessageId(null)}
+                  onVoiceActiveChange={(active) => {
+                    isVoiceRecordingShared.value = active;
+                  }}
                   placeholder="Сообщение"
                 />
               ) : (

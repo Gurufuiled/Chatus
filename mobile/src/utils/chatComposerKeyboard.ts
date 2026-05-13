@@ -35,14 +35,19 @@ export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = true;
  * Стили смещения абсолютного дока и нижнего отступа списка относительно клавиатуры.
  * Логика завязана на {@link CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET}.
  */
-export function useChatComposerKeyboardLiftStyles(animatedKeyboard: ChatComposerAnimatedKeyboard) {
+export function useChatComposerKeyboardLiftStyles(
+  animatedKeyboard: ChatComposerAnimatedKeyboard,
+  isVoiceRecordingShared?: SharedValue<boolean>
+) {
   const dockAnimatedStyle = useAnimatedStyle(() => {
+    if (isVoiceRecordingShared?.value) return { transform: [{ translateY: 0 }] };
     const kb = Math.max(animatedKeyboard.height.value, 0);
     const offset = CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET ? kb : 0;
     return { transform: [{ translateY: -offset }] };
   });
 
   const listWrapAnimatedStyle = useAnimatedStyle(() => {
+    if (isVoiceRecordingShared?.value) return { marginBottom: 0 };
     const kb = Math.max(animatedKeyboard.height.value, 0);
     const margin = CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET ? kb : 0;
     return { marginBottom: margin };
