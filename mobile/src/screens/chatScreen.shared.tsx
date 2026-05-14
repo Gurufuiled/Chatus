@@ -5,6 +5,7 @@ import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { Chat, Message } from '../stores/types';
 import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
+import { getCompositeTextBody, tryParseCompositeMessage } from '../stickers/chatusCompositePayload';
 import { ChatWallpaper } from '../theme/chatThemes';
 
 export const EMPTY_MESSAGES: Message[] = [];
@@ -254,6 +255,8 @@ export function getCopyableContent(message: Message): string {
   if (message.is_deleted) return '';
   if (message.msg_type === 'text') {
     const t = message.content?.trim() ?? '';
+    const composite = t ? tryParseCompositeMessage(t) : null;
+    if (composite) return getCompositeTextBody(composite).trim() || 'Стикер';
     if (isChatusStickerMessage(t)) return 'Стикер';
     return t;
   }

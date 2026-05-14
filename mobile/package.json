@@ -83,6 +83,7 @@
     "@types/react": "~19.2.2",
     "cross-env": "^7.0.3",
     "patch-package": "^8.0.1",
+    "sharp": "^0.34.5",
     "tsx": "^4.21.0",
     "typescript": "~5.9.2"
   },

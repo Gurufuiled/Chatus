@@ -4,9 +4,8 @@ import Reanimated, { FadeIn } from 'react-native-reanimated';
 import { ChatusStickerBubbleRow } from './ChatusStickerBubbleRow';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
-const TELEGRAM_STICKER_SIZE = 176;
-const META_ON_STICKER_COLOR = '#FFFFFF';
-const META_ON_STICKER_ICON = 'rgba(255,255,255,0.95)';
+/** Ближе к Telegram: cap размера «solo» после группировки. */
+const TELEGRAM_STICKER_SIZE = 168;
 
 /** Лёгкое появление исходящего стикера (фаза 4.2 журнала), в духе остального чата. */
 const OUTGOING_STICKER_ENTERING = FadeIn.springify().damping(18).stiffness(240).mass(0.85);
@@ -16,7 +15,7 @@ export type StickerMessageBubbleProps = {
   isMe: boolean;
   time: string;
   status: string;
-  /** Игнорируется в режиме без пузыря (мета рисуется поверх стикера светлым). */
+  /** Игнорируется в режиме без пузыря, если не переданы — нейтральный вторичный цвет меты. */
   timeColor?: string;
   iconColor?: string;
   stickerSize?: number;
@@ -26,7 +25,7 @@ export type StickerMessageBubbleProps = {
   reactions: React.ReactNode | null;
   /**
    * `false` — старый вид внутри пузыря (нужны `renderOutgoingShell` / `renderIncomingShell`).
-   * `true` (по умолчанию) — как в Telegram: только картинка + время в углу, без бабла.
+   * `true` (по умолчанию) — как в Telegram: только картинка + мета под стикером, без бабла.
    */
   bubbleless?: boolean;
   renderOutgoingShell?: (body: React.ReactNode) => React.ReactNode;
@@ -47,8 +46,8 @@ export function StickerMessageBubble({
   isMe,
   time,
   status,
-  timeColor = META_ON_STICKER_COLOR,
-  iconColor = META_ON_STICKER_ICON,
+  timeColor = '#64748B',
+  iconColor = '#64748B',
   stickerSize = TELEGRAM_STICKER_SIZE,
   topHeader,
   replySnippet,
@@ -64,8 +63,8 @@ export function StickerMessageBubble({
       status={status}
       isMe={isMe}
       compact
-      timeColor={bubbleless ? META_ON_STICKER_COLOR : timeColor}
-      iconColor={bubbleless ? META_ON_STICKER_ICON : iconColor}
+      timeColor={timeColor}
+      iconColor={iconColor}
     />
   );
 
@@ -155,7 +154,7 @@ export function StickerMessageBubble({
 
 const styles = StyleSheet.create({
   bubblelessRoot: {
-    maxWidth: 280,
+    maxWidth: 236,
     marginVertical: 2,
   },
   bubblelessRootMe: {

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   Animated,
@@ -66,8 +66,18 @@ import {
   shouldUseDarkDefaultOutgoingBubbleGradient,
 } from './OutgoingBubbleViewportGradient';
 import { CHAT_MSG_GROUP_TIME_GAP_MS } from '../presentation/telegramChatUi';
+import {
+  buildStickerGroupedChatRows,
+  type ChatListRow,
+} from '../presentation/chatStickerListRows';
+import { StickerGroupMessageBubble } from './StickerGroupMessageBubble';
 import { StickerMessageBubble } from './StickerMessageBubble';
-import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
+import { encodeStickerPayload, isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
+import {
+  getCompositeStickerRef,
+  getCompositeTextBody,
+  tryParseCompositeMessage,
+} from '../stickers/chatusCompositePayload';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
@@ -93,7 +103,7 @@ type ChatMessageListProps = {
   highlightedMessageId: string | null;
   /** Lowercase trimmed; empty = no in-bubble search highlights. */
   searchHighlightQuery: string;
-  listRef: React.RefObject<FlatList<Message> | null>;
+  listRef: React.RefObject<FlatList<ChatListRow> | null>;
   listAnimatedStyle: React.ComponentProps<typeof Reanimated.View>['style'];
   contentPaddingTop: number;
   canSwipeReply: (message: Message) => boolean;
@@ -105,7 +115,7 @@ type ChatMessageListProps = {
   onForwardHeaderPress?: (message: Message) => void;
   onReplyPreviewPress?: (messageId: string) => void;
   setContentRef: (messageId: string, node: View | null) => void;
-  onScrollToIndexFailed?: FlatListProps<Message>['onScrollToIndexFailed'];
+  onScrollToIndexFailed?: FlatListProps<ChatListRow>['onScrollToIndexFailed'];
   formatTime: (timestamp: number) => string;
   getMessageAuthorPresentation: (
     message: Message,
@@ -709,6 +719,26 @@ function getGroupChainNeighbor(
   return undefined;
 }
 
+function getNeighborOutsideRun(
+  messages: Message[],
+  startIndex: number,
+  direction: 'older' | 'newer',
+  runIdSet: Set<string>,
+): Message | undefined {
+  const step = direction === 'older' ? 1 : -1;
+  let i = startIndex + step;
+  while (i >= 0 && i < messages.length) {
+    const m = messages[i]!;
+    if (m.is_deleted === 1) {
+      i += step;
+      continue;
+    }
+    if (!runIdSet.has(m.id)) return m;
+    i += step;
+  }
+  return undefined;
+}
+
 /** Сервер может отдавать preset (blue|green|…) или произвольный #hex. */
 function getAuthorTagStyle(color?: string | null) {
   if (!color) return AUTHOR_TAG_STYLES.blue;
@@ -726,6 +756,372 @@ function getAuthorTagStyle(color?: string | null) {
   }
   return AUTHOR_TAG_STYLES.blue;
 }
+
+type StickerGroupMessageRowProps = {
+  stickerGroupMessages: Message[];
+  chatId: string;
+  isGroupChat: boolean;
+  currentUserId: string | null;
+  repliedMessage: Message | null;
+  selectionMode: boolean;
+  isSelected: boolean;
+  isHighlighted: boolean;
+  canSwipe: boolean;
+  onReply: () => void;
+  allowReactions: boolean;
+  onToggleReaction: (messageId: string, emoji: string) => void;
+  onPressMessage: (messageId: string) => void;
+  onLongPressMessage: (message: Message) => void;
+  onForwardHeaderPress?: (message: Message) => void;
+  onReplyPreviewPress?: (messageId: string) => void;
+  setContentRef: (messageId: string, node: View | null) => void;
+  formatTime: (timestamp: number) => string;
+  getMessageAuthorPresentation: (
+    message: Message,
+    chatId: string,
+    currentUserId: string | null
+  ) => MessageAuthorPresentation;
+  getMessageAuthorName: (message: Message, chatId: string, currentUserId: string | null) => string;
+  chatTheme: ChatTheme;
+  navigation: NativeStackNavigationProp<ChatsStackParamList>;
+  resolvedScheme: ResolvedColorScheme;
+  searchHighlightQuery: string;
+  groupOlderAdjacent: Message | undefined;
+  groupNewerAdjacent: Message | undefined;
+};
+
+const StickerGroupMessageRow = React.memo(function StickerGroupMessageRow({
+  stickerGroupMessages,
+  chatId,
+  isGroupChat,
+  currentUserId,
+  repliedMessage,
+  selectionMode,
+  isSelected,
+  isHighlighted,
+  canSwipe,
+  onReply,
+  allowReactions,
+  onToggleReaction,
+  onPressMessage,
+  onLongPressMessage,
+  onForwardHeaderPress,
+  onReplyPreviewPress,
+  setContentRef,
+  formatTime,
+  getMessageAuthorPresentation,
+  getMessageAuthorName,
+  chatTheme,
+  navigation,
+  resolvedScheme,
+  searchHighlightQuery,
+  groupOlderAdjacent,
+  groupNewerAdjacent,
+}: StickerGroupMessageRowProps) {
+  const head = stickerGroupMessages[0]!;
+  const lastTapAtRef = useRef(0);
+  const { colors: themeColors } = useTheme();
+  const isMe = head.sender_id === currentUserId;
+  const isGroupIncoming = isGroupChat && !isMe;
+  const isGroupedAbove =
+    isGroupIncoming &&
+    isSameChatusGroupRunAdjacent(groupOlderAdjacent, head, true, currentUserId);
+  const isGroupedBelow =
+    isGroupIncoming &&
+    isSameChatusGroupRunAdjacent(head, groupNewerAdjacent, true, currentUserId);
+  const showGroupAvatarImage = isGroupIncoming && head.is_deleted !== 1 && !isGroupedBelow;
+  const shouldUseOuterReplySwipe = canSwipe;
+
+  const authorPresentation = useMemo(
+    () => getMessageAuthorPresentation(head, chatId, currentUserId),
+    [chatId, currentUserId, getMessageAuthorPresentation, head],
+  );
+  const authorName = authorPresentation.name;
+  const authorColor = authorPresentation.color;
+  const authorAvatarUri = useMemo(
+    () => resolveAvatarUrl(authorPresentation.avatarUrl ?? null),
+    [authorPresentation.avatarUrl],
+  );
+  const showAuthorName = isGroupIncoming && head.is_deleted !== 1 && !isGroupedAbove;
+  const inlineReactionList =
+    selectionMode || !(head.reactions?.length ?? 0) ? undefined : head.reactions;
+
+  const selectionProgress = useSharedValue(isSelected ? 1 : 0);
+  useEffect(() => {
+    selectionProgress.value = withSpring(isSelected ? 1 : 0, {
+      damping: 16,
+      stiffness: 240,
+      mass: 0.9,
+    });
+  }, [isSelected, selectionProgress]);
+
+  const selectionIndicatorScaleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 0.92 + selectionProgress.value * 0.08 }],
+  }));
+  const selectionCheckStyle = useAnimatedStyle(() => ({
+    opacity: selectionProgress.value,
+    transform: [{ scale: 0.7 + selectionProgress.value * 0.3 }],
+  }));
+
+  const renderReplySnippet = () => {
+    if (!head.reply_to_id) return null;
+    const replyThumbnailUri = getReplyPreviewThumbnailUri(repliedMessage);
+    const author = repliedMessage
+      ? getMessageAuthorName(repliedMessage, chatId, currentUserId)
+      : 'Исходное сообщение';
+    const text = repliedMessage
+      ? buildReplyPreviewText(repliedMessage)
+      : 'Исходное сообщение недоступно';
+    return (
+      <ReplyPreview
+        author={author}
+        text={text}
+        accentColor={isMe ? chatTheme.replyAccentMe : '#F28C28'}
+        backgroundColor={
+          isMe
+            ? chatTheme.replyBubbleMe
+            : resolvedScheme === 'dark'
+              ? 'rgba(255,255,255,0.08)'
+              : '#F2F4D9'
+        }
+        textColor={
+          isMe ? chatTheme.replyTextMe : resolvedScheme === 'dark' ? themeColors.textSecondary : '#5F6368'
+        }
+        authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
+        thumbnailUri={replyThumbnailUri}
+        peerFirstLineId={repliedMessage?.chat_id ?? chatId}
+        searchHighlightQuery={searchHighlightQuery}
+        onPress={onReplyPreviewPress ? () => onReplyPreviewPress(head.reply_to_id!) : undefined}
+      />
+    );
+  };
+
+  const renderForwardHeader = (options?: { compact?: boolean; forceLightText?: boolean }) => {
+    if (!head.forwarded_from_name && !head.forwarded_from_message_id) return null;
+    const rawAvatar = resolveForwardedSenderAvatarUrl(
+      head.forwarded_from_sender_id,
+      head.forwarded_from_chat_id,
+    );
+    const avatarUri = resolveAvatarUrl(rawAvatar);
+    const labelColor = options?.forceLightText
+      ? 'rgba(255,255,255,0.72)'
+      : isMe ? chatTheme.forwardHeaderMeSub : withAlpha(themeColors.accent, 0.72);
+    const titleColor = options?.forceLightText
+      ? '#FFFFFF'
+      : isMe ? chatTheme.forwardHeaderMe : themeColors.accent;
+    return (
+      <ForwardHeader
+        isMe={isMe}
+        name={head.forwarded_from_name}
+        avatarUri={avatarUri ?? undefined}
+        labelColor={labelColor}
+        titleColor={titleColor}
+        compact={options?.compact}
+        onPress={onForwardHeaderPress ? () => onForwardHeaderPress(head) : undefined}
+      />
+    );
+  };
+
+  const renderAuthorLabel = (options?: { forceLightText?: boolean }) => {
+    if (!showAuthorName) return null;
+    const tag = authorPresentation.tag?.trim() || null;
+    const tagPalette = getAuthorTagStyle(authorPresentation.tagColor);
+    return (
+      <View style={styles.authorLabelRow}>
+        <Text
+          style={[styles.authorLabel, options?.forceLightText ? { color: '#FFFFFF' } : { color: authorColor }]}
+          numberOfLines={1}
+        >
+          {authorName}
+        </Text>
+        {tag ? (
+          <View style={[styles.authorTagChip, { backgroundColor: tagPalette.bubble }]}>
+            <Text style={[styles.authorTagText, { color: tagPalette.text }]} numberOfLines={1}>
+              {tag}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderIncomingHeader = (options?: { suppressForwardHeader?: boolean; forceLightText?: boolean }) => {
+    if (isMe) {
+      const forward = options?.suppressForwardHeader ? null : renderForwardHeader(options);
+      if (!forward) return null;
+      return <>{forward}</>;
+    }
+    const authorLabel = renderAuthorLabel(options);
+    const forwardHeader = options?.suppressForwardHeader ? null : renderForwardHeader(options);
+    if (!authorLabel && !forwardHeader) return null;
+    return (
+      <>
+        {authorLabel}
+        {forwardHeader}
+      </>
+    );
+  };
+
+  const reactionsNode =
+    inlineReactionList?.length ? (
+      <MessageReactionInline
+        reactions={inlineReactionList}
+        isMe={isMe}
+        allowReactions={allowReactions}
+        onToggle={(emoji) => onToggleReaction(head.id, emoji)}
+        accentColor={chatTheme.bubbleMeAccent}
+      />
+    ) : null;
+
+  const handleMessageRowPress = () => {
+    if (selectionMode) {
+      onPressMessage(head.id);
+      return;
+    }
+    if (!allowReactions || head.is_deleted === 1) return;
+    const now = Date.now();
+    if (now - lastTapAtRef.current < 380) {
+      lastTapAtRef.current = 0;
+      onToggleReaction(head.id, DOUBLE_TAP_REACTION_EMOJI);
+      return;
+    }
+    lastTapAtRef.current = now;
+  };
+
+  const handleMessageRowLongPress =
+    selectionMode || head.is_deleted === 1 ? undefined : () => onLongPressMessage(head);
+
+  const bubblePressableProps = {
+    delayLongPress: 220 as const,
+    onPress: handleMessageRowPress,
+    onLongPress: handleMessageRowLongPress,
+  };
+
+  const groupAvatarVisual =
+    authorAvatarUri != null && authorAvatarUri !== '' ? (
+      <Image source={{ uri: authorAvatarUri }} style={styles.groupAvatarImage} contentFit="cover" cachePolicy="disk" />
+    ) : (
+      <View style={[styles.groupAvatarFallback, { backgroundColor: authorColor }]}>
+        <Text style={styles.groupAvatarInitial}>{authorPresentation.initial}</Text>
+      </View>
+    );
+
+  const stickerBody = (
+    <StickerGroupMessageBubble
+      messages={stickerGroupMessages}
+      isMe={isMe}
+      time={formatTime(head.created_at)}
+      status={head.status}
+      timeColor={themeColors.textSecondary}
+      iconColor={themeColors.textSecondary}
+      topHeader={renderIncomingHeader()}
+      replySnippet={renderReplySnippet()}
+      reactions={reactionsNode}
+    />
+  );
+
+  const card = (
+    <View style={styles.messagePressable}>
+      <View style={styles.messageRowShell}>
+        {selectionMode ? (
+          <Pressable onPress={handleMessageRowPress} style={styles.selectionIndicatorSlot}>
+            <Reanimated.View style={selectionIndicatorScaleStyle}>
+              <View
+                style={[
+                  styles.selectionIndicator,
+                  isSelected ? styles.selectionIndicatorActive : styles.selectionIndicatorIdle,
+                ]}
+              >
+                <Reanimated.View style={selectionCheckStyle}>
+                  <Feather name="check" size={14} color="#FFFFFF" />
+                </Reanimated.View>
+              </View>
+            </Reanimated.View>
+          </Pressable>
+        ) : null}
+
+        {isGroupIncoming ? (
+          <View style={styles.messageCardColumn}>
+            <View
+              style={[
+                styles.messageWrap,
+                selectionMode && styles.messageWrapSelection,
+                isMe ? styles.messageWrapMe : styles.messageWrapOther,
+              ]}
+            >
+              <View style={styles.groupIncomingRow}>
+                <View style={styles.groupAvatarSlot}>
+                  {showGroupAvatarImage ? (
+                    selectionMode ? (
+                      <View>{groupAvatarVisual}</View>
+                    ) : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          authorName.trim().length > 0 ? `Профиль: ${authorName}` : 'Профиль участника'
+                        }
+                        accessibilityHint="Открывает профиль участника"
+                        hitSlop={10}
+                        onPress={() => {
+                          navigation.navigate('ChatProfile', {
+                            chatId,
+                            userId: head.sender_id,
+                          });
+                        }}
+                      >
+                        {groupAvatarVisual}
+                      </Pressable>
+                    )
+                  ) : null}
+                </View>
+                <Pressable style={{ flex: 1, minWidth: 0 }} {...bubblePressableProps}>
+                  <View
+                    ref={(node) => setContentRef(head.id, node)}
+                    collapsable={false}
+                    style={[
+                      styles.messageContentMeasure,
+                      styles.groupIncomingContent,
+                      isHighlighted && styles.messageContentHighlighted,
+                    ]}
+                  >
+                    {stickerBody}
+                  </View>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <Pressable style={styles.messageCardColumn} {...bubblePressableProps}>
+            <View
+              style={[
+                styles.messageWrap,
+                selectionMode && styles.messageWrapSelection,
+                isMe ? styles.messageWrapMe : styles.messageWrapOther,
+              ]}
+            >
+              <View
+                ref={(node) => setContentRef(head.id, node)}
+                collapsable={false}
+                style={[styles.messageContentMeasure, isHighlighted && styles.messageContentHighlighted]}
+              >
+                {stickerBody}
+              </View>
+            </View>
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+
+  if (!shouldUseOuterReplySwipe) {
+    return card;
+  }
+  return (
+    <ReplySwipeWrapper enabled onReply={onReply}>
+      {card}
+    </ReplySwipeWrapper>
+  );
+});
 
 function effectiveBodyItemForRow(p: MessageRowProps): Message {
   return p.item;
@@ -961,6 +1357,98 @@ const MessageRow = React.memo(function MessageRow({
     if (bodyItem.msg_type === 'text') {
       const rawContent = bodyItem.content ?? '';
       const displayContent = rawContent.trim() || ' ';
+      const compositeParsed = tryParseCompositeMessage(rawContent);
+      const compositeStickerRef =
+        compositeParsed ? getCompositeStickerRef(compositeParsed) : null;
+      if (compositeParsed && compositeStickerRef) {
+        const stickerRef = compositeStickerRef;
+        const textBody = getCompositeTextBody(compositeParsed);
+        const stickerJson = encodeStickerPayload(stickerRef);
+        const stickerMetaColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
+          const stickerIconColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
+          const reactionsNode =
+            inlineReactionList?.length ? (
+              <MessageReactionInline
+                reactions={inlineReactionList}
+                isMe={isMe}
+                allowReactions={allowReactions}
+                onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
+                accentColor={chatTheme.bubbleMeAccent}
+              />
+            ) : null;
+
+          const stickerBlock = (
+            <StickerMessageBubble
+              rawContent={stickerJson}
+              isMe={isMe}
+              time={formatTime(bodyItem.created_at)}
+              status={bodyItem.status}
+              timeColor={stickerMetaColor}
+              iconColor={stickerIconColor}
+              topHeader={null}
+              replySnippet={null}
+              reactions={null}
+              playOutgoingEntrance={false}
+            />
+          );
+
+          if (!isMe) {
+            return (
+              <View style={{ alignSelf: 'flex-start', maxWidth: '82%' }}>
+                {renderIncomingHeader()}
+                {renderReplySnippet()}
+                <View
+                  style={[
+                    styles.bubble,
+                    isGroupIncoming && styles.groupMessageSurface,
+                    styles.bubbleOther,
+                    {
+                      backgroundColor: themeColors.bubbleOther,
+                      borderColor: themeColors.bubbleOtherBorder,
+                    },
+                  ]}
+                >
+                  <View style={styles.bubbleContentRow}>
+                    {renderTextWithSearchHighlight(textBody.trim() || ' ', searchHighlightQuery, [
+                      styles.textContent,
+                      { color: themeColors.textPrimary },
+                    ])}
+                  </View>
+                </View>
+                {stickerBlock}
+                {reactionsNode}
+              </View>
+            );
+          }
+
+          return (
+            <View style={{ alignSelf: 'flex-end', maxWidth: '82%' }}>
+              {renderIncomingHeader()}
+              {renderReplySnippet()}
+              <MeBubbleChrome
+                active={useViewportOutgoingGradient}
+                scrollTick={scrollTick}
+                fillColor={chatTheme.bubbleMe}
+                style={[
+                  styles.bubble,
+                  isGroupIncoming && styles.groupMessageSurface,
+                  !useViewportOutgoingGradient ? styles.bubbleMe : null,
+                ]}
+              >
+                <View style={styles.bubbleContentRow}>
+                  {renderTextWithSearchHighlight(textBody.trim() || ' ', searchHighlightQuery, [
+                    styles.textContent,
+                    styles.textContentMe,
+                    { color: chatTheme.bubbleMeText },
+                  ])}
+                </View>
+              </MeBubbleChrome>
+              {stickerBlock}
+              {reactionsNode}
+            </View>
+          );
+      }
+
       const channelLink = parseChannelDeepLinkFromMessage(rawContent);
 
       if (channelLink) {
@@ -1015,6 +1503,8 @@ const MessageRow = React.memo(function MessageRow({
             isMe={isMe}
             time={formatTime(bodyItem.created_at)}
             status={bodyItem.status}
+            timeColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
+            iconColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
             topHeader={renderIncomingHeader()}
             replySnippet={renderReplySnippet()}
             reactions={reactionsNode}
@@ -1953,6 +2443,19 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   const messageByIdRef = React.useRef(messageByIdInternal);
   messageByIdRef.current = messageByIdInternal;
 
+  const messageIndexById = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (let i = 0; i < messages.length; i += 1) {
+      m.set(messages[i]!.id, i);
+    }
+    return m;
+  }, [messages]);
+
+  const listRows = React.useMemo(
+    () => buildStickerGroupedChatRows(messages, currentUserId),
+    [messages, currentUserId],
+  );
+
   const [albumViewerState, setAlbumViewerState] = React.useState<AlbumViewerState>(null);
   const handleOpenAlbumMedia = React.useCallback((media: VisualMediaItem[], index: number) => {
     setAlbumViewerState({
@@ -1964,43 +2467,98 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     setAlbumViewerState(null);
   }, []);
 
-  const renderMessageRow = React.useCallback(
-    ({ item, index }: { item: Message; index: number }) => (
-      <MessageRow
-        item={item}
-        chatId={chatId}
-        isGroupChat={isGroupChat}
-        currentUserId={currentUserId}
-        repliedMessage={
-          item.reply_to_id ? messageByIdRef.current.get(item.reply_to_id) ?? null : null
-        }
-        selectionMode={selectionMode}
-        isSelected={selectedMessageIdSet.has(item.id)}
-        isHighlighted={highlightedMessageId === item.id}
-        canSwipe={canSwipeReply(item)}
-        onReply={() => onSwipeReply(item)}
-        allowReactions={allowReactions}
-        onToggleReaction={onToggleReaction}
-        onPressMessage={onMessagePress}
-        onLongPressMessage={onMessageLongPress}
-        onOpenAlbumMedia={handleOpenAlbumMedia}
-        onForwardHeaderPress={onForwardHeaderPress}
-        onReplyPreviewPress={onReplyPreviewPress}
-        setContentRef={setContentRef}
-        formatTime={formatTime}
-        getMessageAuthorPresentation={getMessageAuthorPresentation}
-        getMessageAuthorName={getMessageAuthorName}
-        getDeletedPlaceholder={getDeletedPlaceholder}
-        repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
-        chatTheme={chatTheme}
-        navigation={navigation}
-        resolvedScheme={resolvedScheme}
-        scrollTick={scrollTick}
-        searchHighlightQuery={searchHighlightQuery}
-        groupOlderAdjacent={getGroupChainNeighbor(messages, index, 'older')}
-        groupNewerAdjacent={getGroupChainNeighbor(messages, index, 'newer')}
-      />
-    ),
+  const renderChatRow = React.useCallback(
+    ({ item, index }: { item: ChatListRow; index: number }) => {
+      if ('kind' in item && item.kind === 'sticker_group') {
+        const head = item.messages[0]!;
+        const runIds = new Set(item.messages.map((x) => x.id));
+        const headIdx = messageIndexById.get(head.id) ?? -1;
+        const tail = item.messages[item.messages.length - 1]!;
+        const tailIdx = messageIndexById.get(tail.id) ?? headIdx;
+        const groupOlder =
+          headIdx >= 0 ? getNeighborOutsideRun(messages, tailIdx, 'older', runIds) : undefined;
+        const groupNewer =
+          headIdx >= 0 ? getNeighborOutsideRun(messages, headIdx, 'newer', runIds) : undefined;
+        const isSelected = item.messages.some((m) => selectedMessageIdSet.has(m.id));
+        const isHighlighted = item.messages.some((m) => m.id === highlightedMessageId);
+        return (
+          <StickerGroupMessageRow
+            stickerGroupMessages={item.messages}
+            chatId={chatId}
+            isGroupChat={isGroupChat}
+            currentUserId={currentUserId}
+            repliedMessage={
+              head.reply_to_id ? messageByIdRef.current.get(head.reply_to_id) ?? null : null
+            }
+            selectionMode={selectionMode}
+            isSelected={isSelected}
+            isHighlighted={isHighlighted}
+            canSwipe={canSwipeReply(head)}
+            onReply={() => onSwipeReply(head)}
+            allowReactions={allowReactions}
+            onToggleReaction={onToggleReaction}
+            onPressMessage={onMessagePress}
+            onLongPressMessage={onMessageLongPress}
+            onForwardHeaderPress={onForwardHeaderPress}
+            onReplyPreviewPress={onReplyPreviewPress}
+            setContentRef={setContentRef}
+            formatTime={formatTime}
+            getMessageAuthorPresentation={getMessageAuthorPresentation}
+            getMessageAuthorName={getMessageAuthorName}
+            chatTheme={chatTheme}
+            navigation={navigation}
+            resolvedScheme={resolvedScheme}
+            searchHighlightQuery={searchHighlightQuery}
+            groupOlderAdjacent={groupOlder}
+            groupNewerAdjacent={groupNewer}
+          />
+        );
+      }
+      const msg = item as Message;
+      const msgIdxResolved = messageIndexById.get(msg.id);
+      const msgIdx =
+        msgIdxResolved !== undefined ? msgIdxResolved : messages.findIndex((m) => m.id === msg.id);
+      const groupOlder =
+        msgIdx >= 0 ? getGroupChainNeighbor(messages, msgIdx, 'older') : undefined;
+      const groupNewer =
+        msgIdx >= 0 ? getGroupChainNeighbor(messages, msgIdx, 'newer') : undefined;
+      return (
+        <MessageRow
+          item={msg}
+          chatId={chatId}
+          isGroupChat={isGroupChat}
+          currentUserId={currentUserId}
+          repliedMessage={
+            msg.reply_to_id ? messageByIdRef.current.get(msg.reply_to_id) ?? null : null
+          }
+          selectionMode={selectionMode}
+          isSelected={selectedMessageIdSet.has(msg.id)}
+          isHighlighted={highlightedMessageId === msg.id}
+          canSwipe={canSwipeReply(msg)}
+          onReply={() => onSwipeReply(msg)}
+          allowReactions={allowReactions}
+          onToggleReaction={onToggleReaction}
+          onPressMessage={onMessagePress}
+          onLongPressMessage={onMessageLongPress}
+          onOpenAlbumMedia={handleOpenAlbumMedia}
+          onForwardHeaderPress={onForwardHeaderPress}
+          onReplyPreviewPress={onReplyPreviewPress}
+          setContentRef={setContentRef}
+          formatTime={formatTime}
+          getMessageAuthorPresentation={getMessageAuthorPresentation}
+          getMessageAuthorName={getMessageAuthorName}
+          getDeletedPlaceholder={getDeletedPlaceholder}
+          repliedVoiceBubbleWidth={repliedVoiceBubbleWidth}
+          chatTheme={chatTheme}
+          navigation={navigation}
+          resolvedScheme={resolvedScheme}
+          scrollTick={scrollTick}
+          searchHighlightQuery={searchHighlightQuery}
+          groupOlderAdjacent={groupOlder}
+          groupNewerAdjacent={groupNewer}
+        />
+      );
+    },
     [
       allowReactions,
       canSwipeReply,
@@ -2013,6 +2571,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       getMessageAuthorName,
       handleOpenAlbumMedia,
       highlightedMessageId,
+      messageIndexById,
       searchHighlightQuery,
       isGroupChat,
       messages,
@@ -2032,14 +2591,19 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     ],
   );
 
-  const keyExtractor = React.useCallback((message: Message) => message.id, []);
+  const keyExtractor = React.useCallback((row: ChatListRow) => {
+    if ('kind' in row && row.kind === 'sticker_group') {
+      return `sg:${row.messages.map((m) => m.id).join(':')}`;
+    }
+    return (row as Message).id;
+  }, []);
 
   return (
     <Reanimated.View style={[styles.listWrap, listAnimatedStyle]}>
       <FlatList
         ref={listRef}
         key={chatId}
-        data={messages}
+        data={listRows}
         keyExtractor={keyExtractor}
         inverted
         onScroll={bumpScrollTickThrottled}
@@ -2057,7 +2621,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
           styles.listContent,
           { paddingTop: contentPaddingTop },
         ]}
-        renderItem={renderMessageRow}
+        renderItem={renderChatRow}
       />
       <AlbumMediaViewerModal state={albumViewerState} onClose={handleCloseAlbumViewer} />
     </Reanimated.View>

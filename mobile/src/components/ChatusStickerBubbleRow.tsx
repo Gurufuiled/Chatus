@@ -3,15 +3,15 @@ import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { resolveStickerImageOrPlaceholder, tryDecodeStickerPayload } from '../stickers/chatusStickerCatalog';
 
-const DEFAULT_ROW_SIZE = 104;
-const DEFAULT_TELEGRAM_SIZE = 176;
+const DEFAULT_ROW_SIZE = 96;
+const DEFAULT_TELEGRAM_SIZE = 168;
 
 type Props = {
   rawContent: string;
-  /** Время + статус (в режиме `telegram` — в «таблетке» поверх картинки). */
+  /** Время + статус: в `telegram` — под картинкой; в `row` — справа в строке. */
   children: React.ReactNode;
   stickerSize?: number;
-  /** `row` — картинка и мета в одну строку (пузырь). `telegram` — без бабла, время в углу на стикере. */
+  /** `row` — картинка и мета в одну строку (пузырь). `telegram` — без бабла, время под стикером (как в Telegram). */
   layout?: 'row' | 'telegram';
   isMe?: boolean;
 };
@@ -45,15 +45,13 @@ export function ChatusStickerBubbleRow({
           style={{ width: size, height: size }}
           contentFit="contain"
           cachePolicy="memory-disk"
+          recyclingKey={`${ref.packId}:${ref.stickerId}`}
         />
-        <View
-          style={[
-            styles.telegramMetaPill,
-            isMe ? styles.telegramMetaPillMe : styles.telegramMetaPillOther,
-          ]}
-        >
-          {children}
-        </View>
+        {children ? (
+          <View style={[styles.telegramMetaRow, isMe ? styles.telegramMetaRowMe : styles.telegramMetaRowOther]}>
+            {children}
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -65,6 +63,7 @@ export function ChatusStickerBubbleRow({
         style={{ width: size, height: size }}
         contentFit="contain"
         cachePolicy="memory-disk"
+        recyclingKey={`${ref.packId}:${ref.stickerId}`}
       />
       {children}
     </View>
@@ -88,20 +87,18 @@ const styles = StyleSheet.create({
   telegramWrapOther: {
     alignSelf: 'flex-start',
   },
-  telegramMetaPill: {
-    position: 'absolute',
-    right: 6,
-    bottom: 6,
+  telegramMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    marginTop: 4,
+    paddingRight: 2,
   },
-  telegramMetaPillMe: {
-    backgroundColor: 'rgba(74, 149, 107, 0.92)',
+  telegramMetaRowMe: {
+    justifyContent: 'flex-end',
+    alignSelf: 'flex-end',
   },
-  telegramMetaPillOther: {
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
+  telegramMetaRowOther: {
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-start',
   },
 });

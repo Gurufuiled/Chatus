@@ -74,6 +74,13 @@ import {
   type ChatusStickerRef,
 } from '../stickers/chatusStickerCatalog';
 import {
+  encodeTextWithStickerTail,
+  getCompositeStickerRef,
+  getCompositeTextBody,
+  tryParseCompositeMessage,
+} from '../stickers/chatusCompositePayload';
+import { getChatListRowIndexForMessageId, type ChatListRow } from '../presentation/chatStickerListRows';
+import {
   useVoicePlayerControls,
   useVoicePlayerState,
 } from '../contexts/VoicePlayerContext';
@@ -379,9 +386,16 @@ function MediaAlbumBubble({
 
 function buildForwardPreview(message: Message): string {
   switch (message.msg_type) {
-    case 'text':
+    case 'text': {
+      const raw = message.content?.trim();
+      const composite = raw ? tryParseCompositeMessage(raw) : null;
+      if (composite) {
+        const t = getCompositeTextBody(composite).trim();
+        return t.length ? `${t} · стикер` : 'Текст и стикер';
+      }
       if (isChatusStickerMessage(message.content)) return 'Стикер';
       return message.content?.trim() || 'Сообщение';
+    }
     case 'image':
       return message.content?.trim() || 'Фото';
     case 'video':
@@ -426,7 +440,7 @@ export function ChatScreen() {
   const activeVideoNote = useVideoNotePlayer();
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
-  const listRef = useRef<FlatList<Message> | null>(null);
+  const listRef = useRef<FlatList<ChatListRow> | null>(null);
   const blurTargetRef = useRef<View | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
@@ -920,7 +934,7 @@ export function ChatScreen() {
       missingMessageTitle?: string,
       options?: { persistHighlight?: boolean },
     ) => {
-      const targetIndex = messages.findIndex((message) => message.id === messageId);
+      const targetIndex = getChatListRowIndexForMessageId(messages, currentUserId, messageId);
       if (targetIndex < 0) {
         Alert.alert(
           missingMessageTitle ?? 'Сообщение не найдено',
@@ -951,7 +965,7 @@ export function ChatScreen() {
 
       return true;
     },
-    [messages],
+    [messages, currentUserId],
   );
 
   const handlePinnedBannerPress = useCallback(() => {
@@ -1202,7 +1216,15 @@ export function ChatScreen() {
   );
 
   const handleSendSticker = useCallback(
-    (ref: ChatusStickerRef, meta?: { composerWasEmpty: boolean }) => {
+    (
+      ref: ChatusStickerRef,
+      meta?: { composerWasEmpty: boolean; leadingText?: string },
+    ) => {
+      const tail = meta?.leadingText?.trim();
+      if (tail) {
+        handleSendText(encodeTextWithStickerTail(tail, ref), { chatusStickerSoloSend: false });
+        return;
+      }
       handleSendText(encodeStickerPayload(ref), {
         chatusStickerSoloSend: meta?.composerWasEmpty === true,
       });
@@ -1880,6 +1902,7 @@ export function ChatScreen() {
           authorColor={isMe ? chatTheme.replyAuthorMe : resolvedScheme === 'dark' ? themeColors.accent : '#D1782B'}
           thumbnailUri={getReplyPreviewThumbnailUri(replied)}
           peerFirstLineId={replied?.chat_id ?? chatId}
+          searchHighlightQuery={isSearchMode ? normalizedSearchQuery : ''}
         />
       );
     };
@@ -1933,6 +1956,64 @@ export function ChatScreen() {
     if (item.msg_type === 'text') {
       const rawContent = item.content ?? '';
       const displayContent = rawContent.trim() || ' ';
+      const compositeParsed = tryParseCompositeMessage(rawContent);
+      if (compositeParsed) {
+        const stickerRef = getCompositeStickerRef(compositeParsed);
+        const textBody = getCompositeTextBody(compositeParsed);
+        if (stickerRef) {
+          const stickerJson = encodeStickerPayload(stickerRef);
+          const stickerMetaColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
+          const stickerIconColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
+          const stickerBlock = (
+            <StickerMessageBubble
+              rawContent={stickerJson}
+              isMe={isMe}
+              time={formatTime(item.created_at)}
+              status={item.status}
+              timeColor={stickerMetaColor}
+              iconColor={stickerIconColor}
+              topHeader={null}
+              replySnippet={null}
+              reactions={null}
+              stickerSize={140}
+            />
+          );
+          if (!isMe) {
+            return (
+              <View style={fixedWidthStyle}>
+                {renderForwardHeader()}
+                {renderReplySnippet()}
+                <View style={[styles.bubble, styles.bubbleOther]}>
+                  <View style={styles.bubbleContentRow}>
+                    <Text style={[styles.textContent]}>{textBody.trim() || ' '}</Text>
+                  </View>
+                </View>
+                {stickerBlock}
+              </View>
+            );
+          }
+          return (
+            <View style={fixedWidthStyle}>
+              {renderForwardHeader()}
+              {renderReplySnippet()}
+              <MeBubbleChrome
+                active={usePreviewOutgoingGradient}
+                scrollTick={menuPreviewScrollTick}
+                fillColor={chatTheme.bubbleMe}
+                style={[styles.bubble, !usePreviewOutgoingGradient ? styles.bubbleMe : null]}
+              >
+                <View style={styles.bubbleContentRow}>
+                  <Text style={[styles.textContent, styles.textContentMe, { color: chatTheme.bubbleMeText }]}>
+                    {textBody.trim() || ' '}
+                  </Text>
+                </View>
+              </MeBubbleChrome>
+              {stickerBlock}
+            </View>
+          );
+        }
+      }
+
       const channelLink = parseChannelDeepLinkFromMessage(rawContent);
 
       if (channelLink) {
@@ -1963,6 +2044,8 @@ export function ChatScreen() {
               isMe={isMe}
               time={formatTime(item.created_at)}
               status={item.status}
+              timeColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
+              iconColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
               topHeader={renderForwardHeader()}
               replySnippet={renderReplySnippet()}
               reactions={null}
@@ -2552,8 +2635,10 @@ export function ChatScreen() {
     chatTheme,
     currentUserId,
     handleForwardHeaderPress,
+    isSearchMode,
     messageById,
     navigation,
+    normalizedSearchQuery,
     resolvedScheme,
     styles,
     themeColors,

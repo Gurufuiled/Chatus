@@ -6,8 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dir = path.join(__dirname, '../assets/stickers/friend');
 const stems = fs
   .readdirSync(dir)
-  .filter((f) => f.endsWith('.png'))
-  .map((f) => f.slice(0, -4))
+  .filter((f) => f.toLowerCase().endsWith('.webp'))
+  .map((f) => f.slice(0, -5))
   .sort();
 
 const legacy = {
@@ -25,9 +25,9 @@ const legacy = {
   plant: '263a-fe0f',
 };
 
-const req = stems.map((s) => `    '${s}': require('../../assets/stickers/friend/${s}.png'),`).join('\n');
+const req = stems.map((s) => `    '${s}': require('../../assets/stickers/friend/${s}.webp'),`).join('\n');
 const leg = Object.entries(legacy)
-  .map(([k, s]) => `    '${k}': require('../../assets/stickers/friend/${s}.png'),`)
+  .map(([k, s]) => `    '${k}': require('../../assets/stickers/friend/${s}.webp'),`)
   .join('\n');
 
 const out = path.join(__dirname, '../src/stickers/_generatedFriendStickerRequires.txt');

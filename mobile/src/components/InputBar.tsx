@@ -108,7 +108,10 @@ export interface InputBarProps {
   /** LineSync line id (chat id) — peer-first превью ответа в композере. */
   replyPeerFirstLineId?: string | null;
   /** Стикеры (набор знакомого): кнопка слева от микрофона + шторка; отправка через `encodeStickerPayload` в родителе. */
-  onSendSticker?: (ref: ChatusStickerRef, meta?: { composerWasEmpty: boolean }) => void;
+  onSendSticker?: (
+    ref: ChatusStickerRef,
+    meta?: { composerWasEmpty: boolean; leadingText?: string },
+  ) => void;
 }
 
 type AttachmentAction = {
@@ -447,13 +450,19 @@ export function InputBar({
 
   const handleStickerPick = useCallback(
     (ref: ChatusStickerRef) => {
-      // Фаза 3.3: отправка стикера не трогает черновик текста — очистка текста/медиа только в handleSend.
-      // Ответ в композере сбрасываем как при обычной отправке.
-      onCancelReply?.();
-      const composerWasEmpty = inputText.trim().length === 0;
-      onSendSticker?.(ref, { composerWasEmpty });
+      const trimmed = inputText.trim();
+      const leadingText = trimmed.length > 0 ? trimmed : undefined;
+      if (!leadingText) {
+        onCancelReply?.();
+      }
+      if (leadingText) {
+        setInputText('');
+        onInputChange?.('');
+      }
+      const composerWasEmpty = !leadingText;
+      onSendSticker?.(ref, { composerWasEmpty, leadingText });
     },
-    [inputText, onCancelReply, onSendSticker],
+    [inputText, onCancelReply, onInputChange, onSendSticker],
   );
 
   const handleEmojiPick = useCallback(
@@ -1636,6 +1645,21 @@ export function InputBar({
           )
         ) : null}
         </View>
+
+        {onSendSticker ? (
+          <StickerPackSheet
+            variant="dock"
+            visible={stickerSheetVisible}
+            onClose={() => {
+              setStickerSheetVisible(false);
+              setStickerSheetBootTab(null);
+            }}
+            onPickSticker={handleStickerPick}
+            onPickEmoji={handleEmojiPick}
+            initialTopTabSnapshot={stickerSheetBootTab}
+            onInitialTopTabSnapshotConsumed={handleStickerBootTabConsumed}
+          />
+        ) : null}
       </View>
 
       <InputAttachmentSheet
@@ -1665,19 +1689,6 @@ export function InputBar({
         />
       )}
 
-      {onSendSticker ? (
-        <StickerPackSheet
-          visible={stickerSheetVisible}
-          onClose={() => {
-            setStickerSheetVisible(false);
-            setStickerSheetBootTab(null);
-          }}
-          onPickSticker={handleStickerPick}
-          onPickEmoji={handleEmojiPick}
-          initialTopTabSnapshot={stickerSheetBootTab}
-          onInitialTopTabSnapshotConsumed={handleStickerBootTabConsumed}
-        />
-      ) : null}
     </>
   );
 }

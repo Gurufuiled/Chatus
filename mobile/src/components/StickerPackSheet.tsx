@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  BackHandler,
   FlatList,
   Modal,
   NativeScrollEvent,
@@ -36,12 +37,19 @@ import {
 } from '../stickers/stickerPanelPreferences';
 import { loadRecentStickers, rememberStickerPick } from '../stickers/recentStickersStorage';
 import { filterStickerSheetItems } from '../stickers/stickerSheetSearch';
+import {
+  computeEmojiCellSize,
+  computeStickerMainWidth,
+  computeStickerThumbSize,
+  STICKER_PANEL_EMOJI_COLUMNS,
+  STICKER_PANEL_PACK_RAIL_W,
+  STICKER_PANEL_STICKER_GAP,
+} from '../stickers/stickerPanelLayout';
 import { formatStickerPanelTopTabAnnouncement } from '../stickers/stickerPanelA11y';
 import { hapticStickerPreviewReveal, hapticStickerSheetDismiss, hapticStickerSheetPick } from '../stickers/chatusStickerPanelHaptics';
 
-const THUMB = 72;
-const EMOJI_COLUMNS = 8;
-const PACK_RAIL_W = 52;
+const EMOJI_COLUMNS = STICKER_PANEL_EMOJI_COLUMNS;
+const PACK_RAIL_W = STICKER_PANEL_PACK_RAIL_W;
 /** Крупное превью по long-press (фаза 4.3 журнала), в пределах ширины экрана. */
 const STICKER_PREVIEW_IMAGE = 216;
 
@@ -70,6 +78,10 @@ type Props = {
   /** Вставка эмодзи в поле ввода (вкладка Emoji). */
   onPickEmoji?: (emoji: string) => void;
   /**
+   * `dock` — панель в потоке под полем ввода (как Telegram). `modal` — полноэкранный Modal с затемнением.
+   */
+  variant?: 'modal' | 'dock';
+  /**
    * При открытии панели: верхняя вкладка (например long-press смайла → `emoji`).
    * Сбрасывается через `onInitialTopTabSnapshotConsumed` после применения.
    */
@@ -82,6 +94,7 @@ export function StickerPackSheet({
   onClose,
   onPickSticker,
   onPickEmoji,
+  variant = 'modal',
   initialTopTabSnapshot = null,
   onInitialTopTabSnapshotConsumed,
 }: Props) {
@@ -93,6 +106,12 @@ export function StickerPackSheet({
     () => Math.max(220, Math.min(Math.round(windowHeight * 0.36), sheetMax - 84)),
     [sheetMax, windowHeight],
   );
+  const stickerMainWidth = useMemo(
+    () => computeStickerMainWidth(windowWidth, StyleSheet.hairlineWidth),
+    [windowWidth],
+  );
+  const stickerThumbSize = useMemo(() => computeStickerThumbSize(stickerMainWidth), [stickerMainWidth]);
+  const emojiCellSize = useMemo(() => computeEmojiCellSize(windowWidth), [windowWidth]);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [recentStickers, setRecentStickers] = useState<StickerSheetItem[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<'recent' | 'catalog'>('recent');
@@ -152,6 +171,15 @@ export function StickerPackSheet({
       }),
     [],
   );
+
+  useEffect(() => {
+    if (variant !== 'dock' || !visible) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleSheetRequestClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [variant, visible, handleSheetRequestClose]);
 
   const catalogSheetItems = useMemo(() => getStickerSheetItemsForPack(activePackId), [activePackId]);
 
@@ -287,7 +315,7 @@ export function StickerPackSheet({
       if (clampedNext !== prev) {
         userAdjustedTopTabRef.current = true;
       }
-      commitTopTab(next, true);
+      commitTopTab(clampedNext, true);
       if (clampedNext !== prev) {
         announceStickerPanelTopTab(clampedNext);
       }
@@ -306,9 +334,8 @@ export function StickerPackSheet({
         setRecentStickers(rows.map((r) => ({ packId: r.packId, stickerId: r.stickerId })));
       });
       onPickSticker(ref);
-      onClose();
     },
-    [onClose, onPickSticker],
+    [onPickSticker],
   );
 
   const confirmStickerPreviewSend = useCallback(() => {
@@ -347,7 +374,18 @@ export function StickerPackSheet({
   const renderSticker = useCallback(
     ({ item }: { item: StickerSheetItem }) => {
       const src = resolveStickerImage({ packId: item.packId, stickerId: item.stickerId });
-      if (!src) return <View style={[styles.thumbCell, styles.thumbMissing]} />;
+      const thumbInner = Math.max(24, stickerThumbSize - 10);
+      if (!src) {
+        return (
+          <View
+            style={[
+              styles.thumbCellBase,
+              { width: stickerThumbSize, height: stickerThumbSize },
+              styles.thumbMissing,
+            ]}
+          />
+        );
+      }
       return (
         <Pressable
           accessibilityRole="button"
@@ -356,13 +394,30 @@ export function StickerPackSheet({
           delayLongPress={400}
           onLongPress={() => onStickerCellLongPress(item)}
           onPress={() => onStickerCellPress(item)}
-          style={({ pressed }) => [styles.thumbCell, pressed && styles.thumbCellPressed]}
+          style={({ pressed }) => [
+            styles.thumbCellBase,
+            { width: stickerThumbSize, height: stickerThumbSize },
+            pressed && styles.thumbCellPressed,
+          ]}
         >
-          <Image source={src} style={styles.thumbImage} contentFit="contain" cachePolicy="memory-disk" />
+          <Image
+            source={src}
+            style={{ width: thumbInner, height: thumbInner }}
+            contentFit="contain"
+            cachePolicy="memory-disk"
+            recyclingKey={`${item.packId}:${item.stickerId}`}
+          />
         </Pressable>
       );
     },
-    [onStickerCellLongPress, onStickerCellPress, styles.thumbCell, styles.thumbCellPressed, styles.thumbImage, styles.thumbMissing],
+    [
+      onStickerCellLongPress,
+      onStickerCellPress,
+      stickerThumbSize,
+      styles.thumbCellBase,
+      styles.thumbCellPressed,
+      styles.thumbMissing,
+    ],
   );
 
   const renderEmoji = useCallback(
@@ -374,14 +429,25 @@ export function StickerPackSheet({
         disabled={!onPickEmoji}
         style={({ pressed }) => [
           styles.emojiCell,
+          { width: emojiCellSize, height: emojiCellSize },
           !onPickEmoji && styles.emojiCellDisabled,
           pressed && onPickEmoji && styles.emojiCellPressed,
         ]}
       >
-        <Text style={styles.emojiGlyph}>{item}</Text>
+        <Text style={[styles.emojiGlyph, { fontSize: Math.min(30, Math.round(emojiCellSize * 0.88)) }]}>
+          {item}
+        </Text>
       </Pressable>
     ),
-    [handleEmojiPress, onPickEmoji, styles.emojiCell, styles.emojiCellDisabled, styles.emojiCellPressed, styles.emojiGlyph],
+    [
+      emojiCellSize,
+      handleEmojiPress,
+      onPickEmoji,
+      styles.emojiCell,
+      styles.emojiCellDisabled,
+      styles.emojiCellPressed,
+      styles.emojiGlyph,
+    ],
   );
 
   const stickersPage = (
@@ -462,7 +528,7 @@ export function StickerPackSheet({
             keyExtractor={(it) => `${it.packId}:${it.stickerId}`}
             numColumns={4}
             renderItem={renderSticker}
-            columnWrapperStyle={styles.gridRow}
+            columnWrapperStyle={[styles.gridRow, { gap: STICKER_PANEL_STICKER_GAP }]}
             contentContainerStyle={styles.gridPad}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
@@ -508,6 +574,141 @@ export function StickerPackSheet({
     </View>
   );
 
+  const sheetPaddingBottom =
+    variant === 'dock' ? 10 : Math.max(insets.bottom, 10) + 8;
+
+  const stickerPreviewOverlay = stickerPreviewItem ? (
+    <View
+      style={styles.previewOverlayRoot}
+      accessibilityViewIsModal
+      importantForAccessibility="yes"
+      accessibilityLabel="Превью стикера"
+    >
+      <Pressable
+        style={styles.previewBackdropDim}
+        onPress={clearStickerPreview}
+        accessibilityRole="button"
+        accessibilityLabel="Закрыть превью"
+      />
+      <View style={styles.previewCard}>
+        {(() => {
+          const src = resolveStickerImage({
+            packId: stickerPreviewItem.packId,
+            stickerId: stickerPreviewItem.stickerId,
+          });
+          return src ? (
+            <Image
+              source={src}
+              style={styles.previewImage}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={[styles.previewImage, styles.thumbMissing]} />
+          );
+        })()}
+        <View style={styles.previewActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Отмена"
+            onPress={clearStickerPreview}
+            style={({ pressed }) => [styles.previewBtnGhost, pressed && styles.previewBtnPressed]}
+          >
+            <Text style={styles.previewBtnGhostText}>Отмена</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Отправить стикер"
+            onPress={confirmStickerPreviewSend}
+            style={({ pressed }) => [styles.previewBtnPrimary, pressed && styles.previewBtnPressed]}
+          >
+            <Text style={styles.previewBtnPrimaryText}>Отправить</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  ) : null;
+
+  const sheetBody = (
+    <View
+      style={[styles.sheet, { paddingBottom: sheetPaddingBottom, maxHeight: sheetMax }]}
+      accessibilityViewIsModal={variant !== 'dock'}
+    >
+      <View
+        style={styles.grabberWrap}
+        accessibilityLabel="Потяните вниз, чтобы закрыть панель"
+        accessibilityHint="Удерживайте и потяните вниз, затем отпустите"
+        {...sheetDismissPan.panHandlers}
+      >
+        <View style={styles.grabber} />
+      </View>
+      <View
+        style={styles.topTabBar}
+        accessibilityRole="tablist"
+        accessibilityLabel="Разделы панели: Emoji, Стикеры или GIF"
+      >
+        {TOP_TABS.map((t, i) => {
+          const selected = i === topTabIndex;
+          return (
+            <Pressable
+              key={t.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              accessibilityLabel={t.label}
+              accessibilityHint="Показать этот раздел панели"
+              onPress={() => scrollToTab(i, true)}
+              style={[styles.topTab, selected && styles.topTabSelected]}
+            >
+              <Text
+                style={[styles.topTabText, selected && styles.topTabTextSelected]}
+                numberOfLines={1}
+                accessible={false}
+              >
+                {t.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <ScrollView
+        ref={pagerRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onMomentumScrollEnd={onPagerScrollEnd}
+        scrollEventThrottle={16}
+        style={{ width: pageWidth, height: pagerBodyHeight }}
+        accessibilityLabel="Контент панели. Листайте влево или вправо двумя пальцами, чтобы сменить раздел."
+        accessibilityHint="Влево — следующий раздел, вправо — предыдущий"
+      >
+        {emojiPage}
+        {stickersPage}
+        {gifPage}
+      </ScrollView>
+    </View>
+  );
+
+  if (variant === 'dock') {
+    if (!visible) return null;
+    return (
+      <>
+        <View style={styles.dockWrap}>{sheetBody}</View>
+        {stickerPreviewItem ? (
+          <Modal
+            visible
+            transparent
+            animationType="fade"
+            statusBarTranslucent
+            onRequestClose={clearStickerPreview}
+          >
+            <View style={styles.previewModalRoot}>{stickerPreviewOverlay}</View>
+          </Modal>
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={handleSheetRequestClose}>
       <View style={styles.root}>
@@ -517,114 +718,8 @@ export function StickerPackSheet({
           accessibilityRole="button"
           accessibilityLabel="Закрыть панель"
         />
-        <View
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 10) + 8, maxHeight: sheetMax }]}
-          accessibilityViewIsModal
-        >
-          <View
-            style={styles.grabberWrap}
-            accessibilityLabel="Потяните вниз, чтобы закрыть панель"
-            accessibilityHint="Удерживайте и потяните вниз, затем отпустите"
-            {...sheetDismissPan.panHandlers}
-          >
-            <View style={styles.grabber} />
-          </View>
-          <View
-            style={styles.topTabBar}
-            accessibilityRole="tablist"
-            accessibilityLabel="Разделы панели: Emoji, Стикеры или GIF"
-          >
-            {TOP_TABS.map((t, i) => {
-              const selected = i === topTabIndex;
-              return (
-                <Pressable
-                  key={t.id}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={t.label}
-                  accessibilityHint="Показать этот раздел панели"
-                  onPress={() => scrollToTab(i, true)}
-                  style={[styles.topTab, selected && styles.topTabSelected]}
-                >
-                  <Text
-                    style={[styles.topTabText, selected && styles.topTabTextSelected]}
-                    numberOfLines={1}
-                    accessible={false}
-                  >
-                    {t.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <ScrollView
-            ref={pagerRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            onMomentumScrollEnd={onPagerScrollEnd}
-            scrollEventThrottle={16}
-            style={{ width: pageWidth, height: pagerBodyHeight }}
-            accessibilityLabel="Контент панели. Листайте влево или вправо двумя пальцами, чтобы сменить раздел."
-            accessibilityHint="Влево — следующий раздел, вправо — предыдущий"
-          >
-            {emojiPage}
-            {stickersPage}
-            {gifPage}
-          </ScrollView>
-        </View>
-        {stickerPreviewItem ? (
-          <View
-            style={styles.previewOverlayRoot}
-            accessibilityViewIsModal
-            importantForAccessibility="yes"
-            accessibilityLabel="Превью стикера"
-          >
-            <Pressable
-              style={styles.previewBackdropDim}
-              onPress={clearStickerPreview}
-              accessibilityRole="button"
-              accessibilityLabel="Закрыть превью"
-            />
-            <View style={styles.previewCard}>
-              {(() => {
-                const src = resolveStickerImage({
-                  packId: stickerPreviewItem.packId,
-                  stickerId: stickerPreviewItem.stickerId,
-                });
-                return src ? (
-                  <Image
-                    source={src}
-                    style={styles.previewImage}
-                    contentFit="contain"
-                    cachePolicy="memory-disk"
-                  />
-                ) : (
-                  <View style={[styles.previewImage, styles.thumbMissing]} />
-                );
-              })()}
-              <View style={styles.previewActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Отмена"
-                  onPress={clearStickerPreview}
-                  style={({ pressed }) => [styles.previewBtnGhost, pressed && styles.previewBtnPressed]}
-                >
-                  <Text style={styles.previewBtnGhostText}>Отмена</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Отправить стикер"
-                  onPress={confirmStickerPreviewSend}
-                  style={({ pressed }) => [styles.previewBtnPrimary, pressed && styles.previewBtnPressed]}
-                >
-                  <Text style={styles.previewBtnPrimaryText}>Отправить</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        ) : null}
+        {sheetBody}
+        {stickerPreviewOverlay}
       </View>
     </Modal>
   );
@@ -634,6 +729,10 @@ function createStyles(c: ThemeColors) {
   const shadow = withAlpha('#000000', 0.4);
   return StyleSheet.create({
     root: { flex: 1, justifyContent: 'flex-end' },
+    previewModalRoot: { flex: 1 },
+    dockWrap: {
+      width: '100%',
+    },
     backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: shadow },
     sheet: {
       backgroundColor: c.inputBackgroundSolid,
@@ -674,14 +773,16 @@ function createStyles(c: ThemeColors) {
       flex: 1,
       flexDirection: 'row',
       minHeight: 0,
+      alignItems: 'stretch',
     },
     packRail: {
       width: PACK_RAIL_W,
       borderRightWidth: StyleSheet.hairlineWidth,
       borderRightColor: withAlpha(c.textSecondary, 0.2),
+      alignSelf: 'stretch',
     },
     packRailContent: {
-      paddingVertical: 6,
+      paddingVertical: 8,
       paddingHorizontal: 6,
       gap: 8,
       alignItems: 'center',
@@ -704,6 +805,7 @@ function createStyles(c: ThemeColors) {
     stickersMain: {
       flex: 1,
       minWidth: 0,
+      minHeight: 0,
     },
     stickerListFlex: {
       flex: 1,
@@ -728,9 +830,11 @@ function createStyles(c: ThemeColors) {
     },
     tabsRow: {
       paddingHorizontal: 10,
+      paddingTop: 6,
       paddingBottom: 10,
       gap: 8,
       alignItems: 'center',
+      minHeight: 44,
     },
     stickerSearchInput: {
       marginHorizontal: 12,
@@ -766,12 +870,9 @@ function createStyles(c: ThemeColors) {
     },
     gridRow: {
       justifyContent: 'flex-start',
-      gap: 8,
       marginBottom: 8,
     },
-    thumbCell: {
-      width: THUMB,
-      height: THUMB,
+    thumbCellBase: {
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
@@ -784,10 +885,6 @@ function createStyles(c: ThemeColors) {
     thumbMissing: {
       opacity: 0.35,
     },
-    thumbImage: {
-      width: THUMB - 12,
-      height: THUMB - 12,
-    },
     emojiGridPad: {
       paddingHorizontal: 10,
       paddingBottom: 12,
@@ -797,8 +894,6 @@ function createStyles(c: ThemeColors) {
       marginBottom: 4,
     },
     emojiCell: {
-      width: `${100 / EMOJI_COLUMNS}%`,
-      aspectRatio: 1,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 10,
@@ -810,7 +905,7 @@ function createStyles(c: ThemeColors) {
       opacity: 0.45,
     },
     emojiGlyph: {
-      fontSize: 26,
+      textAlign: 'center',
     },
     recentEmptyHint: {
       fontSize: 14,
