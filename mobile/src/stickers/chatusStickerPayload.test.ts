@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { encodeTextWithStickerTails } from './chatusCompositePayload';
 import {
   encodeStickerPayload,
   isChatusStickerMessage,
@@ -29,5 +30,14 @@ assert.equal(resolveChatusStickerSoloSendFlag(payload, { chatusStickerSoloSend: 
 assert.equal(resolveChatusStickerSoloSendFlag(payload, { chatusStickerSoloSend: false }), false);
 assert.equal(resolveChatusStickerSoloSendFlag(payload, undefined), false);
 assert.equal(resolveChatusStickerSoloSendFlag('hello', { chatusStickerSoloSend: true }), false);
+
+const multiComposite = encodeTextWithStickerTails('', [
+  ref,
+  { packId: 'friend', stickerId: 'grin' },
+]);
+assert.equal(resolveChatusStickerSoloSendFlag(multiComposite, { chatusStickerSoloSend: true }), true);
+assert.equal(resolveChatusStickerSoloSendFlag(multiComposite, { chatusStickerSoloSend: false }), false);
+const compositeWithText = encodeTextWithStickerTails('hi', [ref]);
+assert.equal(resolveChatusStickerSoloSendFlag(compositeWithText, { chatusStickerSoloSend: true }), false);
 
 assert.equal(tryDecodeStickerPayload('{'), null);

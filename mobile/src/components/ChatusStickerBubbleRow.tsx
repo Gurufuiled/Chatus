@@ -1,10 +1,10 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
-import { resolveStickerImageOrPlaceholder, tryDecodeStickerPayload } from '../stickers/chatusStickerCatalog';
+import { resolveStickerImageOrPlaceholder, soloChatusStickerDisplayDp, tryDecodeStickerPayload } from '../stickers/chatusStickerCatalog';
 
+const DEFAULT_TELEGRAM_SIZE = soloChatusStickerDisplayDp();
 const DEFAULT_ROW_SIZE = 96;
-const DEFAULT_TELEGRAM_SIZE = 168;
 
 type Props = {
   rawContent: string;

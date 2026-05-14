@@ -3,9 +3,9 @@ import { StyleSheet, View } from 'react-native';
 import Reanimated, { FadeIn } from 'react-native-reanimated';
 import { ChatusStickerBubbleRow } from './ChatusStickerBubbleRow';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { soloChatusStickerDisplayDp } from '../stickers/chatusStickerCatalog';
 
-/** Ближе к Telegram: cap размера «solo» после группировки. */
-const TELEGRAM_STICKER_SIZE = 168;
+const TELEGRAM_STICKER_SIZE = soloChatusStickerDisplayDp();
 
 /** Лёгкое появление исходящего стикера (фаза 4.2 журнала), в духе остального чата. */
 const OUTGOING_STICKER_ENTERING = FadeIn.springify().damping(18).stiffness(240).mass(0.85);

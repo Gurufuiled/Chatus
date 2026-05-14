@@ -1,6 +1,4 @@
 import type { Message } from '../stores/types';
-import { CHAT_MSG_GROUP_TIME_GAP_MS } from './telegramChatUi';
-import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
 
 export type ChatListStickerGroupRow = {
   kind: 'sticker_group';
@@ -10,54 +8,16 @@ export type ChatListStickerGroupRow = {
 
 export type ChatListRow = Message | ChatListStickerGroupRow;
 
-function isPureStickerMessage(m: Message): boolean {
-  return m.msg_type === 'text' && m.is_deleted !== 1 && isChatusStickerMessage(m.content);
-}
-
-function canChainStickerPair(older: Message, newer: Message): boolean {
-  if (!isPureStickerMessage(older) || !isPureStickerMessage(newer)) return false;
-  if (older.sender_id !== newer.sender_id) return false;
-  if (Math.abs(older.created_at - newer.created_at) > CHAT_MSG_GROUP_TIME_GAP_MS) return false;
-  if ((older.reply_to_id ?? null) !== (newer.reply_to_id ?? null)) return false;
-  if (older.forwarded_from_message_id || newer.forwarded_from_message_id) return false;
-  return true;
-}
-
 /**
- * Схлопывает подряд идущие (в порядке newest-first) чистые стикеры одного автора в один ряд.
- * Индексы в `messages`: 0 — самое новое сообщение.
+ * Раньше схлопывали подряд идущие чистые стикеры в один ряд — это путало с отдельными отправками.
+ * Сейчас каждое сообщение остаётся отдельной строкой; группировка только если сервер/клиент
+ * отправит несколько стикеров в одном composite payload.
  */
 export function buildStickerGroupedChatRows(
   messages: Message[],
-  currentUserId: string | null,
+  _currentUserId: string | null,
 ): ChatListRow[] {
-  const out: ChatListRow[] = [];
-  let i = 0;
-  while (i < messages.length) {
-    const m = messages[i];
-    if (!isPureStickerMessage(m)) {
-      out.push(m);
-      i += 1;
-      continue;
-    }
-    const run: Message[] = [m];
-    let j = i + 1;
-    while (j < messages.length) {
-      const older = messages[j];
-      const newer = messages[j - 1];
-      if (!canChainStickerPair(older, newer)) break;
-      run.push(older);
-      j += 1;
-    }
-    if (run.length >= 2) {
-      out.push({ kind: 'sticker_group', messages: run });
-      i = j;
-    } else {
-      out.push(m);
-      i += 1;
-    }
-  }
-  return out;
+  return messages.map((m) => m);
 }
 
 /** Индекс строки в `buildStickerGroupedChatRows` для любого `messageId` из исходного списка. */

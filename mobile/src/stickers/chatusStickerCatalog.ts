@@ -1,4 +1,4 @@
-import type { ImageSourcePropType } from 'react-native';
+import { PixelRatio, type ImageSourcePropType } from 'react-native';
 import type { ChatusStickerRef } from './chatusStickerPayload';
 
 export type { ChatusStickerRef } from './chatusStickerPayload';
@@ -169,6 +169,24 @@ export type ChatusStickerPackRailItem = {
 export const CHATUS_STICKER_PACK_RAIL: readonly ChatusStickerPackRailItem[] = [
   { packId: 'friend', title: 'Friend', coverStickerId: '1f600' },
 ];
+
+/**
+ * Размер исходника friend-pack WebP в пикселях (`assets/stickers/friend/*.webp`).
+ * При 64×64 и отображении ~168dp на ×3 — ~8× upscale → заметное «мыло».
+ * Для «как в Telegram» по крупности перегенерируйте ассеты **≥512px** и поднимите `maxDp` в `soloChatusStickerDisplayDp`.
+ */
+export const CHATUS_FRIEND_STICKER_SOURCE_PX = 64;
+
+/**
+ * Рекомендуемый размер **одиночного** стикера в dp: ограничиваем апскейл относительно `CHATUS_FRIEND_STICKER_SOURCE_PX`.
+ */
+export function soloChatusStickerDisplayDp(options?: { maxDp?: number; maxUpscale?: number }): number {
+  const maxDp = options?.maxDp ?? 168;
+  const maxUpscale = options?.maxUpscale ?? 4;
+  const pr = PixelRatio.get() || 1;
+  const cap = (CHATUS_FRIEND_STICKER_SOURCE_PX * maxUpscale) / pr;
+  return Math.round(Math.min(maxDp, Math.max(56, cap)));
+}
 
 export function resolveStickerImage(ref: ChatusStickerRef): ImageSourcePropType | undefined {
   return CHATUS_STICKER_IMAGES[ref.packId]?.[ref.stickerId];

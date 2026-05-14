@@ -9,6 +9,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -72,9 +73,14 @@ import {
 } from '../presentation/chatStickerListRows';
 import { StickerGroupMessageBubble } from './StickerGroupMessageBubble';
 import { StickerMessageBubble } from './StickerMessageBubble';
-import { encodeStickerPayload, isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
 import {
-  getCompositeStickerRef,
+  encodeStickerPayload,
+  isChatusStickerMessage,
+  resolveStickerImageOrPlaceholder,
+  soloChatusStickerDisplayDp,
+} from '../stickers/chatusStickerCatalog';
+import {
+  getCompositeStickerRefs,
   getCompositeTextBody,
   tryParseCompositeMessage,
 } from '../stickers/chatusCompositePayload';
@@ -87,6 +93,8 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ALBUM_VIEWER_CLOSE_SWIPE_DISTANCE = 84;
 const FILE_ROW_WIDTH = Math.min(Dimensions.get('window').width * 0.76, 320);
 const ALBUM_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);
+/** Текст + стикер в одном пузыре — размер эмблемы рядом с текстом. */
+const COMPOSITE_INLINE_STICKER_PX = 40;
 
 function clampReplySwipe(value: number) {
   'worklet';
@@ -1172,6 +1180,12 @@ const MessageRow = React.memo(function MessageRow({
   const { colors: themeColors } = useTheme();
   const isMe = item.sender_id === currentUserId;
   const bodyItem = item;
+  /** Как в Telegram: на сообщении только из одного стикера реакции не ставятся. */
+  const isPureChatusStickerOnly =
+    bodyItem.msg_type === 'text' &&
+    bodyItem.is_deleted !== 1 &&
+    isChatusStickerMessage(bodyItem.content ?? '');
+  const effectiveAllowReactions = allowReactions && !isPureChatusStickerOnly;
   const isGroupIncoming = isGroupChat && !isMe;
   const isGroupedAbove =
     isGroupIncoming &&
@@ -1199,7 +1213,9 @@ const MessageRow = React.memo(function MessageRow({
   );
   const showAuthorName = isGroupIncoming && bodyItem.is_deleted !== 1 && !isGroupedAbove;
   const inlineReactionList =
-    selectionMode || !(bodyItem.reactions?.length ?? 0) ? undefined : bodyItem.reactions;
+    selectionMode || !effectiveAllowReactions || !(bodyItem.reactions?.length ?? 0)
+      ? undefined
+      : bodyItem.reactions;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
 
   React.useEffect(() => {
@@ -1358,95 +1374,219 @@ const MessageRow = React.memo(function MessageRow({
       const rawContent = bodyItem.content ?? '';
       const displayContent = rawContent.trim() || ' ';
       const compositeParsed = tryParseCompositeMessage(rawContent);
-      const compositeStickerRef =
-        compositeParsed ? getCompositeStickerRef(compositeParsed) : null;
-      if (compositeParsed && compositeStickerRef) {
-        const stickerRef = compositeStickerRef;
-        const textBody = getCompositeTextBody(compositeParsed);
-        const stickerJson = encodeStickerPayload(stickerRef);
+      const compositeStickerRefs = compositeParsed ? getCompositeStickerRefs(compositeParsed) : [];
+      if (compositeParsed && compositeStickerRefs.length > 0) {
+        const textBodyRaw = getCompositeTextBody(compositeParsed);
+        const trimmedText = textBodyRaw.trim();
         const stickerMetaColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
-          const stickerIconColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
-          const reactionsNode =
-            inlineReactionList?.length ? (
-              <MessageReactionInline
-                reactions={inlineReactionList}
-                isMe={isMe}
-                allowReactions={allowReactions}
-                onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
-                accentColor={chatTheme.bubbleMeAccent}
-              />
-            ) : null;
+        const stickerIconColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
+        const reactionsNode =
+          inlineReactionList?.length ? (
+            <MessageReactionInline
+              reactions={inlineReactionList}
+              isMe={isMe}
+              allowReactions={effectiveAllowReactions}
+              onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
+              accentColor={chatTheme.bubbleMeAccent}
+            />
+          ) : null;
 
-          const stickerBlock = (
+        if (!trimmedText && compositeStickerRefs.length === 1) {
+          const only = compositeStickerRefs[0]!;
+          return (
             <StickerMessageBubble
-              rawContent={stickerJson}
+              rawContent={encodeStickerPayload(only)}
               isMe={isMe}
               time={formatTime(bodyItem.created_at)}
               status={bodyItem.status}
-              timeColor={stickerMetaColor}
-              iconColor={stickerIconColor}
-              topHeader={null}
-              replySnippet={null}
-              reactions={null}
-              playOutgoingEntrance={false}
+              timeColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
+              iconColor={isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary}
+              topHeader={renderIncomingHeader()}
+              replySnippet={renderReplySnippet()}
+              reactions={reactionsNode}
+              playOutgoingEntrance={isMe && bodyItem.chatus_sticker_solo_send === true}
             />
           );
+        }
 
+        const multiStickerSoloCell = (n: number) => {
+          const base = soloChatusStickerDisplayDp();
+          if (n >= 4) return Math.round(base * 0.42);
+          if (n === 3) return Math.round(base * 0.5);
+          if (n === 2) return Math.round(base * 0.62);
+          return base;
+        };
+
+        if (!trimmedText && compositeStickerRefs.length > 1) {
+          const cell = multiStickerSoloCell(compositeStickerRefs.length);
+          const thumbInner = Math.max(24, cell - 10);
+          const strip = (
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: 6,
+                justifyContent: isMe ? 'flex-end' : 'flex-start',
+                maxWidth: 272,
+              }}
+            >
+              {compositeStickerRefs.map((stickerRef, idx) => (
+                <View
+                  key={`${stickerRef.packId}:${stickerRef.stickerId}:${idx}`}
+                  style={{
+                    width: cell,
+                    height: cell,
+                    borderRadius: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isMe
+                      ? withAlpha('#FFFFFF', 0.12)
+                      : withAlpha(themeColors.textSecondary, 0.08),
+                  }}
+                >
+                  <Image
+                    source={resolveStickerImageOrPlaceholder(stickerRef)}
+                    style={{ width: thumbInner, height: thumbInner }}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                    recyclingKey={`${stickerRef.packId}:${stickerRef.stickerId}:${idx}`}
+                    accessibilityRole="image"
+                    accessibilityLabel="Стикер"
+                  />
+                </View>
+              ))}
+            </View>
+          );
+          const metaRow = (
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: isMe ? 'flex-end' : 'flex-start',
+                marginTop: 4,
+              }}
+            >
+              <MessageTimeStatus
+                time={formatTime(bodyItem.created_at)}
+                status={bodyItem.status}
+                isMe={isMe}
+                compact
+                timeColor={stickerMetaColor}
+                iconColor={stickerIconColor}
+              />
+            </View>
+          );
           if (!isMe) {
             return (
               <View style={{ alignSelf: 'flex-start', maxWidth: '82%' }}>
                 {renderIncomingHeader()}
                 {renderReplySnippet()}
-                <View
-                  style={[
-                    styles.bubble,
-                    isGroupIncoming && styles.groupMessageSurface,
-                    styles.bubbleOther,
-                    {
-                      backgroundColor: themeColors.bubbleOther,
-                      borderColor: themeColors.bubbleOtherBorder,
-                    },
-                  ]}
-                >
-                  <View style={styles.bubbleContentRow}>
-                    {renderTextWithSearchHighlight(textBody.trim() || ' ', searchHighlightQuery, [
-                      styles.textContent,
-                      { color: themeColors.textPrimary },
-                    ])}
-                  </View>
-                </View>
-                {stickerBlock}
+                {strip}
+                {metaRow}
                 {reactionsNode}
               </View>
             );
           }
-
           return (
             <View style={{ alignSelf: 'flex-end', maxWidth: '82%' }}>
               {renderIncomingHeader()}
               {renderReplySnippet()}
-              <MeBubbleChrome
-                active={useViewportOutgoingGradient}
-                scrollTick={scrollTick}
-                fillColor={chatTheme.bubbleMe}
-                style={[
-                  styles.bubble,
-                  isGroupIncoming && styles.groupMessageSurface,
-                  !useViewportOutgoingGradient ? styles.bubbleMe : null,
-                ]}
-              >
-                <View style={styles.bubbleContentRow}>
-                  {renderTextWithSearchHighlight(textBody.trim() || ' ', searchHighlightQuery, [
-                    styles.textContent,
-                    styles.textContentMe,
-                    { color: chatTheme.bubbleMeText },
-                  ])}
-                </View>
-              </MeBubbleChrome>
-              {stickerBlock}
+              {strip}
+              {metaRow}
               {reactionsNode}
             </View>
           );
+        }
+
+        const stickerSlot = COMPOSITE_INLINE_STICKER_PX + 6;
+        const stickerStripW = Math.min(200, Math.max(stickerSlot, compositeStickerRefs.length * stickerSlot));
+
+        const compositeBubbleBody = (
+          <View style={styles.bubbleContentRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              {renderTextWithSearchHighlight(trimmedText, searchHighlightQuery, [
+                styles.textContent,
+                isMe ? styles.textContentMe : null,
+                isMe ? { color: chatTheme.bubbleMeText } : { color: themeColors.textPrimary },
+              ])}
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={{ width: stickerStripW, flexShrink: 0 }}
+              contentContainerStyle={{
+                flexDirection: 'row',
+                alignItems: 'flex-end',
+                gap: 6,
+                paddingLeft: 2,
+              }}
+            >
+              {compositeStickerRefs.map((stickerRef, idx) => (
+                <Image
+                  key={`${stickerRef.packId}:${stickerRef.stickerId}:${idx}`}
+                  source={resolveStickerImageOrPlaceholder(stickerRef)}
+                  style={{ width: COMPOSITE_INLINE_STICKER_PX, height: COMPOSITE_INLINE_STICKER_PX }}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                  recyclingKey={`${stickerRef.packId}:${stickerRef.stickerId}:${idx}`}
+                  accessibilityRole="image"
+                  accessibilityLabel="Стикер"
+                />
+              ))}
+            </ScrollView>
+            <MessageTimeStatus
+              time={formatTime(bodyItem.created_at)}
+              status={bodyItem.status}
+              isMe={isMe}
+              compact
+              timeColor={stickerMetaColor}
+              iconColor={stickerIconColor}
+            />
+          </View>
+        );
+
+        if (!isMe) {
+          return (
+            <View style={{ alignSelf: 'flex-start', maxWidth: '82%' }}>
+              {renderIncomingHeader()}
+              {renderReplySnippet()}
+              <View
+                style={[
+                  styles.bubble,
+                  isGroupIncoming && styles.groupMessageSurface,
+                  styles.bubbleOther,
+                  {
+                    backgroundColor: themeColors.bubbleOther,
+                    borderColor: themeColors.bubbleOtherBorder,
+                  },
+                ]}
+              >
+                {compositeBubbleBody}
+              </View>
+              {reactionsNode}
+            </View>
+          );
+        }
+
+        return (
+          <View style={{ alignSelf: 'flex-end', maxWidth: '82%' }}>
+            {renderIncomingHeader()}
+            {renderReplySnippet()}
+            <MeBubbleChrome
+              active={useViewportOutgoingGradient}
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={[
+                styles.bubble,
+                isGroupIncoming && styles.groupMessageSurface,
+                !useViewportOutgoingGradient ? styles.bubbleMe : null,
+              ]}
+            >
+              {compositeBubbleBody}
+            </MeBubbleChrome>
+            {reactionsNode}
+          </View>
+        );
       }
 
       const channelLink = parseChannelDeepLinkFromMessage(rawContent);
@@ -1476,7 +1616,7 @@ const MessageRow = React.memo(function MessageRow({
               <MessageReactionInline
                 reactions={inlineReactionList}
                 isMe={isMe}
-                allowReactions={allowReactions}
+                allowReactions={effectiveAllowReactions}
                 onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
                 accentColor={chatTheme.bubbleMeAccent}
               />
@@ -1491,7 +1631,7 @@ const MessageRow = React.memo(function MessageRow({
             <MessageReactionInline
               reactions={inlineReactionList}
               isMe={isMe}
-              allowReactions={allowReactions}
+              allowReactions={effectiveAllowReactions}
               onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
               accentColor={chatTheme.bubbleMeAccent}
             />
@@ -1546,7 +1686,7 @@ const MessageRow = React.memo(function MessageRow({
               <MessageReactionInline
                 reactions={inlineReactionList}
                 isMe={isMe}
-                allowReactions={allowReactions}
+                allowReactions={effectiveAllowReactions}
                 onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
                 accentColor={chatTheme.bubbleMeAccent}
               />
@@ -1587,7 +1727,7 @@ const MessageRow = React.memo(function MessageRow({
             <MessageReactionInline
               reactions={inlineReactionList}
               isMe
-              allowReactions={allowReactions}
+              allowReactions={effectiveAllowReactions}
               onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
               accentColor={chatTheme.bubbleMeAccent}
             />
@@ -1618,7 +1758,7 @@ const MessageRow = React.memo(function MessageRow({
           outgoingAccentColor={chatTheme.bubbleMeAccent}
           reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
-          allowMessageReactions={allowReactions}
+          allowMessageReactions={effectiveAllowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
@@ -1752,7 +1892,7 @@ const MessageRow = React.memo(function MessageRow({
           enableReplySwipe={canSwipe}
           onReplySwipe={onReply}
           inlineReactions={inlineReactionList}
-          allowMessageReactions={allowReactions}
+          allowMessageReactions={effectiveAllowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
         />
       );
@@ -1844,7 +1984,7 @@ const MessageRow = React.memo(function MessageRow({
           chatTheme={chatTheme}
           onOpenMedia={onOpenAlbumMedia}
           inlineReactions={inlineReactionList}
-          allowMessageReactions={allowReactions}
+          allowMessageReactions={effectiveAllowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           viewportOutgoingGradient={useViewportOutgoingGradient}
           scrollTick={scrollTick}
@@ -1948,7 +2088,7 @@ const MessageRow = React.memo(function MessageRow({
           outgoingTextColor={chatTheme.bubbleMeText}
           reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
-          allowMessageReactions={allowReactions}
+          allowMessageReactions={effectiveAllowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
@@ -2065,7 +2205,7 @@ const MessageRow = React.memo(function MessageRow({
           outgoingTextColor={chatTheme.bubbleMeText}
           reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
-          allowMessageReactions={allowReactions}
+          allowMessageReactions={effectiveAllowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
@@ -2177,7 +2317,7 @@ const MessageRow = React.memo(function MessageRow({
           outgoingAccentColor={chatTheme.bubbleMeAccent}
           reactionAccentColor={getOutgoingReactionAccent(chatTheme)}
           inlineReactions={inlineReactionList}
-          allowMessageReactions={allowReactions}
+          allowMessageReactions={effectiveAllowReactions}
           onToggleInlineReaction={(emoji) => onToggleReaction(bodyItem.id, emoji)}
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
@@ -2226,7 +2366,7 @@ const MessageRow = React.memo(function MessageRow({
       onPressMessage(item.id);
       return;
     }
-    if (!allowReactions || item.is_deleted === 1) return;
+    if (!effectiveAllowReactions || item.is_deleted === 1) return;
     const now = Date.now();
     if (now - lastTapAtRef.current < 380) {
       lastTapAtRef.current = 0;

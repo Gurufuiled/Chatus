@@ -3,7 +3,6 @@ import Reanimated from 'react-native-reanimated';
 import type { LayoutChangeEvent, StyleProp, ViewStyle, View } from 'react-native';
 import type { Message } from '../stores/types';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
-import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
 import {
   InputBar,
   type FilePickResult,
@@ -15,7 +14,7 @@ type ChatInputDockProps = {
   onLayout: (event: LayoutChangeEvent) => void;
   animatedStyle: StyleProp<ViewStyle>;
   placeholder?: string;
-  onSendText: (text: string) => void;
+  onSendText: (text: string, sendOptions?: { chatusStickerSoloSend?: boolean }) => void;
   onSendVoice: (result: { uri: string; waveform: number[]; durationMs: number }) => void | Promise<void>;
   onSendVideoNote?: (result: VideoNoteRecordingResult) => void | Promise<void>;
   onSendMedia: (result: MediaPickResult) => void | Promise<void>;
@@ -31,7 +30,7 @@ type ChatInputDockProps = {
   commentCooldownEndsAt?: number | null;
   onCommentCooldownClear?: () => void;
   replyPeerFirstLineId?: string | null;
-  onSendSticker?: (ref: ChatusStickerRef, meta?: { composerWasEmpty: boolean }) => void;
+  chatusStickersComposer?: boolean;
 };
 
 export function ChatInputDock({
@@ -54,7 +53,7 @@ export function ChatInputDock({
   commentCooldownEndsAt = null,
   onCommentCooldownClear,
   replyPeerFirstLineId = null,
-  onSendSticker,
+  chatusStickersComposer,
 }: ChatInputDockProps) {
   return (
     <Reanimated.View onLayout={onLayout} style={[animatedStyle, { overflow: 'visible' }]}>
@@ -76,7 +75,7 @@ export function ChatInputDock({
         commentCooldownEndsAt={commentCooldownEndsAt}
         onCommentCooldownClear={onCommentCooldownClear}
         replyPeerFirstLineId={replyPeerFirstLineId}
-        onSendSticker={onSendSticker}
+        chatusStickersComposer={chatusStickersComposer}
       />
     </Reanimated.View>
   );

@@ -2,10 +2,10 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { Message } from '../stores/types';
-import { resolveStickerImageOrPlaceholder, tryDecodeStickerPayload } from '../stickers/chatusStickerCatalog';
+import { resolveStickerImageOrPlaceholder, soloChatusStickerDisplayDp, tryDecodeStickerPayload } from '../stickers/chatusStickerCatalog';
 import { MessageTimeStatus } from './MessageTimeStatus';
 
-const SOLO_BASE = 168;
+const SOLO_BASE = soloChatusStickerDisplayDp();
 const MAX_STICKERS_PER_ROW = 4;
 const ROW_MAX_WIDTH = 272;
 

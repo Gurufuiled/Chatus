@@ -8,15 +8,17 @@ export type CompositePart = CompositeTextPart | CompositeStickerPart;
 
 export type ParsedComposite = { t: typeof COMPOSITE_T; parts: CompositePart[] };
 
-export function encodeTextWithStickerTail(text: string, ref: ChatusStickerRef): string {
+export function encodeTextWithStickerTails(text: string, refs: ChatusStickerRef[]): string {
   const trimmed = text.trimEnd();
-  return JSON.stringify({
-    t: COMPOSITE_T,
-    parts: [
-      { t: 'txt', v: trimmed },
-      { t: 'cs', p: ref.packId, i: ref.stickerId },
-    ] satisfies CompositePart[],
-  });
+  const parts: CompositePart[] = [{ t: 'txt', v: trimmed }];
+  for (const ref of refs) {
+    parts.push({ t: 'cs', p: ref.packId, i: ref.stickerId });
+  }
+  return JSON.stringify({ t: COMPOSITE_T, parts });
+}
+
+export function encodeTextWithStickerTail(text: string, ref: ChatusStickerRef): string {
+  return encodeTextWithStickerTails(text, [ref]);
 }
 
 export function tryParseCompositeMessage(content: string | null | undefined): ParsedComposite | null {
@@ -26,10 +28,12 @@ export function tryParseCompositeMessage(content: string | null | undefined): Pa
     const o = JSON.parse(raw) as ParsedComposite;
     if (o?.t !== COMPOSITE_T || !Array.isArray(o.parts) || o.parts.length < 2) return null;
     const parts = o.parts as CompositePart[];
-    const last = parts[parts.length - 1];
-    if (!last || last.t !== 'cs' || typeof last.p !== 'string' || typeof last.i !== 'string') return null;
     const first = parts[0];
     if (!first || first.t !== 'txt' || typeof first.v !== 'string') return null;
+    for (let k = 1; k < parts.length; k += 1) {
+      const p = parts[k];
+      if (!p || p.t !== 'cs' || typeof p.p !== 'string' || typeof p.i !== 'string') return null;
+    }
     return { t: COMPOSITE_T, parts };
   } catch {
     return null;
@@ -40,14 +44,20 @@ export function isCompositeTextStickerMessage(content: string | null | undefined
   return !!tryParseCompositeMessage(content);
 }
 
-export function getCompositeStickerRef(parsed: ParsedComposite): ChatusStickerRef | null {
-  for (let i = parsed.parts.length - 1; i >= 0; i -= 1) {
-    const p = parsed.parts[i];
+export function getCompositeStickerRefs(parsed: ParsedComposite): ChatusStickerRef[] {
+  const out: ChatusStickerRef[] = [];
+  for (const p of parsed.parts) {
     if (p?.t === 'cs' && typeof p.p === 'string' && typeof p.i === 'string') {
-      return { packId: p.p, stickerId: p.i };
+      out.push({ packId: p.p, stickerId: p.i });
     }
   }
-  return null;
+  return out;
+}
+
+/** Последний стикер в цепочке (обратная совместимость для мест, где нужен один ref). */
+export function getCompositeStickerRef(parsed: ParsedComposite): ChatusStickerRef | null {
+  const refs = getCompositeStickerRefs(parsed);
+  return refs.length ? refs[refs.length - 1]! : null;
 }
 
 export function getCompositeTextBody(parsed: ParsedComposite): string {

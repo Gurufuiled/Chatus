@@ -1,3 +1,9 @@
+import {
+  getCompositeStickerRefs,
+  getCompositeTextBody,
+  tryParseCompositeMessage,
+} from './chatusCompositePayload';
+
 export type ChatusStickerRef = {
   packId: string;
   stickerId: string;
@@ -33,5 +39,10 @@ export function resolveChatusStickerSoloSendFlag(
   text: string,
   sendOptions?: { chatusStickerSoloSend?: boolean },
 ): boolean {
-  return sendOptions?.chatusStickerSoloSend === true && isChatusStickerMessage(text);
+  if (sendOptions?.chatusStickerSoloSend !== true) return false;
+  if (isChatusStickerMessage(text)) return true;
+  const parsed = tryParseCompositeMessage(text);
+  if (!parsed) return false;
+  if (getCompositeTextBody(parsed).trim().length > 0) return false;
+  return getCompositeStickerRefs(parsed).length > 0;
 }

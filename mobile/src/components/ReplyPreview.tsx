@@ -4,7 +4,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import type { Message } from '../stores/types';
 import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
-import { getCompositeTextBody, tryParseCompositeMessage } from '../stickers/chatusCompositePayload';
+import { getCompositeStickerRefs, getCompositeTextBody, tryParseCompositeMessage } from '../stickers/chatusCompositePayload';
 import { buildSearchHighlightChildren } from '../utils/searchHighlightText';
 import { usePeerFirstResolvedUri } from './peerFirstMedia';
 
@@ -36,7 +36,11 @@ export function buildReplyPreviewText(message: Message | null | undefined): stri
     const composite = text ? tryParseCompositeMessage(text) : null;
     if (composite) {
       const t = getCompositeTextBody(composite).trim();
-      return t.length ? `${t} · стикер` : 'Текст и стикер';
+      const stickerCount = getCompositeStickerRefs(composite).length;
+      if (t.length) {
+        return stickerCount > 1 ? `${t} · ${stickerCount} стикеров` : `${t} · стикер`;
+      }
+      return stickerCount > 1 ? `${stickerCount} стикеров` : 'Стикер';
     }
     if (text && isChatusStickerMessage(text)) return 'Стикер';
     return text?.length ? text : 'Пустое сообщение';

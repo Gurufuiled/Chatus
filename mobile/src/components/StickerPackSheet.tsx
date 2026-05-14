@@ -1,21 +1,28 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   BackHandler,
   FlatList,
   Modal,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  type LayoutChangeEvent,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import Animated, {
+  cancelAnimation,
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
@@ -52,6 +59,9 @@ const EMOJI_COLUMNS = STICKER_PANEL_EMOJI_COLUMNS;
 const PACK_RAIL_W = STICKER_PANEL_PACK_RAIL_W;
 /** Крупное превью по long-press (фаза 4.3 журнала), в пределах ширины экрана. */
 const STICKER_PREVIEW_IMAGE = 216;
+
+const DOCK_LIFT_MS = 280;
+const DOCK_LOWER_MS = 240;
 
 const TOP_TABS: { id: StickerPanelTopTab; label: string }[] = [
   { id: 'emoji', label: 'Emoji' },
@@ -101,17 +111,32 @@ export function StickerPackSheet({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  /** Dock: до первого layout ширина хоста может быть 0 — pager не должен брать полный экран (padding inputRow). */
+  const DOCK_SHEET_WIDTH_FALLBACK_PAD = 24;
+  /** Ширина хоста (dock может быть уже `Dimensions` из‑за padding/оболочки) — иначе pager ломается. */
+  const [hostWidth, setHostWidth] = useState(0);
+  const sheetWidth =
+    hostWidth > 0
+      ? hostWidth
+      : variant === 'dock'
+        ? Math.max(240, Math.round(windowWidth - DOCK_SHEET_WIDTH_FALLBACK_PAD))
+        : windowWidth;
+  const onSheetHostLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    if (w <= 0) return;
+    setHostWidth((prev) => (w !== prev ? w : prev));
+  }, []);
   const sheetMax = useMemo(() => Math.round(windowHeight * 0.46), [windowHeight]);
   const pagerBodyHeight = useMemo(
     () => Math.max(220, Math.min(Math.round(windowHeight * 0.36), sheetMax - 84)),
     [sheetMax, windowHeight],
   );
   const stickerMainWidth = useMemo(
-    () => computeStickerMainWidth(windowWidth, StyleSheet.hairlineWidth),
-    [windowWidth],
+    () => computeStickerMainWidth(sheetWidth, StyleSheet.hairlineWidth),
+    [sheetWidth],
   );
   const stickerThumbSize = useMemo(() => computeStickerThumbSize(stickerMainWidth), [stickerMainWidth]);
-  const emojiCellSize = useMemo(() => computeEmojiCellSize(windowWidth), [windowWidth]);
+  const emojiCellSize = useMemo(() => computeEmojiCellSize(sheetWidth), [sheetWidth]);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [recentStickers, setRecentStickers] = useState<StickerSheetItem[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<'recent' | 'catalog'>('recent');
@@ -122,12 +147,12 @@ export function StickerPackSheet({
   const [topTabIndex, setTopTabIndex] = useState(1);
   const topTabIndexRef = useRef(topTabIndex);
   topTabIndexRef.current = topTabIndex;
-  const pagerRef = useRef<ScrollView>(null);
+  /** Не вызывать `setState` из `runOnJS` после размонтирования. */
+  const aliveRef = useRef(true);
   /** Пользователь уже сменил вкладку после открытия — не применять отложенный restore из SecureStore. */
   const userAdjustedTopTabRef = useRef(false);
   /** Сессия открыта с `initialTopTabSnapshot` — не подмешивать restore вкладки из SecureStore после сброса snapshot в `null`. */
   const skipTopTabPersistRef = useRef(false);
-  const pageWidth = windowWidth;
   const closeFromUserDismiss = useCallback(() => {
     hapticStickerSheetDismiss();
     onClose();
@@ -202,9 +227,19 @@ export function StickerPackSheet({
   );
 
   useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!visible) {
       setStickerSearchQuery('');
       setRecentMruLoaded(false);
+      if (variant !== 'dock') {
+        setHostWidth(0);
+      }
       clearStickerPreview();
       return;
     }
@@ -219,18 +254,12 @@ export function StickerPackSheet({
     return () => {
       cancelled = true;
     };
-  }, [visible, clearStickerPreview]);
+  }, [visible, clearStickerPreview, variant]);
 
   const stickerGridData = useMemo(
     () => filterStickerSheetItems(activeSection?.stickers ?? [], stickerSearchQuery),
     [activeSection?.stickers, stickerSearchQuery],
   );
-
-  useLayoutEffect(() => {
-    if (!visible) return;
-    const x = topTabIndex * pageWidth;
-    pagerRef.current?.scrollTo({ x, animated: false });
-  }, [visible, pageWidth, topTabIndex]);
 
   useEffect(() => {
     if (!visible) {
@@ -246,10 +275,6 @@ export function StickerPackSheet({
         skipTopTabPersistRef.current = true;
         userAdjustedTopTabRef.current = true;
         setTopTabIndex(idx);
-        requestAnimationFrame(() => {
-          if (cancelled) return;
-          pagerRef.current?.scrollTo({ x: idx * pageWidth, animated: false });
-        });
         onInitialTopTabSnapshotConsumed?.();
         return () => {
           cancelled = true;
@@ -271,15 +296,11 @@ export function StickerPackSheet({
       const idx = tabIndexFromId(saved);
       if (idx < 0) return;
       setTopTabIndex(idx);
-      requestAnimationFrame(() => {
-        if (cancelled || userAdjustedTopTabRef.current) return;
-        pagerRef.current?.scrollTo({ x: idx * pageWidth, animated: false });
-      });
     });
     return () => {
       cancelled = true;
     };
-  }, [visible, pageWidth, initialTopTabSnapshot, onInitialTopTabSnapshotConsumed]);
+  }, [visible, initialTopTabSnapshot, onInitialTopTabSnapshotConsumed]);
 
   const commitTopTab = useCallback(
     (index: number, writeDisk: boolean) => {
@@ -293,35 +314,98 @@ export function StickerPackSheet({
     [],
   );
 
-  const scrollToTab = useCallback(
-    (index: number, animated: boolean) => {
+  const selectTab = useCallback(
+    (index: number) => {
       const prev = topTabIndexRef.current;
       userAdjustedTopTabRef.current = true;
       commitTopTab(index, true);
-      pagerRef.current?.scrollTo({ x: index * pageWidth, animated });
       if (index !== prev) {
         announceStickerPanelTopTab(index);
       }
     },
-    [commitTopTab, pageWidth],
+    [commitTopTab],
   );
 
-  const onPagerScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const x = e.nativeEvent.contentOffset.x;
-      const next = Math.round(x / Math.max(1, pageWidth));
-      const clampedNext = Math.max(0, Math.min(TOP_TABS.length - 1, next));
-      const prev = topTabIndexRef.current;
-      if (clampedNext !== prev) {
-        userAdjustedTopTabRef.current = true;
-      }
-      commitTopTab(clampedNext, true);
-      if (clampedNext !== prev) {
-        announceStickerPanelTopTab(clampedNext);
-      }
+  const dockAnimHeightFallback = useMemo(() => {
+    if (variant !== 'dock') return 360;
+    const padBottom = 10;
+    return Math.min(
+      sheetMax,
+      Math.ceil(6 + 4 + 12 + 46 + 8 + 10 + pagerBodyHeight + padBottom + 8),
+    );
+  }, [variant, sheetMax, pagerBodyHeight]);
+
+  const [dockMounted, setDockMounted] = useState(false);
+  const dockLiftProgress = useSharedValue(0);
+  const dockSheetH = useSharedValue(dockAnimHeightFallback);
+
+  /** Dock: сброс измеренной ширины только когда шторка полностью убрана (после анимации закрытия). */
+  useEffect(() => {
+    if (variant !== 'dock') return;
+    if (visible || dockMounted) return;
+    setHostWidth(0);
+  }, [variant, visible, dockMounted]);
+
+  useEffect(() => {
+    if (variant !== 'dock') return;
+    dockSheetH.value = Math.max(dockSheetH.value, dockAnimHeightFallback);
+  }, [variant, dockAnimHeightFallback, dockSheetH]);
+
+  useEffect(() => {
+    if (variant !== 'dock' || !visible) return;
+    setDockMounted(true);
+  }, [variant, visible]);
+
+  const finishDockLower = useCallback(() => {
+    if (!aliveRef.current) return;
+    setDockMounted(false);
+  }, []);
+
+  useEffect(() => {
+    if (variant !== 'dock') {
+      cancelAnimation(dockLiftProgress);
+      dockLiftProgress.value = 0;
+      setDockMounted(false);
+      return;
+    }
+    cancelAnimation(dockLiftProgress);
+    if (visible) {
+      dockLiftProgress.value = withTiming(1, {
+        duration: DOCK_LIFT_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+      return;
+    }
+    if (!dockMounted) return;
+    dockLiftProgress.value = withTiming(
+      0,
+      {
+        duration: DOCK_LOWER_MS,
+        easing: Easing.in(Easing.cubic),
+      },
+      (finished) => {
+        if (finished) runOnJS(finishDockLower)();
+      },
+    );
+  }, [variant, visible, dockMounted, finishDockLower, dockLiftProgress]);
+
+  const onDockSheetLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      if (variant !== 'dock') return;
+      const h = Math.ceil(e.nativeEvent.layout.height);
+      if (h > 0) dockSheetH.value = Math.max(dockSheetH.value, h);
     },
-    [commitTopTab, pageWidth],
+    [variant, dockSheetH],
   );
+
+  const dockLiftStyle = useAnimatedStyle(() => {
+    const h = Math.max(56, dockSheetH.value);
+    const p = dockLiftProgress.value;
+    return {
+      transform: [{ translateY: (1 - p) * h }],
+      opacity: 0.88 + 0.12 * p,
+    };
+  });
 
   const handlePick = useCallback(
     (item: StickerSheetItem) => {
@@ -366,9 +450,8 @@ export function StickerPackSheet({
     (emoji: string) => {
       hapticStickerSheetPick();
       onPickEmoji?.(emoji);
-      onClose();
     },
-    [onClose, onPickEmoji],
+    [onPickEmoji],
   );
 
   const renderSticker = useCallback(
@@ -451,7 +534,7 @@ export function StickerPackSheet({
   );
 
   const stickersPage = (
-    <View style={[styles.page, { width: pageWidth, height: pagerBodyHeight }]}>
+    <View style={[styles.page, { width: sheetWidth, height: pagerBodyHeight }]}>
       <View style={styles.stickersSplit}>
         <ScrollView
           style={styles.packRail}
@@ -548,7 +631,7 @@ export function StickerPackSheet({
   );
 
   const emojiPage = (
-    <View style={[styles.page, { width: pageWidth, height: pagerBodyHeight }]}>
+    <View style={[styles.page, { width: sheetWidth, height: pagerBodyHeight }]}>
       <FlatList
         style={styles.stickerListFlex}
         data={CHATUS_QUICK_EMOJIS}
@@ -568,11 +651,13 @@ export function StickerPackSheet({
   );
 
   const gifPage = (
-    <View style={[styles.page, styles.gifPage, { width: pageWidth, height: pagerBodyHeight }]}>
+    <View style={[styles.page, styles.gifPage, { width: sheetWidth, height: pagerBodyHeight }]}>
       <Text style={styles.placeholderTitle}>GIF</Text>
       <Text style={styles.placeholderHint}>Скоро — поиск и отправка GIF из каталога.</Text>
     </View>
   );
+
+  const activePage = topTabIndex === 0 ? emojiPage : topTabIndex === 1 ? stickersPage : gifPage;
 
   const sheetPaddingBottom =
     variant === 'dock' ? 10 : Math.max(insets.bottom, 10) + 8;
@@ -656,7 +741,7 @@ export function StickerPackSheet({
               accessibilityState={{ selected }}
               accessibilityLabel={t.label}
               accessibilityHint="Показать этот раздел панели"
-              onPress={() => scrollToTab(i, true)}
+              onPress={() => selectTab(i)}
               style={[styles.topTab, selected && styles.topTabSelected]}
             >
               <Text
@@ -670,41 +755,41 @@ export function StickerPackSheet({
           );
         })}
       </View>
-      <ScrollView
-        ref={pagerRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        onMomentumScrollEnd={onPagerScrollEnd}
-        scrollEventThrottle={16}
-        style={{ width: pageWidth, height: pagerBodyHeight }}
-        accessibilityLabel="Контент панели. Листайте влево или вправо двумя пальцами, чтобы сменить раздел."
-        accessibilityHint="Влево — следующий раздел, вправо — предыдущий"
+      <View
+        style={{ width: '100%', height: pagerBodyHeight, overflow: 'hidden' }}
+        accessibilityLabel="Контент панели выбранного раздела"
       >
-        {emojiPage}
-        {stickersPage}
-        {gifPage}
-      </ScrollView>
+        {activePage}
+      </View>
     </View>
   );
 
   if (variant === 'dock') {
-    if (!visible) return null;
+    const showDockShell = visible || dockMounted;
+    const previewModal = stickerPreviewItem ? (
+      <Modal
+        visible
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={clearStickerPreview}
+      >
+        <View style={styles.previewModalRoot}>{stickerPreviewOverlay}</View>
+      </Modal>
+    ) : null;
+
+    if (!showDockShell) {
+      return previewModal;
+    }
+
     return (
       <>
-        <View style={styles.dockWrap}>{sheetBody}</View>
-        {stickerPreviewItem ? (
-          <Modal
-            visible
-            transparent
-            animationType="fade"
-            statusBarTranslucent
-            onRequestClose={clearStickerPreview}
-          >
-            <View style={styles.previewModalRoot}>{stickerPreviewOverlay}</View>
-          </Modal>
-        ) : null}
+        <View style={[styles.dockWrap, styles.dockWrapClip]} onLayout={onSheetHostLayout}>
+          <Animated.View style={[dockLiftStyle, styles.dockSheetAnim]} onLayout={onDockSheetLayout}>
+            {sheetBody}
+          </Animated.View>
+        </View>
+        {previewModal}
       </>
     );
   }
@@ -718,7 +803,9 @@ export function StickerPackSheet({
           accessibilityRole="button"
           accessibilityLabel="Закрыть панель"
         />
-        {sheetBody}
+        <View style={styles.modalSheetHost} onLayout={onSheetHostLayout}>
+          {sheetBody}
+        </View>
         {stickerPreviewOverlay}
       </View>
     </Modal>
@@ -730,11 +817,24 @@ function createStyles(c: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, justifyContent: 'flex-end' },
     previewModalRoot: { flex: 1 },
+    modalSheetHost: {
+      width: '100%',
+    },
     dockWrap: {
       width: '100%',
+      alignSelf: 'stretch',
+    },
+    dockWrapClip: {
+      overflow: 'hidden',
+    },
+    dockSheetAnim: {
+      width: '100%',
+      alignSelf: 'stretch',
     },
     backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: shadow },
     sheet: {
+      width: '100%',
+      alignSelf: 'stretch',
       backgroundColor: c.inputBackgroundSolid,
       borderTopLeftRadius: 22,
       borderTopRightRadius: 22,
@@ -768,12 +868,15 @@ function createStyles(c: ThemeColors) {
     },
     page: {
       flexDirection: 'column',
+      alignSelf: 'stretch',
+      width: '100%',
     },
     stickersSplit: {
       flex: 1,
       flexDirection: 'row',
       minHeight: 0,
       alignItems: 'stretch',
+      width: '100%',
     },
     packRail: {
       width: PACK_RAIL_W,
@@ -806,6 +909,8 @@ function createStyles(c: ThemeColors) {
       flex: 1,
       minWidth: 0,
       minHeight: 0,
+      width: '100%',
+      alignSelf: 'stretch',
     },
     stickerListFlex: {
       flex: 1,

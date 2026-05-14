@@ -71,15 +71,17 @@ import {
   encodeStickerPayload,
   isChatusStickerMessage,
   resolveChatusStickerSoloSendFlag,
-  type ChatusStickerRef,
+  resolveStickerImageOrPlaceholder,
+  soloChatusStickerDisplayDp,
 } from '../stickers/chatusStickerCatalog';
 import {
-  encodeTextWithStickerTail,
-  getCompositeStickerRef,
+  getCompositeStickerRefs,
   getCompositeTextBody,
   tryParseCompositeMessage,
 } from '../stickers/chatusCompositePayload';
 import { getChatListRowIndexForMessageId, type ChatListRow } from '../presentation/chatStickerListRows';
+
+const CHATUS_MENU_STICKER_PREVIEW_DP = soloChatusStickerDisplayDp({ maxDp: 140 });
 import {
   useVoicePlayerControls,
   useVoicePlayerState,
@@ -391,7 +393,11 @@ function buildForwardPreview(message: Message): string {
       const composite = raw ? tryParseCompositeMessage(raw) : null;
       if (composite) {
         const t = getCompositeTextBody(composite).trim();
-        return t.length ? `${t} · стикер` : 'Текст и стикер';
+        const stickerCount = getCompositeStickerRefs(composite).length;
+        if (t.length) {
+          return stickerCount > 1 ? `${t} · ${stickerCount} стикеров` : `${t} · стикер`;
+        }
+        return stickerCount > 1 ? `${stickerCount} стикеров` : 'Стикер';
       }
       if (isChatusStickerMessage(message.content)) return 'Стикер';
       return message.content?.trim() || 'Сообщение';
@@ -1215,23 +1221,6 @@ export function ChatScreen() {
     [chatId, currentUserId, replyToMessageId]
   );
 
-  const handleSendSticker = useCallback(
-    (
-      ref: ChatusStickerRef,
-      meta?: { composerWasEmpty: boolean; leadingText?: string },
-    ) => {
-      const tail = meta?.leadingText?.trim();
-      if (tail) {
-        handleSendText(encodeTextWithStickerTail(tail, ref), { chatusStickerSoloSend: false });
-        return;
-      }
-      handleSendText(encodeStickerPayload(ref), {
-        chatusStickerSoloSend: meta?.composerWasEmpty === true,
-      });
-    },
-    [handleSendText],
-  );
-
   const handleSendVoice = useCallback(
     async (result: { uri: string; waveform: number[]; durationMs: number }) => {
       if (!currentUserId) return;
@@ -1958,37 +1947,53 @@ export function ChatScreen() {
       const displayContent = rawContent.trim() || ' ';
       const compositeParsed = tryParseCompositeMessage(rawContent);
       if (compositeParsed) {
-        const stickerRef = getCompositeStickerRef(compositeParsed);
+        const stickerRefs = getCompositeStickerRefs(compositeParsed);
         const textBody = getCompositeTextBody(compositeParsed);
-        if (stickerRef) {
-          const stickerJson = encodeStickerPayload(stickerRef);
+        if (stickerRefs.length > 0) {
           const stickerMetaColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
           const stickerIconColor = isMe ? chatTheme.bubbleMeMeta : themeColors.textSecondary;
-          const stickerBlock = (
-            <StickerMessageBubble
-              rawContent={stickerJson}
-              isMe={isMe}
-              time={formatTime(item.created_at)}
-              status={item.status}
-              timeColor={stickerMetaColor}
-              iconColor={stickerIconColor}
-              topHeader={null}
-              replySnippet={null}
-              reactions={null}
-              stickerSize={140}
-            />
+          const thumbPx = 40;
+          const compositeMenuBody = (
+            <View style={styles.bubbleContentRow}>
+              <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-end' }}>
+                <Text
+                  style={[
+                    styles.textContent,
+                    isMe ? styles.textContentMe : null,
+                    isMe ? { color: chatTheme.bubbleMeText } : null,
+                    { flexShrink: 1 },
+                  ]}
+                >
+                  {textBody.trim() || ' '}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginLeft: 6 }}>
+                  {stickerRefs.map((ref, idx) => (
+                    <RNImage
+                      key={`${ref.packId}:${ref.stickerId}:${idx}`}
+                      source={resolveStickerImageOrPlaceholder(ref)}
+                      style={{ width: thumbPx, height: thumbPx }}
+                      resizeMode="contain"
+                      accessibilityIgnoresInvertColors
+                    />
+                  ))}
+                </View>
+              </View>
+              <MessageTimeStatus
+                time={formatTime(item.created_at)}
+                status={item.status}
+                isMe={isMe}
+                compact
+                timeColor={stickerMetaColor}
+                iconColor={stickerIconColor}
+              />
+            </View>
           );
           if (!isMe) {
             return (
               <View style={fixedWidthStyle}>
                 {renderForwardHeader()}
                 {renderReplySnippet()}
-                <View style={[styles.bubble, styles.bubbleOther]}>
-                  <View style={styles.bubbleContentRow}>
-                    <Text style={[styles.textContent]}>{textBody.trim() || ' '}</Text>
-                  </View>
-                </View>
-                {stickerBlock}
+                <View style={[styles.bubble, styles.bubbleOther]}>{compositeMenuBody}</View>
               </View>
             );
           }
@@ -2002,13 +2007,8 @@ export function ChatScreen() {
                 fillColor={chatTheme.bubbleMe}
                 style={[styles.bubble, !usePreviewOutgoingGradient ? styles.bubbleMe : null]}
               >
-                <View style={styles.bubbleContentRow}>
-                  <Text style={[styles.textContent, styles.textContentMe, { color: chatTheme.bubbleMeText }]}>
-                    {textBody.trim() || ' '}
-                  </Text>
-                </View>
+                {compositeMenuBody}
               </MeBubbleChrome>
-              {stickerBlock}
             </View>
           );
         }
@@ -2049,7 +2049,7 @@ export function ChatScreen() {
               topHeader={renderForwardHeader()}
               replySnippet={renderReplySnippet()}
               reactions={null}
-              stickerSize={140}
+              stickerSize={CHATUS_MENU_STICKER_PREVIEW_DP}
             />
           </View>
         );
@@ -2924,7 +2924,7 @@ export function ChatScreen() {
             onCancelReply={clearReplyState}
             isScreenFocused={isFocused}
             replyPeerFirstLineId={replyToMessage?.chat_id ?? chatId}
-            onSendSticker={handleSendSticker}
+            chatusStickersComposer
           />
         )}
       </BlurTargetView>
@@ -2938,7 +2938,14 @@ export function ChatScreen() {
         blurTargetRef={blurTargetRef}
         screenWidth={SCREEN_WIDTH}
         onClose={closeMenu}
-        showReactions={menuMode === 'actions'}
+        showReactions={
+          menuMode === 'actions' &&
+          !(
+            activeMenuMessage?.msg_type === 'text' &&
+            activeMenuMessage?.is_deleted !== 1 &&
+            isChatusStickerMessage(activeMenuMessage?.content)
+          )
+        }
         menuCardWidth={menuMode === 'deleteConfirm' ? 224 : undefined}
         onPickReaction={handlePickReaction}
         onMenuAction={(key) => {
