@@ -40,4 +40,9 @@ export type Message = MessageRow & {
     reacted_by_me: boolean;
     reactors?: { user_id: string; avatar_url: string | null }[];
   }[];
+  /**
+   * Только в памяти UI: исходящий стикер отправлен с **пустым** композером (как в Telegram —
+   * лёгкий вход без анимации, если в поле уже был черновик текста). Не в БД / не с сервера.
+   */
+  chatus_sticker_solo_send?: boolean;
 };

@@ -3,6 +3,7 @@ import Reanimated from 'react-native-reanimated';
 import type { LayoutChangeEvent, StyleProp, ViewStyle, View } from 'react-native';
 import type { Message } from '../stores/types';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
+import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
 import {
   InputBar,
   type FilePickResult,
@@ -30,6 +31,7 @@ type ChatInputDockProps = {
   commentCooldownEndsAt?: number | null;
   onCommentCooldownClear?: () => void;
   replyPeerFirstLineId?: string | null;
+  onSendSticker?: (ref: ChatusStickerRef, meta?: { composerWasEmpty: boolean }) => void;
 };
 
 export function ChatInputDock({
@@ -52,6 +54,7 @@ export function ChatInputDock({
   commentCooldownEndsAt = null,
   onCommentCooldownClear,
   replyPeerFirstLineId = null,
+  onSendSticker,
 }: ChatInputDockProps) {
   return (
     <Reanimated.View onLayout={onLayout} style={[animatedStyle, { overflow: 'visible' }]}>
@@ -73,6 +76,7 @@ export function ChatInputDock({
         commentCooldownEndsAt={commentCooldownEndsAt}
         onCommentCooldownClear={onCommentCooldownClear}
         replyPeerFirstLineId={replyPeerFirstLineId}
+        onSendSticker={onSendSticker}
       />
     </Reanimated.View>
   );

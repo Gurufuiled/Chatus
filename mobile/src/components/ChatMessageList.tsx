@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   Animated,
@@ -66,6 +66,8 @@ import {
   shouldUseDarkDefaultOutgoingBubbleGradient,
 } from './OutgoingBubbleViewportGradient';
 import { CHAT_MSG_GROUP_TIME_GAP_MS } from '../presentation/telegramChatUi';
+import { StickerMessageBubble } from './StickerMessageBubble';
+import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
 
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
@@ -992,6 +994,32 @@ const MessageRow = React.memo(function MessageRow({
               />
             ) : null}
           </View>
+        );
+      }
+
+      if (isChatusStickerMessage(rawContent)) {
+        const reactionsNode =
+          inlineReactionList?.length ? (
+            <MessageReactionInline
+              reactions={inlineReactionList}
+              isMe={isMe}
+              allowReactions={allowReactions}
+              onToggle={(emoji) => onToggleReaction(bodyItem.id, emoji)}
+              accentColor={chatTheme.bubbleMeAccent}
+            />
+          ) : null;
+
+        return (
+          <StickerMessageBubble
+            rawContent={rawContent}
+            isMe={isMe}
+            time={formatTime(bodyItem.created_at)}
+            status={bodyItem.status}
+            topHeader={renderIncomingHeader()}
+            replySnippet={renderReplySnippet()}
+            reactions={reactionsNode}
+            playOutgoingEntrance={isMe && bodyItem.chatus_sticker_solo_send === true}
+          />
         );
       }
 

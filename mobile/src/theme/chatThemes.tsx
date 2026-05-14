@@ -19,11 +19,9 @@ const CHAT_THEME_IMAGE_ASSETS = {
   meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.png'),
   frost: require('../assets/chat-themes/bg_snow_doodle.png'),
   sunset: require('../assets/chat-themes/bg_holiday_doodle.png'),
-  /** Светлая «Без темы»: зелёный градиент + те же doodle-силуэты, что у тёмного варианта. */
+  /** Светлая «Без темы»: `bg_default_light_doodle` (арт preview wall_light_v2) + `@2x`/`@3x`. */
   defaultLightDoodle: require('../assets/chat-themes/bg_default_light_doodle.png'),
-  /** Тёмная «Без темы»: 1536×1024 PNG (раньше был мелкий JPEG → полосы на градиенте). */
-  defaultDarkDoodle: require('../assets/chat-themes/bg_default_dark_doodle.png'),
-  /** Резерв (старый night); пресеты meadow/frost/sunset не используют. */
+  /** Тёмная «Без темы»: `bg_night_doodle` (арт preview wall_dark_v1) + `@2x`/`@3x`. */
   night: require('../assets/chat-themes/bg_night_doodle.png'),
 } as const;
 
@@ -78,9 +76,9 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
     forwardHeaderMe: 'rgba(255,255,255,0.96)',
     deletedBubbleMe: '#C8E6C9',
     deletedTextMe: '#2E6B32',
-    canvasColor: '#E8F4D6',
+    canvasColor: '#E6F2EE',
     wallpaperKind: 'asset-image',
-    wallpaperBase: '#E5F0D5',
+    wallpaperBase: '#DDECE8',
     wallpaperTint: 'rgba(255, 255, 255, 0.06)',
     wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.defaultLightDoodle,
     previewBadge: '×',
@@ -155,7 +153,7 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
 
 export const CHAT_THEME_ORDER: ChatThemeId[] = ['default', 'meadow', 'frost', 'sunset'];
 
-/** «Без темы» при тёмной теме приложения — обои night doodle + палитра под тёмный фон. */
+/** «Без темы» при тёмной теме — `bg_night_doodle` (wall_dark_v1) + `@2x`/`@3x`. */
 const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
   id: 'default',
   name: 'Без темы',
@@ -173,9 +171,9 @@ const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
   deletedTextMe: 'rgba(255,255,255,0.65)',
   canvasColor: '#141820',
   wallpaperKind: 'asset-image',
-  wallpaperBase: '#1A1218',
-  wallpaperTint: 'rgba(255,255,255,0.02)',
-  wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.defaultDarkDoodle,
+  wallpaperBase: '#10151C',
+  wallpaperTint: 'rgba(255,255,255,0.015)',
+  wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.night,
   previewBadge: '×',
 };
 
@@ -239,7 +237,11 @@ export function ChatWallpaper({
       <Image
         source={source}
         contentFit="cover"
-        style={[StyleSheet.absoluteFillObject, styles.wallpaperImage, rounded && styles.wallpaperRounded]}
+        style={[
+          styles.wallpaperImageOverscan,
+          styles.wallpaperImage,
+          rounded && styles.wallpaperRounded,
+        ]}
         cachePolicy="memory-disk"
         transition={0}
       />
@@ -294,6 +296,14 @@ const styles = StyleSheet.create({
   },
   wallpaperRounded: {
     borderRadius: 18,
+  },
+  /** Чуть больше экрана — убирает редкие 1px «полоски» по краю при cover + субпикселях. */
+  wallpaperImageOverscan: {
+    position: 'absolute',
+    top: -3,
+    left: -3,
+    right: -3,
+    bottom: -3,
   },
   wallpaperImage: {
     opacity: 0.99,

@@ -66,6 +66,13 @@ import {
   MeBubbleChrome,
   shouldUseDarkDefaultOutgoingBubbleGradient,
 } from '../components/OutgoingBubbleViewportGradient';
+import { StickerMessageBubble } from '../components/StickerMessageBubble';
+import {
+  encodeStickerPayload,
+  isChatusStickerMessage,
+  resolveChatusStickerSoloSendFlag,
+  type ChatusStickerRef,
+} from '../stickers/chatusStickerCatalog';
 import {
   useVoicePlayerControls,
   useVoicePlayerState,
@@ -373,6 +380,7 @@ function MediaAlbumBubble({
 function buildForwardPreview(message: Message): string {
   switch (message.msg_type) {
     case 'text':
+      if (isChatusStickerMessage(message.content)) return 'Стикер';
       return message.content?.trim() || 'Сообщение';
     case 'image':
       return message.content?.trim() || 'Фото';
@@ -1151,11 +1159,12 @@ export function ChatScreen() {
   }, [menuAnim, menuState]);
 
   const handleSendText = useCallback(
-    (text: string) => {
+    (text: string, sendOptions?: { chatusStickerSoloSend?: boolean }) => {
       if (!currentUserId) return;
       const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
+      const stickerSoloEntrance = resolveChatusStickerSoloSendFlag(text, sendOptions);
       const msg: Message = {
         id: tempId,
         chat_id: chatId,
@@ -1170,6 +1179,7 @@ export function ChatScreen() {
         server_id: null,
         created_at: now,
         updated_at: now,
+        ...(stickerSoloEntrance ? { chatus_sticker_solo_send: true as const } : {}),
       };
       messageStore.getState().prependMessage(chatId, msg);
       void (async () => {
@@ -1189,6 +1199,15 @@ export function ChatScreen() {
       setReplyToMessageId(null);
     },
     [chatId, currentUserId, replyToMessageId]
+  );
+
+  const handleSendSticker = useCallback(
+    (ref: ChatusStickerRef, meta?: { composerWasEmpty: boolean }) => {
+      handleSendText(encodeStickerPayload(ref), {
+        chatusStickerSoloSend: meta?.composerWasEmpty === true,
+      });
+    },
+    [handleSendText],
   );
 
   const handleSendVoice = useCallback(
@@ -1931,6 +1950,23 @@ export function ChatScreen() {
               chatTheme={chatTheme}
               useViewportOutgoingGradient={usePreviewOutgoingGradient}
               scrollTick={menuPreviewScrollTick}
+            />
+          </View>
+        );
+      }
+
+      if (isChatusStickerMessage(rawContent)) {
+        return (
+          <View style={fixedWidthStyle}>
+            <StickerMessageBubble
+              rawContent={rawContent}
+              isMe={isMe}
+              time={formatTime(item.created_at)}
+              status={item.status}
+              topHeader={renderForwardHeader()}
+              replySnippet={renderReplySnippet()}
+              reactions={null}
+              stickerSize={140}
             />
           </View>
         );
@@ -2803,6 +2839,7 @@ export function ChatScreen() {
             onCancelReply={clearReplyState}
             isScreenFocused={isFocused}
             replyPeerFirstLineId={replyToMessage?.chat_id ?? chatId}
+            onSendSticker={handleSendSticker}
           />
         )}
       </BlurTargetView>

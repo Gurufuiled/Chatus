@@ -10,7 +10,7 @@ import {
   useChatComposerDockPaddingBottom,
   useChatComposerKeyboardLiftStyles,
 } from '../utils/chatComposerKeyboard';
-import Reanimated, { useAnimatedKeyboard } from 'react-native-reanimated';
+import Reanimated, { useAnimatedKeyboard, useSharedValue } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
 import { FileBubble } from '../components/FileBubble';
@@ -99,7 +99,7 @@ export function TelegramChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList, 'TelegramChat'>>();
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
-  const isVoiceRecordingShared = Reanimated.useSharedValue(false);
+  const isVoiceRecordingShared = useSharedValue(false);
   const { dockAnimatedStyle: inputDockAnimatedStyle, listWrapAnimatedStyle: listKeyboardAnimatedStyle } =
     useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), isVoiceRecordingShared);
   const blurTargetRef = useRef<View>(null);

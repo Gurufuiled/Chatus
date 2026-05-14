@@ -4,6 +4,7 @@ import { lightPalette } from '../theme/palettes';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { Chat, Message } from '../stores/types';
+import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
 import { ChatWallpaper } from '../theme/chatThemes';
 
 export const EMPTY_MESSAGES: Message[] = [];
@@ -251,7 +252,11 @@ export function getDeletedPlaceholder(isMe: boolean): string {
 
 export function getCopyableContent(message: Message): string {
   if (message.is_deleted) return '';
-  if (message.msg_type === 'text') return message.content?.trim() ?? '';
+  if (message.msg_type === 'text') {
+    const t = message.content?.trim() ?? '';
+    if (isChatusStickerMessage(t)) return 'Стикер';
+    return t;
+  }
   if (message.msg_type === 'image') return message.content?.trim() || message.media?.[0]?.remote_url || '';
   if (message.msg_type === 'video') return message.content?.trim() || 'Video';
   if (message.msg_type === 'file') {

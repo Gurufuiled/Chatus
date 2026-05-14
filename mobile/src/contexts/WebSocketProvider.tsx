@@ -583,6 +583,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               transport: mapped.transport,
               created_at: mapped.created_at,
               updated_at: mapped.updated_at,
+              /** После ACK `id` меняется → новый key в списке; без сброса Reanimated `entering` проигрался бы второй раз. */
+              chatus_sticker_solo_send: undefined,
               ...(media ? { media } : {}),
             });
             if (

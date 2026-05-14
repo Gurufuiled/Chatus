@@ -33,6 +33,7 @@ export { VideoNoteBubble } from './VideoNoteBubble';
 export { VoiceBubble } from './VoiceBubble';
 export { LoadErrorState } from './LoadErrorState';
 export { Skeleton, SkeletonBlock, SkeletonCircle, SkeletonRows } from './Skeleton';
+export { StickerMessageBubble } from './StickerMessageBubble';
 export { ChatListSkeleton } from './ChatListSkeleton';
 export { ChatMessagesSkeleton } from './ChatMessagesSkeleton';
 export { GallerySkeletonGrid } from './GallerySkeletonGrid';

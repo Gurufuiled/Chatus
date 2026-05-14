@@ -3,6 +3,7 @@ import type { GestureResponderEvent } from 'react-native';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import type { Message } from '../stores/types';
+import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
 import { buildSearchHighlightChildren } from '../utils/searchHighlightText';
 import { usePeerFirstResolvedUri } from './peerFirstMedia';
 
@@ -31,6 +32,7 @@ export function buildReplyPreviewText(message: Message | null | undefined): stri
 
   if (message.msg_type === 'text') {
     const text = message.content?.trim();
+    if (text && isChatusStickerMessage(text)) return 'Стикер';
     return text?.length ? text : 'Пустое сообщение';
   }
 

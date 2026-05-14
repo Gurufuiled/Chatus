@@ -5,16 +5,19 @@ import {
   AppState,
   Easing,
   Image,
+  InteractionManager,
   Keyboard,
   PanResponder,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type ViewStyle,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Feather from '@expo/vector-icons/Feather';
 import { composerPresentation } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
@@ -38,6 +41,16 @@ import { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 import { buildReplyPreviewText, getReplyPreviewThumbnailUri } from './ReplyPreview';
 import { usePeerFirstResolvedUri } from './peerFirstMedia';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
+import { StickerPackSheet } from './StickerPackSheet';
+import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
+import {
+  hapticStickerSheetDismiss,
+  hapticStickerSheetOpen,
+} from '../stickers/chatusStickerPanelHaptics';
+import type { StickerPanelTopTab } from '../stickers/stickerPanelPreferences';
+
+/** Ниже — кнопка стикеров уезжает к скрепке (фаза 3.2 журнала), чтобы не сжимать поле и микрофон. */
+const COMPOSER_NARROW_BREAKPOINT = 380;
 
 export interface MediaPickResult {
   kind: 'image' | 'video';
@@ -94,6 +107,8 @@ export interface InputBarProps {
   onCommentCooldownClear?: () => void;
   /** LineSync line id (chat id) — peer-first превью ответа в композере. */
   replyPeerFirstLineId?: string | null;
+  /** Стикеры (набор знакомого): кнопка слева от микрофона + шторка; отправка через `encodeStickerPayload` в родителе. */
+  onSendSticker?: (ref: ChatusStickerRef, meta?: { composerWasEmpty: boolean }) => void;
 }
 
 type AttachmentAction = {
@@ -186,14 +201,23 @@ export function InputBar({
   replyAuthorName = null,
   onCancelReply,
   isScreenFocused = true,
+  onVoiceActiveChange,
   voiceRestriction = null,
   mediaRestriction = null,
   commentCooldownEndsAt = null,
   onCommentCooldownClear,
   replyPeerFirstLineId = null,
+  onSendSticker,
 }: InputBarProps) {
+  const { width: windowWidth } = useWindowDimensions();
+  const narrowComposer = windowWidth < COMPOSER_NARROW_BREAKPOINT;
+  const stickerInLeadingCluster = narrowComposer && !!onSendSticker;
+
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createInputBarStyles(themeColors), [themeColors]);
+  const inputRef = useRef<TextInput>(null);
+  const [stickerSheetVisible, setStickerSheetVisible] = useState(false);
+  const [stickerSheetBootTab, setStickerSheetBootTab] = useState<StickerPanelTopTab | null>(null);
   const [inputText, setInputText] = useState('');
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
@@ -237,8 +261,8 @@ export function InputBar({
   const canUseVideoNotes = onSendVideoNote != null;
 
   React.useEffect(() => {
-    props.onVoiceActiveChange?.(isVoiceRecording);
-  }, [isVoiceRecording, props.onVoiceActiveChange]);
+    onVoiceActiveChange?.(isVoiceRecording);
+  }, [isVoiceRecording, onVoiceActiveChange]);
   const isVideoEntryMode = canUseVideoNotes && recordingEntryModeState === 'video';
   const replyPreviewText = buildReplyPreviewText(replyToMessage);
   const replyPreviewThumbnailUri = getReplyPreviewThumbnailUri(replyToMessage);
@@ -390,6 +414,62 @@ export function InputBar({
     [onInputChange]
   );
 
+  const openStickerPanel = useCallback(
+    (bootTab: StickerPanelTopTab | null) => {
+      if (stickerSheetVisible) {
+        setStickerSheetVisible(false);
+        setStickerSheetBootTab(null);
+        hapticStickerSheetDismiss();
+        requestAnimationFrame(() => {
+          inputRef.current?.focus();
+        });
+        return;
+      }
+      setStickerSheetBootTab(bootTab);
+      Keyboard.dismiss();
+      InteractionManager.runAfterInteractions(() => {
+        requestAnimationFrame(() => {
+          hapticStickerSheetOpen();
+          setStickerSheetVisible(true);
+        });
+      });
+    },
+    [stickerSheetVisible],
+  );
+
+  const toggleStickerPanel = useCallback(() => {
+    openStickerPanel(null);
+  }, [openStickerPanel]);
+
+  const handleStickerBootTabConsumed = useCallback(() => {
+    setStickerSheetBootTab(null);
+  }, []);
+
+  const handleStickerPick = useCallback(
+    (ref: ChatusStickerRef) => {
+      // Фаза 3.3: отправка стикера не трогает черновик текста — очистка текста/медиа только в handleSend.
+      // Ответ в композере сбрасываем как при обычной отправке.
+      onCancelReply?.();
+      const composerWasEmpty = inputText.trim().length === 0;
+      onSendSticker?.(ref, { composerWasEmpty });
+    },
+    [inputText, onCancelReply, onSendSticker],
+  );
+
+  const handleEmojiPick = useCallback(
+    (emoji: string) => {
+      setInputText((prev) => {
+        const next = prev + emoji;
+        onInputChange?.(next);
+        return next;
+      });
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    },
+    [onInputChange],
+  );
+
   const handleVideoNoteComplete = useCallback(
     async (result: VideoNoteRecordingResult) => {
       videoSwipeTriggeredRef.current = false;
@@ -464,6 +544,7 @@ export function InputBar({
     if (!isScreenFocused) {
       setShowAttachmentSheet(false);
       setShowVideoNoteRecorder(false);
+      setStickerSheetVisible(false);
       Keyboard.dismiss();
     }
   }, [isScreenFocused]);
@@ -1413,12 +1494,66 @@ export function InputBar({
 
             <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}>
               {showAttachmentButton ? (
-                <Pressable style={styles.leadingAction} onPress={openAttachmentSheet}>
-                  <PaperclipIcon />
+                stickerInLeadingCluster && onSendSticker ? (
+                  <View style={styles.leadingCluster} accessibilityRole="toolbar">
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Вложения"
+                      style={styles.leadingAction}
+                      onPress={openAttachmentSheet}
+                    >
+                      <PaperclipIcon />
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={stickerSheetVisible ? 'Показать клавиатуру' : 'Открыть стикеры'}
+                      accessibilityHint="Удерживайте, чтобы открыть вкладку Emoji"
+                      onPress={toggleStickerPanel}
+                      onLongPress={() => {
+                        if (!stickerSheetVisible) openStickerPanel('emoji');
+                      }}
+                      delayLongPress={400}
+                      style={({ pressed }) => [styles.leadingAction, pressed && styles.trailingActionPressed]}
+                    >
+                      {stickerSheetVisible ? (
+                        <MaterialIcons name="keyboard" size={20} color={themeColors.iconMuted} />
+                      ) : (
+                        <Feather name="smile" size={20} color={themeColors.iconMuted} />
+                      )}
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Вложения"
+                    style={styles.leadingAction}
+                    onPress={openAttachmentSheet}
+                  >
+                    <PaperclipIcon />
+                  </Pressable>
+                )
+              ) : stickerInLeadingCluster && onSendSticker ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={stickerSheetVisible ? 'Показать клавиатуру' : 'Открыть стикеры'}
+                  accessibilityHint="Удерживайте, чтобы открыть вкладку Emoji"
+                  onPress={toggleStickerPanel}
+                  onLongPress={() => {
+                    if (!stickerSheetVisible) openStickerPanel('emoji');
+                  }}
+                  delayLongPress={400}
+                  style={({ pressed }) => [styles.leadingAction, pressed && styles.trailingActionPressed]}
+                >
+                  {stickerSheetVisible ? (
+                    <MaterialIcons name="keyboard" size={20} color={themeColors.iconMuted} />
+                  ) : (
+                    <Feather name="smile" size={20} color={themeColors.iconMuted} />
+                  )}
                 </Pressable>
               ) : null}
 
               <TextInput
+                ref={inputRef}
                 style={styles.input}
                 placeholder={placeholder}
                 placeholderTextColor={themeColors.placeholder}
@@ -1428,8 +1563,33 @@ export function InputBar({
                 maxLength={4096}
               />
 
+              {!stickerInLeadingCluster && onSendSticker ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={stickerSheetVisible ? 'Показать клавиатуру' : 'Открыть стикеры'}
+                  accessibilityHint="Удерживайте, чтобы открыть вкладку Emoji"
+                  onPress={toggleStickerPanel}
+                  onLongPress={() => {
+                    if (!stickerSheetVisible) openStickerPanel('emoji');
+                  }}
+                  delayLongPress={400}
+                  style={({ pressed }) => [styles.composerStickerAction, pressed && styles.trailingActionPressed]}
+                >
+                  {stickerSheetVisible ? (
+                    <MaterialIcons name="keyboard" size={22} color={themeColors.iconMuted} />
+                  ) : (
+                    <Feather name="smile" size={22} color={themeColors.iconMuted} />
+                  )}
+                </Pressable>
+              ) : null}
+
               {canSend ? (
-                <Pressable style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]} onPress={handleSend}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Отправить"
+                  style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
+                  onPress={handleSend}
+                >
                   <SendIcon />
                 </Pressable>
               ) : (
@@ -1504,6 +1664,20 @@ export function InputBar({
           blurTargetRef={blurTargetRef}
         />
       )}
+
+      {onSendSticker ? (
+        <StickerPackSheet
+          visible={stickerSheetVisible}
+          onClose={() => {
+            setStickerSheetVisible(false);
+            setStickerSheetBootTab(null);
+          }}
+          onPickSticker={handleStickerPick}
+          onPickEmoji={handleEmojiPick}
+          initialTopTabSnapshot={stickerSheetBootTab}
+          onInitialTopTabSnapshotConsumed={handleStickerBootTabConsumed}
+        />
+      ) : null}
     </>
   );
 }
@@ -1671,6 +1845,18 @@ function createInputBarStyles(themeColors: ThemeColors) {
     height: MIN_TAP_TARGET,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  leadingCluster: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 0,
+  },
+  composerStickerAction: {
+    width: MIN_TAP_TARGET,
+    height: MIN_TAP_TARGET,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 1,
   },
   input: {
     flex: 1,
