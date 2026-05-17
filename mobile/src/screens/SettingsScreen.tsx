@@ -196,7 +196,7 @@ export function SettingsScreen() {
           onLongPress={() => {
             Alert.alert(
               'Аккаунты',
-              'Telegram (TDLib) и Chatus (Loginus) — разные сессии.',
+              'Telegram и Chatus (Loginus) — разные аккаунты.',
               [
                 {
                   text: 'Подключить / сменить Telegram',
@@ -280,7 +280,11 @@ export function SettingsScreen() {
                   ? 'Открыть диалоги'
                   : telegramAuthStatus === 'waiting_password'
                     ? 'Ввести пароль двухэтапной проверки (2FA)'
-                    : 'Подключить аккаунт (TDLib на устройстве)'}
+                    : telegramAuthStatus === 'waiting_code'
+                      ? 'Ввести код из Telegram или SMS'
+                      : telegramAuthStatus === 'error'
+                        ? 'Ошибка входа — откройте, чтобы повторить'
+                        : 'Войти по номеру телефона'}
               </Text>
             </View>
             <Text style={styles.servicesChevron}>›</Text>

@@ -37,6 +37,11 @@ export async function getTdlibDirectories(): Promise<{ databaseDir: string; file
 let tdlibParametersAppliedThisProcess = false;
 let applyInFlight: Promise<void> | null = null;
 
+/**
+ * Только если нативный клиент TDLib реально пересоздан (новый процесс приложения).
+ * Не вызывать при «выходе из Telegram» в JS: нативный `client_id` тот же — повторный
+ * `setTdlibParameters` даёт Unexpected setTdlibParameters.
+ */
 export function resetTdlibParametersLock(): void {
   tdlibParametersAppliedThisProcess = false;
   applyInFlight = null;
@@ -62,6 +67,16 @@ async function doApplyTdlibParameters(): Promise<void> {
   const { apiId, apiHash } = getTelegramBuildCredentials();
   if (apiId == null || !apiHash) {
     throw new Error('Нет TELEGRAM_API_ID / TELEGRAM_API_HASH в сборке');
+  }
+  const authProbe = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<string, unknown>;
+  throwIfTdError(authProbe);
+  const probeType = (authProbe['@type'] as string) ?? '';
+  if (!probeType) {
+    throw new Error('TDLib: пустой ответ getAuthorizationState');
+  }
+  if (probeType !== 'authorizationStateWaitTdlibParameters') {
+    tdlibParametersAppliedThisProcess = true;
+    return;
   }
   const { databaseDir, filesDir } = await getTdlibDirectories();
   const setRes = await tdlibClient.send({

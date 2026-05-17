@@ -22,6 +22,9 @@ mobile/dist-*/
 # Cursor hook: флаг «нужен reviewer» (локально)
 .cursor/hooks/.pending-review
 
+# Specstory: экспорты сессий часто >100 MB (лимит GitHub на один файл)
+.specstory/history/
+
 # IDE / OS
 .DS_Store
 *.orig.*

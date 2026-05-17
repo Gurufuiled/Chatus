@@ -33,9 +33,9 @@ export type ResolvedColorScheme = 'light' | 'dark';
 
 /** Telegram Android–inspired light defaults (legacy `colors` export). */
 export const lightPalette: ThemeColors = {
-  textPrimary: '#222222',
-  textSecondary: '#8E8E93',
-  textSecondaryMuted: 'rgba(255,255,255,0.82)',
+  textPrimary: '#1A1D21',
+  textSecondary: '#5C6370',
+  textSecondaryMuted: 'rgba(0,0,0,0.42)',
   placeholder: '#999999',
   accent: '#3390EC',
   link: '#2B75C6',

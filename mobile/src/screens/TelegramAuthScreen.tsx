@@ -6,11 +6,12 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation, type NavigationProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainTabParamList, SettingsStackParamList } from '../navigation/types';
 import { useTheme } from '../contexts/ThemeContext';
@@ -19,107 +20,298 @@ import { applyTdlibParameters } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { runTdlibAuthorizationQuery } from '../services/tdlib/tdlibAuthQueue';
 import { inboxModeStore } from '../stores/inboxModeStore';
-import { telegramAccountStore } from '../stores/telegramAccountStore';
+import { telegramAccountStore, type TelegramAuthStatus } from '../stores/telegramAccountStore';
+
+function mapTdlibAuthToStore(authType: string | undefined): TelegramAuthStatus {
+  switch (authType) {
+    case 'authorizationStateReady':
+      return 'ready';
+    case 'authorizationStateWaitPassword':
+      return 'waiting_password';
+    case 'authorizationStateWaitCode':
+    case 'authorizationStateWaitEmailCode':
+    case 'authorizationStateWaitOtherDeviceConfirmation':
+      return 'waiting_code';
+    case 'authorizationStateWaitPhoneNumber':
+    case 'authorizationStateWaitEmailAddress':
+    case 'authorizationStateWaitRegistration':
+      return 'waiting_phone';
+    case 'authorizationStateLoggingOut':
+    case 'authorizationStateClosing':
+    case 'authorizationStateClosed':
+      return 'error';
+    default:
+      return 'error';
+  }
+}
+
+/** TDLib ждёт международный номер; «+» для страны нужен. Нормализуем типичный ввод РФ (8… / 7… / 9…). */
+function normalizeTelegramPhone(raw: string): string {
+  const collapsed = raw.replace(/[\s().-]/g, '').trim();
+  if (!collapsed) return '';
+  if (collapsed.startsWith('+')) {
+    const rest = collapsed.slice(1).replace(/\D/g, '');
+    return rest ? `+${rest}` : '';
+  }
+  const digits = collapsed.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('8')) {
+    return `+7${digits.slice(1)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('7')) {
+    return `+${digits}`;
+  }
+  if (digits.length === 10 && digits.startsWith('9')) {
+    return `+7${digits}`;
+  }
+  return digits ? `+${digits}` : '';
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(id);
+        reject(e);
+      },
+    );
+  });
+}
+
+function defaultPhoneNumberAuthenticationSettings(): Record<string, unknown> {
+  return {
+    '@type': 'phoneNumberAuthenticationSettings',
+    allow_flash_call: false,
+    allow_missed_call: false,
+    /** Номер вводится вручную; не заявляем, что это «текущий» номер линии устройства. */
+    is_current_phone_number: false,
+    /**
+     * По TDLib: true, если SIM есть, но нельзя проверить совпадение номера с линией.
+     * MSISDN не читаем; на Android задаём true как эвристику «телефон с SIM, сверки нет».
+     * На iOS без нативной проверки подписок — false.
+     */
+    has_unknown_phone_number: Platform.OS === 'android',
+    allow_sms_retriever_api: false,
+    authentication_tokens: [],
+  };
+}
 
 export function TelegramAuthScreen() {
-  const { colors } = useTheme();
+  const { colors, resolvedScheme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [cloudPassword, setCloudPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  /** Пока React не успел выставить `busy`, второй тап не должен стартовать тот же TDLib-запрос. */
-  const initInFlightRef = useRef(false);
+  const [preparing, setPreparing] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const firstScreenFocus = useRef(true);
+  /** Не уводить в чаты, если пользователь уже ушёл с экрана, а sync завершился позже. */
+  const screenFocusedRef = useRef(false);
 
   const { apiId, apiHash } = useMemo(() => getTelegramBuildCredentials(), []);
+  const isLight = resolvedScheme === 'light';
+
+  const ui = useMemo(() => {
+    const label = isLight ? '#4A5568' : colors.textSecondary;
+    const hint = isLight ? '#5A6578' : colors.textSecondary;
+    const placeholder = isLight ? 'rgba(0,0,0,0.38)' : colors.textSecondaryMuted;
+    const fieldBg = isLight ? '#FFFFFF' : colors.inputBackgroundSolid;
+    const border = isLight ? '#B8C0CC' : colors.separator;
+    const secondaryBtnBg = isLight ? '#E8EDF4' : colors.inputBackgroundSolid;
+    return { label, hint, placeholder, fieldBg, border, secondaryBtnBg };
+  }, [colors, isLight]);
 
   const openTelegramChats = useCallback(() => {
     inboxModeStore.getState().setActiveInbox('telegram');
     navigation.getParent<NavigationProp<MainTabParamList>>()?.navigate('Chats', { screen: 'ChatList' });
   }, [navigation]);
 
-  const initTdlib = useCallback(async () => {
+  const syncAuthorizationFromTdlib = useCallback(async (): Promise<TelegramAuthStatus> => {
+    if (apiId == null || !apiHash) {
+      return telegramAccountStore.getState().authStatus;
+    }
+    await applyTdlibParameters();
+    let auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as { '@type'?: string };
+    throwIfTdError(auth);
+    let t = auth['@type'];
+    if (t === 'authorizationStateWaitTdlibParameters') {
+      await applyTdlibParameters();
+      auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as { '@type'?: string };
+      throwIfTdError(auth);
+      t = auth['@type'];
+    }
+    if (t === 'authorizationStateWaitTdlibParameters') {
+      throw new Error('Не удалось инициализировать Telegram. Перезапустите приложение.');
+    }
+    if (t === 'authorizationStateReady') {
+      telegramAccountStore.getState().setAuthStatus('ready');
+      await telegramAccountStore.getState().persistSnapshot();
+      if (screenFocusedRef.current) {
+        openTelegramChats();
+      }
+      return 'ready';
+    }
+    const next = mapTdlibAuthToStore(t);
+    telegramAccountStore.getState().setAuthStatus(next);
+    await telegramAccountStore.getState().persistSnapshot();
+    return next;
+  }, [apiHash, apiId, openTelegramChats]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      screenFocusedRef.current = true;
+      if (apiId == null || !apiHash) {
+        setPreparing(false);
+        return () => {
+          cancelled = true;
+          screenFocusedRef.current = false;
+        };
+      }
+      const showBlockingSpinner = firstScreenFocus.current;
+      firstScreenFocus.current = false;
+      if (showBlockingSpinner) setPreparing(true);
+      void (async () => {
+        try {
+          setBootstrapError(null);
+          await syncAuthorizationFromTdlib();
+        } catch (e) {
+          if (!cancelled) {
+            setBootstrapError(e instanceof Error ? e.message : String(e));
+          }
+        } finally {
+          if (!cancelled) setPreparing(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+        screenFocusedRef.current = false;
+      };
+    }, [apiHash, apiId, syncAuthorizationFromTdlib]),
+  );
+
+  const submitPhone = useCallback(async () => {
+    const trimmed = normalizeTelegramPhone(phone);
+    if (!trimmed || trimmed.length < 8) {
+      Alert.alert(
+        'Телефон',
+        'Укажите номер в международном формате: +7 и 10 цифр (например +79881234567). Можно ввести 8 988… или 988… — мы подставим +7.',
+      );
+      return;
+    }
     if (apiId == null || !apiHash) {
       Alert.alert(
         'Нет ключей Telegram API',
-        'Задайте TELEGRAM_API_ID и TELEGRAM_API_HASH в EAS Secrets (или в .env при локальной сборке). См. mobile/TDLIB.md.',
+        'Для сборки нужны TELEGRAM_API_ID и TELEGRAM_API_HASH (см. mobile/TDLIB.md).',
       );
-      return;
-    }
-    if (initInFlightRef.current) return;
-    initInFlightRef.current = true;
-    setBusy(true);
-    try {
-      await applyTdlibParameters();
-      const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
-      throwIfTdError(auth);
-      const t = (auth as { '@type'?: string })['@type'];
-      if (t === 'authorizationStateReady') {
-        telegramAccountStore.getState().setAuthStatus('ready');
-        await telegramAccountStore.getState().persistSnapshot();
-        openTelegramChats();
-        return;
-      }
-      if (t === 'authorizationStateWaitPassword') {
-        telegramAccountStore.getState().setAuthStatus('waiting_password');
-        await telegramAccountStore.getState().persistSnapshot();
-        return;
-      }
-      telegramAccountStore.getState().setAuthStatus('waiting_phone');
-      await telegramAccountStore.getState().persistSnapshot();
-    } catch (e) {
-      Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-      initInFlightRef.current = false;
-    }
-  }, [apiHash, apiId, openTelegramChats]);
-
-  const submitPhone = useCallback(async () => {
-    if (telegramAccountStore.getState().authStatus !== 'waiting_phone') {
-      Alert.alert(
-        'TDLib',
-        'Сначала нажмите «Инициализировать TDLib» и дождитесь успеха (без ошибки в диалоге).',
-      );
-      return;
-    }
-    const trimmed = phone.replace(/\s+/g, '');
-    if (!trimmed) {
-      Alert.alert('Телефон', 'Введите номер в международном формате.');
       return;
     }
     setBusy(true);
     try {
+      setBootstrapError(null);
+      const status = await withTimeout(
+        syncAuthorizationFromTdlib(),
+        45000,
+        'Telegram (TDLib) не ответил за 45 с при проверке сессии. Полностью закройте приложение и откройте снова; если повторится — пришлите logcat по тегу TdlibModule.',
+      );
+      if (status === 'ready') {
+        if (screenFocusedRef.current) {
+          openTelegramChats();
+        }
+        return;
+      }
+      if (status === 'waiting_code') {
+        Alert.alert('Код уже отправлен', 'Введите код из Telegram или SMS ниже.');
+        return;
+      }
+      if (status === 'waiting_password') {
+        Alert.alert('Нужен пароль 2FA', 'Сначала введите код, затем облачный пароль внизу экрана.');
+        return;
+      }
+      if (status !== 'waiting_phone') {
+        Alert.alert('Telegram', 'Не удалось начать вход. Закройте экран и откройте снова.');
+        return;
+      }
       await runTdlibAuthorizationQuery(async () => {
         if (telegramAccountStore.getState().authStatus !== 'waiting_phone') return;
-        const phoneRes = await tdlibClient.send({
-          '@type': 'setAuthenticationPhoneNumber',
-          phone_number: trimmed,
-        });
+        const phoneRes = await withTimeout(
+          tdlibClient.send({
+            '@type': 'setAuthenticationPhoneNumber',
+            phone_number: trimmed,
+            settings: defaultPhoneNumberAuthenticationSettings(),
+          }) as Promise<unknown>,
+          120000,
+          'Telegram не ответил за 2 мин при отправке номера. Обычно это не формат номера (+7… верно), а зависание TDLib — обновите APK или пришлите logcat (TdlibModule).',
+        );
         throwIfTdError(phoneRes);
         telegramAccountStore.getState().setPhoneHint(trimmed);
         telegramAccountStore.getState().setAuthStatus('waiting_code');
         await telegramAccountStore.getState().persistSnapshot();
       });
     } catch (e) {
-      Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (screenFocusedRef.current) {
+        setBootstrapError(msg);
+        Alert.alert('Telegram', msg);
+      }
     } finally {
       setBusy(false);
     }
-  }, [phone]);
+  }, [apiHash, apiId, phone, syncAuthorizationFromTdlib, openTelegramChats]);
+
+  const resendAuthCode = useCallback(async () => {
+    if (telegramAccountStore.getState().authStatus !== 'waiting_code') return;
+    setBusy(true);
+    try {
+      await runTdlibAuthorizationQuery(async () => {
+        if (telegramAccountStore.getState().authStatus !== 'waiting_code') return;
+        const r = await withTimeout(
+          tdlibClient.send({ '@type': 'resendAuthenticationCode' }) as Promise<unknown>,
+          60000,
+          'Повторная отправка кода: нет ответа TDLib за 60 с.',
+        );
+        throwIfTdError(r);
+      });
+      if (screenFocusedRef.current) {
+        Alert.alert(
+          'Код',
+          'Если сервер разрешил повтор — проверь открытый Telegram на других устройствах и SMS. Иначе подожди таймер в официальном клиенте или попробуй позже.',
+        );
+      }
+    } catch (e) {
+      if (screenFocusedRef.current) {
+        Alert.alert('Telegram', e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   const submitCode = useCallback(async () => {
-    if (telegramAccountStore.getState().authStatus !== 'waiting_code') {
-      Alert.alert('TDLib', 'Сначала отправьте номер и дождитесь запроса кода.');
-      return;
-    }
     const trimmed = code.trim();
     if (!trimmed) {
-      Alert.alert('Код', 'Введите код из Telegram.');
+      Alert.alert('Код', 'Введите код из Telegram или SMS.');
       return;
     }
     setBusy(true);
     try {
+      setBootstrapError(null);
+      const status = await syncAuthorizationFromTdlib();
+      if (status === 'ready') {
+        if (screenFocusedRef.current) {
+          openTelegramChats();
+        }
+        return;
+      }
+      if (status !== 'waiting_code') {
+        Alert.alert('Telegram', 'Сначала отправьте номер и дождитесь кода.');
+        return;
+      }
       await runTdlibAuthorizationQuery(async () => {
         if (telegramAccountStore.getState().authStatus !== 'waiting_code') return;
         const codeRes = await tdlibClient.send({
@@ -142,27 +334,37 @@ export function TelegramAuthScreen() {
         telegramAccountStore.getState().setAuthStatus('ready');
         telegramAccountStore.getState().setTelegramUserId(0);
         await telegramAccountStore.getState().persistSnapshot();
-        openTelegramChats();
+        if (screenFocusedRef.current) {
+          openTelegramChats();
+        }
       });
     } catch (e) {
-      Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
+      Alert.alert('Telegram', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [code, openTelegramChats]);
+  }, [code, openTelegramChats, syncAuthorizationFromTdlib]);
 
   const submitPassword = useCallback(async () => {
-    if (telegramAccountStore.getState().authStatus !== 'waiting_password') {
-      Alert.alert('TDLib', 'Сначала подтвердите код из SMS / Telegram.');
-      return;
-    }
     const trimmed = cloudPassword.trim();
     if (!trimmed) {
-      Alert.alert('Пароль', 'Введите облачный пароль двухэтапной проверки (настройки Telegram).');
+      Alert.alert('Пароль', 'Введите облачный пароль двухэтапной проверки из настроек Telegram.');
       return;
     }
     setBusy(true);
     try {
+      setBootstrapError(null);
+      const status = await syncAuthorizationFromTdlib();
+      if (status === 'ready') {
+        if (screenFocusedRef.current) {
+          openTelegramChats();
+        }
+        return;
+      }
+      if (status !== 'waiting_password') {
+        Alert.alert('Telegram', 'Сначала введите код из Telegram или SMS.');
+        return;
+      }
       await runTdlibAuthorizationQuery(async () => {
         if (telegramAccountStore.getState().authStatus !== 'waiting_password') return;
         const pwRes = await tdlibClient.send({
@@ -180,24 +382,25 @@ export function TelegramAuthScreen() {
         telegramAccountStore.getState().setAuthStatus('ready');
         telegramAccountStore.getState().setTelegramUserId(0);
         await telegramAccountStore.getState().persistSnapshot();
-        openTelegramChats();
+        if (screenFocusedRef.current) {
+          openTelegramChats();
+        }
       });
     } catch (e) {
-      Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
+      Alert.alert('Telegram', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [cloudPassword, openTelegramChats]);
+  }, [cloudPassword, openTelegramChats, syncAuthorizationFromTdlib]);
 
   const resetTg = useCallback(() => {
-    Alert.alert('Сбросить Telegram?', 'Локальные данные сессии будут очищены.', [
+    Alert.alert('Выйти из Telegram?', 'Локальная сессия на этом устройстве будет сброшена.', [
       { text: 'Отмена', style: 'cancel' },
       {
         text: 'Сбросить',
         style: 'destructive',
         onPress: () => {
           void telegramAccountStore.getState().resetTelegramSession();
-          telegramAccountStore.getState().setAuthStatus('idle');
         },
       },
     ]);
@@ -205,168 +408,232 @@ export function TelegramAuthScreen() {
 
   const status = telegramAccountStore((s) => s.authStatus);
 
+  const canSendPhone = !preparing && !busy && apiId != null && apiHash && status !== 'ready';
+  const phonePrimary =
+    status === 'waiting_phone' ||
+    status === 'idle' ||
+    status === 'error' ||
+    status === 'waiting_parameters';
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.chatBackground }}
+      style={[styles.flex, { backgroundColor: colors.chatBackground }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: 8 }}>
-          Telegram
-        </Text>
-        <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 16 }}>
-          Отдельная учётная запись от Chatus (Loginus). На Android используется TDLib (libtdjson) на устройстве;
-          перед первой сборкой выполни из папки mobile: npm run tdlib:fetch-android (см. TDLIB.md).
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>Telegram</Text>
+        <Text style={[styles.subtitle, { color: ui.hint }]}>
+          Введите номер — код придёт в приложение Telegram (или по SMS). Аккаунт Telegram отдельный от Chatus
+          (Loginus).
         </Text>
 
+        {bootstrapError ? (
+          <Text style={[styles.errorBanner, { color: '#C62828', backgroundColor: isLight ? '#FFEBEE' : '#3A1F1F' }]}>
+            {bootstrapError}
+          </Text>
+        ) : null}
+
         {apiId == null || !apiHash ? (
-          <View
-            style={{
-              padding: 12,
-              borderRadius: 12,
-              backgroundColor: colors.inputBackgroundSolid,
-              marginBottom: 16,
-            }}
-          >
-            <Text style={{ color: colors.textPrimary }}>
-              Не заданы TELEGRAM_API_ID / TELEGRAM_API_HASH в сборке.
+          <View style={[styles.banner, { backgroundColor: ui.fieldBg, borderColor: ui.border }]}>
+            <Text style={[styles.bannerText, { color: colors.textPrimary }]}>
+              В этой сборке не заданы ключи Telegram API (TELEGRAM_API_ID / TELEGRAM_API_HASH). См. mobile/TDLIB.md.
             </Text>
           </View>
         ) : null}
 
-        <Pressable
-          onPress={() => void initTdlib()}
-          disabled={busy}
-          style={({ pressed }) => ({
-            paddingVertical: 14,
-            borderRadius: 12,
-            backgroundColor: colors.accent,
-            opacity: busy ? 0.6 : pressed ? 0.9 : 1,
-            marginBottom: 12,
-            alignItems: 'center',
-          })}
-        >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Инициализировать TDLib</Text>
-          )}
-        </Pressable>
+        {preparing && apiId != null && apiHash ? (
+          <View style={styles.preparingRow}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={[styles.preparingText, { color: ui.label, marginLeft: 12 }]}>
+              Подключение к Telegram…
+            </Text>
+          </View>
+        ) : null}
 
         {apiId != null && apiHash && status !== 'ready' ? (
           <>
-            {status !== 'waiting_phone' &&
-            status !== 'waiting_code' &&
-            status !== 'waiting_password' ? (
-              <Text style={{ marginTop: 4, marginBottom: 10, fontSize: 13, color: colors.textSecondary }}>
-                Поля ниже доступны сразу; номер можно отправить только после успешной инициализации TDLib.
-              </Text>
-            ) : null}
-            <Text style={{ marginTop: 8, marginBottom: 6, color: colors.textSecondary }}>Телефон</Text>
+            <Text style={[styles.fieldLabel, { color: ui.label }]}>Номер телефона</Text>
+            <Text style={[styles.phoneHint, { color: ui.hint }]}>
+              Нужен международный формат: плюс и код страны (+7…). Можно ввести 8 988… или 988… — подставим +7 автоматически.
+            </Text>
             <TextInput
               value={phone}
               onChangeText={setPhone}
-              placeholder="+7…"
-              placeholderTextColor={colors.textSecondaryMuted}
+              placeholder="+7 900 000-00-00"
+              placeholderTextColor={ui.placeholder}
               keyboardType="phone-pad"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.separator,
-                borderRadius: 10,
-                padding: 12,
-                color: colors.textPrimary,
-                marginBottom: 12,
-              }}
+              editable={!busy && !preparing}
+              style={[
+                styles.input,
+                {
+                  borderColor: ui.border,
+                  backgroundColor: ui.fieldBg,
+                  color: colors.textPrimary,
+                },
+              ]}
             />
             <Pressable
               onPress={() => void submitPhone()}
-              disabled={busy || status !== 'waiting_phone'}
-              style={({ pressed }) => ({
-                paddingVertical: 12,
-                borderRadius: 12,
-                backgroundColor: colors.inputBackgroundSolid,
-                opacity: busy || status !== 'waiting_phone' ? 0.5 : pressed ? 0.85 : 1,
-                marginBottom: 16,
-                alignItems: 'center',
-              })}
+              disabled={!canSendPhone || !phonePrimary}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                {
+                  backgroundColor: colors.accent,
+                  opacity: !canSendPhone || !phonePrimary ? 0.45 : pressed ? 0.9 : 1,
+                },
+              ]}
             >
-              <Text style={{ color: colors.accent, fontWeight: '700' }}>Отправить номер</Text>
+              {busy && phonePrimary ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Получить код</Text>
+              )}
             </Pressable>
 
-            <Text style={{ marginBottom: 6, color: colors.textSecondary }}>Код</Text>
+            <Text style={[styles.fieldLabel, { color: ui.label, marginTop: 20 }]}>Код</Text>
+            <Text style={[styles.codeDeliveryHint, { color: ui.hint }]}>
+              Обычно код приходит в уже открытый Telegram на другом телефоне или компьютере. Если других сессий нет —
+              придёт SMS на этот номер (не «сообщения» от оператора).
+            </Text>
             <TextInput
               value={code}
               onChangeText={setCode}
-              placeholder="Код из SMS / Telegram"
-              placeholderTextColor={colors.textSecondaryMuted}
+              placeholder="Цифры из Telegram или SMS"
+              placeholderTextColor={ui.placeholder}
               keyboardType="number-pad"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.separator,
-                borderRadius: 10,
-                padding: 12,
-                color: colors.textPrimary,
-                marginBottom: 12,
-              }}
+              editable={!busy && !preparing}
+              style={[
+                styles.input,
+                {
+                  borderColor: ui.border,
+                  backgroundColor: ui.fieldBg,
+                  color: colors.textPrimary,
+                },
+              ]}
             />
             <Pressable
-              onPress={() => void submitCode()}
-              disabled={busy || status !== 'waiting_code'}
-              style={({ pressed }) => ({
-                paddingVertical: 12,
-                borderRadius: 12,
-                backgroundColor: colors.inputBackgroundSolid,
-                opacity: busy || status !== 'waiting_code' ? 0.5 : pressed ? 0.85 : 1,
-                alignItems: 'center',
-              })}
+              onPress={() => void resendAuthCode()}
+              disabled={busy || preparing || status !== 'waiting_code'}
+              style={{ marginBottom: 10 }}
             >
-              <Text style={{ color: colors.accent, fontWeight: '700' }}>Подтвердить код</Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: busy || preparing || status !== 'waiting_code' ? ui.placeholder : colors.accent,
+                  fontWeight: '600',
+                }}
+              >
+                Отправить код ещё раз
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void submitCode()}
+              disabled={busy || preparing || status !== 'waiting_code'}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                {
+                  backgroundColor: ui.secondaryBtnBg,
+                  opacity: busy || preparing || status !== 'waiting_code' ? 0.45 : pressed ? 0.92 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>Войти с этим кодом</Text>
             </Pressable>
 
-            <Text style={{ marginTop: 16, marginBottom: 6, color: colors.textSecondary }}>
-              Облачный пароль (2FA)
+            <Text style={[styles.fieldLabel, { color: ui.label, marginTop: 20 }]}>
+              Облачный пароль (если включена 2FA)
             </Text>
-            <Text style={{ marginBottom: 8, fontSize: 12, color: colors.textSecondary }}>
-              Если в Telegram включена двухэтапная проверка, после кода введите облачный пароль здесь.
+            <Text style={[styles.hintSmall, { color: ui.hint }]}>
+              Только если в Telegram включена двухэтапная проверка — после кода запросит пароль.
             </Text>
             <TextInput
               value={cloudPassword}
               onChangeText={setCloudPassword}
               placeholder="Пароль из настроек Telegram"
-              placeholderTextColor={colors.textSecondaryMuted}
+              placeholderTextColor={ui.placeholder}
               secureTextEntry
               autoCapitalize="none"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.separator,
-                borderRadius: 10,
-                padding: 12,
-                color: colors.textPrimary,
-                marginBottom: 12,
-              }}
+              editable={!busy && !preparing}
+              style={[
+                styles.input,
+                {
+                  borderColor: ui.border,
+                  backgroundColor: ui.fieldBg,
+                  color: colors.textPrimary,
+                },
+              ]}
             />
             <Pressable
               onPress={() => void submitPassword()}
-              disabled={busy || status !== 'waiting_password'}
-              style={({ pressed }) => ({
-                paddingVertical: 12,
-                borderRadius: 12,
-                backgroundColor: colors.inputBackgroundSolid,
-                opacity: busy || status !== 'waiting_password' ? 0.5 : pressed ? 0.85 : 1,
-                alignItems: 'center',
-              })}
+              disabled={busy || preparing || status !== 'waiting_password'}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                {
+                  backgroundColor: ui.secondaryBtnBg,
+                  opacity: busy || preparing || status !== 'waiting_password' ? 0.45 : pressed ? 0.92 : 1,
+                },
+              ]}
             >
-              <Text style={{ color: colors.accent, fontWeight: '700' }}>Подтвердить пароль 2FA</Text>
+              <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>Подтвердить пароль 2FA</Text>
             </Pressable>
           </>
         ) : null}
 
-        <Pressable onPress={resetTg} style={{ marginTop: 24 }}>
-          <Text style={{ color: '#E53935', fontWeight: '600' }}>
-            Сбросить локальную сессию Telegram
-          </Text>
+        <Pressable onPress={resetTg} style={styles.resetWrap} hitSlop={12}>
+          <Text style={styles.resetText}>Сбросить сессию Telegram на устройстве</Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  scroll: { padding: 16, paddingBottom: 32 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 8 },
+  subtitle: { fontSize: 15, lineHeight: 21, marginBottom: 20 },
+  errorBanner: {
+    fontSize: 14,
+    lineHeight: 20,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  banner: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 16 },
+  bannerText: { fontSize: 14, lineHeight: 20 },
+  preparingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  preparingText: { fontSize: 15, fontWeight: '500' },
+  fieldLabel: { marginBottom: 8, fontSize: 14, fontWeight: '600' },
+  phoneHint: { fontSize: 13, lineHeight: 18, marginBottom: 8 },
+  codeDeliveryHint: { fontSize: 13, lineHeight: 19, marginBottom: 10 },
+  hintSmall: { fontSize: 13, lineHeight: 18, marginBottom: 8 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  primaryBtn: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  secondaryBtn: {
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  secondaryBtnText: { fontWeight: '700', fontSize: 15 },
+  resetWrap: { marginTop: 28 },
+  resetText: { color: '#E53935', fontWeight: '600', fontSize: 15 },
+});

@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { resetTelegramPushRegistrationFlag } from '../services/pushNotificationsService';
-import { resetTdlibParametersLock } from '../services/tdlib/tdlibBootstrap';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
@@ -109,7 +108,6 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
 
   resetTelegramSession: async () => {
     resetTelegramPushRegistrationFlag();
-    resetTdlibParametersLock();
     clearUserNameCache();
     set({ ...initial });
     await SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => undefined);
