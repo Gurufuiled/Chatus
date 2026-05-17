@@ -190,9 +190,13 @@ export class PushService {
 
       const tokenToUserId = new Map<string, string>();
       const tokenToPlatform = new Map<string, 'ios' | 'android'>();
+      let invalidExpoTokenRows = 0;
       for (const d of devices) {
         const t = d.expoToken.trim();
-        if (!Expo.isExpoPushToken(t)) continue;
+        if (!Expo.isExpoPushToken(t)) {
+          invalidExpoTokenRows += 1;
+          continue;
+        }
         const plat = d.platform === 'ios' ? 'ios' : 'android';
         if (!tokenToUserId.has(t)) {
           tokenToUserId.set(t, d.userId);
@@ -202,9 +206,16 @@ export class PushService {
 
       const uniqueTokens = [...tokenToUserId.keys()];
       if (uniqueTokens.length === 0) {
-        this.log.log(
-          `notifyNewMessage: skip push (no valid Expo tokens for recipients chatId=${chatId} recipients=${recipientIds.length})`,
-        );
+        const rid = recipientIds.join(',');
+        if (devices.length === 0) {
+          this.log.log(
+            `notifyNewMessage: skip push (no push_devices for recipient userIds=[${rid}] chatId=${chatId}) — app must POST /users/me/push-token after login + notification permission`,
+          );
+        } else {
+          this.log.log(
+            `notifyNewMessage: skip push (${devices.length} push_devices row(s), ${invalidExpoTokenRows} not valid Expo format; recipient userIds=[${rid}] chatId=${chatId})`,
+          );
+        }
         return;
       }
 
