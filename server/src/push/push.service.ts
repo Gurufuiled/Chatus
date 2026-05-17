@@ -44,6 +44,7 @@ export class PushService {
       create: { userId, expoToken: trimmed, platform: plat },
       update: { userId, platform: plat },
     });
+    this.log.log(`push token registered userId=${userId} platform=${plat}`);
   }
 
   async unregisterToken(userId: string, expoToken: string): Promise<void> {

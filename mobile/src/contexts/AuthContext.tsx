@@ -61,9 +61,7 @@ export function AuthProvider({ children, initialSession = null }: AuthProviderPr
       try {
         await registerPushWithBackendAfterLogin();
       } catch {
-        if (__DEV__) {
-          console.warn('[Auth] push registration skipped or failed');
-        }
+        console.warn('[Auth] push registration skipped or failed');
       }
       if (cancelled) return;
     })();

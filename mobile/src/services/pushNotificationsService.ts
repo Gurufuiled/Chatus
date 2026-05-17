@@ -208,6 +208,7 @@ export function resetTelegramPushRegistrationFlag(): void {
  */
 export async function registerPushWithBackendAfterLogin(): Promise<void> {
   if (!Constants.isDevice) {
+    console.warn('[push] skip registration (not a physical device)');
     return;
   }
 
@@ -220,6 +221,9 @@ export async function registerPushWithBackendAfterLogin(): Promise<void> {
     status = req.status;
   }
   if (status !== 'granted') {
+    console.warn(
+      '[push] notifications permission not granted; skip POST /users/me/push-token',
+    );
     return;
   }
 
@@ -234,25 +238,32 @@ export async function registerPushWithBackendAfterLogin(): Promise<void> {
       : await Notifications.getExpoPushTokenAsync();
     expoToken = res.data;
   } catch (e) {
-    if (__DEV__) {
-      console.warn('[push] getExpoPushTokenAsync failed (need physical device + dev build?)', e);
+    console.warn(
+      '[push] getExpoPushTokenAsync failed; skip POST /users/me/push-token',
+      e,
+    );
+    return;
+  }
+
+  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+  try {
+    const r = await apiPost('/users/me/push-token', {
+      expo_token: expoToken,
+      platform,
+    });
+    if (!r.ok) {
+      const text = (await r.text().catch(() => '')).slice(0, 400);
+      console.warn('[push] POST /users/me/push-token failed', r.status, text);
+      return;
     }
+  } catch (e) {
+    console.warn('[push] POST /users/me/push-token threw (network?)', e);
     return;
   }
 
   lastRegisteredToken = expoToken;
-
-  const platform = Platform.OS === 'ios' ? 'ios' : 'android';
-  const r = await apiPost('/users/me/push-token', {
-    expo_token: expoToken,
-    platform,
-  });
-  if (!r.ok) {
-    lastRegisteredToken = null;
-    if (__DEV__) {
-      const text = (await r.text().catch(() => '')).slice(0, 400);
-      console.warn('[push] POST /users/me/push-token failed', r.status, text);
-    }
+  if (__DEV__) {
+    console.log('[push] Expo token registered with backend');
   }
 }
 
