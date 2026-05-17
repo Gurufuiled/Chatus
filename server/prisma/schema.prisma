@@ -289,6 +289,8 @@ model ChatMember {
   tag      String?
   tagColor String?       @map("tag_color")
   joinedAt DateTime      @default(now()) @map("joined_at")
+  /** Per-user unread badge; cleared when the member opens the chat (client POST /chats/:id/read). */
+  unreadCount Int        @default(0) @map("unread_count")
 
   chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

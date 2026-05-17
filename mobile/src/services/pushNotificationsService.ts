@@ -2,6 +2,10 @@
  * Регистрация Expo Push Token и отправка на API (POST /users/me/push-token).
  * Локальные уведомления в системную шторку Android при входящих в фоне.
  * Требует нативной сборки (expo run) и при необходимости EXPO_PUBLIC_EAS_PROJECT_ID в .env.
+ *
+ * Важно: локальные уведомления (scheduleNotificationAsync) работают только пока живёт процесс
+ * приложения (свёрнуто). После полного закрытия процесса показ идёт только через серверный
+ * Expo Push (FCM) — см. PushService.notifyNewMessage на бэкенде.
  */
 
 import * as Notifications from 'expo-notifications';
@@ -11,6 +15,7 @@ import { apiDelete, apiPost } from './apiClient';
 import { tdlibClient } from './tdlib/TdlibClient';
 import { throwIfTdError } from './tdlib/tdlibErrors';
 import type { PushNotificationData } from '../stores/uiStore';
+import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
 
 export const ANDROID_CHANNEL_CHATUS = 'chatus_messages';
@@ -66,6 +71,8 @@ export async function tryPostInboundSystemTrayNotification(input: {
   body: string;
   channelId: string;
   data: Record<string, unknown>;
+  /** Один слот на чат: повторная доставка заменяет предыдущее уведомление (как `tag` в FCM). */
+  trayIdentifier?: string;
 }): Promise<void> {
   if (AppState.currentState === 'active') return;
 
@@ -76,11 +83,29 @@ export async function tryPostInboundSystemTrayNotification(input: {
     await ensureAndroidPushChannels();
   }
 
+  const chatId =
+    typeof input.data.chat_id === 'string' && input.data.chat_id.trim().length > 0
+      ? input.data.chat_id.trim()
+      : undefined;
+  const telegramChatId =
+    typeof input.data.telegram_chat_id === 'string' &&
+    input.data.telegram_chat_id.trim().length > 0
+      ? input.data.telegram_chat_id.trim()
+      : undefined;
+  const identifier =
+    input.trayIdentifier ??
+    (chatId
+      ? `chatus-tray-${chatId}`
+      : telegramChatId
+        ? `telegram-tray-${telegramChatId}`
+        : `tray-${Date.now()}`);
+
   try {
     await Notifications.scheduleNotificationAsync({
+      identifier,
       content: {
         title: input.title,
-        body: input.body.slice(0, 220),
+        body: input.body.slice(0, 400),
         data: input.data,
         sound: Platform.OS === 'android' ? undefined : 'message_notification.wav',
         priority: Notifications.AndroidNotificationPriority.HIGH,
@@ -97,9 +122,13 @@ export async function notifyChatusInboundMessagePreview(
   data: Omit<PushNotificationData, 'id'>,
 ): Promise<void> {
   uiStore.getState().showPushNotification(data);
+  const row = chatStore.getState().chats.find((c) => c.id === data.chatId);
+  const unread = Math.max(0, row?.unread_count ?? 0);
+  const tail = unread > 1 ? `\nи ещё ${unread - 1}` : '';
+  const body = `${data.messagePreview}${tail}`.slice(0, 400);
   await tryPostInboundSystemTrayNotification({
     title: data.title,
-    body: data.messagePreview,
+    body,
     channelId: ANDROID_CHANNEL_CHATUS,
     data: {
       kind: 'chatus_message',
@@ -204,7 +233,10 @@ export async function registerPushWithBackendAfterLogin(): Promise<void> {
       ? await Notifications.getExpoPushTokenAsync({ projectId })
       : await Notifications.getExpoPushTokenAsync();
     expoToken = res.data;
-  } catch {
+  } catch (e) {
+    if (__DEV__) {
+      console.warn('[push] getExpoPushTokenAsync failed (need physical device + dev build?)', e);
+    }
     return;
   }
 
@@ -217,6 +249,10 @@ export async function registerPushWithBackendAfterLogin(): Promise<void> {
   });
   if (!r.ok) {
     lastRegisteredToken = null;
+    if (__DEV__) {
+      const text = (await r.text().catch(() => '')).slice(0, 400);
+      console.warn('[push] POST /users/me/push-token failed', r.status, text);
+    }
   }
 }
 

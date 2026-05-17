@@ -32,6 +32,11 @@ export class ChatsController {
     return this.chatsService.getChatById(chatId, user.id);
   }
 
+  @Post(':id/read')
+  async markChatRead(@Param('id') chatId: string, @CurrentUser() user: User) {
+    return this.chatsService.markChatRead(chatId, user.id);
+  }
+
   @Post()
   async createChat(@Body() dto: CreateChatDto, @CurrentUser() user: User) {
     return this.chatsService.createOrFindChat(

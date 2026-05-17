@@ -34,6 +34,7 @@ import { LineSyncEventDao } from '../db';
 import { buildPendingLineSyncRowFromOutgoingMessage } from '../services/lineSyncEventBuilder';
 import { canForwardMessage, TransportService } from '../services/TransportService';
 import { LineSyncService, LINE_SYNC_GROUP_TAIL_LIMIT, LINE_SYNC_PRIVATE_TAIL_LIMIT } from '../services/LineSyncService';
+import { markChatAsRead } from '../services/chatService';
 import { SyncService } from '../services/SyncService';
 import { WebSocketService } from '../services/WebSocketService';
 import { uiStore } from '../stores/uiStore';
@@ -703,6 +704,9 @@ export function ChatScreen() {
     useCallback(() => {
       chatStore.getState().setSelectedChat(chatId);
       chatStore.getState().clearUnread(chatId);
+      void markChatAsRead(chatId).then((chat) => {
+        if (chat) chatStore.getState().addOrUpdateChat(chat);
+      });
 
       return () => {
         if (chatStore.getState().selectedChatId === chatId) {

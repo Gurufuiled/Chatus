@@ -32,6 +32,13 @@ function privateRelayMailboxFields(chatId: string): { relay_mailbox: true } | Re
   return chat?.chat_type === 'private' ? { relay_mailbox: true as const } : {};
 }
 
+/** Server unread can lag `POST /read`; avoid flashing a badge on the chat the user is viewing. */
+function zeroUnreadForSelectedChat(chats: Chat[]): Chat[] {
+  const selectedId = chatStore.getState().selectedChatId;
+  if (!selectedId) return chats;
+  return chats.map((c) => (c.id === selectedId ? { ...c, unread_count: 0 } : c));
+}
+
 function getSafeFileContent(content: string | null | undefined, fileName?: string | null): string | null {
   const normalizedFileName = fileName?.trim();
   if (normalizedFileName) return normalizedFileName;
@@ -876,7 +883,7 @@ class SyncServiceClass {
       const res = await apiGet('/chats');
       if (!res.ok) return;
       const data = (await res.json()) as ApiChat[];
-      const mapped: Chat[] = data.map(mapApiChatToChat);
+      let mapped: Chat[] = zeroUnreadForSelectedChat(data.map(mapApiChatToChat));
       mapped.forEach((chat) => {
         chat.members?.forEach((member) => {
           if (!member.user?.id) return;
@@ -911,7 +918,7 @@ class SyncServiceClass {
         return;
       }
       const data = (await res.json()) as ApiChat[];
-      const mapped: Chat[] = data.map(mapApiChatToChat);
+      let mapped: Chat[] = zeroUnreadForSelectedChat(data.map(mapApiChatToChat));
       mapped.sort((a, b) => {
         if (a.is_pinned !== b.is_pinned) return b.is_pinned - a.is_pinned;
         const atA = a.last_message_at ?? 0;

@@ -147,6 +147,17 @@ export class ChatsService {
     return this.mapChatForUser(chat, userId);
   }
 
+  /** Reset server-side unread counter for the current member (call when opening the chat). */
+  async markChatRead(chatId: string, userId: string): Promise<MappedChat> {
+    await this.getChatForUserOrThrow(chatId, userId);
+    await this.prisma.chatMember.update({
+      where: { chatId_userId: { chatId, userId } },
+      data: { unreadCount: 0 },
+    });
+    const chat = await this.getChatForUserOrThrow(chatId, userId);
+    return this.mapChatForUser(chat, userId);
+  }
+
   async createOrFindChat(
     currentUser: User,
     chatType: 'private' | 'group',

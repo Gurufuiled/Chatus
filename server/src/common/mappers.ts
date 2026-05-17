@@ -249,7 +249,7 @@ export function mapChat(
     pinned_message_id: chat.pinnedMessageId ?? null,
     last_message_at: dateToUnixMs(chat.lastMessageAt),
     last_message_preview: chat.lastMessagePreview ?? null,
-    unread_count: chat.unreadCount,
+    unread_count: currentMembership?.unreadCount ?? 0,
     is_muted: chat.isMuted,
     is_pinned: chat.isPinned,
     is_archived: chat.isArchived,

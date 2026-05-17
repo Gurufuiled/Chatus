@@ -27,7 +27,10 @@ import { normalizeMessageTransport } from '../utils/messageTransport';
 import { buildMessageListPreviewText } from '../utils/messageListPreview';
 import { buildPendingLineSyncRowForText, shouldLinkLineSyncOptimisticEchoToServer } from '../services/lineSyncEventBuilder';
 import { getChatListTitle } from '../presentation';
-import { notifyChatusInboundMessagePreview } from '../services/pushNotificationsService';
+import {
+  notifyChatusInboundMessagePreview,
+  registerPushWithBackendAfterLogin,
+} from '../services/pushNotificationsService';
 
 /** Server message payload shape (MappedMessage from backend) */
 interface ServerMessagePayload {
@@ -379,6 +382,10 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       const cameToForeground =
         previousState !== 'active' && nextState === 'active';
       if (!cameToForeground || !isAuthenticated) return;
+
+      void SyncService.refreshChats();
+      // Remote push (FCM) when the app process is dead; keep server token fresh after resume.
+      void registerPushWithBackendAfterLogin().catch(() => undefined);
 
       // Image/media picker often triggers inactive → active; reconnect() would close
       // the socket (code 1000) and reconnect unnecessarily. Only connect if down.

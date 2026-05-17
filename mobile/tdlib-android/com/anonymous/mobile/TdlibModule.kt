@@ -1,7 +1,5 @@
 package com.anonymous.mobile
 
-import android.os.Handler
-import android.os.HandlerThread
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -18,8 +16,11 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * React Native bridge: [JsonClient.td_send] / [JsonClient.td_receive] с корреляцией по @extra.
  *
- * Все вызовы **td_send** и **td_receive** выполняются на одном [HandlerThread] — так исключаются
- * гонки в JNI/сборке libtdjson, когда ответы «теряются» и JS видит таймаут при живом TDLib (не сеть).
+ * По [td_json_client.h] для `td_create_client_id`: **td_send** можно вызывать с любого потока,
+ * **td_receive** — с одного выделенного потока (не одновременно с другого). Раньше send стоял
+ * в очереди того же [HandlerThread], что и receive: при блокирующем/долгом send цикл receive
+ * не крутился — ответ на запрос не доходил до JS и срабатывал таймаут (в т.ч. на
+ * `setAuthenticationPhoneNumber`).
  */
 @ReactModule(name = TdlibModule.NAME)
 class TdlibModule(private val reactContext: ReactApplicationContext) :
@@ -29,8 +30,6 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     const val NAME = "Tdlib"
     private const val TAG = "TdlibModule"
     private const val SEND_TIMEOUT_MS = 240_000L
-    /** Когда очередь пуста — не крутить td_receive(0) в tight loop. */
-    private const val IDLE_RECEIVE_DELAY_MS = 20L
   }
 
   private fun coerceExtraKey(obj: JSONObject): String {
@@ -49,33 +48,13 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
 
   private val clientId: Int
   @Volatile private var destroyed = false
-  @Volatile private var ioRunning = false
-  private var ioThread: HandlerThread? = null
-  private var ioHandler: Handler? = null
+  @Volatile private var receiveRunning = false
+  private var receiveThread: Thread? = null
+  /** Короткая сериализация отправок (TDLib допускает любой поток; порядок не ломаем). */
+  private val sendLock = Any()
   private val pending = ConcurrentHashMap<String, Promise>()
   private val pendingTimeouts = ConcurrentHashMap<String, Runnable>()
   private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-
-  private val receivePump =
-    object : Runnable {
-      override fun run() {
-        val h = ioHandler ?: return
-        if (!ioRunning || destroyed) return
-        try {
-          val json = JsonClient.td_receive(0.1) ?: run {
-            h.postDelayed(this, IDLE_RECEIVE_DELAY_MS)
-            return
-          }
-          handleIncoming(json)
-          h.post(this)
-        } catch (_: InterruptedException) {
-          // ignore
-        } catch (e: Exception) {
-          Log.w(TAG, "td_receive", e)
-          h.postDelayed(this, 200L)
-        }
-      }
-    }
 
   init {
     clientId =
@@ -101,11 +80,33 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
       } catch (e: Throwable) {
         Log.w(TAG, "td_set_log_message_callback unavailable", e)
       }
-      val thread = HandlerThread("tdlib-io").apply { start() }
-      ioThread = thread
-      ioHandler = Handler(thread.looper)
-      ioRunning = true
-      ioHandler?.post(receivePump)
+      receiveRunning = true
+      receiveThread =
+        Thread(
+            {
+              while (!destroyed && !Thread.currentThread().isInterrupted) {
+                try {
+                  val hasPending = pending.isNotEmpty()
+                  val timeout = if (hasPending) 0.1 else 1.0
+                  val json = JsonClient.td_receive(timeout) ?: continue
+                  if (destroyed) break
+                  handleIncoming(json)
+                } catch (_: InterruptedException) {
+                  break
+                } catch (e: Exception) {
+                  if (destroyed) break
+                  Log.w(TAG, "td_receive", e)
+                  try {
+                    Thread.sleep(200)
+                  } catch (_: InterruptedException) {
+                    break
+                  }
+                }
+              }
+            },
+            "tdlib-receive",
+          )
+          .apply { start() }
     }
   }
 
@@ -126,7 +127,8 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
           mainHandler.removeCallbacks(timeoutRunnable)
         }
         mainHandler.post {
-          if (destroyed) return@post
+          // Не проверять destroyed: иначе при гонке с invalidate() Promise снимают с pending,
+          // а resolve не вызывается — JS зависает навсегда.
           try {
             p.resolve(json)
           } catch (_: Exception) {
@@ -180,9 +182,9 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
       )
       return
     }
-    val h = ioHandler
-    if (h == null || !ioRunning) {
-      promise.reject("E_TD_JSON", "TDLib I/O поток недоступен", null)
+    val rt = receiveThread
+    if (!receiveRunning || rt == null || !rt.isAlive) {
+      promise.reject("E_TD_JSON", "TDLib receive-поток недоступен", null)
       return
     }
 
@@ -225,15 +227,15 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
       mainHandler.postDelayed(timeoutRunnable, SEND_TIMEOUT_MS)
 
       val payload = o.toString()
-      h.post {
-        if (destroyed || !ioRunning) {
+      synchronized(sendLock) {
+        if (destroyed || !receiveRunning) {
           mainHandler.post {
             pendingTimeouts.remove(extra)?.let { mainHandler.removeCallbacks(it) }
             if (pending.remove(extra) != null) {
               promise.reject("E_TD_NATIVE", "TDLib I/O остановлен", null)
             }
           }
-          return@post
+          return
         }
         try {
           JsonClient.td_send(clientId, payload)
@@ -261,19 +263,16 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
 
   override fun invalidate() {
     destroyed = true
-    ioRunning = false
-    ioHandler?.removeCallbacks(receivePump)
-    ioHandler?.removeCallbacksAndMessages(null)
+    receiveRunning = false
+    receiveThread?.interrupt()
     try {
-      ioThread?.quitSafely()
+      receiveThread?.join(5000)
     } catch (_: Exception) {
     }
-    try {
-      ioThread?.join(2500)
-    } catch (_: Exception) {
+    if (receiveThread?.isAlive == true) {
+      Log.w(TAG, "receive thread still alive after join; TDLib may still deliver updates briefly")
     }
-    ioHandler = null
-    ioThread = null
+    receiveThread = null
 
     for (r in pendingTimeouts.values.toList()) {
       mainHandler.removeCallbacks(r)

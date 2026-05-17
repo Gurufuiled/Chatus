@@ -364,6 +364,21 @@ export class MessagesService {
         },
       });
 
+      if (prismaMsgType !== MessageType.system) {
+        await tx.chatMember.updateMany({
+          where: {
+            chatId,
+            userId: { not: senderId },
+            OR: [
+              { accessStatus: SubscriptionStatus.active },
+              { role: ChatMemberRole.owner },
+              { role: ChatMemberRole.admin },
+            ],
+          },
+          data: { unreadCount: { increment: 1 } },
+        });
+      }
+
       return message;
     });
 
@@ -624,6 +639,9 @@ export class MessagesService {
 
   private toMessageType(msgType: string): MessageType {
     const normalized = msgType.toLowerCase();
+    if (normalized === 'system') {
+      return MessageType.system;
+    }
     if (VALID_MSG_TYPES.includes(normalized as MessageType)) {
       return normalized as MessageType;
     }

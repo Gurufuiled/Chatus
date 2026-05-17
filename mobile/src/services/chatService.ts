@@ -194,6 +194,25 @@ export async function getChatById(chatId: string): Promise<Chat> {
   }
 }
 
+/** Tell the server this chat is open so unread badges survive cold start / refresh. */
+export async function markChatAsRead(chatId: string): Promise<Chat | null> {
+  const res = await apiPost(`/chats/${encodeURIComponent(chatId)}/read`, {});
+
+  if (!res.ok) {
+    if (__DEV__) {
+      console.warn('[markChatAsRead] failed', chatId, res.status);
+    }
+    return null;
+  }
+
+  try {
+    const data = (await res.json()) as ApiChat;
+    return mapApiChatToChat(data);
+  } catch {
+    return null;
+  }
+}
+
 export async function updateGroupChat(
   chatId: string,
   payload: { name?: string; description?: string; avatar_url?: string }

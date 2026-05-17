@@ -36,7 +36,7 @@ TELEGRAM_API_HASH=your_hash_here
 
 2. При **`expo prebuild --platform android`** плагин **`withTdlibNative`** копирует в `android/` исходники из `tdlib-android/com`, `tdlib-android/io` и, если есть, **`tdlib-android/jniLibs`** → `android/app/src/main/jniLibs/`.
 
-3. Поведение: **все** `td_send` и `td_receive` идут с одного `HandlerThread` (очередь Looper), чтобы исключить гонки JNI; ответы с `@extra` резолвят Promise в `TdlibClient.send`; остальной JSON — `td_json_update`.
+3. Поведение: **`td_receive`** в отдельном потоке `tdlib-receive`; **`td_send`** с потока RN (короткий `synchronized`), как допускает TDLib для `td_create_client_id` — чтобы приём не блокировался очередью отправки. Ответы с `@extra` резолвят Promise в `TdlibClient.send`; остальной JSON — `td_json_update`.
 
 4. **EAS Build:** в `package.json` добавлен хук **`eas-build-pre-install`**, который вызывает `fetchTdlibAndroid.mjs`, чтобы на билд-машине подтянуть `.so` до сборки нативного проекта.
 
