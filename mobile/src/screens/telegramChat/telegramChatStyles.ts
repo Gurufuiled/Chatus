@@ -4,9 +4,12 @@ import { withAlpha } from '../../theme/stylePrimitives';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../../presentation';
 import {
   CHAT_BUBBLE_MAX_WIDTH_PCT,
+  CHAT_MESSAGE_WRAP_HORIZONTAL_PADDING,
   CHAT_MSG_HORIZONTAL_PADDING,
   CHAT_MSG_ROW_MARGIN_ISOLATED,
   CHAT_MSG_VERTICAL_PADDING,
+  TELEGRAM_CHANNEL_POST_CARD_MAX_WIDTH_PCT,
+  TELEGRAM_CHAT_SELECTION_CHECKBOX_HIT_WIDTH,
 } from '../../presentation/telegramChatUi';
 
 export function createTelegramStackHeaderPresentationStyles(colors: ThemeColors) {
@@ -84,22 +87,37 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       paddingTop: CHAT_MSG_VERTICAL_PADDING,
       paddingBottom: CHAT_MSG_VERTICAL_PADDING,
     },
-    messageRow: {
-      marginVertical: CHAT_MSG_ROW_MARGIN_ISOLATED,
+    /** Same shell as `ChatMessageList`: full-width row → card column → wrap with side padding. */
+    messagePressable: {
+      width: '100%',
+    },
+    messageRowShell: {
+      width: '100%',
       flexDirection: 'row',
+      alignItems: 'stretch',
     },
-    messageRowMe: {
-      justifyContent: 'flex-end',
+    messageCardColumn: {
+      flex: 1,
+      minWidth: 0,
     },
-    messageRowOther: {
-      justifyContent: 'flex-start',
+    messageWrap: {
+      width: '100%',
+      paddingHorizontal: CHAT_MESSAGE_WRAP_HORIZONTAL_PADDING,
+    },
+    messageWrapMe: {
+      alignItems: 'flex-end',
+    },
+    messageWrapOther: {
+      alignItems: 'flex-start',
+    },
+    messageContentMeasure: {
+      flexShrink: 1,
     },
     bubble: {
       maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
-      minWidth: 48,
-      borderRadius: 18,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      borderRadius: 16,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
     },
     bubbleMe: {
       backgroundColor: colors.bubbleMe,
@@ -122,13 +140,16 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     messageText: {
       color: colors.textPrimary,
       fontSize: 16,
-      lineHeight: 21,
+      lineHeight: 20,
       flexShrink: 1,
     },
     messageTextMe: {
       color: '#FFFFFF',
     },
     bubbleContentRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 6,
       position: 'relative',
     },
     fileBubbleWrap: {
@@ -215,7 +236,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       alignItems: 'flex-end',
     },
     selectionCheckboxHit: {
-      width: 36,
+      width: TELEGRAM_CHAT_SELECTION_CHECKBOX_HIT_WIDTH,
       paddingBottom: 6,
       justifyContent: 'center',
       alignItems: 'center',
@@ -295,16 +316,25 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     selectionBatchLabelDisabled: {
       color: colors.textSecondary,
     },
-    /** Incoming Telegram channel post: stretch to list width (minus outer padding). */
-    channelIncomingWrap: {
-      width: '100%',
-      maxWidth: '100%',
-      alignSelf: 'stretch',
+    /** Исходящие посты админа в канале — та же max ширина карточки, выравнивание вправо. */
+    channelOutgoingPostWrap: {
+      maxWidth: TELEGRAM_CHANNEL_POST_CARD_MAX_WIDTH_PCT,
+      alignSelf: 'flex-end',
+      flexShrink: 1,
+      minWidth: 0,
     },
-    channelIncomingBubble: {
+    /** Incoming канал-пост: карточка ~90% ширины списка (как Chatus `postBubble`). */
+    channelIncomingWrap: {
+      maxWidth: TELEGRAM_CHANNEL_POST_CARD_MAX_WIDTH_PCT,
+      alignSelf: 'flex-start',
+      flexShrink: 1,
+      minWidth: 0,
+    },
+    /** Текст/оболочка поста в канале на всю ширину карточки (`channelIncomingWrap` / `channelOutgoingPostWrap`). */
+    channelPostTextBubble: {
+      alignSelf: 'stretch',
       maxWidth: '100%',
       width: '100%',
-      alignSelf: 'stretch',
     },
   });
 }

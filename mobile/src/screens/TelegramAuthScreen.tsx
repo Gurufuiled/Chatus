@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getTelegramBuildCredentials, tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
+import { runTdlibAuthorizationQuery } from '../services/tdlib/tdlibAuthQueue';
 import { inboxModeStore } from '../stores/inboxModeStore';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 
@@ -27,6 +28,8 @@ export function TelegramAuthScreen() {
   const [code, setCode] = useState('');
   const [cloudPassword, setCloudPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Пока React не успел выставить `busy`, второй тап не должен стартовать тот же TDLib-запрос. */
+  const initInFlightRef = useRef(false);
 
   const { apiId, apiHash } = useMemo(() => getTelegramBuildCredentials(), []);
 
@@ -43,6 +46,8 @@ export function TelegramAuthScreen() {
       );
       return;
     }
+    if (initInFlightRef.current) return;
+    initInFlightRef.current = true;
     setBusy(true);
     try {
       await applyTdlibParameters();
@@ -66,6 +71,7 @@ export function TelegramAuthScreen() {
       Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      initInFlightRef.current = false;
     }
   }, [apiHash, apiId, openTelegramChats]);
 
@@ -84,14 +90,17 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      const phoneRes = await tdlibClient.send({
-        '@type': 'setAuthenticationPhoneNumber',
-        phone_number: trimmed,
+      await runTdlibAuthorizationQuery(async () => {
+        if (telegramAccountStore.getState().authStatus !== 'waiting_phone') return;
+        const phoneRes = await tdlibClient.send({
+          '@type': 'setAuthenticationPhoneNumber',
+          phone_number: trimmed,
+        });
+        throwIfTdError(phoneRes);
+        telegramAccountStore.getState().setPhoneHint(trimmed);
+        telegramAccountStore.getState().setAuthStatus('waiting_code');
+        await telegramAccountStore.getState().persistSnapshot();
       });
-      throwIfTdError(phoneRes);
-      telegramAccountStore.getState().setPhoneHint(trimmed);
-      telegramAccountStore.getState().setAuthStatus('waiting_code');
-      await telegramAccountStore.getState().persistSnapshot();
     } catch (e) {
       Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
     } finally {
@@ -111,27 +120,30 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      const codeRes = await tdlibClient.send({
-        '@type': 'checkAuthenticationCode',
-        code: trimmed,
-      });
-      throwIfTdError(codeRes);
-      const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
-      throwIfTdError(auth);
-      const authType = (auth as { '@type'?: string })['@type'];
-      if (authType === 'authorizationStateWaitPassword') {
-        telegramAccountStore.getState().setAuthStatus('waiting_password');
+      await runTdlibAuthorizationQuery(async () => {
+        if (telegramAccountStore.getState().authStatus !== 'waiting_code') return;
+        const codeRes = await tdlibClient.send({
+          '@type': 'checkAuthenticationCode',
+          code: trimmed,
+        });
+        throwIfTdError(codeRes);
+        const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
+        throwIfTdError(auth);
+        const authType = (auth as { '@type'?: string })['@type'];
+        if (authType === 'authorizationStateWaitPassword') {
+          telegramAccountStore.getState().setAuthStatus('waiting_password');
+          await telegramAccountStore.getState().persistSnapshot();
+          return;
+        }
+        if (authType !== 'authorizationStateReady') {
+          Alert.alert('Telegram', `Неожиданное состояние после кода: ${authType ?? '?'}`);
+          return;
+        }
+        telegramAccountStore.getState().setAuthStatus('ready');
+        telegramAccountStore.getState().setTelegramUserId(0);
         await telegramAccountStore.getState().persistSnapshot();
-        return;
-      }
-      if (authType !== 'authorizationStateReady') {
-        Alert.alert('Telegram', `Неожиданное состояние после кода: ${authType ?? '?'}`);
-        return;
-      }
-      telegramAccountStore.getState().setAuthStatus('ready');
-      telegramAccountStore.getState().setTelegramUserId(0);
-      await telegramAccountStore.getState().persistSnapshot();
-      openTelegramChats();
+        openTelegramChats();
+      });
     } catch (e) {
       Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
     } finally {
@@ -151,22 +163,25 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      const pwRes = await tdlibClient.send({
-        '@type': 'checkAuthenticationPassword',
-        password: trimmed,
+      await runTdlibAuthorizationQuery(async () => {
+        if (telegramAccountStore.getState().authStatus !== 'waiting_password') return;
+        const pwRes = await tdlibClient.send({
+          '@type': 'checkAuthenticationPassword',
+          password: trimmed,
+        });
+        throwIfTdError(pwRes);
+        const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
+        throwIfTdError(auth);
+        const authType = (auth as { '@type'?: string })['@type'];
+        if (authType !== 'authorizationStateReady') {
+          Alert.alert('Telegram', `Сессия не готова: ${authType ?? '?'}`);
+          return;
+        }
+        telegramAccountStore.getState().setAuthStatus('ready');
+        telegramAccountStore.getState().setTelegramUserId(0);
+        await telegramAccountStore.getState().persistSnapshot();
+        openTelegramChats();
       });
-      throwIfTdError(pwRes);
-      const auth = await tdlibClient.send({ '@type': 'getAuthorizationState' });
-      throwIfTdError(auth);
-      const authType = (auth as { '@type'?: string })['@type'];
-      if (authType !== 'authorizationStateReady') {
-        Alert.alert('Telegram', `Сессия не готова: ${authType ?? '?'}`);
-        return;
-      }
-      telegramAccountStore.getState().setAuthStatus('ready');
-      telegramAccountStore.getState().setTelegramUserId(0);
-      await telegramAccountStore.getState().persistSnapshot();
-      openTelegramChats();
     } catch (e) {
       Alert.alert('TDLib', e instanceof Error ? e.message : String(e));
     } finally {

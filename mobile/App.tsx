@@ -19,6 +19,8 @@ import { initDatabase } from './src/services/DatabaseService';
 import { authService, type AuthSession } from './src/services/AuthService';
 import { uiStore } from './src/stores/uiStore';
 import { telegramAccountStore } from './src/stores/telegramAccountStore';
+import { TelegramTdlibNotificationListener } from './src/components/TelegramTdlibNotificationListener';
+import { ensureAndroidPushChannels } from './src/services/pushNotificationsService';
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -30,6 +32,7 @@ export default function App() {
       .then(async () => {
         await uiStore.getState().hydrateAppAppearance();
         await telegramAccountStore.getState().hydrate();
+        await ensureAndroidPushChannels();
         return authService.restoreSession();
       })
       .then((session) => {
@@ -87,6 +90,7 @@ export default function App() {
                       <ThemedStatusBar />
                       <RootNavigator />
                       <InAppPushNotification />
+                      <TelegramTdlibNotificationListener />
                       <AppUpdateGate />
                     </NavigationContainer>
                   </CallProvider>

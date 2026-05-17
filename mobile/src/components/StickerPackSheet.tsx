@@ -879,7 +879,7 @@ function createStyles(c: ThemeColors) {
       width: '100%',
     },
     packRail: {
-      width: PACK_RAIL_W,
+      width: 52,
       borderRightWidth: StyleSheet.hairlineWidth,
       borderRightColor: withAlpha(c.textSecondary, 0.2),
       alignSelf: 'stretch',
@@ -891,8 +891,8 @@ function createStyles(c: ThemeColors) {
       alignItems: 'center',
     },
     packRailCell: {
-      width: PACK_RAIL_W - 12,
-      height: PACK_RAIL_W - 12,
+      width: 40,
+      height: 40,
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
@@ -902,14 +902,13 @@ function createStyles(c: ThemeColors) {
       backgroundColor: withAlpha(c.accent, 0.22),
     },
     packRailThumb: {
-      width: PACK_RAIL_W - 22,
-      height: PACK_RAIL_W - 22,
+      width: 30,
+      height: 30,
     },
     stickersMain: {
       flex: 1,
       minWidth: 0,
       minHeight: 0,
-      width: '100%',
       alignSelf: 'stretch',
     },
     stickerListFlex: {

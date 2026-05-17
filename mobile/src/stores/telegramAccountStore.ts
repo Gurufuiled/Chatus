@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import { resetTelegramPushRegistrationFlag } from '../services/pushNotificationsService';
 import { resetTdlibParametersLock } from '../services/tdlib/tdlibBootstrap';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
 
@@ -107,6 +108,7 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
   setDialogs: (dialogs) => set({ dialogs }),
 
   resetTelegramSession: async () => {
+    resetTelegramPushRegistrationFlag();
     resetTdlibParametersLock();
     clearUserNameCache();
     set({ ...initial });

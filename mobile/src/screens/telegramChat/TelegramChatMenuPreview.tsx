@@ -5,6 +5,7 @@ import { ImageBubble } from '../../components/ImageBubble';
 import { MessageTimeStatus } from '../../components/MessageTimeStatus';
 import { ReplyPreview } from '../../components/ReplyPreview';
 import { VideoBubble } from '../../components/VideoBubble';
+import { VideoNoteBubble } from '../../components/VideoNoteBubble';
 import { VoiceBubble } from '../../components/VoiceBubble';
 import type { Message } from '../../stores/types';
 import type { ThemeColors } from '../../theme/palettes';
@@ -57,6 +58,14 @@ export function TelegramChatMenuPreviewBody({
     shouldUseDarkDefaultOutgoingBubbleGradient(chatThemeProp, resolvedSchemeProp);
   const meBubbleFill =
     isMe && usePreviewOutgoingGradient ? '#00000000' : colors.bubbleMe;
+  const outgoingVideoNoteMetaColor =
+    isMe && usePreviewOutgoingGradient && chatThemeProp != null
+      ? chatThemeProp.bubbleMeMeta
+      : colors.textSecondaryMuted;
+  const outgoingVideoNoteAccentColor =
+    isMe && usePreviewOutgoingGradient && chatThemeProp != null
+      ? chatThemeProp.bubbleMeAccent
+      : colors.accent;
   const replyTarget =
     row.replyToMessageId != null ? messageById.get(row.replyToMessageId) ?? null : null;
   const replySnippet =
@@ -140,6 +149,48 @@ export function TelegramChatMenuPreviewBody({
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingDurationColor={colors.textSecondary}
+        />
+      </View>
+    );
+  }
+
+  if (row.kind === 'video_note') {
+    if (!row.mediaUri) {
+      return (
+        <View style={fixedWidthStyle}>
+          <View style={[styles.bubble, textBubbleColorStyle]}>
+            {bubbleHeader}
+            <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Видеосообщение</Text>
+            <MessageTimeStatus
+              time={formatTime(row.dateMs)}
+              status={row.status}
+              isMe={isMe}
+              compact
+              timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+              iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+            />
+          </View>
+        </View>
+      );
+    }
+    return (
+      <View style={fixedWidthStyle}>
+        <VideoNoteBubble
+          messageId={row.id}
+          uri={row.mediaUri}
+          thumbnailUri={row.thumbnailUri ?? undefined}
+          durationMs={row.durationMs ?? 0}
+          isMe={isMe}
+          time={formatTime(row.dateMs)}
+          status={row.status}
+          header={bubbleHeader}
+          outgoingMetaColor={outgoingVideoNoteMetaColor}
+          outgoingAccentColor={outgoingVideoNoteAccentColor}
+          viewportOutgoingGradient={
+            isMe && usePreviewOutgoingGradient && row.replyToMessageId == null
+          }
+          scrollTick={scrollTick}
+          registerPlaybackState={false}
         />
       </View>
     );

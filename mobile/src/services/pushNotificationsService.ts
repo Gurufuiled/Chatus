@@ -1,18 +1,24 @@
 /**
  * Регистрация Expo Push Token и отправка на API (POST /users/me/push-token).
+ * Локальные уведомления в системную шторку Android при входящих в фоне.
  * Требует нативной сборки (expo run) и при необходимости EXPO_PUBLIC_EAS_PROJECT_ID в .env.
  */
 
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { apiDelete, apiPost } from './apiClient';
+import { tdlibClient } from './tdlib/TdlibClient';
+import { throwIfTdError } from './tdlib/tdlibErrors';
+import type { PushNotificationData } from '../stores/uiStore';
+import { uiStore } from '../stores/uiStore';
+
+export const ANDROID_CHANNEL_CHATUS = 'chatus_messages';
+export const ANDROID_CHANNEL_TELEGRAM = 'telegram_messages';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    /** iOS / старые пути */
     shouldShowAlert: true,
-    /** Android 13+ и актуальный Expo: иначе push в foreground часто не попадает в шторку и список уведомлений */
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
@@ -21,16 +27,151 @@ Notifications.setNotificationHandler({
 });
 
 let lastRegisteredToken: string | null = null;
+/** TDLib `registerDevice` succeeded for this FCM token (token rotation → register again). */
+let lastRegisteredTelegramFcmToken: string | null = null;
 
-async function ensureAndroidChannel(): Promise<void> {
+function channelBase(name: string) {
+  return {
+    name,
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250] as [number, ...number[]],
+    sound: 'message_notification' as const,
+    enableVibrate: true,
+    enableLights: true,
+    showBadge: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    bypassDnd: false,
+  };
+}
+
+/** Создать каналы до запроса разрешений (Android 13+) и для FCM/Expo payload `channelId`. */
+export async function ensureAndroidPushChannels(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync('chatus_messages', {
-    name: 'Сообщения',
-    importance: Notifications.AndroidImportance.HIGH,
-    /** Имя raw-ресурса без расширения (см. app.json → expo-notifications → sounds). */
-    sound: 'message_notification',
-    vibrationPattern: [0, 250, 250, 250],
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_CHATUS, {
+    ...channelBase('Сообщения Chatus'),
+    description: 'Новые сообщения в аккаунте Chatus',
   });
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_TELEGRAM, {
+    ...channelBase('Telegram'),
+    description: 'Входящие в привязанном Telegram-аккаунте',
+  });
+}
+
+/**
+ * Локальное уведомление в шторку, когда приложение не на переднем плане
+ * (иначе остаётся только in-app баннер из `InAppPushNotification`).
+ */
+export async function tryPostInboundSystemTrayNotification(input: {
+  title: string;
+  body: string;
+  channelId: string;
+  data: Record<string, unknown>;
+}): Promise<void> {
+  if (AppState.currentState === 'active') return;
+
+  const perm = await Notifications.getPermissionsAsync();
+  if (perm.status !== 'granted') return;
+
+  if (Platform.OS === 'android') {
+    await ensureAndroidPushChannels();
+  }
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: input.title,
+        body: input.body.slice(0, 220),
+        data: input.data,
+        sound: Platform.OS === 'android' ? undefined : 'message_notification.wav',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      },
+      trigger: { channelId: input.channelId },
+    });
+  } catch (e) {
+    console.warn('[push] scheduleNotificationAsync failed', e);
+  }
+}
+
+/** In-app баннер + при необходимости системная шторка (фон). */
+export async function notifyChatusInboundMessagePreview(
+  data: Omit<PushNotificationData, 'id'>,
+): Promise<void> {
+  uiStore.getState().showPushNotification(data);
+  await tryPostInboundSystemTrayNotification({
+    title: data.title,
+    body: data.messagePreview,
+    channelId: ANDROID_CHANNEL_CHATUS,
+    data: {
+      kind: 'chatus_message',
+      chat_id: data.chatId,
+    },
+  });
+}
+
+export async function notifyTelegramInboundMessagePreview(input: {
+  telegramChatId: string;
+  title: string;
+  body: string;
+}): Promise<void> {
+  await tryPostInboundSystemTrayNotification({
+    title: input.title,
+    body: input.body,
+    channelId: ANDROID_CHANNEL_TELEGRAM,
+    data: {
+      kind: 'telegram_message',
+      telegram_chat_id: input.telegramChatId,
+    },
+  });
+}
+
+/**
+ * Регистрация FCM device token в Telegram (TDLib `registerDevice`).
+ * Нужен Server key в [my.telegram.org](https://my.telegram.org) для вашего `api_id`.
+ *
+ * @returns `true` если нечего делать (не Android / не девайс), разрешений нет (не ошибка TDLib),
+ * токен уже зарегистрирован, или TDLib ответил без ошибки. `false` — сеть/TDLib ошибка (можно повторить).
+ */
+export async function registerTelegramAndroidPushWithTdlib(): Promise<boolean> {
+  if (Platform.OS !== 'android' || !Constants.isDevice) return true;
+
+  const perm = await Notifications.getPermissionsAsync();
+  if (perm.status !== 'granted') return false;
+
+  await ensureAndroidPushChannels();
+
+  let token: string;
+  try {
+    const res = await Notifications.getDevicePushTokenAsync();
+    if (res.type !== 'android') return false;
+    token = typeof res.data === 'string' ? res.data : '';
+  } catch {
+    return false;
+  }
+  const tokenTrim = token.trim();
+  if (!tokenTrim) return false;
+  if (lastRegisteredTelegramFcmToken === tokenTrim) return true;
+
+  try {
+    const response = (await tdlibClient.send({
+      '@type': 'registerDevice',
+      device_token: {
+        '@type': 'deviceTokenFirebaseCloudMessaging',
+        token: tokenTrim,
+      },
+      other_user_ids: [],
+    })) as Record<string, unknown>;
+    throwIfTdError(response);
+    lastRegisteredTelegramFcmToken = tokenTrim;
+    return true;
+  } catch (e) {
+    console.warn('[push] TDLib registerDevice (FCM) failed', e);
+    return false;
+  }
+}
+
+/** Сброс кэша успешной TDLib FCM-регистрации (выход из Telegram / смена аккаунта). */
+export function resetTelegramPushRegistrationFlag(): void {
+  lastRegisteredTelegramFcmToken = null;
 }
 
 /**
@@ -41,7 +182,7 @@ export async function registerPushWithBackendAfterLogin(): Promise<void> {
     return;
   }
 
-  await ensureAndroidChannel();
+  await ensureAndroidPushChannels();
 
   const perm = await Notifications.getPermissionsAsync();
   let status = perm.status;

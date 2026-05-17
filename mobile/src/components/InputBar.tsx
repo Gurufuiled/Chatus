@@ -14,8 +14,6 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-  type NativeSyntheticEvent,
-  type TextInputKeyPressEventData,
   type ViewStyle,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
@@ -46,9 +44,10 @@ import { VideoNoteRecorder } from './VideoNoteRecorder';
 import { StickerPackSheet } from './StickerPackSheet';
 import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
 import {
-  resolveStickerImageOrPlaceholder,
+  friendStickerIdToEmoji,
+  getFriendStickerIdForEmoji,
+  encodeStickerPayload,
 } from '../stickers/chatusStickerCatalog';
-import { encodeTextWithStickerTails } from '../stickers/chatusCompositePayload';
 import {
   hapticStickerSheetDismiss,
   hapticStickerSheetOpen,
@@ -82,9 +81,6 @@ export interface FilePickResult {
   mimeType?: string;
 }
 
-/** Набор Chatus-стикеров в композере (шторка + черновик в поле). */
-const MAX_PENDING_COMPOSER_STICKERS = 24;
-
 export interface InputBarProps {
   onSendText: (text: string, sendOptions?: { chatusStickerSoloSend?: boolean }) => void;
   onSendVoice: (result: VoiceRecordingResult) => void | Promise<void>;
@@ -116,7 +112,7 @@ export interface InputBarProps {
   onCommentCooldownClear?: () => void;
   /** LineSync line id (chat id) — peer-first превью ответа в композере. */
   replyPeerFirstLineId?: string | null;
-  /** Chatus: кнопка стикеров + шторка; отправка через `encodeTextWithStickerTails` в `onSendText`. */
+  /** Chatus: кнопка стикеров + шторка; стикеры friend-пака вставляются в поле как эмодзи, solo-отправка — JSON `encodeStickerPayload` в `onSendText`. */
   chatusStickersComposer?: boolean;
 }
 
@@ -234,7 +230,6 @@ export function InputBar({
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryDenied, setGalleryDenied] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<MediaPickResult | null>(null);
-  const [pendingStickers, setPendingStickers] = useState<ChatusStickerRef[]>([]);
   const [selectedGalleryItems, setSelectedGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryCaption, setGalleryCaption] = useState('');
   const [voiceRecordModeState, setVoiceRecordModeState] = useState<VoiceRecordMode>('idle');
@@ -265,12 +260,7 @@ export function InputBar({
 
   const hasText = inputText.trim().length > 0;
   const hasPendingMedia = pendingMedia != null;
-  const hasPendingStickers = pendingStickers.length > 0;
-  const canSend = hasText || hasPendingMedia || hasPendingStickers;
-  const composerStickerPadRight = useMemo(() => {
-    if (!chatusStickersComposer || pendingStickers.length === 0) return 0;
-    return Math.min(172, 6 + pendingStickers.length * 44);
-  }, [chatusStickersComposer, pendingStickers.length]);
+  const canSend = hasText || hasPendingMedia;
   const isVoiceRecording = voiceRecordModeState !== 'idle';
   const isVoiceLocked = voiceRecordModeState === 'locked';
   const canUseVideoNotes = onSendVideoNote != null;
@@ -403,14 +393,12 @@ export function InputBar({
   const handleSend = useCallback(() => {
     const content = inputText.trim();
     const selectedMedia = pendingMedia;
-    const stickerDrafts = pendingStickers;
 
-    if (!content && !selectedMedia && !stickerDrafts.length) return;
+    if (!content && !selectedMedia) return;
 
     if (selectedMedia) {
       setInputText('');
       setPendingMedia(null);
-      setPendingStickers([]);
       onCancelReply?.();
 
       void onSendMedia?.({
@@ -421,21 +409,18 @@ export function InputBar({
       return;
     }
 
-    if (stickerDrafts.length > 0) {
-      setInputText('');
-      setPendingStickers([]);
-      onCancelReply?.();
-      onInputChange?.('');
-      onSendText(encodeTextWithStickerTails(content, stickerDrafts), {
-        chatusStickerSoloSend: content.length === 0,
+    setInputText('');
+    onCancelReply?.();
+    onInputChange?.('');
+
+    const stickerId = getFriendStickerIdForEmoji(content);
+    if (stickerId) {
+      onSendText(encodeStickerPayload({ packId: 'friend', stickerId }), {
+        chatusStickerSoloSend: true,
       });
       return;
     }
 
-    setInputText('');
-    setPendingStickers([]);
-    onCancelReply?.();
-    onInputChange?.('');
     onSendText(content);
   }, [
     inputText,
@@ -444,7 +429,6 @@ export function InputBar({
     onSendMedia,
     onSendText,
     pendingMedia,
-    pendingStickers,
   ]);
 
   const handleInputChange = useCallback(
@@ -482,30 +466,6 @@ export function InputBar({
     openStickerPanel(null);
   }, [openStickerPanel]);
 
-  const handleStickerBootTabConsumed = useCallback(() => {
-    setStickerSheetBootTab(null);
-  }, []);
-
-  const handleStickerPick = useCallback((ref: ChatusStickerRef) => {
-    setPendingStickers((prev) => {
-      if (prev.length >= MAX_PENDING_COMPOSER_STICKERS) return prev;
-      return [...prev, ref];
-    });
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-  }, []);
-
-  const handleComposerKeyPress = useCallback(
-    (e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
-      if (!chatusStickersComposer) return;
-      if (e.nativeEvent.key !== 'Backspace' && e.nativeEvent.key !== 'Delete') return;
-      if (inputText.length > 0) return;
-      setPendingStickers((p) => (p.length ? p.slice(0, -1) : p));
-    },
-    [chatusStickersComposer, inputText.length],
-  );
-
   const handleEmojiPick = useCallback(
     (emoji: string) => {
       setInputText((prev) => {
@@ -519,6 +479,17 @@ export function InputBar({
     },
     [onInputChange],
   );
+
+  const handleStickerPick = useCallback((ref: ChatusStickerRef) => {
+    if (ref.packId === 'friend') {
+      const emojiChar = friendStickerIdToEmoji(ref.stickerId);
+      handleEmojiPick(emojiChar);
+    }
+  }, [handleEmojiPick]);
+
+  const handleStickerBootTabConsumed = useCallback(() => {
+    setStickerSheetBootTab(null);
+  }, []);
 
   const handleVideoNoteComplete = useCallback(
     async (result: VideoNoteRecordingResult) => {
@@ -796,7 +767,6 @@ export function InputBar({
         onPress: async () => {
           const result = await DocumentPickerService.pickDocument();
           if (result) {
-            setPendingStickers([]);
             await onSendFile(result);
           }
         },
@@ -973,7 +943,6 @@ export function InputBar({
     const caption = galleryCaption.trim();
     setSelectedGalleryItems([]);
     setGalleryCaption('');
-    setPendingStickers([]);
     setShowAttachmentSheet(false);
 
     try {
@@ -1612,42 +1581,14 @@ export function InputBar({
                   style={[
                     styles.input,
                     styles.inputComposerField,
-                    composerStickerPadRight > 0 ? { paddingRight: composerStickerPadRight } : null,
                   ]}
                   placeholder={placeholder}
                   placeholderTextColor={themeColors.placeholder}
                   value={inputText}
                   onChangeText={handleInputChange}
-                  onKeyPress={handleComposerKeyPress}
                   multiline
                   maxLength={4096}
                 />
-                {chatusStickersComposer && pendingStickers.length > 0 ? (
-                  <View style={styles.composerStickerOverlay} pointerEvents="box-none">
-                    <View style={styles.composerStickerStrip} accessibilityLabel="Стикеры к сообщению">
-                      {pendingStickers.map((ref, idx) => (
-                        <View key={`${ref.packId}:${ref.stickerId}:${idx}`} style={styles.composerStickerChip}>
-                          <Image
-                            source={resolveStickerImageOrPlaceholder(ref)}
-                            style={styles.composerStickerChipImg}
-                            resizeMode="contain"
-                          />
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel="Убрать стикер из сообщения"
-                            hitSlop={8}
-                            onPress={() =>
-                              setPendingStickers((prev) => prev.filter((_, i) => i !== idx))
-                            }
-                            style={styles.composerStickerChipRemove}
-                          >
-                            <Feather name="x" size={13} color={themeColors.iconMuted} />
-                          </Pressable>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : null}
               </View>
 
               {!stickerInLeadingCluster && chatusStickersComposer ? (
@@ -1935,43 +1876,6 @@ function createInputBarStyles(themeColors: ThemeColors) {
     position: 'relative',
     justifyContent: 'flex-end',
     alignSelf: 'stretch',
-  },
-  composerStickerOverlay: {
-    position: 'absolute',
-    right: 2,
-    bottom: 8,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'flex-end',
-    maxWidth: '92%',
-  },
-  composerStickerStrip: {
-    flexDirection: 'row',
-    flexWrap: 'nowrap',
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  composerStickerChip: {
-    position: 'relative',
-  },
-  composerStickerChipImg: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: themeColors.placeholderBg,
-  },
-  composerStickerChipRemove: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: themeColors.inputBackgroundSolid,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: themeColors.separator,
   },
   leadingAction: {
     width: MIN_TAP_TARGET,

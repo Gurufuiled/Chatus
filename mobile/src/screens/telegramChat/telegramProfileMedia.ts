@@ -84,6 +84,18 @@ export function telegramRowsToProfileBuckets(
         dateLabel,
       });
     }
+    if (row.kind === 'video_note' && row.mediaUri) {
+      voiceItems.push({
+        id: row.id,
+        kind: 'video_note',
+        uri: row.mediaUri,
+        thumbnailUri: row.thumbnailUri ?? undefined,
+        title: row.outgoing ? 'Вы' : peerLabel,
+        durationMs: row.durationMs ?? 0,
+        waveform: [],
+        dateLabel,
+      });
+    }
     if (row.kind === 'text' && row.text) {
       const matches = (row.text.match(/https?:\/\/[^\s]+/gi) ?? []) as string[];
       matches.forEach((uri, index) => {

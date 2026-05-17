@@ -14,7 +14,7 @@
     "test:line-sync-ws": "npx tsx src/services/lineSyncWebSocket.test.ts",
     "test:line-sync-event-builder": "npx tsx src/services/lineSyncEventBuilder.test.ts",
     "test:transport": "npx tsx src/utils/messageTransport.test.ts",
-    "test:telegram-chat": "npx tsx src/screens/telegramChat/tdlibPhotoUtils.test.ts && npx tsx src/screens/telegramChat/telegramDialogFallback.test.ts",
+    "test:telegram-chat": "npx tsx src/screens/telegramChat/tdlibPhotoUtils.test.ts && npx tsx src/screens/telegramChat/telegramDialogFallback.test.ts && npx tsx src/screens/telegramChat/telegramChannelPostLayout.test.ts",
     "test:voice": "npx tsx src/services/VoiceRecorderService.test.ts",
     "test:voice-gesture": "npx tsc --noEmit",
     "start": "expo start",

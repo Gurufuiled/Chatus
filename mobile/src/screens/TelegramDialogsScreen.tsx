@@ -38,6 +38,7 @@ function previewFromChat(chat: Record<string, unknown>): string {
   }
   if (kind === 'messagePhoto') return 'Фото';
   if (kind === 'messageVideo') return 'Видео';
+  if (kind === 'messageVideoNote') return 'Видеосообщение';
   if (kind === 'messageDocument') return 'Файл';
   if (kind === 'messageVoiceNote') return 'Голосовое';
   if (kind === 'messageSticker') return 'Стикер';

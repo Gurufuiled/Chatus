@@ -358,6 +358,25 @@ export async function mapTdMessage(
     };
   }
 
+  if (kind === 'messageVideoNote') {
+    const videoNote = getNestedRecord(content.video_note);
+    const file = getNestedRecord(videoNote?.video);
+    const thumbnail = getNestedRecord(videoNote?.thumbnail);
+    const thumbnailFile = getNestedRecord(thumbnail?.file);
+    const [uri, thumbnailUri] = await Promise.all([resolveTdFileUri(file), resolveTdFileUri(thumbnailFile)]);
+    const side = getNumber(videoNote?.length);
+    return {
+      ...base,
+      kind: uri ? 'video_note' : 'service',
+      text: 'Видеосообщение',
+      mediaUri: uri,
+      thumbnailUri,
+      width: side,
+      height: side,
+      durationMs: (getNumber(videoNote?.duration) ?? 0) * 1000,
+    };
+  }
+
   if (kind === 'messageDocument') {
     const document = getNestedRecord(content.document);
     const file = getNestedRecord(document?.document);

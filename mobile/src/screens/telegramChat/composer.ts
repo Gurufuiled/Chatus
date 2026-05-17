@@ -29,6 +29,8 @@ export function previewForUnsupported(kind: string | undefined): string {
       return 'Фото';
     case 'messageVideo':
       return 'Видео';
+    case 'messageVideoNote':
+      return 'Видеосообщение';
     case 'messageDocument':
       return 'Файл';
     case 'messageSticker':

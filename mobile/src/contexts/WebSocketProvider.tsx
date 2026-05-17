@@ -27,6 +27,7 @@ import { normalizeMessageTransport } from '../utils/messageTransport';
 import { buildMessageListPreviewText } from '../utils/messageListPreview';
 import { buildPendingLineSyncRowForText, shouldLinkLineSyncOptimisticEchoToServer } from '../services/lineSyncEventBuilder';
 import { getChatListTitle } from '../presentation';
+import { notifyChatusInboundMessagePreview } from '../services/pushNotificationsService';
 
 /** Server message payload shape (MappedMessage from backend) */
 interface ServerMessagePayload {
@@ -431,7 +432,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
 
           if (chatStore.getState().selectedChatId !== payload.chat_id) {
             const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
-            uiStore.getState().showPushNotification({
+            void notifyChatusInboundMessagePreview({
               chatId: payload.chat_id,
               title: chatTitle,
               messagePreview: buildMessagePreview(mapped),
@@ -496,7 +497,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               if (chatStore.getState().selectedChatId !== msg.chat_id) {
                 const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
 
-                uiStore.getState().showPushNotification({
+                void notifyChatusInboundMessagePreview({
                   chatId: msg.chat_id,
                   title: chatTitle,
                   messagePreview: buildMessagePreview(mapped),
@@ -630,7 +631,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             if (chatStore.getState().selectedChatId !== msg.chat_id) {
               const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
 
-              uiStore.getState().showPushNotification({
+              void notifyChatusInboundMessagePreview({
                 chatId: msg.chat_id,
                 title: chatTitle,
                 messagePreview: buildMessagePreview(mapped),

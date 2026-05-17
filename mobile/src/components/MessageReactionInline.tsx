@@ -1,7 +1,12 @@
 import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import Reanimated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
 import { resolveAvatarUrl } from '../config';
 import { withAlpha } from '../theme/colors';
+
+/** Появление строки реакций + плавное расширение при новых эмодзи/счётчиках (как в Telegram). */
+const REACTION_ROW_ENTERING = FadeInDown.springify().damping(17).stiffness(255).mass(0.88);
+const REACTION_ROW_LAYOUT = LinearTransition.springify().damping(18).stiffness(235);
 
 export type InlineReactionItem = {
   emoji: string;
@@ -36,7 +41,11 @@ export function MessageReactionInline({
   const isTail = variant === 'floatingTail';
 
   return (
-    <View style={[styles.row, isTail && styles.rowFloatingTail]}>
+    <Reanimated.View
+      style={[styles.row, isTail && styles.rowFloatingTail]}
+      entering={REACTION_ROW_ENTERING}
+      layout={REACTION_ROW_LAYOUT}
+    >
       {reactions.map((r) => (
         <Pressable
           key={r.emoji}
@@ -52,13 +61,16 @@ export function MessageReactionInline({
                 ? styles.chipPaletteMe
                 : styles.chipPaletteOther,
             !isTail && r.reacted_by_me && (
-              accentColor 
+              accentColor
                 ? { backgroundColor: withAlpha(accentColor, isMe ? 0.52 : 0.34) }
                 : (isMe ? styles.chipMineOnMe : styles.chipMineOnOther)
             ),
             isTail && r.reacted_by_me && (
-              accentColor 
-                ? { backgroundColor: withAlpha(accentColor, isMe ? 0.88 : 0.42), borderColor: withAlpha(accentColor, 0.22) }
+              accentColor
+                ? {
+                    backgroundColor: withAlpha(accentColor, isMe ? 0.88 : 0.42),
+                    borderColor: withAlpha(accentColor, 0.22),
+                  }
                 : (isMe ? styles.chipMineTailOnMe : styles.chipMineTailOnOther)
             ),
             pressed && allowReactions && styles.chipPressed,
@@ -108,7 +120,7 @@ export function MessageReactionInline({
           ) : null}
         </Pressable>
       ))}
-    </View>
+    </Reanimated.View>
   );
 }
 

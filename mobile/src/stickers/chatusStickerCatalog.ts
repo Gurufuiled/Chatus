@@ -30,6 +30,26 @@ const FRIEND_LEGACY_STICKER_TO_STEM: Readonly<Record<string, string>> = {
 
 const LEGACY_FRIEND_STICKER_IDS = new Set<string>(Object.keys(FRIEND_LEGACY_STICKER_TO_STEM));
 
+const EMOJI_TO_FRIEND_STICKER_ID = new Map<string, string>();
+
+export function friendStickerIdToEmoji(stickerId: string): string {
+  let stem = stickerId;
+  if (LEGACY_FRIEND_STICKER_IDS.has(stickerId)) {
+    stem = FRIEND_LEGACY_STICKER_TO_STEM[stickerId] || stickerId;
+  }
+  return stem.split('-').map(hex => String.fromCodePoint(parseInt(hex, 16))).join('');
+}
+
+export function getFriendStickerIdForEmoji(emoji: string): string | null {
+  if (EMOJI_TO_FRIEND_STICKER_ID.size === 0) {
+    for (const id of Object.keys(CHATUS_STICKER_IMAGES.friend)) {
+      if (LEGACY_FRIEND_STICKER_IDS.has(id)) continue;
+      EMOJI_TO_FRIEND_STICKER_ID.set(friendStickerIdToEmoji(id), id);
+    }
+  }
+  return EMOJI_TO_FRIEND_STICKER_ID.get(emoji) ?? null;
+}
+
 /** Новые отправки и MRU — по возможности с кодпоинт-id, без legacy-имён. */
 export function canonicalFriendStickerRef(ref: ChatusStickerRef): ChatusStickerRef {
   if (ref.packId !== 'friend') return ref;

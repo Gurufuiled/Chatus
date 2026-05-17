@@ -23,6 +23,7 @@ export function getTelegramReplyPreviewText(row: TelegramMessageRow): string {
   if (row.kind === 'text') return row.text.trim() || 'Пустое сообщение';
   if (row.kind === 'image') return row.text.trim() ? `Фото: ${row.text.trim()}` : 'Фото';
   if (row.kind === 'video') return row.text.trim() ? `Видео: ${row.text.trim()}` : 'Видео';
+  if (row.kind === 'video_note') return 'Видеосообщение';
   if (row.kind === 'voice') return 'Голосовое сообщение';
   if (row.kind === 'file') return row.fileName?.trim() || 'Файл';
   return row.text.trim() || 'Сообщение';
@@ -32,6 +33,8 @@ export function getTelegramReplyThumbnailUri(row: TelegramMessageRow | null | un
   if (!row) return null;
   if (row.kind === 'image') return row.mediaUri?.trim() || null;
   if (row.kind === 'video') return row.thumbnailUri?.trim() || null;
+  if (row.kind === 'video_note')
+    return row.thumbnailUri?.trim() || row.mediaUri?.trim() || null;
   return null;
 }
 
@@ -50,6 +53,18 @@ export function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: 
         file_size: row.fileSize,
       },
     ];
+  } else if (row.kind === 'video_note') {
+    media = [
+      {
+        media_type: 'video_note',
+        remote_url: row.mediaUri ?? undefined,
+        thumbnail_url: row.thumbnailUri ?? undefined,
+        width: row.width,
+        height: row.height,
+        duration_ms: row.durationMs,
+        is_round: true,
+      },
+    ];
   } else if (row.kind === 'voice') {
     media = [
       {
@@ -66,7 +81,11 @@ export function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: 
     chat_id: String(chatId),
     sender_id: row.outgoing ? 'telegram:self' : 'telegram:peer',
     msg_type:
-      row.kind === 'image' || row.kind === 'video' || row.kind === 'file' || row.kind === 'voice'
+      row.kind === 'image' ||
+      row.kind === 'video' ||
+      row.kind === 'file' ||
+      row.kind === 'voice' ||
+      row.kind === 'video_note'
         ? row.kind
         : 'text',
     content: row.kind === 'text' ? row.text : row.text || null,

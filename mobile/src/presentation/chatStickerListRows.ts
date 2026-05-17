@@ -8,6 +8,10 @@ export type ChatListStickerGroupRow = {
 
 export type ChatListRow = Message | ChatListStickerGroupRow;
 
+function isStickerGroupRow(row: ChatListRow): row is ChatListStickerGroupRow {
+  return 'kind' in row && row.kind === 'sticker_group';
+}
+
 /**
  * Раньше схлопывали подряд идущие чистые стикеры в один ряд — это путало с отдельными отправками.
  * Сейчас каждое сообщение остаётся отдельной строкой; группировка только если сервер/клиент
@@ -29,7 +33,7 @@ export function getChatListRowIndexForMessageId(
   const rows = buildStickerGroupedChatRows(messages, currentUserId);
   for (let r = 0; r < rows.length; r += 1) {
     const row = rows[r];
-    if ('kind' in row && row.kind === 'sticker_group') {
+    if (isStickerGroupRow(row)) {
       if (row.messages.some((x) => x.id === messageId)) return r;
     } else if (row.id === messageId) {
       return r;

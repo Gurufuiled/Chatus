@@ -1,4 +1,11 @@
-export type TelegramMessageKind = 'text' | 'voice' | 'image' | 'video' | 'file' | 'service';
+export type TelegramMessageKind =
+  | 'text'
+  | 'voice'
+  | 'video_note'
+  | 'image'
+  | 'video'
+  | 'file'
+  | 'service';
 export type TelegramMessageStatus = 'sending' | 'sent' | 'read' | 'failed';
 
 export type TelegramMessageRow = {
@@ -27,7 +34,7 @@ export type TelegramMessageRow = {
   senderAvatarUri?: string | null;
   /** Post view count from TDLib `interaction_info.view_count` (channel posts). */
   viewCount?: number;
-  /** Linked discussion supergroup chat id (`reply_in_chat_id`) when comments exist for a channel post. */
+  /** Linked discussion chat id from TDLib `reply_in_chat_id` when present; иначе экран подставляет `linked_chat_id` канала из `getSupergroupFullInfo`. */
   discussionChatId?: number;
   /** Thread id for discussion messages (`message_thread_id`). */
   messageThreadId?: number;
