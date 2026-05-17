@@ -7,9 +7,6 @@ import { ChatType } from '@prisma/client';
 import Expo, { type ExpoPushMessage } from 'expo-server-sdk';
 import { PrismaService } from '../prisma/prisma.service';
 
-/** Expo Android: drawable from expo-notifications plugin (`notification_icon`). */
-const ANDROID_NOTIFICATION_ICON = 'notification_icon';
-
 /** FCM `tag`: same value replaces the previous notification for this chat (one slot per chat). */
 function pushTagForChat(chatId: string): string {
   return `chatus-${chatId}`;
@@ -76,6 +73,7 @@ export class PushService {
   private absoluteMediaUrl(url: string | null | undefined): string | undefined {
     const trimmed = url?.trim();
     if (!trimmed) return undefined;
+    if (trimmed.startsWith('//')) return undefined;
     if (/^https?:\/\//i.test(trimmed)) {
       return trimmed;
     }
@@ -83,6 +81,21 @@ export class PushService {
     const origin = this.getPublicOrigin();
     if (!origin) return undefined;
     return `${origin}${trimmed}`;
+  }
+
+  /**
+   * Expo richContent.image on Android often loads over HTTPS; cleartext http URLs may fail silently.
+   */
+  private safePushImageUrl(url: string | undefined): string | undefined {
+    if (!url) return undefined;
+    if (url.startsWith('https://')) return url;
+    if (url.startsWith('http://')) {
+      this.log.debug(
+        'notifyNewMessage: skip richContent.image (use HTTPS PUBLIC_ORIGIN for avatar in push)',
+      );
+      return undefined;
+    }
+    return url;
   }
 
   private senderDisplayName(sender: {
@@ -150,7 +163,9 @@ export class PushService {
       const preview =
         chat.lastMessagePreview?.trim() || 'Новое сообщение';
       const senderLabel = this.senderDisplayName(sender);
-      const avatarUrl = this.absoluteMediaUrl(sender?.avatarUrl ?? null);
+      const avatarUrl = this.safePushImageUrl(
+        this.absoluteMediaUrl(sender?.avatarUrl ?? null),
+      );
 
       const recipientIds = chat.members
         .filter((m) => m.userId !== senderId)
@@ -160,7 +175,7 @@ export class PushService {
       const [devices, unreadRows] = await Promise.all([
         this.prisma.pushDevice.findMany({
           where: { userId: { in: recipientIds } },
-          select: { expoToken: true, userId: true },
+          select: { expoToken: true, userId: true, platform: true },
         }),
         this.prisma.chatMember.findMany({
           where: { chatId, userId: { in: recipientIds } },
@@ -173,11 +188,14 @@ export class PushService {
       );
 
       const tokenToUserId = new Map<string, string>();
+      const tokenToPlatform = new Map<string, 'ios' | 'android'>();
       for (const d of devices) {
         const t = d.expoToken.trim();
         if (!Expo.isExpoPushToken(t)) continue;
+        const plat = d.platform === 'ios' ? 'ios' : 'android';
         if (!tokenToUserId.has(t)) {
           tokenToUserId.set(t, d.userId);
+          tokenToPlatform.set(t, plat);
         }
       }
 
@@ -201,14 +219,17 @@ export class PushService {
           to,
           title,
           body,
-          sound: 'message_notification.wav',
           priority: 'high',
           channelId: 'chatus_messages',
-          icon: ANDROID_NOTIFICATION_ICON,
           tag,
           collapseId: tag,
           data: { chat_id: chatId, kind: 'new_message' },
         };
+        // Expo: `sound` is iOS-only in push API; sending it to Android can break FCM delivery.
+        if (tokenToPlatform.get(to) === 'ios') {
+          msg.sound = 'message_notification.wav';
+        }
+        // Small icon: use manifest `default_notification_icon` from expo-notifications (omit `icon`).
         if (avatarUrl) {
           msg.richContent = { image: avatarUrl };
         }
@@ -228,16 +249,16 @@ export class PushService {
             } else if (ticket.status === 'error') {
               errTickets += 1;
               const errTicket = ticket;
-              let details = '';
-              try {
-                details =
-                  errTicket.details != null
-                    ? ` ${JSON.stringify(errTicket.details)}`
-                    : '';
-              } catch {
-                details = ' [details unserializable]';
+              this.log.warn(`Expo push ticket error: ${errTicket.message}`);
+              if (errTicket.details != null) {
+                try {
+                  this.log.debug(
+                    `Expo push ticket details: ${JSON.stringify(errTicket.details)}`,
+                  );
+                } catch {
+                  this.log.debug('Expo push ticket details: [unserializable]');
+                }
               }
-              this.log.warn(`Expo push ticket error: ${errTicket.message}${details}`);
             }
           }
         } catch (e) {
