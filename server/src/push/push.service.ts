@@ -197,6 +197,10 @@ export class PushService {
         const core = `${senderLabel}: ${preview}`;
         const tail = unread > 1 ? `\nи ещё ${unread - 1}` : '';
         const body = (core + tail).slice(0, 400);
+        const msg: ExpoPushMessageWithAndroid = {
+          to,
+          title,
+          body,
           sound: 'message_notification.wav',
           priority: 'high',
           channelId: 'chatus_messages',
@@ -223,14 +227,17 @@ export class PushService {
               okTickets += 1;
             } else if (ticket.status === 'error') {
               errTickets += 1;
+              const errTicket = ticket;
               let details = '';
               try {
                 details =
-                  ticket.details != null ? ` ${JSON.stringify(ticket.details)}` : '';
+                  errTicket.details != null
+                    ? ` ${JSON.stringify(errTicket.details)}`
+                    : '';
               } catch {
                 details = ' [details unserializable]';
               }
-              this.log.warn(`Expo push ticket error: ${ticket.message}${details}`);
+              this.log.warn(`Expo push ticket error: ${errTicket.message}${details}`);
             }
           }
         } catch (e) {
