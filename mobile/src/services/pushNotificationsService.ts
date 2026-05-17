@@ -3,9 +3,12 @@
  * Локальные уведомления в системную шторку Android при входящих в фоне.
  * Требует нативной сборки (expo run) и при необходимости EXPO_PUBLIC_EAS_PROJECT_ID в .env.
  *
+ * Android: маленькая иконка в статусе — монохром (см. assets/notification_icon_small.png + expo-notifications в app.json);
+ * крупная картинка в шторке для локальных уведомлений — large_notification_icon из плагина withAndroidNotificationLargeIcon.
+ *
  * Важно: локальные уведомления (scheduleNotificationAsync) работают только пока живёт процесс
  * приложения (свёрнуто). После полного закрытия процесса показ идёт только через серверный
- * Expo Push (FCM) — см. PushService.notifyNewMessage на бэкенде.
+ * Expo Push (FCM) — см. PushService.notifyNewMessage на бэкенде. Картинка отправителя в remote push — richContent.image (лучше HTTPS).
  */
 
 import * as Notifications from 'expo-notifications';

@@ -20,12 +20,13 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/chatus_icon.png",
+          "icon": "./assets/notification_icon_small.png",
           "color": "#4B8FEA",
           "defaultChannel": "chatus_messages",
           "sounds": ["./assets/sounds/message_notification.wav"]
         }
       ],
+      "./plugins/withAndroidNotificationLargeIcon",
       [
         "expo-camera",
         {
@@ -76,7 +77,7 @@
       }
     },
     "android": {
-      "versionCode": 10,
+      "versionCode": 11,
       "icon": "./assets/chatus_icon.png",
       "intentFilters": [
         {
