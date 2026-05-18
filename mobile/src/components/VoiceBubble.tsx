@@ -382,8 +382,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
     marginVertical: 0,
-    width: VOICE_BUBBLE_WIDTH,
+    alignSelf: 'stretch',
+    width: '100%',
     maxWidth: '100%',
+    minWidth: 0,
     backgroundColor: 'transparent',
   },
   bubbleMe: {

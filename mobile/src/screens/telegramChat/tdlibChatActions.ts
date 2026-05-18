@@ -21,6 +21,24 @@ export async function tdlibUnpinChatMessage(chatId: number, messageId: number): 
   throwIfTdError(res);
 }
 
+export async function tdlibForwardMessages(
+  fromChatId: number,
+  destChatId: number,
+  messageIds: number[],
+): Promise<void> {
+  if (messageIds.length === 0) return;
+  const fwd = (await tdlibClient.send({
+    '@type': 'forwardMessages',
+    chat_id: destChatId,
+    from_chat_id: fromChatId,
+    message_ids: messageIds,
+    options: null,
+    send_copy: false,
+    remove_caption: false,
+  })) as Record<string, unknown>;
+  throwIfTdError(fwd);
+}
+
 /** Пересылает сообщения в «Избранное» (Saved Messages). */
 export async function tdlibForwardToSavedMessages(fromChatId: number, messageIds: number[]): Promise<void> {
   const me = (await tdlibClient.send({ '@type': 'getMe' })) as Record<string, unknown>;
@@ -41,16 +59,7 @@ export async function tdlibForwardToSavedMessages(fromChatId: number, messageIds
     throw new Error('createPrivateChat: нет id чата');
   }
 
-  const fwd = (await tdlibClient.send({
-    '@type': 'forwardMessages',
-    chat_id: destChatId,
-    from_chat_id: fromChatId,
-    message_ids: messageIds,
-    options: null,
-    send_copy: false,
-    remove_caption: false,
-  })) as Record<string, unknown>;
-  throwIfTdError(fwd);
+  await tdlibForwardMessages(fromChatId, destChatId, messageIds);
 }
 
 export async function tdlibDeleteMessages(chatId: number, messageIds: number[], revoke: boolean): Promise<void> {

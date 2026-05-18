@@ -6,17 +6,39 @@ export function optimisticOutgoingMessage(
   text: string,
   tempId = -Date.now(),
   replyToMessageId?: number | null,
+  kind: TelegramMessageRow['kind'] = 'text',
+  extras?: Partial<Pick<TelegramMessageRow, 'mediaUri' | 'voiceUri' | 'fileName' | 'fileSize'>>,
 ): TelegramMessageRow {
   return {
     id: `temp-${Math.abs(tempId)}`,
     messageId: tempId,
-    kind: 'service',
+    kind,
     text,
     outgoing: true,
     dateMs: Date.now(),
     status: 'sending',
     replyToMessageId,
+    ...extras,
   };
+}
+
+export function getTelegramCopyableContent(row: TelegramMessageRow): string {
+  if (row.kind === 'text') return row.text.trim();
+  if (row.kind === 'image' || row.kind === 'video') return row.text.trim();
+  if (row.kind === 'file') return row.fileName?.trim() || row.text.trim();
+  return '';
+}
+
+export function canTelegramSwipeReply(row: TelegramMessageRow): boolean {
+  if (row.messageId <= 0) return false;
+  return (
+    row.kind === 'text' ||
+    row.kind === 'voice' ||
+    row.kind === 'video_note' ||
+    row.kind === 'image' ||
+    row.kind === 'video' ||
+    row.kind === 'file'
+  );
 }
 
 export function getTelegramReplyPreviewText(row: TelegramMessageRow): string {

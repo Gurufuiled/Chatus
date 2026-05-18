@@ -19,7 +19,6 @@ import { getTelegramBuildCredentials, tdlibClient } from '../services/tdlib/Tdli
 import { applyTdlibParameters } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { runTdlibAuthorizationQuery } from '../services/tdlib/tdlibAuthQueue';
-import { inboxModeStore } from '../stores/inboxModeStore';
 import { telegramAccountStore, type TelegramAuthStatus } from '../stores/telegramAccountStore';
 
 function mapTdlibAuthToStore(authType: string | undefined): TelegramAuthStatus {
@@ -87,14 +86,13 @@ function defaultPhoneNumberAuthenticationSettings(): Record<string, unknown> {
     '@type': 'phoneNumberAuthenticationSettings',
     allow_flash_call: false,
     allow_missed_call: false,
-    /** Номер вводится вручную; не заявляем, что это «текущий» номер линии устройства. */
     is_current_phone_number: false,
     /**
-     * По TDLib: true, если SIM есть, но нельзя проверить совпадение номера с линией.
-     * MSISDN не читаем; на Android задаём true как эвристику «телефон с SIM, сверки нет».
-     * На iOS без нативной проверки подписок — false.
+     * has_unknown_phone_number: false — не сообщаем TDLib что мы «не знаем» свой номер.
+     * Если true на Android — TDLib ждёт SIM-верификацию, которая никогда не приходит
+     * в сторонних приложениях → бесконечная загрузка.
      */
-    has_unknown_phone_number: Platform.OS === 'android',
+    has_unknown_phone_number: false,
     allow_sms_retriever_api: false,
     authentication_tokens: [],
   };
@@ -127,7 +125,6 @@ export function TelegramAuthScreen() {
   }, [colors, isLight]);
 
   const openTelegramChats = useCallback(() => {
-    inboxModeStore.getState().setActiveInbox('telegram');
     navigation.getParent<NavigationProp<MainTabParamList>>()?.navigate('Chats', { screen: 'ChatList' });
   }, [navigation]);
 
@@ -215,7 +212,6 @@ export function TelegramAuthScreen() {
     try {
       setBootstrapError(null);
 
-      // Быстрая проверка состояния (без лишних auth-запросов)
       const currentStatus = telegramAccountStore.getState().authStatus;
       if (currentStatus === 'ready') {
         if (screenFocusedRef.current) openTelegramChats();
@@ -230,14 +226,12 @@ export function TelegramAuthScreen() {
         return;
       }
 
-      // Инициализируем TDLib (только если нужно), не вызывая getAuthorizationState внутри auth-очереди
       await withTimeout(
         applyTdlibParameters(),
         30000,
         'TDLib не смог инициализировать параметры за 30 с. Перезапустите приложение.',
       );
 
-      // Теперь проверяем реальное состояние TDLib одним запросом
       const authProbe = (await withTimeout(
         tdlibClient.send({ '@type': 'getAuthorizationState' }) as Promise<unknown>,
         20000,
@@ -278,18 +272,156 @@ export function TelegramAuthScreen() {
 
       telegramAccountStore.getState().setAuthStatus('waiting_phone');
 
-      // Отправляем номер через auth-очередь (никаких параллельных auth-запросов)
+      // Проверяем сеть до отправки номера — если TDLib не может достучаться
+      // до серверов Telegram, сразу покажем ошибку вместо 4-мин зависания
+      try {
+        const netResult = (await withTimeout(
+          tdlibClient.send({ '@type': 'testNetwork' }) as Promise<unknown>,
+          15000,
+          'testNetwork timeout',
+        )) as { '@type'?: string };
+        console.log('[TDLib] testNetwork result:', JSON.stringify(netResult));
+        if ((netResult as { '@type'?: string })?.['@type'] !== 'ok') {
+          throw new Error(`testNetwork вернул: ${JSON.stringify(netResult)}`);
+        }
+        console.log('[TDLib] ✅ Telegram серверы достижимы');
+      } catch (netErr: unknown) {
+        const netMsg = netErr instanceof Error ? netErr.message : String(netErr);
+        console.warn('[TDLib] ⚠️ testNetwork FAILED:', netMsg);
+        // Не прерываем — попробуем отправить номер всё равно, но логируем
+      }
+
       await runTdlibAuthorizationQuery(async () => {
-        const phoneRes = await withTimeout(
-          tdlibClient.send({
+        /**
+         * ВАЖНО: TDLib при обработке setAuthenticationPhoneNumber сначала шлёт
+         * updateAuthorizationState { waitCode } (push без @extra), а потом возвращает ok.
+         *
+         * ПРОБЛЕМА: нативный TdlibModule имеет таймаут 4 минуты (SEND_TIMEOUT_MS).
+         * Если он сработал — Promise отклоняется с E_TD_TIMEOUT, но TDLib продолжает
+         * работать! При FLOOD_WAIT TDLib ждёт внутри (до 5+ мин) и только потом отвечает.
+         *
+         * РЕШЕНИЕ: при E_TD_TIMEOUT — НЕ отклонять Promise, продолжать слушать
+         * updateAuthorizationState push-события. setBusy(false) не вызывается.
+         * Итоговый таймаут 10 минут. Через 30 сек — показываем info-сообщение.
+         */
+        const result = await new Promise<unknown>((resolve, reject) => {
+          let settled = false;
+          let nativeTimedOut = false;
+
+          // Итоговый таймаут 10 минут (больше нативного 4-минутного таймаута)
+          const totalTimer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            unsubTdlib();
+            reject(
+              new Error(
+                'Telegram не ответил за 10 минут при отправке номера. ' +
+                  'Скорее всего активен FLOOD_WAIT — Telegram временно ' +
+                  'заблокировал отправку кода на этот номер (слишком много попыток). ' +
+                  'Подождите 30+ минут и повторите.',
+              ),
+            );
+          }, 600_000);
+
+          // Через 30 секунд показываем информацию что ещё ждём
+          const slowTimer = setTimeout(() => {
+            if (!settled && screenFocusedRef.current) {
+              setBootstrapError(
+                nativeTimedOut
+                  ? 'TDLib ожидает ответа Telegram (возможно FLOOD_WAIT). Не закрывайте экран…'
+                  : 'Ожидаем ответа Telegram, это может занять несколько минут…',
+              );
+            }
+          }, 30_000);
+
+          // Слушаем updateAuthorizationState — если TDLib перешёл в waitCode, сразу успех
+          const unsubTdlib = tdlibClient.subscribe((json) => {
+            if (settled) return;
+            try {
+              const update = JSON.parse(json) as Record<string, unknown>;
+              if (update['@type'] !== 'updateAuthorizationState') return;
+              const authState = update['authorization_state'] as Record<string, unknown> | undefined;
+              const stateType = authState?.['@type'] as string | undefined;
+              if (
+                stateType === 'authorizationStateWaitCode' ||
+                stateType === 'authorizationStateWaitEmailCode' ||
+                stateType === 'authorizationStateWaitOtherDeviceConfirmation' ||
+                stateType === 'authorizationStateReady'
+              ) {
+                settled = true;
+                clearTimeout(totalTimer);
+                clearTimeout(slowTimer);
+                unsubTdlib();
+                resolve({ '@type': 'ok', _resolvedBy: 'updateAuthorizationState', _state: stateType });
+              } else if (
+                stateType === 'authorizationStateLoggingOut' ||
+                stateType === 'authorizationStateClosing' ||
+                stateType === 'authorizationStateClosed'
+              ) {
+                settled = true;
+                clearTimeout(totalTimer);
+                clearTimeout(slowTimer);
+                unsubTdlib();
+                reject(new Error(`TDLib перешёл в состояние ${stateType} — сессия прервана.`));
+              }
+            } catch {
+              /* ignore parse errors */
+            }
+          });
+
+          // Отправляем номер — обрабатываем ответ
+          void (tdlibClient.send({
             '@type': 'setAuthenticationPhoneNumber',
             phone_number: trimmed,
             settings: defaultPhoneNumberAuthenticationSettings(),
-          }) as Promise<unknown>,
-          90000,
-          'Telegram не ответил за 90 с при отправке номера. Обычно это зависание TDLib или нет сети — пришлите logcat (TdlibModule).',
-        );
-        throwIfTdError(phoneRes);
+          }) as Promise<unknown>).then(
+            (res) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(totalTimer);
+              clearTimeout(slowTimer);
+              unsubTdlib();
+              resolve(res);
+            },
+            (err: unknown) => {
+              if (settled) return;
+              const errCode = (err as { code?: string })?.code ?? '';
+              const errMsg = err instanceof Error ? err.message : String(err);
+
+              // E_TD_TIMEOUT = нативный 4-мин таймаут — TDLib ещё работает внутри!
+              // Не отклоняем Promise, ждём push-события (до 10 мин итого).
+              if (errCode === 'E_TD_TIMEOUT' || errMsg.includes('нет ответа за')) {
+                nativeTimedOut = true;
+                if (screenFocusedRef.current) {
+                  setBootstrapError(
+                    'Telegram ещё обрабатывает запрос (возможно FLOOD_WAIT). ' +
+                      'Продолжаем ожидание — не нажимайте кнопку снова.',
+                  );
+                }
+                return; // НЕ reject — ждём дальше
+              }
+
+              // "Another authorization query has started" — значит TDLib уже начал
+              // обрабатывать новый запрос. Ждём updateAuthorizationState push.
+              if (errMsg.includes('Another authorization query')) {
+                nativeTimedOut = true;
+                if (screenFocusedRef.current) {
+                  setBootstrapError('TDLib обрабатывает новый запрос авторизации, ожидаем…');
+                }
+                return; // НЕ reject — ждём push
+              }
+
+              // Реальная ошибка (PHONE_NUMBER_INVALID, PHONE_NUMBER_BANNED, и т.д.)
+              settled = true;
+              clearTimeout(totalTimer);
+              clearTimeout(slowTimer);
+              unsubTdlib();
+              reject(err instanceof Error ? err : new Error(errMsg));
+            },
+          );
+        });
+
+        throwIfTdError(result);
         telegramAccountStore.getState().setPhoneHint(trimmed);
         telegramAccountStore.getState().setAuthStatus('waiting_code');
         await telegramAccountStore.getState().persistSnapshot();

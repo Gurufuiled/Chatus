@@ -150,7 +150,6 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       flexDirection: 'row',
       alignItems: 'flex-end',
       gap: 6,
-      position: 'relative',
     },
     fileBubbleWrap: {
       maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,

@@ -3,14 +3,10 @@ import {
   createBottomTabNavigator,
   type BottomTabBarButtonProps,
 } from '@react-navigation/bottom-tabs';
-import {
-  getFocusedRouteNameFromRoute,
-  type NavigationProp,
-  useNavigation,
-} from '@react-navigation/native';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlatformPressable } from '@react-navigation/elements';
-import { ActionSheetIOS, Alert, Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
 import { ChatsStack } from './ChatsStack';
 import { SettingsStack } from './SettingsStack';
 import { ContactsScreen } from '../screens';
@@ -18,7 +14,6 @@ import type { MainTabParamList } from './types';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
 import { chatStore } from '../stores/chatStore';
-import { inboxModeStore, type InboxMode } from '../stores/inboxModeStore';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { TelegramGlyph } from '../icons/telegram';
 import { TELEGRAM_TAB_GLYPHS } from '../icons/telegram/tabPaths';
@@ -97,12 +92,15 @@ function TabBarItem({
   focused: boolean;
   styles: ReturnType<typeof createMainTabsStyles>;
 }) {
-  const totalUnreadCount = chatStore(
-    React.useCallback((state) => {
-      if (routeName !== 'Chats') return 0;
-      return state.chats.reduce((acc, chat) => acc + Math.max(0, chat.unread_count ?? 0), 0);
-    }, [routeName])
+  const chatusUnread = chatStore((state) =>
+    state.chats.reduce((acc, chat) => acc + Math.max(0, chat.unread_count ?? 0), 0),
   );
+  const telegramUnread = telegramAccountStore((state) =>
+    state.authStatus === 'ready'
+      ? state.dialogs.reduce((acc, row) => acc + Math.max(0, row.unreadCount ?? 0), 0)
+      : 0,
+  );
+  const totalUnreadCount = routeName === 'Chats' ? chatusUnread + telegramUnread : 0;
 
   const showBadge = routeName === 'Chats' && totalUnreadCount > 0;
   const badgeLabel = totalUnreadCount > 999 ? '999+' : String(totalUnreadCount);
@@ -161,51 +159,9 @@ function AnimatedTabButton(props: BottomTabBarButtonProps) {
   );
 }
 
-function SettingsInboxTabButton(props: BottomTabBarButtonProps) {
-  const navigation = useNavigation<NavigationProp<MainTabParamList>>();
-
-  const switchInbox = React.useCallback(
-    (mode: InboxMode) => {
-      if (mode === 'telegram' && telegramAccountStore.getState().authStatus !== 'ready') {
-        Alert.alert('Telegram', 'Сначала подключите Telegram в настройках.');
-        return;
-      }
-      inboxModeStore.getState().setActiveInbox(mode);
-      navigation.navigate('Chats', { screen: 'ChatList' });
-    },
-    [navigation],
-  );
-
-  const openPicker = React.useCallback(() => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Loginus', 'Telegram', 'Отмена'],
-          cancelButtonIndex: 2,
-          title: 'Показывать чаты',
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 0) switchInbox('loginus');
-          if (buttonIndex === 1) switchInbox('telegram');
-        },
-      );
-      return;
-    }
-
-    Alert.alert('Показывать чаты', 'Выберите аккаунт для раздела «Чаты».', [
-      { text: 'Loginus', onPress: () => switchInbox('loginus') },
-      { text: 'Telegram', onPress: () => switchInbox('telegram') },
-      { text: 'Отмена', style: 'cancel' },
-    ]);
-  }, [switchInbox]);
-
-  return <AnimatedTabButton {...props} onLongPress={openPicker} />;
-}
-
 export function MainTabs() {
   const insets = useSafeAreaInsets();
   const { colors: themeColors, resolvedScheme } = useTheme();
-  const inboxHydrated = inboxModeStore((state) => state.isHydrated);
   const tabInactiveTint = resolvedScheme === 'dark' ? '#9AA0A6' : '#273142';
   const styles = React.useMemo(() => createMainTabsStyles(themeColors), [themeColors]);
   const tabBarStyle = React.useMemo(
@@ -218,12 +174,6 @@ export function MainTabs() {
     ],
     [insets.bottom, styles.tabBar]
   );
-
-  React.useEffect(() => {
-    if (!inboxHydrated) {
-      void inboxModeStore.getState().hydrate();
-    }
-  }, [inboxHydrated]);
 
   return (
     <Tab.Navigator
@@ -302,7 +252,7 @@ export function MainTabs() {
             title: 'Настройки',
             headerShown: false,
             tabBarStyle: hide ? styles.hiddenTabBar : tabBarStyle,
-            tabBarButton: (props) => <SettingsInboxTabButton {...props} />,
+            tabBarButton: (props) => <AnimatedTabButton {...props} />,
           };
         }}
       />

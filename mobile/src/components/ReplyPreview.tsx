@@ -79,6 +79,8 @@ type ReplyPreviewProps = {
   peerFirstLineId?: string | null;
   /** Lowercase trimmed query; highlights case-insensitive matches in `text`. */
   searchHighlightQuery?: string;
+  /** Внутри `repliedMediaBubble` (голос/фото) — без отрицательного margin, чтобы не раздувать ширину. */
+  nestedInMedia?: boolean;
   onPress?: () => void;
   onClose?: () => void;
 };
@@ -94,6 +96,7 @@ export function ReplyPreview({
   thumbnailUri,
   peerFirstLineId,
   searchHighlightQuery,
+  nestedInMedia = false,
   onPress,
   onClose,
 }: ReplyPreviewProps) {
@@ -169,6 +172,7 @@ export function ReplyPreview({
           styles.root,
           isComposer ? styles.rootComposer : styles.rootBubble,
           backgroundColor ? { backgroundColor } : null,
+          nestedInMedia && styles.rootBubbleNestedInMedia,
           pressed && styles.rootPressed,
         ]}
       >
@@ -183,6 +187,7 @@ export function ReplyPreview({
         styles.root,
         isComposer ? styles.rootComposer : styles.rootBubble,
         backgroundColor ? { backgroundColor } : null,
+        nestedInMedia && styles.rootBubbleNestedInMedia,
       ]}
     >
       {content}
@@ -210,6 +215,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderRadius: 12,
     marginHorizontal: -2,
+  },
+  rootBubbleNestedInMedia: {
+    marginHorizontal: 0,
   },
   accent: {
     width: 3,

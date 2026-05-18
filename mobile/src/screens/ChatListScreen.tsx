@@ -5,15 +5,15 @@ import {
   FlatList,
   Image,
   Pressable,
-  StyleSheet,
+  RefreshControl,
   Text,
-  TextInput,
   View,
   type GestureResponderEvent,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatListActionsMenu, ChatListRow, ChatListSkeleton, type ChatListMenuState } from '../components';
+import { TelegramDialogListRow } from '../components/TelegramDialogListRow';
 import { resolveAvatarUrl } from '../config';
 import { ChatDao } from '../db/dao/ChatDao';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -25,24 +25,19 @@ import { searchUsers } from '../services/profileService';
 import { authStore } from '../stores/authStore';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
-import { inboxModeStore } from '../stores/inboxModeStore';
+import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
-import { TelegramGlyph } from '../icons/telegram';
-import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
+import { ChatListSearchBar } from '../components/ChatListSearchBar';
 import { useTheme } from '../contexts/ThemeContext';
 import { createChatListStyles, type ChatListStyleSet } from './chatList.styles';
-import { TelegramDialogsScreen } from './TelegramDialogsScreen';
+import { matchesDialogQuery } from './telegramChat/telegramDialogsLoader';
+import { useTelegramDialogsRefresh } from './telegramChat/useTelegramDialogsRefresh';
+import { mergeUnifiedChatList, type ChatListItem } from './telegramChat/unifiedChatList';
 
 type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChatList'>;
 
 const SEARCH_DEBOUNCE_MS = 300;
-
-type ChatListItem =
-  | { type: 'chat'; id: string; chat: Chat }
-  | { type: 'contact'; id: string; user: ApiUser }
-  | { type: 'channel'; id: string; channel: Chat }
-  | { type: 'header'; id: string; title: string };
 
 function ChatSeparator({ listStyles }: { listStyles: ChatListStyleSet }) {
   return <View style={listStyles.separator} />;
@@ -86,26 +81,6 @@ function matchesChatQuery(chat: Chat, normalizedQuery: string) {
     .toLowerCase();
 
   return haystack.includes(normalizedQuery);
-}
-
-function SearchHeader({
-  listStyles,
-  iconColor,
-}: {
-  listStyles: ChatListStyleSet;
-  iconColor: string;
-}) {
-  const searchG = TELEGRAM_PROFILE_GLYPHS.search;
-  return (
-    <View style={listStyles.searchIconSlot} accessibilityLabel="Search">
-      <TelegramGlyph
-        d={searchG.d}
-        fillRule={searchG.fillRule}
-        color={iconColor}
-        size={22}
-      />
-    </View>
-  );
 }
 
 function ContactResultRow({
@@ -159,9 +134,12 @@ export function ChatListScreen() {
   const { colors: themeColors } = useTheme();
   const listStyles = React.useMemo(() => createChatListStyles(themeColors), [themeColors]);
   const navigation = useNavigation<Nav>();
-  const activeInbox = inboxModeStore((s) => s.activeInbox);
   const chats = chatStore((s) => s.chats);
+  const telegramDialogs = telegramAccountStore((s) => s.dialogs);
+  const telegramReady = telegramAccountStore((s) => s.authStatus === 'ready');
+  const refreshTelegramDialogs = useTelegramDialogsRefresh(telegramReady);
   const currentUserId = authStore((s) => s.user?.id ?? null);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [menuState, setMenuState] = React.useState<ChatListMenuState>(null);
   const [query, setQuery] = React.useState('');
   const deferredQuery = React.useDeferredValue(query);
@@ -231,28 +209,29 @@ export function ChatListScreen() {
 
   const listItems = React.useMemo<ChatListItem[]>(() => {
     if (!isSearchActive) {
-      return sortedChats.map((chat) => ({ type: 'chat', id: `chat:${chat.id}`, chat }));
+      return mergeUnifiedChatList(sortedChats, telegramDialogs, telegramReady);
     }
 
     const localChats = sortedChats.filter((chat) => matchesChatQuery(chat, normalizedQuery));
+    const telegramMatches = telegramReady
+      ? telegramDialogs.filter((row) => matchesDialogQuery(row, normalizedQuery))
+      : [];
     const existingChatIds = new Set(sortedChats.map((chat) => chat.id));
     const remoteChannels = channelResults.filter((channel) => !existingChatIds.has(channel.id));
     const users = currentUserId
       ? userResults.filter((user) => user.id !== currentUserId)
       : userResults;
 
-    return [
-      ...localChats.map((chat) => ({ type: 'chat', id: `chat:${chat.id}`, chat }) as ChatListItem),
-      ...users.map((user) => ({ type: 'contact', id: `contact:${user.id}`, user }) as ChatListItem),
-      ...remoteChannels.map(
-        (channel) => ({ type: 'channel', id: `channel:${channel.id}`, channel }) as ChatListItem
-      ),
-    ];
-
     const items: ChatListItem[] = [];
     if (localChats.length > 0) {
       items.push({ type: 'header', id: 'header:chats', title: 'Чаты' });
       localChats.forEach((chat) => items.push({ type: 'chat', id: `chat:${chat.id}`, chat }));
+    }
+    if (telegramMatches.length > 0) {
+      items.push({ type: 'header', id: 'header:telegram', title: 'Telegram' });
+      telegramMatches.forEach((row) =>
+        items.push({ type: 'telegram', id: `telegram:${row.id}`, row }),
+      );
     }
     if (users.length > 0) {
       items.push({ type: 'header', id: 'header:contacts', title: 'Контакты' });
@@ -265,7 +244,26 @@ export function ChatListScreen() {
       );
     }
     return items;
-  }, [channelResults, currentUserId, isSearchActive, normalizedQuery, sortedChats, userResults]);
+  }, [
+    channelResults,
+    currentUserId,
+    isSearchActive,
+    normalizedQuery,
+    sortedChats,
+    telegramDialogs,
+    telegramReady,
+    userResults,
+  ]);
+
+  const onRefresh = React.useCallback(async () => {
+    if (!telegramReady) return;
+    setRefreshing(true);
+    try {
+      await refreshTelegramDialogs();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshTelegramDialogs, telegramReady]);
 
   const handleOpenChat = React.useCallback(
     (chat: Chat, chatTitle: string) => {
@@ -404,6 +402,10 @@ export function ChatListScreen() {
         return <Text style={listStyles.sectionHeader}>{item.title}</Text>;
       }
 
+      if (item.type === 'telegram') {
+        return <TelegramDialogListRow item={item.row} navigation={navigation} />;
+      }
+
       if (item.type === 'contact') {
         return (
           <ContactResultRow
@@ -435,15 +437,12 @@ export function ChatListScreen() {
       handleOpenMenu,
       handleStartChat,
       listStyles,
+      navigation,
       themeColors.accent,
     ]
   );
 
   const keyExtractor = React.useCallback((item: ChatListItem) => item.id, []);
-
-  if (activeInbox === 'telegram') {
-    return <TelegramDialogsScreen />;
-  }
 
   return (
     <View style={listStyles.container}>
@@ -458,26 +457,26 @@ export function ChatListScreen() {
         updateCellsBatchingPeriod={45}
         windowSize={8}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View style={listStyles.searchRow}>
-            <SearchHeader listStyles={listStyles} iconColor={themeColors.textSecondary} />
-            <TextInput
-              style={listStyles.searchInput}
-              placeholder="Поиск чатов, контактов и каналов"
-              placeholderTextColor={themeColors.placeholder}
-              value={query}
-              onChangeText={setQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
+        refreshControl={
+          telegramReady ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
+              tintColor={themeColors.accent}
             />
-            {isSearching ? (
-              <ActivityIndicator
-                size="small"
-                color={themeColors.accent}
-                style={listStyles.searchLoader}
-              />
-            ) : null}
-          </View>
+          ) : undefined
+        }
+        ListHeaderComponent={
+          <ChatListSearchBar
+            listStyles={listStyles}
+            iconColor={themeColors.textSecondary}
+            placeholderColor={themeColors.placeholder}
+            accentColor={themeColors.accent}
+            placeholder="Поиск чатов, контактов и каналов"
+            value={query}
+            onChangeText={setQuery}
+            isSearching={isSearching}
+          />
         }
         ListEmptyComponent={
           showInitialSkeleton ? (

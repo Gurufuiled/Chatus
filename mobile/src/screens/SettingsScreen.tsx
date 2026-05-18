@@ -16,16 +16,15 @@ import { authService, apiUserToUserRow } from '../services/AuthService';
 import { getProfile, updateProfile } from '../services/profileService';
 import { apiUpload } from '../services/apiClient';
 import { resolveAvatarUrl } from '../config';
-import { useNavigation, useFocusEffect, type NavigationProp } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { MainTabParamList, SettingsStackParamList } from '../navigation/types';
+import type { SettingsStackParamList } from '../navigation/types';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 import { SettingsIconRow } from '../components/settings/SettingsIconRow';
 import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createSettingsScreenStyles } from './settingsScreen.styles';
-import { inboxModeStore } from '../stores/inboxModeStore';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 
 export function SettingsScreen() {
@@ -54,8 +53,16 @@ export function SettingsScreen() {
       navigation.navigate('TelegramAuth');
       return;
     }
-    inboxModeStore.getState().setActiveInbox('telegram');
-    navigation.getParent<NavigationProp<MainTabParamList>>()?.navigate('Chats', { screen: 'ChatList' });
+    Alert.alert('Выйти из Telegram?', 'Диалоги Telegram исчезнут из общего списка чатов на этом устройстве.', [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Выйти',
+        style: 'destructive',
+        onPress: () => {
+          void telegramAccountStore.getState().resetTelegramSession();
+        },
+      },
+    ]);
   }, [navigation, telegramAuthStatus]);
 
   const loadProfile = useCallback(async () => {
@@ -180,46 +187,8 @@ export function SettingsScreen() {
         )}
 
         <Text style={styles.sectionTitle}>Аккаунт</Text>
-        <Text
-          style={{
-            fontSize: 12,
-            color: themeColors.textSecondaryMuted,
-            marginBottom: 8,
-            marginTop: -4,
-          }}
-        >
-          Удерживайте карточку профиля, чтобы добавить Telegram или выйти из Chatus (Loginus).
-        </Text>
         <Pressable
           style={styles.profileHeroCard}
-          delayLongPress={450}
-          onLongPress={() => {
-            Alert.alert(
-              'Аккаунты',
-              'Telegram и Chatus (Loginus) — разные аккаунты.',
-              [
-                {
-                  text: 'Подключить / сменить Telegram',
-                  onPress: () => navigation.navigate('TelegramAuth'),
-                },
-                {
-                  text: 'Выйти из Chatus (Loginus)…',
-                  style: 'destructive',
-                  onPress: () => {
-                    Alert.alert(
-                      'Выйти из Chatus?',
-                      'Сессия Loginus будет сброшена. Подключённый Telegram на устройстве не удаляем.',
-                      [
-                        { text: 'Отмена', style: 'cancel' },
-                        { text: 'Выйти', style: 'destructive', onPress: () => void logout() },
-                      ],
-                    );
-                  },
-                },
-                { text: 'Отмена', style: 'cancel' },
-              ],
-            );
-          }}
           onPress={() => navigation.navigate('MyProfile')}
         >
           <View style={styles.profileHeroAvatarWrap}>
@@ -277,7 +246,7 @@ export function SettingsScreen() {
               <Text style={styles.servicesTitle}>Telegram</Text>
               <Text style={styles.servicesSubtitle}>
                 {telegramAuthStatus === 'ready'
-                  ? 'Открыть диалоги'
+                  ? 'Выйти из аккаунта'
                   : telegramAuthStatus === 'waiting_password'
                     ? 'Ввести пароль двухэтапной проверки (2FA)'
                     : telegramAuthStatus === 'waiting_code'

@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { FileBubble } from '../../components/FileBubble';
 import { ImageBubble } from '../../components/ImageBubble';
+import { MessageTextBubbleBody } from '../../components/MessageTextBubbleBody';
 import { MessageTimeStatus } from '../../components/MessageTimeStatus';
 import { ReplyPreview } from '../../components/ReplyPreview';
 import { VideoBubble } from '../../components/VideoBubble';
@@ -48,7 +49,7 @@ export function TelegramChatMenuPreviewBody({
   resolvedScheme: resolvedSchemeProp,
   scrollTick = 0,
 }: TelegramChatMenuPreviewProps) {
-  if (!row || row.id !== message.id) return <View />;
+  if (!row || String(row.messageId) !== message.id) return <View />;
   const fixedWidthStyle = forcedWidth ? { width: forcedWidth, maxWidth: forcedWidth } : undefined;
   const isMe = row.outgoing;
   const usePreviewOutgoingGradient =
@@ -271,17 +272,16 @@ export function TelegramChatMenuPreviewBody({
   const textBubbleBody = (
     <>
       {bubbleHeader}
-      <View style={styles.bubbleContentRow}>
-        <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
-          {row.text || ' '}
-          {viewCountFormatted ? (
+      <MessageTextBubbleBody
+        text={row.text ?? ''}
+        textStyle={[styles.messageText, isMe && styles.messageTextMe]}
+        rowStyle={styles.bubbleContentRow}
+        viewCountNode={
+          viewCountFormatted ? (
             <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{` 👁 ${viewCountFormatted}`}</Text>
-          ) : null}
-          <Text style={{ fontSize: 12, color: 'transparent' }}>
-            {'\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}
-          </Text>
-        </Text>
-        <View style={{ position: 'absolute', bottom: -2, right: 0 }}>
+          ) : null
+        }
+        meta={
           <MessageTimeStatus
             time={formatTime(row.dateMs)}
             status={row.status}
@@ -290,8 +290,8 @@ export function TelegramChatMenuPreviewBody({
             timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
             iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
           />
-        </View>
-      </View>
+        }
+      />
     </>
   );
 

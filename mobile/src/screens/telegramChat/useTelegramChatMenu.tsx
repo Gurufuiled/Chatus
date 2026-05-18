@@ -6,7 +6,6 @@ import type { Message } from '../../stores/types';
 import type { ThemeColors, ResolvedColorScheme } from '../../theme/palettes';
 import {
   estimateMenuCardHeight,
-  getCopyableContent,
   MENU_EDGE_GAP,
   MENU_HEIGHT,
   MENU_WIDTH,
@@ -14,11 +13,10 @@ import {
   SCREEN_WIDTH,
 } from '../chatScreen.shared';
 import { TelegramChatMenuPreviewBody } from './TelegramChatMenuPreview';
-import { telegramRowToInputReplyMessage } from './messageRow';
+import { getTelegramCopyableContent, telegramRowToInputReplyMessage } from './messageRow';
 import {
   tdlibAddMessageReaction,
   tdlibDeleteMessages,
-  tdlibForwardToSavedMessages,
   tdlibPinChatMessage,
   tdlibUnpinChatMessage,
 } from './tdlibChatActions';
@@ -30,6 +28,9 @@ import type { ChatTheme } from '../../theme/chatThemes';
 const MENU_REACTION_STACK = 42 + 6;
 
 type EdgeInsets = { top: number; bottom: number; left: number; right: number };
+type TelegramMenuMode = 'actions' | 'deleteConfirm';
+type TelegramMenuActionKey = 'reply' | 'copy' | 'pin' | 'forward' | 'delete' | 'select';
+type TelegramOverlayActionKey = TelegramMenuActionKey | 'delete_confirm' | 'delete_cancel';
 
 type UseTelegramChatMenuParams = {
   chatId: number;
@@ -48,6 +49,7 @@ type UseTelegramChatMenuParams = {
   ensureReady: () => Promise<void>;
   showMenuReactions?: boolean;
   onEnterSelection: (rowId: string) => void;
+  onStartForward: (messageIds: number[]) => void;
   chatTheme?: ChatTheme;
   resolvedScheme?: ResolvedColorScheme;
   scrollTick?: number;
@@ -70,11 +72,13 @@ export function useTelegramChatMenu({
   ensureReady,
   showMenuReactions = true,
   onEnterSelection,
+  onStartForward,
   chatTheme: chatThemeProp,
   resolvedScheme: resolvedSchemeProp,
   scrollTick = 0,
 }: UseTelegramChatMenuParams) {
   const [menuState, setMenuState] = useState<TelegramMessageMenuState>(null);
+  const [menuMode, setMenuMode] = useState<TelegramMenuMode>('actions');
   const menuAnim = useRef(new Animated.Value(0)).current;
   const messageContentRefs = useRef<Record<string, View | null>>({});
 
@@ -94,22 +98,45 @@ export function useTelegramChatMenu({
     canTdActOnMenuTarget &&
     pinnedMessageId != null &&
     activeMenuRow!.messageId === pinnedMessageId;
+  const copyableContent = activeMenuRow ? getTelegramCopyableContent(activeMenuRow) : '';
 
-  const telegramMenuActions = useMemo(
-    () => [
+  const telegramMenuActions = useMemo(() => {
+    if (menuMode === 'deleteConfirm') {
+      const isOwn = activeMenuRow?.outgoing === true;
+      return [
+        {
+          key: 'delete_confirm',
+          label: isOwn ? 'Удалить для всех' : 'Удалить у себя',
+          icon: null,
+          color: '#E53935',
+          disabled: !canTdActOnMenuTarget,
+          textOnly: true,
+        },
+        {
+          key: 'delete_cancel',
+          label: 'Отмена',
+          icon: null,
+          color: colors.textPrimary,
+          disabled: false,
+          textOnly: true,
+        },
+      ];
+    }
+
+    return [
       {
         key: 'reply',
         label: 'Ответить',
         icon: 'corner-left-up' as React.ComponentProps<typeof Feather>['name'],
         color: colors.textPrimary,
-        disabled: false,
+        disabled: !canTdActOnMenuTarget,
       },
       {
         key: 'copy',
         label: 'Скопировать',
         icon: 'copy' as React.ComponentProps<typeof Feather>['name'],
-        color: colors.textPrimary,
-        disabled: false,
+        color: copyableContent ? colors.textPrimary : colors.iconMuted,
+        disabled: !copyableContent,
       },
       {
         key: 'pin',
@@ -129,7 +156,7 @@ export function useTelegramChatMenu({
         key: 'delete',
         label: 'Удалить',
         icon: 'trash-2' as React.ComponentProps<typeof Feather>['name'],
-        color: canTdActOnMenuTarget ? colors.textPrimary : colors.iconMuted,
+        color: '#E53935',
         disabled: !canTdActOnMenuTarget,
       },
       {
@@ -139,9 +166,16 @@ export function useTelegramChatMenu({
         color: colors.textPrimary,
         disabled: false,
       },
-    ],
-    [canTdActOnMenuTarget, colors.iconMuted, colors.textPrimary, menuTargetIsPinned],
-  );
+    ];
+  }, [
+    activeMenuRow?.outgoing,
+    canTdActOnMenuTarget,
+    colors.iconMuted,
+    colors.textPrimary,
+    copyableContent,
+    menuMode,
+    menuTargetIsPinned,
+  ]);
 
   const setMessageContentRef = useCallback((messageId: string, node: View | null) => {
     if (node) {
@@ -159,6 +193,7 @@ export function useTelegramChatMenu({
     }).start(({ finished }) => {
       if (finished) {
         setMenuState(null);
+        setMenuMode('actions');
       }
     });
   }, [menuAnim]);
@@ -180,6 +215,7 @@ export function useTelegramChatMenu({
   const openTelegramMessageMenu = useCallback(
     (row: TelegramMessageRow) => {
       if (row.messageId <= 0) return;
+      setMenuMode('actions');
       const target = messageContentRefs.current[row.id];
       if (!target) return;
       Keyboard.dismiss();
@@ -228,29 +264,48 @@ export function useTelegramChatMenu({
     [insets.bottom, insets.top, inputBarHeight, showMenuReactions],
   );
 
+  const confirmTelegramDelete = useCallback(
+    async (row: TelegramMessageRow, tdId: number) => {
+      const revoke = row.outgoing === true;
+      try {
+        await ensureReady();
+        await tdlibDeleteMessages(chatId, [tdId], revoke);
+        closeMenu();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        Alert.alert('Удаление', msg);
+      }
+    },
+    [chatId, closeMenu, ensureReady],
+  );
+
   const handleTelegramMenuAction = useCallback(
-    async (key: string) => {
+    async (key: TelegramMenuActionKey) => {
       if (!activeMenuMessage || !menuState) return;
       const row = messagesRef.current.find((r) => r.id === menuState.messageId);
       const tdId = row && row.messageId > 0 ? row.messageId : null;
 
       if (key === 'reply') {
-        const id = Number.parseInt(activeMenuMessage.id, 10);
-        if (Number.isFinite(id) && id > 0) {
-          setReplyToMessageId(id);
+        if (tdId != null) {
+          setReplyToMessageId(tdId);
         }
         closeMenu();
         return;
       }
 
       if (key === 'copy') {
-        const value = getCopyableContent(activeMenuMessage);
+        const value = row ? getTelegramCopyableContent(row) : '';
         closeMenu();
         if (!value) {
           Alert.alert('Нечего копировать', 'В этом сообщении нет текста для копирования.');
           return;
         }
-        await Clipboard.setStringAsync(value);
+        try {
+          await Clipboard.setStringAsync(value);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          Alert.alert('Копирование', msg);
+        }
         return;
       }
 
@@ -281,43 +336,17 @@ export function useTelegramChatMenu({
 
       if (key === 'forward') {
         if (tdId == null) return;
-        try {
-          await ensureReady();
-          await tdlibForwardToSavedMessages(chatId, [tdId]);
-          closeMenu();
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          Alert.alert('Переслать', msg);
-        }
+        closeMenu();
+        setTimeout(() => {
+          onStartForward([tdId]);
+        }, 150);
         return;
       }
 
       if (key === 'delete') {
-        if (tdId == null) return;
-        const revoke = row?.outgoing === true;
-        Alert.alert(
-          'Удалить сообщение?',
-          revoke ? 'Сообщение будет удалено у всех участников.' : 'Сообщение будет удалено у вас.',
-          [
-            { text: 'Отмена', style: 'cancel' },
-            {
-              text: 'Удалить',
-              style: 'destructive',
-              onPress: () => {
-                void (async () => {
-                  try {
-                    await ensureReady();
-                    await tdlibDeleteMessages(chatId, [tdId], revoke);
-                    closeMenu();
-                  } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    Alert.alert('Удаление', msg);
-                  }
-                })();
-              },
-            },
-          ],
-        );
+        if (tdId == null || !row) return;
+        setMenuMode('deleteConfirm');
+        return;
       }
     },
     [
@@ -329,9 +358,28 @@ export function useTelegramChatMenu({
       menuTargetIsPinned,
       messagesRef,
       onEnterSelection,
+      onStartForward,
       setPinnedMessageId,
       setReplyToMessageId,
     ],
+  );
+
+  const handleTelegramDeleteConfirmAction = useCallback(
+    (key: TelegramOverlayActionKey) => {
+      if (!menuState) return;
+      const row = messagesRef.current.find((r) => r.id === menuState.messageId);
+      const tdId = row && row.messageId > 0 ? row.messageId : null;
+
+      if (key === 'delete_cancel') {
+        setMenuMode('actions');
+        return;
+      }
+
+      if (key === 'delete_confirm' && row && tdId != null) {
+        void confirmTelegramDelete(row, tdId);
+      }
+    },
+    [confirmTelegramDelete, menuState, messagesRef],
   );
 
   const handleTelegramPickReaction = useCallback(
@@ -375,6 +423,7 @@ export function useTelegramChatMenu({
 
   return {
     menuState,
+    menuMode,
     menuAnim,
     telegramMenuActions,
     activeMenuMessage,
@@ -382,6 +431,7 @@ export function useTelegramChatMenu({
     closeMenu,
     openTelegramMessageMenu,
     handleTelegramMenuAction,
+    handleTelegramDeleteConfirmAction,
     handleTelegramPickReaction,
     renderTelegramMenuPreviewBody,
   };

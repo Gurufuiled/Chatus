@@ -21,6 +21,16 @@ import type { PushNotificationData } from '../stores/uiStore';
 import { chatStore } from '../stores/chatStore';
 import { uiStore } from '../stores/uiStore';
 
+/**
+ * Реальный телефон для push: `Constants.isDevice` на части Android (в т.ч. Xiaomi) даёт false —
+ * тогда Expo push и FCM для Telegram не регистрировались бы. На Android всё равно пробуем
+ * (на эмуляторе `getExpoPushTokenAsync` / `getDevicePushTokenAsync` просто упадут/вернут пусто).
+ */
+function shouldAttemptPushRegistration(): boolean {
+  if (Constants.isDevice) return true;
+  return Platform.OS === 'android';
+}
+
 export const ANDROID_CHANNEL_CHATUS = 'chatus_messages';
 export const ANDROID_CHANNEL_TELEGRAM = 'telegram_messages';
 
@@ -160,11 +170,11 @@ export async function notifyTelegramInboundMessagePreview(input: {
  * Регистрация FCM device token в Telegram (TDLib `registerDevice`).
  * Нужен Server key в [my.telegram.org](https://my.telegram.org) для вашего `api_id`.
  *
- * @returns `true` если нечего делать (не Android / не девайс), разрешений нет (не ошибка TDLib),
- * токен уже зарегистрирован, или TDLib ответил без ошибки. `false` — сеть/TDLib ошибка (можно повторить).
+ * @returns `true` если не Android, разрешений нет (не ошибка TDLib), токен уже зарегистрирован,
+ * или TDLib ответил без ошибки. `false` — сеть/TDLib ошибка (можно повторить).
  */
 export async function registerTelegramAndroidPushWithTdlib(): Promise<boolean> {
-  if (Platform.OS !== 'android' || !Constants.isDevice) return true;
+  if (Platform.OS !== 'android') return true;
 
   const perm = await Notifications.getPermissionsAsync();
   if (perm.status !== 'granted') return false;
@@ -210,8 +220,8 @@ export function resetTelegramPushRegistrationFlag(): void {
  * После успешного входа: разрешения, канал Android, Expo token → бэкенд.
  */
 export async function registerPushWithBackendAfterLogin(): Promise<void> {
-  if (!Constants.isDevice) {
-    console.warn('[push] skip registration (not a physical device)');
+  if (!shouldAttemptPushRegistration()) {
+    console.warn('[push] skip registration (Expo reports non-device; iOS simulator?)');
     return;
   }
 

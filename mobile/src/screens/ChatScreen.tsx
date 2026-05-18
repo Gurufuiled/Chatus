@@ -1867,7 +1867,7 @@ export function ChatScreen() {
       shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
     const meBubbleFill = usePreviewOutgoingGradient ? '#00000000' : chatTheme.bubbleMe;
 
-    const renderReplySnippet = () => {
+    const renderReplySnippet = (opts?: { nestedInMedia?: boolean }) => {
       if (!item.reply_to_id) return null;
       const replied = messageById.get(item.reply_to_id);
       const author = replied
@@ -1879,12 +1879,15 @@ export function ChatScreen() {
 
       return (
         <ReplyPreview
+          nestedInMedia={opts?.nestedInMedia}
           author={author}
           text={text}
           accentColor={isMe ? chatTheme.replyAccentMe : '#F28C28'}
           backgroundColor={
             isMe
-              ? chatTheme.replyBubbleMe
+              ? resolvedScheme === 'dark'
+                ? 'rgba(255,255,255,0.14)'
+                : chatTheme.replyBubbleMe
               : resolvedScheme === 'dark'
                 ? 'rgba(255,255,255,0.08)'
                 : '#F2F4D9'
@@ -2106,7 +2109,7 @@ export function ChatScreen() {
     }
 
     if (item.msg_type === 'voice' && item.media?.[0]) {
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const voiceUri =
         resolveVoiceMessageUri(item) ?? item.media[0].remote_url ?? `file://${item.id}`;
@@ -2212,7 +2215,7 @@ export function ChatScreen() {
         ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
         : undefined;
 
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const videoContent = (
         <PeerFirstVideoNoteBubble
@@ -2309,7 +2312,7 @@ export function ChatScreen() {
         : 0;
 
     if (visualMediaCount > 1) {
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const albumContent = (
         <MediaAlbumBubble
           message={item}
@@ -2390,7 +2393,7 @@ export function ChatScreen() {
       const imageUri = resolveMediaUrl(rawImage.trim() || null) ?? rawImage;
       if (!imageUri.trim()) return null;
 
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const imageContent = (
         <PeerFirstImageBubble
@@ -2490,7 +2493,7 @@ export function ChatScreen() {
         ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
         : undefined;
 
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const forwardHeader = replySnippet ? null : renderForwardHeader();
       const videoContent = (
         <PeerFirstVideoBubble
@@ -2584,7 +2587,7 @@ export function ChatScreen() {
     }
 
     if (item.msg_type === 'file' && item.media?.[0]) {
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const rawFile = item.media[0].remote_url ?? '';
       const fileUri =
         rawFile.trim().length > 0

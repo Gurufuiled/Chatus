@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { resetTelegramPushRegistrationFlag } from '../services/pushNotificationsService';
+import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
@@ -28,6 +29,10 @@ export type TelegramDialogRow = {
   id: string;
   title: string;
   lastMessagePreview: string;
+  /** До 3 миниатюр последнего поста (фото/видео) для списка диалогов. */
+  lastMessageThumbnailUris?: string[];
+  /** Подпись медиа accent-цветом («Фотография», «Видео»). */
+  lastMessagePreviewAccent?: boolean;
   avatarUri?: string | null;
   lastMessageAt?: number | null;
   unreadCount?: number;
@@ -107,6 +112,11 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
   setDialogs: (dialogs) => set({ dialogs }),
 
   resetTelegramSession: async () => {
+    try {
+      await tdlibClient.send({ '@type': 'logOut' });
+    } catch {
+      /* native TDLib may be unavailable in dev stub */
+    }
     resetTelegramPushRegistrationFlag();
     clearUserNameCache();
     set({ ...initial });

@@ -15,14 +15,11 @@ import {
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Extrapolation,
   interpolate,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -52,6 +49,7 @@ import {
   resolveForwardedSenderAvatarUrl,
 } from '../screens/chatScreen.shared';
 import { DOUBLE_TAP_REACTION_EMOJI } from './ChatContextMenuOverlay';
+import { ReplySwipeWrapper } from './ReplySwipeWrapper';
 import { formatMediaDuration } from '../utils/mediaDuration';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -85,8 +83,6 @@ import {
   tryParseCompositeMessage,
 } from '../stickers/chatusCompositePayload';
 
-const REPLY_SWIPE_TRIGGER = 34;
-const REPLY_SWIPE_MAX = 72;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 /** Same threshold as ChatProfileMediaViewerModal — vertical swipe closes the viewer. */
@@ -95,11 +91,6 @@ const FILE_ROW_WIDTH = Math.min(Dimensions.get('window').width * 0.76, 320);
 const ALBUM_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);
 /** Текст + стикер в одном пузыре — размер эмблемы рядом с текстом. */
 const COMPOSITE_INLINE_STICKER_PX = 40;
-
-function clampReplySwipe(value: number) {
-  'worklet';
-  return Math.max(-REPLY_SWIPE_MAX, Math.min(0, value));
-}
 
 type ChatMessageListProps = {
   chatId: string;
@@ -135,12 +126,6 @@ type ChatMessageListProps = {
   repliedVoiceBubbleWidth: number;
   chatTheme: ChatTheme;
   activeVideoNoteVisible: boolean;
-};
-
-type ReplySwipeWrapperProps = {
-  enabled: boolean;
-  onReply: () => void;
-  children: React.ReactNode;
 };
 
 type VisualMediaItem = NonNullable<Message['media']>[number];
@@ -539,85 +524,6 @@ function AlbumMediaViewerModal({
   );
 }
 
-const ReplySwipeWrapper = React.memo(function ReplySwipeWrapper({
-  enabled,
-  onReply,
-  children,
-}: ReplySwipeWrapperProps) {
-  const translateX = useSharedValue(0);
-  const hasTriggered = useSharedValue(false);
-  const triggerPop = useSharedValue(0);
-
-  const gesture = Gesture.Pan()
-    .enabled(enabled)
-    .activeOffsetX(-12)
-    .failOffsetY([-12, 12])
-    .onBegin(() => {
-      hasTriggered.value = false;
-    })
-    .onUpdate((event) => {
-      if (event.translationX > 0) {
-        translateX.value = 0;
-        return;
-      }
-
-      const nextX = clampReplySwipe(event.translationX);
-      translateX.value = nextX;
-
-      if (!hasTriggered.value && nextX <= -REPLY_SWIPE_TRIGGER) {
-        hasTriggered.value = true;
-        triggerPop.value = withSequence(
-          withTiming(1, { duration: 70 }),
-          withTiming(0, { duration: 120 })
-        );
-        runOnJS(onReply)();
-      }
-    })
-    .onFinalize(() => {
-      translateX.value = withTiming(0, { duration: 140 });
-      hasTriggered.value = false;
-    });
-
-  const contentStyle = useAnimatedStyle(() => {
-    const scale = interpolate(triggerPop.value, [0, 1], [1, 0.985], Extrapolation.CLAMP);
-
-    return {
-      transform: [{ translateX: translateX.value }, { scale }] as const,
-    };
-  });
-
-  const iconStyle = useAnimatedStyle(() => {
-    const progress = Math.abs(translateX.value) / REPLY_SWIPE_TRIGGER;
-    const opacity = interpolate(progress, [0, 0.3, 1], [0, 0.45, 1], Extrapolation.CLAMP);
-    const baseScale = interpolate(progress, [0, 1], [0.84, 1], Extrapolation.CLAMP);
-    const scaleBoost = interpolate(triggerPop.value, [0, 1], [0, 0.18], Extrapolation.CLAMP);
-
-    return {
-      opacity,
-      transform: [{ scale: baseScale + scaleBoost }],
-    };
-  });
-
-  if (!enabled) {
-    return <View style={styles.replyGestureContainer}>{children}</View>;
-  }
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <View style={styles.replyGestureContainer}>
-        <Reanimated.View style={[styles.replySwipeAction, iconStyle]}>
-          <View style={styles.replySwipeIconWrap}>
-            <Feather name="corner-left-up" size={18} color={colors.accent} />
-          </View>
-        </Reanimated.View>
-        <Reanimated.View style={[styles.replyGestureContent, contentStyle]}>
-          {children}
-        </Reanimated.View>
-      </View>
-    </GestureDetector>
-  );
-});
-
 type MessageRowProps = {
   item: Message;
   chatId: string;
@@ -887,7 +793,9 @@ const StickerGroupMessageRow = React.memo(function StickerGroupMessageRow({
         accentColor={isMe ? chatTheme.replyAccentMe : '#F28C28'}
         backgroundColor={
           isMe
-            ? chatTheme.replyBubbleMe
+            ? resolvedScheme === 'dark'
+              ? 'rgba(255,255,255,0.14)'
+              : chatTheme.replyBubbleMe
             : resolvedScheme === 'dark'
               ? 'rgba(255,255,255,0.08)'
               : '#F2F4D9'
@@ -1235,7 +1143,7 @@ const MessageRow = React.memo(function MessageRow({
     transform: [{ scale: 0.7 + selectionProgress.value * 0.3 }],
   }));
 
-  const renderReplySnippet = () => {
+  const renderReplySnippet = (opts?: { nestedInMedia?: boolean }) => {
     if (!bodyItem.reply_to_id) return null;
 
     const replyThumbnailUri = getReplyPreviewThumbnailUri(repliedMessage);
@@ -1248,12 +1156,15 @@ const MessageRow = React.memo(function MessageRow({
 
     return (
       <ReplyPreview
+        nestedInMedia={opts?.nestedInMedia}
         author={author}
         text={text}
         accentColor={isMe ? chatTheme.replyAccentMe : '#F28C28'}
         backgroundColor={
           isMe
-            ? chatTheme.replyBubbleMe
+            ? resolvedScheme === 'dark'
+              ? 'rgba(255,255,255,0.14)'
+              : chatTheme.replyBubbleMe
             : resolvedScheme === 'dark'
               ? 'rgba(255,255,255,0.08)'
               : '#F2F4D9'
@@ -1737,7 +1648,7 @@ const MessageRow = React.memo(function MessageRow({
     }
 
     if (bodyItem.msg_type === 'voice' && bodyItem.media?.[0]) {
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const topHeader = replySnippet ? null : renderIncomingHeader();
       const voiceUri =
         resolveVoiceMessageUri(bodyItem) ?? bodyItem.media[0].remote_url ?? `file://${bodyItem.id}`;
@@ -1853,7 +1764,7 @@ const MessageRow = React.memo(function MessageRow({
         resolveVoiceMessageUri(bodyItem) ?? resolveMediaUrl(rawVideo || null) ?? rawVideo;
       if (!videoUri) return null;
 
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       
       let topHeaderRaw = replySnippet
         ? null
@@ -1973,7 +1884,7 @@ const MessageRow = React.memo(function MessageRow({
         : 0;
 
     if (visualMediaCount > 1) {
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const albumContent = (
         <MediaAlbumBubble
           message={bodyItem}
@@ -2070,7 +1981,7 @@ const MessageRow = React.memo(function MessageRow({
       const imageUri = resolveMediaUrl(rawImage.trim() || null) ?? rawImage;
       if (!imageUri.trim()) return null;
 
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const topHeader = replySnippet ? null : renderIncomingHeader();
       const imageContent = (
         <PeerFirstImageBubble
@@ -2182,7 +2093,7 @@ const MessageRow = React.memo(function MessageRow({
       const videoUri = resolveMediaUrl(rawVideo.trim() || null) ?? rawVideo;
       if (!videoUri.trim()) return null;
 
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const topHeader = replySnippet ? null : renderIncomingHeader();
       const thumbResolved = media?.thumbnail_url
         ? resolveMediaUrl(media.thumbnail_url) ?? media.thumbnail_url
@@ -2294,7 +2205,7 @@ const MessageRow = React.memo(function MessageRow({
     }
 
     if (bodyItem.msg_type === 'file' && bodyItem.media?.[0]) {
-      const replySnippet = renderReplySnippet();
+      const replySnippet = renderReplySnippet({ nestedInMedia: true });
       const rawFile = bodyItem.media[0].remote_url ?? '';
       const fileUri =
         rawFile.trim().length > 0
@@ -2849,13 +2760,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  replyGestureContainer: {
-    width: '100%',
-    justifyContent: 'center',
-  },
-  replyGestureContent: {
-    width: '100%',
-  },
   messageWrap: {
     paddingHorizontal: 12,
     marginVertical: 4,
@@ -3197,26 +3101,5 @@ const styles = StyleSheet.create({
   },
   deletedTextMe: {
     color: '#426789',
-  },
-  replySwipeAction: {
-    position: 'absolute',
-    right: 16,
-    width: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  replySwipeIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
