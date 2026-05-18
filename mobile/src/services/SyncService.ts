@@ -198,8 +198,8 @@ interface ApiMessage {
   forwarded_from_name?: string | null;
   forwarded_from_chat_id?: string | null;
   forwarded_from_sender_id?: string | null;
-  is_edited?: number;
-  is_deleted?: number;
+  is_edited?: number | boolean;
+  is_deleted?: number | boolean;
   status: string;
   transport?: string | null;
   server_id?: string | null;
@@ -270,8 +270,9 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
     forwarded_from_name: api.forwarded_from_name ?? null,
     forwarded_from_chat_id: api.forwarded_from_chat_id ?? null,
     forwarded_from_sender_id: api.forwarded_from_sender_id ?? null,
-    is_edited: api.is_edited ?? 0,
-    is_deleted: api.is_deleted ?? 0,
+    /** API / Nest может отдать boolean; `??` оставил бы true/false и ломал бы `=== 1` в UI. */
+    is_edited: api.is_edited ? 1 : 0,
+    is_deleted: api.is_deleted ? 1 : 0,
     status: api.status,
     transport: normalizeMessageTransport(api.transport),
     server_id: api.server_id ?? null,

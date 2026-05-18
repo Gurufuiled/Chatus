@@ -69,7 +69,7 @@
 
 | Функция | Файлы |
 |--------|--------|
-| **Доставка ожидающих mailbox**, `markMailboxDelivered`, cron prune, удаление файлов | `server/src/mailbox/mailbox.service.ts`, `mailbox.module.ts` |
+| **Доставка ожидающих mailbox**, `markMailboxDelivered` (снимает только `mailbox_expires_at`), cron prune + удаление файлов для просроченных | `server/src/mailbox/mailbox.service.ts`, `mailbox.module.ts` |
 | **Тесты mailbox** | `server/src/mailbox/mailbox.service.spec.ts` |
 | **Best-effort удаление файла** по URL `/uploads/…` | `server/src/upload/upload.service.ts`, `upload.module.ts`, `upload.service.spec.ts` |
 

@@ -214,39 +214,80 @@ export function TelegramAuthScreen() {
     setBusy(true);
     try {
       setBootstrapError(null);
-      const status = await withTimeout(
-        syncAuthorizationFromTdlib(),
-        45000,
-        'Telegram (TDLib) не ответил за 45 с при проверке сессии. Полностью закройте приложение и откройте снова; если повторится — пришлите logcat по тегу TdlibModule.',
-      );
-      if (status === 'ready') {
-        if (screenFocusedRef.current) {
-          openTelegramChats();
-        }
+
+      // Быстрая проверка состояния (без лишних auth-запросов)
+      const currentStatus = telegramAccountStore.getState().authStatus;
+      if (currentStatus === 'ready') {
+        if (screenFocusedRef.current) openTelegramChats();
         return;
       }
-      if (status === 'waiting_code') {
+      if (currentStatus === 'waiting_code') {
         Alert.alert('Код уже отправлен', 'Введите код из Telegram или SMS ниже.');
         return;
       }
-      if (status === 'waiting_password') {
+      if (currentStatus === 'waiting_password') {
         Alert.alert('Нужен пароль 2FA', 'Сначала введите код, затем облачный пароль внизу экрана.');
         return;
       }
-      if (status !== 'waiting_phone') {
-        Alert.alert('Telegram', 'Не удалось начать вход. Закройте экран и откройте снова.');
+
+      // Инициализируем TDLib (только если нужно), не вызывая getAuthorizationState внутри auth-очереди
+      await withTimeout(
+        applyTdlibParameters(),
+        30000,
+        'TDLib не смог инициализировать параметры за 30 с. Перезапустите приложение.',
+      );
+
+      // Теперь проверяем реальное состояние TDLib одним запросом
+      const authProbe = (await withTimeout(
+        tdlibClient.send({ '@type': 'getAuthorizationState' }) as Promise<unknown>,
+        20000,
+        'TDLib не ответил на getAuthorizationState за 20 с.',
+      )) as { '@type'?: string };
+      throwIfTdError(authProbe);
+      const probeType = authProbe['@type'];
+
+      if (probeType === 'authorizationStateReady') {
+        telegramAccountStore.getState().setAuthStatus('ready');
+        await telegramAccountStore.getState().persistSnapshot();
+        if (screenFocusedRef.current) openTelegramChats();
         return;
       }
+      if (probeType === 'authorizationStateWaitCode' || probeType === 'authorizationStateWaitEmailCode') {
+        telegramAccountStore.getState().setAuthStatus('waiting_code');
+        await telegramAccountStore.getState().persistSnapshot();
+        Alert.alert('Код уже отправлен', 'Введите код из Telegram или SMS ниже.');
+        return;
+      }
+      if (probeType === 'authorizationStateWaitPassword') {
+        telegramAccountStore.getState().setAuthStatus('waiting_password');
+        await telegramAccountStore.getState().persistSnapshot();
+        Alert.alert('Нужен пароль 2FA', 'Сначала введите код, затем облачный пароль внизу экрана.');
+        return;
+      }
+      if (
+        probeType !== 'authorizationStateWaitPhoneNumber' &&
+        probeType !== 'authorizationStateWaitEmailAddress' &&
+        probeType !== 'authorizationStateWaitRegistration'
+      ) {
+        Alert.alert(
+          'Telegram',
+          `Не удалось начать вход (состояние: ${probeType ?? '?'}). Закройте экран и откройте снова.`,
+        );
+        return;
+      }
+
+      telegramAccountStore.getState().setAuthStatus('waiting_phone');
+
+      // Отправляем номер через auth-очередь (никаких параллельных auth-запросов)
       await runTdlibAuthorizationQuery(async () => {
-        if (telegramAccountStore.getState().authStatus !== 'waiting_phone') return;
         const phoneRes = await withTimeout(
           tdlibClient.send({
             '@type': 'setAuthenticationPhoneNumber',
             phone_number: trimmed,
             settings: defaultPhoneNumberAuthenticationSettings(),
           }) as Promise<unknown>,
-          120000,
-          'Telegram не ответил за 2 мин при отправке номера. Обычно это не формат номера (+7… верно), а зависание TDLib — обновите APK или пришлите logcat (TdlibModule).',
+          90000,
+          'Telegram не ответил за 90 с при отправке номера. Обычно это зависание TDLib или нет сети — пришлите logcat (TdlibModule).',
         );
         throwIfTdError(phoneRes);
         telegramAccountStore.getState().setPhoneHint(trimmed);
@@ -262,7 +303,7 @@ export function TelegramAuthScreen() {
     } finally {
       setBusy(false);
     }
-  }, [apiHash, apiId, phone, syncAuthorizationFromTdlib, openTelegramChats]);
+  }, [apiHash, apiId, phone, openTelegramChats]);
 
   const resendAuthCode = useCallback(async () => {
     if (telegramAccountStore.getState().authStatus !== 'waiting_code') return;

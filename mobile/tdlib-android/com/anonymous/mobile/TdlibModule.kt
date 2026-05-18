@@ -136,16 +136,44 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
         }
         return
       }
-      if (pending.isNotEmpty() && obj.optString("@type", "") == "error") {
-        Log.w(
-          TAG,
-          "error без совпадения @extra (got extra='$extra'); pending sample: ${pending.keys.take(4)}",
-        )
+      val msgType = obj.optString("@type", "")
+      if (msgType == "error") {
+        // TDLib иногда возвращает ошибку (FLOOD_WAIT, сеть, PHONE_NUMBER_INVALID) с @extra,
+        // которое не совпадает ни с одним pending — например при параллельных запросах или
+        // если TDLib переиспользует @extra предыдущего запроса.
+        // Если в очереди ровно один ожидающий запрос — это явно ответ на него.
+        val pendingEntries = pending.entries.toList()
+        if (pendingEntries.size == 1) {
+          val (onlyExtra, onlyPromise) = pendingEntries[0]
+          pending.remove(onlyExtra)
+          val timeoutRunnable = pendingTimeouts.remove(onlyExtra)
+          if (timeoutRunnable != null) {
+            mainHandler.removeCallbacks(timeoutRunnable)
+          }
+          Log.w(TAG, "error с несовпадающим @extra='$extra' → разрешаем единственный pending extra='$onlyExtra'. Тип ошибки: ${obj.optString("message", "?")}.")
+          mainHandler.post {
+            try {
+              onlyPromise.resolve(json)
+            } catch (_: Exception) {
+            }
+          }
+          // Всё равно эмитим апдейт, чтобы JS-слушатели получили updateAuthorizationState / ошибку
+        } else {
+          Log.w(
+            TAG,
+            "error без совпадения @extra (got extra='$extra', pending=${pending.size}): ${obj.optString("message", "?")}",
+          )
+        }
       }
     }
     val cid = obj.optInt("@client_id", -1)
     if (cid >= 0 && cid != clientId) {
       return
+    }
+    val updateType = obj.optString("@type", "")
+    if (updateType == "updateAuthorizationState") {
+      val innerState = obj.optJSONObject("authorization_state")?.optString("@type", "?") ?: "?"
+      Log.d(TAG, "updateAuthorizationState → $innerState")
     }
     mainHandler.post {
       if (destroyed) return@post

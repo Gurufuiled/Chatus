@@ -1,6 +1,6 @@
 # Цель: онлайн — без долговременной серверной копии; офлайн — временная запись с TTL
 
-Документ фиксирует **целевую модель** и **что нужно сделать в коде и в продукте**, чтобы сообщения лички **не создавали полноценную серверную запись**, пока получатель доступен по peer-пути; при недоступности — сообщение **попадало на сервер только как временный mailbox** и **удалялось** после доставки или по TTL.
+Документ фиксирует **целевую модель** и **что нужно сделать в коде и в продукте**, чтобы сообщения лички **не создавали полноценную серверную запись** как «вечный архив», пока получатель доступен по peer-пути; при недоступности — сообщение **попадает на сервер как временный mailbox** с TTL. После **фактической доставки** получателю (`mailbox_deliver` + `mailbox_ack`) сервер **снимает только** `mailbox_expires_at` — **история в чате остаётся**; **тумбстоун и вычищение файлов** — для строк, у которых TTL **истёк без** своевременного получения (cron `prune`).
 
 Связанные материалы: [07-p2p-first-reorientation.md](./07-p2p-first-reorientation.md), [08-linesync-protocol-draft.md](./08-linesync-protocol-draft.md), [09-linesync-implementation-plan.md](./09-linesync-implementation-plan.md).
 
@@ -12,7 +12,7 @@
 |--------|--------|
 | **Онлайн для peer** | Получатель имеет живое signaling/WebRTC-покрытие и успешно принимает peer-доставку (для текста — цепочка `dm_*`; для медиа — согласованный peer-путь без обязательного upload). |
 | **Серверная «полная» копия** | Строка в БД `Message` + постоянное хранение контента на upload/CDN так, как при классическом `send_message` после upload. |
-| **Временная копия (mailbox)** | Сообщение и/или payload хранится на сервере **ограниченное время** (`mailboxExpiresAt`, политика `RELAY_*`), выдаётся при подключении получателя, затем **тримится** из серверного хранилища по правилам mailbox. |
+| **Временная копия (mailbox)** | Сообщение и/или payload хранится на сервере **ограниченное время** (`mailboxExpiresAt`, политика `RELAY_*`), выдаётся при подключении получателя. После **ack** снимается только mailbox-TTL, запись в чате сохраняется; при **истечении TTL без доставки** — тумбстоун и очистка по cron. |
 
 **Граница продукта (личка):** модель «при успешном peer **нет** долговременной серверной записи» относится прежде всего к **личке 1:1**. Для **групп и каналов** см. раздел [5.1](#51-группы-и-каналы-две-разные-идеи).
 
@@ -33,7 +33,7 @@
    - опционально фиксировать **метаданные** для модерации/абуза — только если явно решите и отдельным контрактом (иначе противоречит «нет копии»).
 
 2. **Если peer-доставка невозможна** (получатель offline по signaling, таймаут, запрет политики):  
-   - использовать существующий **mailbox / `relay_mailbox`** с **TTL** и **удалением** после `mailbox_deliver` + ack и/или cron (как в [07](./07-p2p-first-reorientation.md)).
+   - использовать существующий **mailbox / `relay_mailbox`** с **TTL**; после `mailbox_deliver` + ack — **только** снятие `mailbox_expires_at` (история в БД); при **просрочке без получения** — тумбстоун и cron (см. [07](./07-p2p-first-reorientation.md)).
 
 3. **Медиа:** при онлайн-пире — **передача файла peer-to-peer** (WebRTC DataChannel и/или чанки signaling) + запись в **LineSync / локальный кэш**; **upload на сервер** только в ветке «получатель недоступен / нужен mailbox / второе устройство по политике».
 
@@ -57,7 +57,7 @@
 | Задача | Зачем |
 |--------|--------|
 | Явно разделить в коде и в доках **«сообщение создано через chat WS»** vs **«payload только в mailbox blob»** vs **«нет записи Message при чистом peer»** | Меньше случайных `createMessage` при переходе медиа на peer |
-| Mailbox: **TTL**, доставка при connect, **trim** после ack; cron для просрочки (у вас уже есть концепция — проверить покрытие для всех типов контента) | «Только временно и удаляется» |
+| Mailbox: **TTL**, доставка при connect; после **ack** — снятие `mailbox_expires_at` (история сохраняется); cron — тумбстоун + файлы для **просроченных** незабранных сообщений | «Временный relay» без исчезновения уже доставленного из ленты |
 | Upload endpoint: либо **не вызывать** с клиента в онлайн-peer ветке, либо отдельный режим «encrypted blob для mailbox только» — продуктово решить | Иначе upload всегда оставляет след на диске сервера |
 
 Затрагиваемые области: [`MessagesService`](../../server/src/messages/messages.service.ts), [`WebsocketGateway.handleSendMessage`](../../server/src/websocket/websocket.gateway.ts), mailbox / relay policy, upload service.
@@ -97,7 +97,7 @@
 | **E0** | Инфраструктура LineSync: локальный event-log, tail с сервера, signaling для peer-сообщений, DC lifecycle | ✅ см. [09-linesync-implementation-plan.md](./09-linesync-implementation-plan.md) (A–D по плану) |
 | **E1** | Личка **текст**: peer-first (`dm_*`), fallback `send_message` + mailbox; отсутствие `createMessage` на успешном dm-пути | ✅ маршрут `resolvePrivateTextTransportRoute` + `TransportService.sendMessage`; флаги `EXPO_PUBLIC_P2P_FIRST_*` |
 | **E2** | Личка **медиа**: при онлайн-пире **без обязательного upload**; события LineSync + блобы; fallback upload/mailbox при офлайне | ✅ одиночные вложения (`image`, `voice`, `video_note`, `video`, `file`) и **медиаальбом** (несколько `blob_refs` в одном `message.create`) — peer-first `LINE_PATCH`+ACK; личка: `relay_mailbox` на server-path и в `SyncService` для очередей |
-| **E3** | Сервер: явные контракты mailbox TTL, trim, отсутствие лишнего `createMessage`; опционально отдельный режим upload «только mailbox» | 🟡 личка: `relay_mailbox` + **медиа** при офлайн-пире → `mailbox_expires_at` по `RELAY_MEDIA_CACHE_SECONDS` (дефолт **86400**); удаление файлов из `uploads/` при `mailbox_ack` и cron prune; отдельный bucket не вводился |
+| **E3** | Сервер: явные контракты mailbox TTL, trim, отсутствие лишнего `createMessage`; опционально отдельный режим upload «только mailbox» | 🟡 личка: `relay_mailbox` + **медиа** при офлайн-пире → `mailbox_expires_at` по `RELAY_MEDIA_CACHE_SECONDS` (дефолт **86400**); при **доставке** (`mailbox_ack`) снимается только TTL, история в БД сохраняется; удаление файлов из `uploads/` и тумбстоун — при **cron prune** просроченных (не забранных) сообщений; отдельный bucket не вводился |
 | **E4** | **Группы / каналы:** серверный **хвост N** + retention + peer-добор старее окна (LineSync) | 🟡 C1–C3 в [09](./09-linesync-implementation-plan.md); каналы как отдельная политика — см. [03-rollout-phases.md](./03-rollout-phases.md) |
 | **E5** | Продукт и UX: второе устройство без облака, поиск/модерация при минимуме данных на сервере | ⬜ |
 
@@ -109,7 +109,7 @@
 
 *Примечание:* это чеклист **полной** продуктовой цели; статус этапов по репозиторию — в [§6](#6-этапы-внедрения-и-статус) и [§8](#8-журнал). Одиночные медиа и медиаальбом в личке (items `image`/`video`) без обязательного upload закрыты в E2.
 
-- [ ] Личка текст: при успешном peer **нет** серверного `createMessage`; при fallback — mailbox + TTL + удаление по текущим правилам.
+- [ ] Личка текст: при успешном peer **нет** серверного `createMessage`; при fallback — mailbox + TTL; после ack — только снятие mailbox-TTL; тумбстоун при истечении TTL без доставки.
 - [ ] Личка медиа: при успешном peer **нет** обязательного upload и **нет** серверной строки сообщения с постоянным URL; при fallback — upload/mailbox как временная политика.
 - [ ] Группы: осознанная политика «хвост на сервере + peer-добор» отражена в коде и в [08](./08-linesync-protocol-draft.md); не смешивать с правилами лички.
 - [ ] Документы [07](./07-p2p-first-reorientation.md), [08](./08-linesync-protocol-draft.md), [03](./03-rollout-phases.md) синхронизированы с реализацией.
@@ -130,4 +130,5 @@
 | **2026-05-10** | E2: peer-first для **video_note**, **video**, **file**; `relay_mailbox` в `SyncService` для очередей image/video/video_note/file/album в личке. |
 | **2026-05-11** | E2: **медиаальбом** в личке — peer-first (`attemptPeerPrivateMediaAlbum`, несколько peer `BlobRef`, один `LINE_PATCH`+ACK); builder `buildPendingLineSyncRowForPeerMediaMultiple`; откат `MediaCacheService` + `removePeerBlobLocation` при падении pin/ACK; один pin на уникальный SHA. |
 | **2026-05-13** | LineSync: `content_type: media_album` (≥2 `blob_refs`); смешанный image+video альбом в личке — peer-first. Серверный **cache-tail** (`linesync-cache.service`) выставляет `media_album`, если в сообщении ≥2 пригодных media с **разными** `mediaKindFromType`. См. [08](./08-linesync-protocol-draft.md). |
-| **2026-05-14** | E3 (часть): private relay **медиа** — `mailbox_expires_at` при офлайн-пире (`MessagesService` + `RELAY_MEDIA_CACHE_SECONDS` дефолт 86400); `MailboxService` удаляет файлы `uploads/` при ack/prune; `UploadService.tryDeleteServerStoredUpload`. |
+| **2026-05-15** | `mailbox_ack`: только `mailbox_expires_at := null` (личка); история и контент в БД сохраняются; защита `chatType === private`; тесты в `mailbox.service.spec.ts`. |
+| **2026-05-14** | E3 (часть): private relay **медиа** — `mailbox_expires_at` при офлайн-пире (`MessagesService` + `RELAY_MEDIA_CACHE_SECONDS` дефолт 86400); `MailboxService`: при **ack** — только снятие TTL; удаление файлов `uploads/` и тумбстоун — в **cron prune** просроченных; `UploadService.tryDeleteServerStoredUpload`. |

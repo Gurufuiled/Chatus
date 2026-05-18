@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Transport } from '@prisma/client';
+import { Transport, ChatType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { mapMessage } from '../common/mappers';
@@ -56,22 +56,33 @@ export class MailboxService {
     }
   }
 
-  /** Called when client acknowledges `mailbox_deliver` (purge server-held body). */
+  /**
+   * Получатель подтвердил `mailbox_deliver`. Снимаем только «почтовый» TTL — строка
+   * остаётся в истории чата (текст и ссылки на медиа в БД не трогаем). Файлы с диска
+   * здесь не удаляем: иначе в ленте останутся битые URL. Очистка загрузок — в
+   * `pruneExpiredMailboxMessages` для сообщений, которые реально протухли без ack.
+   */
   async markMailboxDelivered(messageId: string, userId: string): Promise<void> {
     const msg = await this.prisma.message.findUnique({
       where: { id: messageId },
-      include: { chat: { include: { members: { select: { userId: true } } } } },
+      include: {
+        chat: {
+          select: {
+            chatType: true,
+            members: { select: { userId: true } },
+          },
+        },
+      },
     });
     if (!msg) return;
+    if (msg.chat.chatType !== ChatType.private) return;
     const isMember = msg.chat.members.some((m) => m.userId === userId);
     if (!isMember || msg.senderId === userId) return;
     if (msg.mailboxExpiresAt == null) return;
 
-    await this.deleteMailboxUploadFilesForMessage(messageId);
-
     await this.prisma.message.update({
       where: { id: messageId },
-      data: { isDeleted: true, content: null, mailboxExpiresAt: null },
+      data: { mailboxExpiresAt: null },
     });
   }
 

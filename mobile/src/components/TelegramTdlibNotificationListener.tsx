@@ -12,6 +12,7 @@ import { telegramUiStore } from '../stores/telegramUiStore';
 
 /**
  * Глобально: входящие TDLib → превью в шторку (фон), регистрация FCM в Telegram после авторизации.
+ * Также слушает updateAuthorizationState и синхронизирует стор немедленно — без polling'а.
  */
 export function TelegramTdlibNotificationListener() {
   useEffect(() => {
@@ -44,6 +45,63 @@ export function TelegramTdlibNotificationListener() {
     unsubTd = tdlibClient.subscribe((json) => {
       try {
         const update = JSON.parse(json) as Record<string, unknown>;
+
+        // Синхронизируем стор при получении push-события об изменении авторизации
+        if (update['@type'] === 'updateAuthorizationState') {
+          const authState = update['authorization_state'] as Record<string, unknown> | undefined;
+          const stateType = authState?.['@type'] as string | undefined;
+          if (__DEV__) {
+            console.log('[tdlib-notify] updateAuthorizationState ->', stateType);
+          }
+          const store = telegramAccountStore.getState();
+          switch (stateType) {
+            case 'authorizationStateReady':
+              if (store.authStatus !== 'ready') {
+                store.setAuthStatus('ready');
+                void store.persistSnapshot();
+              }
+              break;
+            case 'authorizationStateWaitCode':
+            case 'authorizationStateWaitEmailCode':
+            case 'authorizationStateWaitOtherDeviceConfirmation':
+              if (store.authStatus !== 'waiting_code') {
+                store.setAuthStatus('waiting_code');
+                void store.persistSnapshot();
+              }
+              break;
+            case 'authorizationStateWaitPassword':
+              if (store.authStatus !== 'waiting_password') {
+                store.setAuthStatus('waiting_password');
+                void store.persistSnapshot();
+              }
+              break;
+            case 'authorizationStateWaitPhoneNumber':
+            case 'authorizationStateWaitEmailAddress':
+            case 'authorizationStateWaitRegistration':
+              // Не перезаписываем состояния дальше по флоу — могла прийти гонка
+              if (
+                store.authStatus !== 'waiting_code' &&
+                store.authStatus !== 'waiting_password' &&
+                store.authStatus !== 'ready'
+              ) {
+                store.setAuthStatus('waiting_phone');
+                void store.persistSnapshot();
+              }
+              break;
+            case 'authorizationStateLoggingOut':
+            case 'authorizationStateClosing':
+            case 'authorizationStateClosed':
+              if (store.authStatus !== 'error') {
+                store.setAuthStatus('error');
+                void store.persistSnapshot();
+              }
+              break;
+            default:
+              break;
+          }
+          return;
+        }
+
         if (update['@type'] !== 'updateNewMessage') return;
         const message = getNestedRecord(update.message);
         if (!message || message.is_outgoing === true) return;

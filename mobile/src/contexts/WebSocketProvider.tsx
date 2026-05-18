@@ -52,6 +52,8 @@ interface ServerMessagePayload {
   forwarded_from_name?: string | null;
   forwarded_from_chat_id?: string | null;
   forwarded_from_sender_id?: string | null;
+  is_edited?: boolean | number;
+  is_deleted?: boolean | number;
   created_at: number | string;
   media?: {
     media_type?: string | null;
@@ -147,8 +149,8 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
     forwarded_from_name: payload.forwarded_from_name ?? null,
     forwarded_from_chat_id: payload.forwarded_from_chat_id ?? null,
     forwarded_from_sender_id: payload.forwarded_from_sender_id ?? null,
-    is_edited: 0,
-    is_deleted: 0,
+    is_edited: payload.is_edited ? 1 : 0,
+    is_deleted: payload.is_deleted ? 1 : 0,
     status: payload.status,
     transport: normalizeMessageTransport(payload.transport),
     server_id: null,
@@ -587,6 +589,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               forwarded_from_name: mapped.forwarded_from_name ?? null,
               forwarded_from_chat_id: mapped.forwarded_from_chat_id ?? null,
               forwarded_from_sender_id: mapped.forwarded_from_sender_id ?? null,
+              is_edited: mapped.is_edited,
+              is_deleted: mapped.is_deleted,
               status: mapped.status,
               transport: mapped.transport,
               created_at: mapped.created_at,

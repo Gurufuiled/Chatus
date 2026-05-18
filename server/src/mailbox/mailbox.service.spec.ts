@@ -1,6 +1,46 @@
 import { MailboxService } from './mailbox.service';
+import { ChatType } from '@prisma/client';
 
 describe('MailboxService', () => {
+  it('markMailboxDelivered clears mailbox TTL only (keeps message body)', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const findUnique = jest.fn().mockResolvedValue({
+      id: 'm1',
+      senderId: 'alice',
+      mailboxExpiresAt: new Date('2099-01-01'),
+      chat: { chatType: ChatType.private, members: [{ userId: 'bob' }, { userId: 'alice' }] },
+    });
+    const prisma = { message: { findUnique, update } } as never;
+    const realtime = {} as never;
+    const tryDeleteServerStoredUpload = jest.fn();
+    const upload = { tryDeleteServerStoredUpload } as never;
+    const svc = new MailboxService(prisma, realtime, upload);
+
+    await svc.markMailboxDelivered('m1', 'bob');
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'm1' },
+      data: { mailboxExpiresAt: null },
+    });
+    expect(tryDeleteServerStoredUpload).not.toHaveBeenCalled();
+  });
+
+  it('markMailboxDelivered no-ops for non-private chats', async () => {
+    const update = jest.fn();
+    const findUnique = jest.fn().mockResolvedValue({
+      id: 'm1',
+      senderId: 'alice',
+      mailboxExpiresAt: new Date('2099-01-01'),
+      chat: { chatType: ChatType.group, members: [{ userId: 'bob' }, { userId: 'alice' }] },
+    });
+    const prisma = { message: { findUnique, update } } as never;
+    const svc = new MailboxService(prisma, {} as never, {} as never);
+
+    await svc.markMailboxDelivered('m1', 'bob');
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('pruneExpiredMailboxMessages clears expired mailbox rows', async () => {
     const updateMany = jest.fn().mockResolvedValue({ count: 2 });
     const findMany = jest.fn().mockResolvedValue([]);
