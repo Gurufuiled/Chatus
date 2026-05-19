@@ -4,6 +4,8 @@
 #   cp .env.example .env
 #   Заполни JWT_SECRET, Loginus, PUBLIC_HOST в редиректах и т.д.
 #   Для продакшена задай POSTGRES_PASSWORD в .env (сильный пароль).
+#   FCM (Android): положи firebase-service-account.json в этот каталог (не в git),
+#   скачай из Firebase Console → Project settings → Service accounts → Generate new private key.
 #
 # Запуск:
 #   docker compose up -d --build
@@ -44,11 +46,15 @@ services:
     environment:
       # Внутри сети compose хост БД — db (не localhost)
       DATABASE_URL: postgresql://messenger:${POSTGRES_PASSWORD:-messenger_local_only_change_me}@db:5432/messenger
+      # Firebase Admin SDK (FCM direct push). Файл монтируется с хоста (см. volumes).
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/app/firebase-service-account.json}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - chatus_uploads:/app/uploads
+      # read-only: ключ не в образе и не в git
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
 
 volumes:
   chatus_pgdata:

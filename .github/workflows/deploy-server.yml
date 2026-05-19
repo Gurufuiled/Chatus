@@ -65,6 +65,14 @@ jobs:
             cd "$REPO_DIR"
             git pull origin main
             cd "$COMPOSE_DIR"
+            FA_KEY="$COMPOSE_DIR/firebase-service-account.json"
+            if [ -d "$FA_KEY" ]; then
+              rm -rf "$FA_KEY"
+              echo "Removed mistaken firebase-service-account.json directory (Docker bind-mount footgun)."
+            fi
+            if [ ! -f "$FA_KEY" ]; then
+              echo "::warning title=FCM disabled::firebase-service-account.json missing in $COMPOSE_DIR — scp the key from Firebase Console before next deploy (Android FCM direct push off until present)."
+            fi
             docker compose build api
             docker compose up -d api
             docker compose ps api

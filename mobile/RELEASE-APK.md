@@ -136,6 +136,9 @@ git pull origin main
 - `DATABASE_URL` / `POSTGRES_PASSWORD` — боевые значения
 - **`LOGINUS_REDIRECT_URI`** и **`LOGINUS_REDIRECT_URI_LOGOUT`** — **публичный** `http://<VPS_IP>:4000/...` (см. комментарии в `server/.env.example`)
 - `JWT_SECRET`, `LOGINUS_CLIENT_SECRET` — сильные секреты
+- **FCM (Android):** файл `server/firebase-service-account.json` на VPS (не в git). Скопируй с машины разработки, например:
+  `scp server/firebase-service-account.json root@<VPS>:/root/chatus/server/`
+  После деплоя в логах api должно быть `Firebase Admin SDK initialized for FCM push`.
 
 Локальный шаблон без секретов: `server/.env.example`.
 
