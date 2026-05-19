@@ -27,3 +27,4 @@ export { MessageDao } from './dao/MessageDao';
 export { MediaDao } from './dao/MediaDao';
 export { SyncQueueDao } from './dao/SyncQueueDao';
 export { LineSyncEventDao } from './dao/LineSyncEventDao';
+export { TelegramMessageDao } from './dao/TelegramMessageDao';

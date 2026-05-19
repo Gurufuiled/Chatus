@@ -2,7 +2,7 @@ import Feather from '@expo/vector-icons/Feather';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Image, Pressable, Text, View, useWindowDimensions, type ViewStyle } from 'react-native';
 import { BlurTargetView } from 'expo-blur';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import {
 import Reanimated, { useAnimatedKeyboard, useSharedValue } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
+import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
 import { TelegramForwardSheet } from '../components/TelegramForwardSheet';
 import { FileBubble } from '../components/FileBubble';
 import { ImageBubble } from '../components/ImageBubble';
@@ -40,7 +41,6 @@ import { uiStore } from '../stores/uiStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
 import { bubbleRadius } from '../theme/colors';
 import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
-import { withAlpha } from '../theme/stylePrimitives';
 import { ChatBackgroundPattern } from './chatScreen.shared';
 import {
   CHAT_MSG_ROW_MARGIN_GROUPED,
@@ -81,6 +81,12 @@ import {
 } from './telegramChat/tdlibMapping';
 import type { TelegramMessageRow } from './telegramChat/types';
 import { tdlibDeleteMessages, tdlibForwardMessages } from './telegramChat/tdlibChatActions';
+import {
+  deleteTelegramMessagesFromCache,
+  loadTelegramMessagesFromCache,
+  persistTelegramMessages,
+} from './telegramChat/telegramMessageCache';
+import { scheduleNeighborTelegramChatsPreload } from './telegramChat/telegramChatPreload';
 import { useTelegramChatMenu } from './telegramChat/useTelegramChatMenu';
 
 const TELEGRAM_PEER_AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
@@ -108,6 +114,7 @@ function tdlibRawMessageMatchesActiveThread(
 
 export function TelegramChatScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList, 'TelegramChat'>>();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
   const isVoiceRecordingShared = useSharedValue(false);
@@ -164,6 +171,8 @@ export function TelegramChatScreen() {
   const [channelLinkedDiscussionChatId, setChannelLinkedDiscussionChatId] = useState<number | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
   const lastReadOutboxMessageIdRef = useRef<number>(0);
+  const loadingOlderRef = useRef(false);
+  const historyLoadGenerationRef = useRef(0);
   const mountedRef = useRef(true);
   const messagesRef = useRef<TelegramMessageRow[]>([]);
   const listRef = useRef<FlatList<TelegramMessageRow>>(null);
@@ -537,6 +546,20 @@ export function TelegramChatScreen() {
   }, []);
 
   useEffect(() => {
+    historyLoadGenerationRef.current += 1;
+    setMessages([]);
+    oldestMessageIdRef.current = 0;
+    lastReadOutboxMessageIdRef.current = 0;
+    setLoading(true);
+    setLastError(null);
+  }, [chatId, messageThreadId]);
+
+  useEffect(() => {
+    if (!isFocused || telegramDialogs.length === 0) return;
+    scheduleNeighborTelegramChatsPreload(telegramChatId, telegramDialogs);
+  }, [isFocused, telegramChatId, telegramDialogs]);
+
+  useEffect(() => {
     if (!Number.isFinite(chatId)) return;
     setChannelLinkedDiscussionChatId(null);
     let cancelled = false;
@@ -621,45 +644,34 @@ export function TelegramChatScreen() {
   const loadHistory = useCallback(
     async (older = false) => {
       if (!Number.isFinite(chatId)) return;
+      const loadGeneration = historyLoadGenerationRef.current;
+      const isStaleLoad = () => loadGeneration !== historyLoadGenerationRef.current;
+
       if (older) {
-        if (loadingOlder || oldestMessageIdRef.current === 0) return;
+        if (loadingOlderRef.current || oldestMessageIdRef.current === 0) return;
+        loadingOlderRef.current = true;
         setLoadingOlder(true);
       } else {
         setLoading(true);
       }
-      try {
-        await ensureReady();
-        const lastReadOutboxMessageId = await loadLastReadOutboxMessageId(chatId);
-        lastReadOutboxMessageIdRef.current = Math.max(
-          lastReadOutboxMessageIdRef.current,
-          lastReadOutboxMessageId,
-        );
-        const response = (await tdlibClient.send({
-          '@type': 'getChatHistory',
-          chat_id: chatId,
-          from_message_id: older ? oldestMessageIdRef.current : 0,
-          offset: 0,
-          limit: 40,
-          only_local: false,
-          message_thread_id:
-            typeof messageThreadId === 'number' &&
-            Number.isFinite(messageThreadId) &&
-            messageThreadId !== 0
-              ? messageThreadId
-              : 0,
-        })) as Record<string, unknown>;
-        throwIfTdError(response);
-        const rawMessages = Array.isArray(response.messages) ? response.messages : [];
-        const mapped = await mapTdMessages(
-          rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
-          lastReadOutboxMessageIdRef.current,
-          4,
-          { loadSenderAvatar: isGroupChat },
-        );
 
-        if (!mountedRef.current) return;
+      const threadParam =
+        typeof messageThreadId === 'number' &&
+        Number.isFinite(messageThreadId) &&
+        messageThreadId !== 0
+          ? messageThreadId
+          : 0;
+
+      const mapHistoryOptions = {
+        loadSenderAvatar: false,
+        mediaLocalOnly: true,
+      } as const;
+
+      const mergeMapped = (mapped: TelegramMessageRow[], appendOlder: boolean) => {
+        if (isStaleLoad() || mapped.length === 0) return;
         setMessages((prev) => {
-          const merged = older ? [...prev] : [];
+          if (isStaleLoad()) return prev;
+          const merged = [...prev];
           for (const item of mapped) {
             const idx = merged.findIndex((existing) => existing.id === item.id);
             if (idx >= 0) merged[idx] = item;
@@ -669,19 +681,82 @@ export function TelegramChatScreen() {
           oldestMessageIdRef.current = sorted.length > 0 ? sorted[sorted.length - 1].messageId : 0;
           return sorted;
         });
-        setLastError(null);
+        void persistTelegramMessages(chatId, threadParam, mapped).catch(() => {});
+      };
+
+      const fetchBatch = async (onlyLocal: boolean) => {
+        const [lastReadOutboxMessageId, response] = await Promise.all([
+          older
+            ? Promise.resolve(lastReadOutboxMessageIdRef.current)
+            : loadLastReadOutboxMessageId(chatId),
+          tdlibClient.send({
+            '@type': 'getChatHistory',
+            chat_id: chatId,
+            from_message_id: older ? oldestMessageIdRef.current : 0,
+            offset: 0,
+            limit: 50,
+            only_local: onlyLocal,
+            message_thread_id: threadParam,
+          }) as Promise<Record<string, unknown>>,
+        ]);
+        throwIfTdError(response);
+        lastReadOutboxMessageIdRef.current = Math.max(
+          lastReadOutboxMessageIdRef.current,
+          lastReadOutboxMessageId,
+        );
+        const rawMessages = Array.isArray(response.messages) ? response.messages : [];
+        return mapTdMessages(
+          rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
+          lastReadOutboxMessageIdRef.current,
+          8,
+          mapHistoryOptions,
+        );
+      };
+
+      try {
+        if (!older) {
+          try {
+            const cached = await loadTelegramMessagesFromCache(chatId, threadParam);
+            if (mountedRef.current && cached.length > 0) {
+              mergeMapped(cached, false);
+              setLoading(false);
+            }
+          } catch {
+            /* sqlite cache miss */
+          }
+        }
+
+        await ensureReady();
+
+        if (!older) {
+          try {
+            const localMapped = await fetchBatch(true);
+            if (mountedRef.current && localMapped.length > 0) {
+              mergeMapped(localMapped, false);
+              setLoading(false);
+            }
+          } catch {
+            /* local cache miss is fine */
+          }
+        }
+
+        const mapped = await fetchBatch(false);
+        if (!mountedRef.current || isStaleLoad()) return;
+        mergeMapped(mapped, older);
+        if (!isStaleLoad()) setLastError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || isStaleLoad()) return;
         setLastError(message);
         if (!older) Alert.alert('Telegram', message);
       } finally {
-        if (!mountedRef.current) return;
+        if (!mountedRef.current || isStaleLoad()) return;
         setLoading(false);
+        loadingOlderRef.current = false;
         setLoadingOlder(false);
       }
     },
-    [chatId, ensureReady, isGroupChat, loadingOlder, messageThreadId],
+    [chatId, ensureReady, messageThreadId],
   );
 
   useFocusEffect(
@@ -709,7 +784,14 @@ export function TelegramChatScreen() {
               rawIds.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)),
             );
             if (idSet.size === 0) return;
+            const threadParam =
+              typeof messageThreadId === 'number' &&
+              Number.isFinite(messageThreadId) &&
+              messageThreadId !== 0
+                ? messageThreadId
+                : 0;
             setMessages((prev) => prev.filter((m) => !idSet.has(m.messageId)));
+            void deleteTelegramMessagesFromCache(chatId, threadParam, [...idSet]).catch(() => {});
             return;
           }
 
@@ -753,11 +835,19 @@ export function TelegramChatScreen() {
             return;
           }
 
+          const threadParam =
+            typeof messageThreadId === 'number' &&
+            Number.isFinite(messageThreadId) &&
+            messageThreadId !== 0
+              ? messageThreadId
+              : 0;
           void mapTdMessage(rawMessage, lastReadOutboxMessageIdRef.current, {
-            loadSenderAvatar: isGroupChat,
+            loadSenderAvatar: false,
+            mediaLocalOnly: true,
           }).then((row) => {
             if (!row || !mountedRef.current) return;
             setMessages((prev) => upsertMessage(prev, row, oldMessageId));
+            void persistTelegramMessages(chatId, threadParam, [row]).catch(() => {});
           });
         } catch {
           /* ignore malformed TDLib updates */
@@ -1035,12 +1125,12 @@ export function TelegramChatScreen() {
         isMe && shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
       const meBubbleFill =
         isMe && useViewportOutgoingGradient ? '#00000000' : chatTheme.bubbleMe;
-      const outgoingBubbleTextColor =
-        isMe && useViewportOutgoingGradient ? chatTheme.bubbleMeText : '#FFFFFF';
-      const outgoingBubbleMetaColor =
-        isMe && useViewportOutgoingGradient ? chatTheme.bubbleMeMeta : colors.textSecondaryMuted;
-      const outgoingBubbleAccentColor =
-        isMe && useViewportOutgoingGradient ? chatTheme.bubbleMeAccent : colors.accent;
+      const outgoingBubbleTextColor = isMe ? chatTheme.bubbleMeText : '#FFFFFF';
+      const outgoingBubbleMetaColor = isMe ? chatTheme.bubbleMeMeta : colors.textSecondary;
+      const outgoingBubbleAccentColor = isMe ? chatTheme.bubbleMeAccent : colors.accent;
+      const outgoingMessageTextStyle = isMe
+        ? [styles.messageText, { color: chatTheme.bubbleMeText }]
+        : styles.messageText;
 
       const msgs = messagesRef.current;
       const isGroupedAbove = isSameTelegramChain(msgs[index + 1], item, isGroupChat);
@@ -1062,10 +1152,16 @@ export function TelegramChatScreen() {
               : 'Исходное сообщение'
           }
           text={replyTarget ? getTelegramReplyPreviewText(replyTarget) : 'Исходное сообщение недоступно'}
-          accentColor={isMe ? withAlpha('#FFFFFF', 0.9) : colors.accent}
-          backgroundColor={isMe ? withAlpha('#FFFFFF', 0.12) : colors.inputBackground}
-          textColor={isMe ? withAlpha('#FFFFFF', 0.82) : colors.textSecondary}
-          authorColor={isMe ? '#FFFFFF' : colors.accent}
+          accentColor={isMe ? chatTheme.replyAccentMe : colors.accent}
+          backgroundColor={
+            isMe
+              ? resolvedScheme === 'dark'
+                ? 'rgba(255,255,255,0.14)'
+                : chatTheme.replyBubbleMe
+              : colors.inputBackground
+          }
+          textColor={isMe ? chatTheme.replyTextMe : colors.textSecondary}
+          authorColor={isMe ? chatTheme.replyAuthorMe : colors.accent}
           thumbnailUri={getTelegramReplyThumbnailUri(replyTarget)}
         />
       ) : null;
@@ -1243,8 +1339,15 @@ export function TelegramChatScreen() {
 
       const channelPostMedia = isChannel;
 
+      const outgoingBubbleSurfaceStyle = isMe
+        ? {
+            backgroundColor: chatTheme.bubbleMe,
+            ...(isLastInGroup ? { borderBottomRightRadius: 6 } : null),
+          }
+        : null;
+
       const textBubbleColorStyle = isMe
-        ? (isLastInGroup ? styles.bubbleMe : styles.bubbleMeChained)
+        ? outgoingBubbleSurfaceStyle
         : [
             isLastInGroup ? styles.bubbleOther : styles.bubbleOtherChained,
             isGroupChat && styles.groupMessageSurface,
@@ -1281,7 +1384,7 @@ export function TelegramChatScreen() {
               {bubbleHeader}
               <MessageTextBubbleBody
                 text="Голосовое"
-                textStyle={[styles.messageText, isMe && styles.messageTextMe]}
+                textStyle={outgoingMessageTextStyle}
                 rowStyle={styles.bubbleContentRow}
                 meta={
                   <MessageTimeStatus
@@ -1307,12 +1410,16 @@ export function TelegramChatScreen() {
                 collapsable={false}
                 style={measureShellStyle}
               >
-                {isMe && useViewportOutgoingGradient ? (
+                {isMe ? (
                   <MeBubbleChrome
-                    active
+                    active={useViewportOutgoingGradient}
                     scrollTick={scrollTick}
                     fillColor={chatTheme.bubbleMe}
-                    style={outgoingGradientBubbleStyle}
+                    style={[
+                      styles.bubble,
+                      isLastInGroup ? { borderBottomRightRadius: 6 } : null,
+                      !useViewportOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
+                    ]}
                   >
                     {placeholderBody}
                   </MeBubbleChrome>
@@ -1368,14 +1475,18 @@ export function TelegramChatScreen() {
                   time={formatTime(item.dateMs)}
                   status={item.status}
                   header={bubbleHeader}
-                  bubbleMeColor={colors.bubbleMe}
-                  outgoingTextColor="#FFFFFF"
-                  outgoingMetaColor={colors.textSecondaryMuted}
-                  outgoingAccentColor={colors.accent}
+                  bubbleMeColor={isMe ? meBubbleFill : colors.bubbleMe}
+                  outgoingTextColor={outgoingBubbleTextColor}
+                  outgoingMetaColor={outgoingBubbleMetaColor}
+                  outgoingAccentColor={outgoingBubbleAccentColor}
                   incomingBubbleBackground={colors.bubbleOther}
                   incomingBubbleBorderColor={colors.bubbleOtherBorder}
                   incomingDurationColor={colors.textSecondary}
-                  style={textBubbleColorStyle}
+                  style={
+                    isMe
+                      ? [styles.bubble, outgoingBubbleSurfaceStyle, { alignSelf: 'flex-end' as const }]
+                      : textBubbleColorStyle
+                  }
                 />
               )}
             </View>
@@ -1390,7 +1501,7 @@ export function TelegramChatScreen() {
               {bubbleHeader}
               <MessageTextBubbleBody
                 text="Видеосообщение"
-                textStyle={[styles.messageText, isMe && styles.messageTextMe]}
+                textStyle={outgoingMessageTextStyle}
                 rowStyle={styles.bubbleContentRow}
                 meta={
                   <MessageTimeStatus
@@ -1416,12 +1527,16 @@ export function TelegramChatScreen() {
                 collapsable={false}
                 style={measureShellStyle}
               >
-                {isMe && useViewportOutgoingGradient ? (
+                {isMe ? (
                   <MeBubbleChrome
-                    active
+                    active={useViewportOutgoingGradient}
                     scrollTick={scrollTick}
                     fillColor={chatTheme.bubbleMe}
-                    style={outgoingGradientBubbleStyle}
+                    style={[
+                      styles.bubble,
+                      isLastInGroup ? { borderBottomRightRadius: 6 } : null,
+                      !useViewportOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
+                    ]}
                   >
                     {placeholderBody}
                   </MeBubbleChrome>
@@ -1611,16 +1726,20 @@ export function TelegramChatScreen() {
                   time={formatTime(item.dateMs)}
                   status={item.status}
                   header={bubbleHeader}
-                  bubbleMeColor={colors.bubbleMe}
-                  outgoingTextColor="#FFFFFF"
-                  outgoingMetaColor={colors.textSecondaryMuted}
-                  outgoingAccentColor="#FFFFFF"
+                  bubbleMeColor={isMe ? meBubbleFill : colors.bubbleMe}
+                  outgoingTextColor={outgoingBubbleTextColor}
+                  outgoingMetaColor={outgoingBubbleMetaColor}
+                  outgoingAccentColor={outgoingBubbleAccentColor}
                   incomingBubbleBackground={colors.bubbleOther}
                   incomingBubbleBorderColor={colors.bubbleOtherBorder}
                   incomingFileNameColor={colors.textPrimary}
                   incomingSecondaryTextColor={colors.textSecondary}
                   incomingCaptionColor={colors.textPrimary}
-                  style={textBubbleColorStyle}
+                  style={
+                    isMe
+                      ? [styles.bubble, outgoingBubbleSurfaceStyle, { alignSelf: 'flex-end' as const }]
+                      : textBubbleColorStyle
+                  }
                 />
               )}
             </View>
@@ -1633,18 +1752,20 @@ export function TelegramChatScreen() {
           ? ({ paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' as const } satisfies ViewStyle)
           : null;
 
-      const textBubbleSolidStyle = [
+      const incomingTextBubbleSolidStyle = [
         styles.bubble,
         textBubbleColorStyle,
         isChannel && styles.channelPostTextBubble,
         discussionFooterPaddingReset,
       ];
 
-      const textBubbleGradientStyle = [
+      const outgoingTextBubbleChromeStyle = [
         styles.bubble,
+        { alignSelf: 'flex-end' as const },
         isLastInGroup ? { borderBottomRightRadius: 6 } : null,
         isChannel && styles.channelPostTextBubble,
         discussionFooterPaddingReset,
+        !useViewportOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
       ];
 
       const metaNode = (
@@ -1659,13 +1780,18 @@ export function TelegramChatScreen() {
       );
 
       const viewCountNode = viewCountFormatted ? (
-        <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{` \uD83D\uDC41 ${viewCountFormatted}`}</Text>
+        <Text
+          style={[
+            styles.viewCountText,
+            isMe ? { color: chatTheme.bubbleMeMeta } : null,
+          ]}
+        >{` \uD83D\uDC41 ${viewCountFormatted}`}</Text>
       ) : null;
 
       const textBubbleContent = (
         <MessageTextBubbleBody
           text={item.text ?? ''}
-          textStyle={[styles.messageText, isMe && styles.messageTextMe]}
+          textStyle={outgoingMessageTextStyle}
           rowStyle={styles.bubbleContentRow}
           viewCountNode={viewCountNode}
           meta={metaNode}
@@ -1700,17 +1826,17 @@ export function TelegramChatScreen() {
             collapsable={false}
             style={measureShellStyle}
           >
-            {isMe && useViewportOutgoingGradient ? (
+            {isMe ? (
               <MeBubbleChrome
-                active
+                active={useViewportOutgoingGradient}
                 scrollTick={scrollTick}
                 fillColor={chatTheme.bubbleMe}
-                style={textBubbleGradientStyle}
+                style={outgoingTextBubbleChromeStyle}
               >
                 {textBubbleBody}
               </MeBubbleChrome>
             ) : (
-              <View style={textBubbleSolidStyle}>{textBubbleBody}</View>
+              <View style={incomingTextBubbleSolidStyle}>{textBubbleBody}</View>
             )}
           </View>
         </Pressable>,
@@ -1740,8 +1866,12 @@ export function TelegramChatScreen() {
   );
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: colors.chatBackground }}>
+    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+      <InteractiveChatBackShell
+        navigation={navigation}
+        gestureEnabled={!telegramSelectionMode && menuState == null && forwardMessageIds.length === 0}
+      >
+      <View style={{ flex: 1, backgroundColor: chatTheme.canvasColor }}>
         <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.flexChatBody}>
           <View style={styles.wallpaperLayer} pointerEvents="none">
             <ChatBackgroundPattern themeId={wallpaperThemeId} />
@@ -1893,6 +2023,7 @@ export function TelegramChatScreen() {
           </Reanimated.View>
         </BlurTargetView>
       </View>
+      </InteractiveChatBackShell>
       <ChatContextMenuOverlay
         menuState={menuState}
         activeMenuMessage={activeMenuMessage}

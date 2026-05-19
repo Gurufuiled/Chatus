@@ -188,3 +188,17 @@ export interface SyncQueueRow {
   created_at: number;
   next_retry_at: number | null;
 }
+
+/** Cached TDLib message (`telegram_messages` table) for instant Telegram chat reopen. */
+export interface TelegramMessageCacheRow {
+  id: string;
+  telegram_chat_id: number;
+  message_thread_id: number;
+  message_id: number;
+  date_ms: number;
+  outgoing: number;
+  kind: string;
+  status: string;
+  payload_json: string;
+  updated_at: number;
+}

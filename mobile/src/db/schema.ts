@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 15;
+export const DB_VERSION = 16;
 
 export const SCHEMA_SQL = `
 -- users
@@ -191,4 +191,20 @@ CREATE TABLE IF NOT EXISTS line_sync_events (
 CREATE INDEX IF NOT EXISTS idx_line_sync_line ON line_sync_events(line_id);
 CREATE INDEX IF NOT EXISTS idx_line_sync_line_created ON line_sync_events(line_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_line_sync_state ON line_sync_events(sync_state);
+
+-- Telegram (TDLib) message cache for instant chat reopen
+CREATE TABLE IF NOT EXISTS telegram_messages (
+  id TEXT PRIMARY KEY,
+  telegram_chat_id INTEGER NOT NULL,
+  message_thread_id INTEGER NOT NULL DEFAULT 0,
+  message_id INTEGER NOT NULL,
+  date_ms INTEGER NOT NULL,
+  outgoing INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_messages_chat_thread_date
+  ON telegram_messages(telegram_chat_id, message_thread_id, message_id DESC);
 `;

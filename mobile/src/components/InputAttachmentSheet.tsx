@@ -16,6 +16,8 @@ import Reanimated, {
   Extrapolation,
   interpolate,
   runOnJS,
+  scrollTo,
+  useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -320,8 +322,14 @@ const GalleryCell = React.memo(function GalleryCell({
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const COLLAPSED_H = Math.round(SCREEN_HEIGHT * 0.58);
-const EXPANDED_H = Math.round(SCREEN_HEIGHT * 0.94);
-const SPRING_CFG = { damping: 28, stiffness: 320, mass: 0.9 } as const;
+const SPRING_CFG = { damping: 26, stiffness: 280, mass: 0.88 } as const;
+const CLOSE_VELOCITY_Y = 850;
+const EXPAND_VELOCITY_Y = -750;
+
+function clampSheetHeight(value: number, maxHeight: number): number {
+  'worklet';
+  return Math.max(0, Math.min(maxHeight, value));
+}
 
 export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   visible,
@@ -341,127 +349,117 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = React.useMemo(() => createAttachmentSheetStyles(colors), [colors]);
+  const expandedH = Math.round(SCREEN_HEIGHT - insets.top);
 
   // --- Shared values ---
   const sheetH = useSharedValue(COLLAPSED_H);
-  const isExpanded = useSharedValue(false);
   const scrollY = useSharedValue(0);
   const dragStartH = useSharedValue(COLLAPSED_H);
+  const maxSheetH = useSharedValue(expandedH);
+  const listRef = useAnimatedRef<Reanimated.FlatList<GalleryItem>>();
+
+  React.useEffect(() => {
+    maxSheetH.value = expandedH;
+  }, [expandedH, maxSheetH]);
 
   // --- JS state for close trigger ---
   const [shouldClose, setShouldClose] = React.useState(false);
   React.useEffect(() => {
-    if (shouldClose) { setShouldClose(false); onClose(); }
+    if (shouldClose) {
+      setShouldClose(false);
+      onClose();
+    }
   }, [shouldClose, onClose]);
 
-  // Reset on visibility change
   React.useEffect(() => {
-    if (!visible) {
+    if (visible) {
+      scrollY.value = 0;
+      sheetH.value = 0;
+      sheetH.value = withSpring(COLLAPSED_H, SPRING_CFG);
+    } else {
       sheetH.value = COLLAPSED_H;
-      isExpanded.value = false;
       scrollY.value = 0;
     }
-  }, [visible, sheetH, isExpanded, scrollY]);
+  }, [visible, sheetH, scrollY]);
 
-  // --- Helpers (worklet) ---
-  const snapExpand = () => {
-    'worklet';
-    isExpanded.value = true;
-    sheetH.value = withSpring(EXPANDED_H, SPRING_CFG);
-  };
+  const requestClose = React.useCallback(() => {
+    setShouldClose(true);
+  }, []);
 
-  const snapCollapse = () => {
-    'worklet';
-    isExpanded.value = false;
-    sheetH.value = withSpring(COLLAPSED_H, SPRING_CFG);
-  };
-
-  const snapClose = () => {
-    'worklet';
-    sheetH.value = withTiming(0, { duration: 250, easing: Easing.in(Easing.cubic) });
-    runOnJS(setShouldClose)(true);
-  };
-
-  // Ref for NativeViewGestureHandler wrapping FlatList (needed for simultaneous gestures)
   const nativeScrollRef = React.useRef<NativeViewGestureHandler>(null);
+  const hasGalleryList = galleryEnabled && !galleryLoading && !galleryDenied && galleryItems.length > 0;
 
-  // scroll handler: expand on scroll-up
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       const y = event.contentOffset.y;
-      scrollY.value = y;
+      const prev = scrollY.value;
+      const maxH = maxSheetH.value;
 
-      // Expand when user scrolls list content upward
-      if (y > 8 && !isExpanded.value) {
-        snapExpand();
+      if (sheetH.value < maxH - 0.5 && y > 0 && y > prev) {
+        const dy = y - prev;
+        const room = maxH - sheetH.value;
+        const absorb = Math.min(dy, room);
+        if (absorb > 0) {
+          sheetH.value += absorb;
+          const nextY = Math.max(0, y - absorb);
+          scrollY.value = nextY;
+          scrollTo(listRef, 0, nextY, false);
+          return;
+        }
       }
+
+      scrollY.value = y;
     },
   });
 
-  // Header drag-handle pan (always works)
-  const headerPan = Gesture.Pan()
-    .onBegin(() => {
-      dragStartH.value = sheetH.value;
-    })
-    .onUpdate((e) => {
-      const next = dragStartH.value - e.translationY;
-      sheetH.value = Math.max(0, Math.min(EXPANDED_H, next));
-    })
-    .onEnd((e) => {
-      const vel = e.velocityY;
-      const cur = sheetH.value;
-      if (vel > 700 || cur < COLLAPSED_H * 0.55) {
-        snapClose();
-      } else if (!isExpanded.value && (cur > COLLAPSED_H + 60 || vel < -500)) {
-        snapExpand();
-      } else if (isExpanded.value && cur < EXPANDED_H - 60) {
-        snapCollapse();
-      } else if (isExpanded.value) {
-        snapExpand();
-      } else {
-        snapCollapse();
-      }
-    });
-
-  // Pan simultaneous with FlatList: at scroll top, same vertical mapping as header (Telegram-like).
-  const listPan = Gesture.Pan()
-    .simultaneousWithExternalGesture(nativeScrollRef)
-    .onBegin(() => {
-      dragStartH.value = sheetH.value;
-    })
-    .onUpdate((e) => {
-      if (scrollY.value <= 2) {
+  /** Pan на шапку + сетку: высота следует за пальцем; при scrollY>0 вниз — сначала список. */
+  const sheetPan = React.useMemo(() => {
+    let pan = Gesture.Pan().activeOffsetY([-6, 6]).failOffsetX([-14, 14]);
+    if (hasGalleryList) {
+      pan = pan.simultaneousWithExternalGesture(nativeScrollRef);
+    }
+    return pan
+      .onStart(() => {
+        dragStartH.value = sheetH.value;
+      })
+      .onUpdate((e) => {
+        const maxH = maxSheetH.value;
         const next = dragStartH.value - e.translationY;
-        sheetH.value = Math.max(0, Math.min(EXPANDED_H, next));
-      }
-    })
-    .onEnd((e) => {
-      const vel = e.velocityY;
-      const cur = sheetH.value;
-
-      if (scrollY.value <= 2) {
-        if (vel > 700 || cur < COLLAPSED_H * 0.55) {
-          snapClose();
-        } else if (!isExpanded.value && (cur > COLLAPSED_H + 60 || vel < -500)) {
-          snapExpand();
-        } else if (isExpanded.value && cur < EXPANDED_H - 60) {
-          snapCollapse();
-        } else if (isExpanded.value) {
-          snapExpand();
-        } else {
-          snapCollapse();
+        const pullingDown = e.translationY > 0;
+        if (scrollY.value > 0.5 && pullingDown) {
+          return;
         }
-      } else {
-        if (isExpanded.value) snapExpand();
-        else snapCollapse();
-      }
-    });
+        sheetH.value = clampSheetHeight(next, maxH);
+      })
+      .onEnd((e) => {
+        const vel = e.velocityY;
+        const cur = sheetH.value;
+        const maxH = maxSheetH.value;
+        const mid = (COLLAPSED_H + maxH) * 0.5;
+        if (vel > CLOSE_VELOCITY_Y || cur < COLLAPSED_H * 0.42) {
+          sheetH.value = withTiming(0, { duration: 220, easing: Easing.in(Easing.cubic) }, (finished) => {
+            if (finished) {
+              runOnJS(requestClose)();
+            }
+          });
+          return;
+        }
+        if (vel < EXPAND_VELOCITY_Y || cur > mid + 24) {
+          sheetH.value = withSpring(maxH, SPRING_CFG);
+          return;
+        }
+        if (cur < mid - 24) {
+          sheetH.value = withSpring(COLLAPSED_H, SPRING_CFG);
+          return;
+        }
+        sheetH.value = withSpring(cur >= mid ? maxH : COLLAPSED_H, SPRING_CFG);
+      });
+  }, [dragStartH, hasGalleryList, maxSheetH, requestClose, scrollY, sheetH]);
 
-  // --- Animated styles ---
   const sheetStyle = useAnimatedStyle(() => ({ height: sheetH.value }));
 
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(sheetH.value, [0, COLLAPSED_H], [0, 0.38], Extrapolation.CLAMP),
+    opacity: interpolate(sheetH.value, [0, COLLAPSED_H, maxSheetH.value], [0, 0.38, 0.52], Extrapolation.CLAMP),
   }));
 
   // --- Gallery helpers ---
@@ -502,8 +500,8 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
             sheetStyle,
           ]}
         >
-          {/* Drag handle */}
-          <GestureDetector gesture={headerPan}>
+          <GestureDetector gesture={sheetPan}>
+            <View style={styles.flex}>
             <View style={styles.handleArea}>
               <View style={styles.handlePill} />
               <View style={styles.sheetHeader}>
@@ -527,7 +525,6 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                 </Pressable>
               </View>
             </View>
-          </GestureDetector>
 
           {/* Gallery content */}
           {galleryEnabled ? (
@@ -540,42 +537,42 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                 <Text style={styles.galleryHint}>Нужен доступ к фото и видео.</Text>
               </View>
             ) : galleryItems.length > 0 ? (
-              <GestureDetector gesture={listPan}>
-                <NativeViewGestureHandler ref={nativeScrollRef}>
-                  <View style={styles.flex}>
-                    <AnimatedFlatList
-                      data={galleryItems}
-                      keyExtractor={keyExtractor}
-                      renderItem={renderItem}
-                      numColumns={3}
-                      style={styles.flex}
-                      contentContainerStyle={[
-                        styles.galleryGrid,
-                        { paddingBottom: hasSelection ? 74 : 78 },
-                      ]}
-                      columnWrapperStyle={styles.galleryRow}
-                      showsVerticalScrollIndicator={false}
-                      removeClippedSubviews
-                      bounces={false}
-                      initialNumToRender={18}
-                      maxToRenderPerBatch={12}
-                      windowSize={5}
-                      updateCellsBatchingPeriod={40}
-                      keyboardShouldPersistTaps="handled"
-                      onScroll={scrollHandler}
-                      scrollEventThrottle={16}
-                    />
-                  </View>
-                </NativeViewGestureHandler>
-              </GestureDetector>
+              <NativeViewGestureHandler ref={nativeScrollRef}>
+                <AnimatedFlatList
+                  ref={listRef}
+                  data={galleryItems}
+                  keyExtractor={keyExtractor}
+                  renderItem={renderItem}
+                  numColumns={3}
+                  style={styles.flex}
+                  contentContainerStyle={[
+                    styles.galleryGrid,
+                    { paddingBottom: hasSelection ? 74 : 78 },
+                  ]}
+                  columnWrapperStyle={styles.galleryRow}
+                  showsVerticalScrollIndicator={false}
+                  removeClippedSubviews
+                  bounces
+                  overScrollMode="always"
+                  initialNumToRender={18}
+                  maxToRenderPerBatch={12}
+                  windowSize={5}
+                  updateCellsBatchingPeriod={40}
+                  keyboardShouldPersistTaps="handled"
+                  onScroll={scrollHandler}
+                  scrollEventThrottle={16}
+                />
+              </NativeViewGestureHandler>
             ) : (
               <View style={styles.galleryPlaceholder}>
                 <Text style={styles.galleryHint}>Медиа не найдены.</Text>
               </View>
             )
           ) : null}
+            </View>
+          </GestureDetector>
 
-          {/* Bottom dock */}
+          {/* Bottom dock — вне pan, чтобы не мешать вводу подписи */}
           <View
             pointerEvents="box-none"
             style={[styles.bottomAccessory, { bottom: Math.max(insets.bottom, 8) + 8 }]}

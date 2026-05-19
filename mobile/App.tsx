@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { appLinking } from './src/navigation/linking';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
@@ -86,13 +86,13 @@ export default function App() {
               <WebSocketProvider>
                 <VoicePlayerProvider>
                   <CallProvider>
-                    <NavigationContainer linking={appLinking as never}>
+                    <ThemedNavigationContainer>
                       <ThemedStatusBar />
                       <RootNavigator />
                       <InAppPushNotification />
                       <TelegramTdlibNotificationListener />
                       <AppUpdateGate />
-                    </NavigationContainer>
+                    </ThemedNavigationContainer>
                   </CallProvider>
                 </VoicePlayerProvider>
               </WebSocketProvider>
@@ -101,6 +101,27 @@ export default function App() {
         </ThemeProvider>
       </GestureHandlerRootView>
     </BootstrapErrorBoundary>
+  );
+}
+
+function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
+  const { colors, resolvedScheme } = useTheme();
+  const navTheme = React.useMemo(() => {
+    const base = resolvedScheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: colors.chatBackground,
+        card: colors.chatBackground,
+      },
+    };
+  }, [colors.chatBackground, resolvedScheme]);
+
+  return (
+    <NavigationContainer linking={appLinking as never} theme={navTheme}>
+      {children}
+    </NavigationContainer>
   );
 }
 

@@ -225,14 +225,13 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       flexShrink: 1,
       flexGrow: 1,
     },
-    /** Ширина бабла в группе — на всю колонку после аватара (как Chatus). */
+    /** Группа: бабл по содержимому, не на всю колонку (иначе ломается перенос текста). */
     groupIncomingBubbleMeasure: {
-      width: '100%',
+      alignSelf: 'flex-start',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
       minWidth: 0,
-      alignSelf: 'stretch',
     },
     groupMessageSurface: {
-      maxWidth: '100%',
       alignSelf: 'flex-start',
     },
     viewCountText: {

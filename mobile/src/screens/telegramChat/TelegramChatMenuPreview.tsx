@@ -10,7 +10,6 @@ import { VideoNoteBubble } from '../../components/VideoNoteBubble';
 import { VoiceBubble } from '../../components/VoiceBubble';
 import type { Message } from '../../stores/types';
 import type { ThemeColors } from '../../theme/palettes';
-import { withAlpha } from '../../theme/stylePrimitives';
 import { formatTime } from './composer';
 import { getTelegramReplyPreviewText, getTelegramReplyThumbnailUri } from './messageRow';
 import type { TelegramChatStyles } from './telegramChatStyles';
@@ -19,7 +18,7 @@ import {
   MeBubbleChrome,
   shouldUseDarkDefaultOutgoingBubbleGradient,
 } from '../../components/OutgoingBubbleViewportGradient';
-import type { ChatTheme } from '../../theme/chatThemes';
+import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatTheme } from '../../theme/chatThemes';
 import type { ResolvedColorScheme } from '../../theme/palettes';
 
 export type TelegramChatMenuPreviewProps = {
@@ -52,21 +51,24 @@ export function TelegramChatMenuPreviewBody({
   if (!row || String(row.messageId) !== message.id) return <View />;
   const fixedWidthStyle = forcedWidth ? { width: forcedWidth, maxWidth: forcedWidth } : undefined;
   const isMe = row.outgoing;
+  const resolvedScheme = resolvedSchemeProp ?? 'light';
+  const chatTheme =
+    chatThemeProp ?? getChatTheme(DEFAULT_CHAT_THEME_ID, resolvedScheme);
   const usePreviewOutgoingGradient =
-    isMe &&
-    chatThemeProp != null &&
-    resolvedSchemeProp != null &&
-    shouldUseDarkDefaultOutgoingBubbleGradient(chatThemeProp, resolvedSchemeProp);
+    isMe && shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
   const meBubbleFill =
-    isMe && usePreviewOutgoingGradient ? '#00000000' : colors.bubbleMe;
-  const outgoingVideoNoteMetaColor =
-    isMe && usePreviewOutgoingGradient && chatThemeProp != null
-      ? chatThemeProp.bubbleMeMeta
-      : colors.textSecondaryMuted;
-  const outgoingVideoNoteAccentColor =
-    isMe && usePreviewOutgoingGradient && chatThemeProp != null
-      ? chatThemeProp.bubbleMeAccent
-      : colors.accent;
+    isMe && usePreviewOutgoingGradient ? '#00000000' : chatTheme.bubbleMe;
+  const outgoingBubbleTextColor = isMe ? chatTheme.bubbleMeText : '#FFFFFF';
+  const outgoingBubbleMetaColor = isMe ? chatTheme.bubbleMeMeta : colors.textSecondary;
+  const outgoingBubbleAccentColor = isMe ? chatTheme.bubbleMeAccent : colors.accent;
+  const outgoingMessageTextStyle = isMe
+    ? [styles.messageText, { color: chatTheme.bubbleMeText }]
+    : styles.messageText;
+  const outgoingBubbleSurfaceStyle = isMe
+    ? { backgroundColor: chatTheme.bubbleMe, borderBottomRightRadius: 6 }
+    : null;
+  const outgoingVideoNoteMetaColor = outgoingBubbleMetaColor;
+  const outgoingVideoNoteAccentColor = outgoingBubbleAccentColor;
   const replyTarget =
     row.replyToMessageId != null ? messageById.get(row.replyToMessageId) ?? null : null;
   const replySnippet =
@@ -82,10 +84,16 @@ export function TelegramChatMenuPreviewBody({
             : 'Исходное сообщение'
         }
         text={replyTarget ? getTelegramReplyPreviewText(replyTarget) : 'Исходное сообщение недоступно'}
-        accentColor={isMe ? withAlpha('#FFFFFF', 0.9) : colors.accent}
-        backgroundColor={isMe ? withAlpha('#FFFFFF', 0.12) : colors.inputBackground}
-        textColor={isMe ? withAlpha('#FFFFFF', 0.82) : colors.textSecondary}
-        authorColor={isMe ? '#FFFFFF' : colors.accent}
+        accentColor={isMe ? chatTheme.replyAccentMe : colors.accent}
+        backgroundColor={
+          isMe
+            ? resolvedScheme === 'dark'
+              ? 'rgba(255,255,255,0.14)'
+              : chatTheme.replyBubbleMe
+            : colors.inputBackground
+        }
+        textColor={isMe ? chatTheme.replyTextMe : colors.textSecondary}
+        authorColor={isMe ? chatTheme.replyAuthorMe : colors.accent}
         thumbnailUri={getTelegramReplyThumbnailUri(replyTarget)}
       />
     ) : null;
@@ -102,9 +110,7 @@ export function TelegramChatMenuPreviewBody({
         {replySnippet}
       </>
     ) : null;
-  const textBubbleColorStyle = isMe
-    ? (usePreviewOutgoingGradient ? undefined : styles.bubbleMe)
-    : styles.bubbleOther;
+  const textBubbleColorStyle = isMe ? outgoingBubbleSurfaceStyle : styles.bubbleOther;
   const viewCountFormatted =
     row.viewCount != null
       ? row.viewCount >= 1_000_000
@@ -120,14 +126,14 @@ export function TelegramChatMenuPreviewBody({
         <View style={fixedWidthStyle}>
           <View style={[styles.bubble, textBubbleColorStyle]}>
             {bubbleHeader}
-            <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Голосовое</Text>
+            <Text style={outgoingMessageTextStyle}>Голосовое</Text>
             <MessageTimeStatus
               time={formatTime(row.dateMs)}
               status={row.status}
               isMe={isMe}
               compact
-              timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-              iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+              timeColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+              iconColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
             />
           </View>
         </View>
@@ -144,9 +150,9 @@ export function TelegramChatMenuPreviewBody({
           status={row.status}
           header={bubbleHeader}
           bubbleMeColor={meBubbleFill}
-          outgoingTextColor="#FFFFFF"
-          outgoingMetaColor={colors.textSecondaryMuted}
-          outgoingAccentColor={colors.accent}
+          outgoingTextColor={outgoingBubbleTextColor}
+          outgoingMetaColor={outgoingBubbleMetaColor}
+          outgoingAccentColor={outgoingBubbleAccentColor}
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingDurationColor={colors.textSecondary}
@@ -161,14 +167,14 @@ export function TelegramChatMenuPreviewBody({
         <View style={fixedWidthStyle}>
           <View style={[styles.bubble, textBubbleColorStyle]}>
             {bubbleHeader}
-            <Text style={[styles.messageText, isMe && styles.messageTextMe]}>Видеосообщение</Text>
+            <Text style={outgoingMessageTextStyle}>Видеосообщение</Text>
             <MessageTimeStatus
               time={formatTime(row.dateMs)}
               status={row.status}
               isMe={isMe}
               compact
-              timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-              iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+              timeColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+              iconColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
             />
           </View>
         </View>
@@ -209,8 +215,8 @@ export function TelegramChatMenuPreviewBody({
           time={formatTime(row.dateMs)}
           status={row.status}
           header={bubbleHeader}
-          bubbleMeColor={colors.bubbleMe}
-          outgoingTextColor="#FFFFFF"
+          bubbleMeColor={isMe ? meBubbleFill : colors.bubbleMe}
+          outgoingTextColor={outgoingBubbleTextColor}
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingCaptionTextColor={colors.textPrimary}
@@ -233,8 +239,8 @@ export function TelegramChatMenuPreviewBody({
           time={formatTime(row.dateMs)}
           status={row.status}
           header={bubbleHeader}
-          bubbleMeColor={colors.bubbleMe}
-          outgoingTextColor="#FFFFFF"
+          bubbleMeColor={isMe ? meBubbleFill : colors.bubbleMe}
+          outgoingTextColor={outgoingBubbleTextColor}
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingCaptionTextColor={colors.textPrimary}
@@ -255,10 +261,10 @@ export function TelegramChatMenuPreviewBody({
           time={formatTime(row.dateMs)}
           status={row.status}
           header={bubbleHeader}
-          bubbleMeColor={colors.bubbleMe}
-          outgoingTextColor="#FFFFFF"
-          outgoingMetaColor={colors.textSecondaryMuted}
-          outgoingAccentColor="#FFFFFF"
+          bubbleMeColor={isMe ? meBubbleFill : colors.bubbleMe}
+          outgoingTextColor={outgoingBubbleTextColor}
+          outgoingMetaColor={outgoingBubbleMetaColor}
+          outgoingAccentColor={outgoingBubbleAccentColor}
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingFileNameColor={colors.textPrimary}
@@ -274,11 +280,13 @@ export function TelegramChatMenuPreviewBody({
       {bubbleHeader}
       <MessageTextBubbleBody
         text={row.text ?? ''}
-        textStyle={[styles.messageText, isMe && styles.messageTextMe]}
+        textStyle={outgoingMessageTextStyle}
         rowStyle={styles.bubbleContentRow}
         viewCountNode={
           viewCountFormatted ? (
-            <Text style={[styles.viewCountText, isMe && styles.viewCountTextMe]}>{` 👁 ${viewCountFormatted}`}</Text>
+            <Text
+              style={[styles.viewCountText, isMe ? { color: chatTheme.bubbleMeMeta } : null]}
+            >{` 👁 ${viewCountFormatted}`}</Text>
           ) : null
         }
         meta={
@@ -287,22 +295,26 @@ export function TelegramChatMenuPreviewBody({
             status={row.status}
             isMe={isMe}
             compact
-            timeColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
-            iconColor={isMe ? colors.textSecondaryMuted : colors.textSecondary}
+            timeColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+            iconColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
           />
         }
       />
     </>
   );
 
-  if (isMe && usePreviewOutgoingGradient) {
+  if (isMe) {
     return (
       <View style={fixedWidthStyle}>
         <MeBubbleChrome
-          active
+          active={usePreviewOutgoingGradient}
           scrollTick={scrollTick}
-          fillColor={chatThemeProp!.bubbleMe}
-          style={[styles.bubble, { borderBottomRightRadius: 6 }]}
+          fillColor={chatTheme.bubbleMe}
+          style={[
+            styles.bubble,
+            { borderBottomRightRadius: 6 },
+            !usePreviewOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
+          ]}
         >
           {textBubbleBody}
         </MeBubbleChrome>

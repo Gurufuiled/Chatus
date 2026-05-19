@@ -8,6 +8,7 @@ import {
 } from '../../stores/telegramAccountStore';
 import { buildChatRowLoadFailure } from './telegramDialogFallback';
 import { buildDialogPreviewFromChat, previewTextFromChat } from './telegramDialogPreview';
+import { scheduleTopTelegramChatsPreload } from './telegramChatPreload';
 
 export function matchesDialogQuery(row: TelegramDialogRow, normalizedQuery: string) {
   const typeLabel =
@@ -204,6 +205,7 @@ export async function refreshTelegramDialogs(): Promise<void> {
     telegramAccountStore.getState().setDialogs(rows);
     telegramAccountStore.getState().setLastError(null);
     await telegramAccountStore.getState().persistSnapshot();
+    scheduleTopTelegramChatsPreload(rows);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     telegramAccountStore.getState().setLastError(msg);

@@ -36,9 +36,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 6,
   },
+  /** Без `flex: 1` / `minWidth: 0` — иначе в shrink-wrap бабле (Telegram исходящие) текст схлопывается в 0 ширины. */
   textWrap: {
-    flex: 1,
-    minWidth: 0,
     flexShrink: 1,
   },
   metaSlot: {

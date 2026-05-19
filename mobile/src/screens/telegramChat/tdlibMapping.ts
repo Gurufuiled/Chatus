@@ -12,6 +12,8 @@ import type { TelegramMessageRow, TelegramMessageStatus } from './types';
 export type MapTdMessageOptions = {
   /** When true, fetch sender profile photo for incoming user messages (group / supergroup UI). */
   loadSenderAvatar?: boolean;
+  /** History list: use only TDLib local paths, do not block on `downloadFile`. */
+  mediaLocalOnly?: boolean;
 };
 
 export function getNestedRecord(value: unknown): Record<string, unknown> | null {
@@ -84,9 +86,13 @@ function getTdFileId(file: Record<string, unknown> | null): number | null {
   return typeof id === 'number' && Number.isFinite(id) ? id : null;
 }
 
-async function resolveTdFileUri(file: Record<string, unknown> | null): Promise<string | null> {
+async function resolveTdFileUri(
+  file: Record<string, unknown> | null,
+  mediaLocalOnly = false,
+): Promise<string | null> {
   const localUri = getTdFileLocalUri(file);
   if (localUri) return localUri;
+  if (mediaLocalOnly) return null;
 
   const fileId = getTdFileId(file);
   return fileId != null ? await downloadTdlibFile(fileId).catch(() => null) : null;
@@ -275,6 +281,7 @@ export async function mapTdMessage(
   const dateSec = typeof raw.date === 'number' ? raw.date : Math.floor(Date.now() / 1000);
   const caption = getFormattedText(content?.caption);
   const loadAvatar = options?.loadSenderAvatar === true;
+  const mediaLocalOnly = options?.mediaLocalOnly === true;
   const incomingSender = await resolveIncomingUserSender(raw, loadAvatar);
   const senderName = outgoing ? undefined : incomingSender?.name;
   const senderUserId = outgoing ? undefined : incomingSender?.userId;
@@ -312,8 +319,11 @@ export async function mapTdMessage(
     const local = getNestedRecord(voice?.local);
     const localPath = typeof local?.path === 'string' ? local.path.trim() : '';
     const fileId = typeof voice?.id === 'number' ? voice.id : null;
-    const uri =
-      localPath ? `file://${localPath}` : fileId != null ? await downloadTdlibFile(fileId).catch(() => null) : null;
+    const uri = localPath
+      ? `file://${localPath}`
+      : !mediaLocalOnly && fileId != null
+        ? await downloadTdlibFile(fileId).catch(() => null)
+        : null;
     const duration = typeof voiceNote?.duration === 'number' ? voiceNote.duration * 1000 : 0;
     return {
       ...base,
@@ -329,12 +339,12 @@ export async function mapTdMessage(
     const photo = getNestedRecord(content.photo);
     const largest = getLargestPhotoSize(photo);
     const file = getNestedRecord(largest?.photo);
-    const uri = await resolveTdFileUri(file);
+    const uri = await resolveTdFileUri(file, mediaLocalOnly);
     return {
       ...base,
-      kind: uri ? 'image' : 'service',
-      text: uri ? caption : caption || 'Фото',
-      mediaUri: uri,
+      kind: 'image',
+      text: caption || (uri ? '' : 'Фото'),
+      mediaUri: uri ?? undefined,
       width: getNumber(largest?.width),
       height: getNumber(largest?.height),
     };
@@ -345,13 +355,16 @@ export async function mapTdMessage(
     const file = getNestedRecord(video?.video);
     const thumbnail = getNestedRecord(video?.thumbnail);
     const thumbnailFile = getNestedRecord(thumbnail?.file);
-    const [uri, thumbnailUri] = await Promise.all([resolveTdFileUri(file), resolveTdFileUri(thumbnailFile)]);
+    const [uri, thumbnailUri] = await Promise.all([
+      resolveTdFileUri(file, mediaLocalOnly),
+      resolveTdFileUri(thumbnailFile, mediaLocalOnly),
+    ]);
     return {
       ...base,
-      kind: uri ? 'video' : 'service',
-      text: uri ? caption : caption || 'Видео',
-      mediaUri: uri,
-      thumbnailUri,
+      kind: 'video',
+      text: caption || (uri ? '' : 'Видео'),
+      mediaUri: uri ?? undefined,
+      thumbnailUri: thumbnailUri ?? undefined,
       width: getNumber(video?.width),
       height: getNumber(video?.height),
       durationMs: (getNumber(video?.duration) ?? 0) * 1000,
@@ -367,16 +380,16 @@ export async function mapTdMessage(
     const miniData = typeof mini?.data === 'string' && mini.data.length > 8 ? mini.data : null;
     const miniUri = miniData ? `data:image/jpeg;base64,${miniData}` : null;
     const [uri, thumbnailUri] = await Promise.all([
-      resolveTdFileUri(file),
-      resolveTdFileUri(thumbnailFile),
+      resolveTdFileUri(file, mediaLocalOnly),
+      resolveTdFileUri(thumbnailFile, mediaLocalOnly),
     ]);
     const side = getNumber(videoNote?.length);
     return {
       ...base,
-      kind: uri ? 'video_note' : 'service',
+      kind: 'video_note',
       text: 'Видеосообщение',
-      mediaUri: uri,
-      thumbnailUri: thumbnailUri ?? miniUri,
+      mediaUri: uri ?? undefined,
+      thumbnailUri: thumbnailUri ?? miniUri ?? undefined,
       width: side,
       height: side,
       durationMs: (getNumber(videoNote?.duration) ?? 0) * 1000,
@@ -386,7 +399,7 @@ export async function mapTdMessage(
   if (kind === 'messageDocument') {
     const document = getNestedRecord(content.document);
     const file = getNestedRecord(document?.document);
-    const uri = await resolveTdFileUri(file);
+    const uri = await resolveTdFileUri(file, mediaLocalOnly);
     return {
       ...base,
       kind: 'file',

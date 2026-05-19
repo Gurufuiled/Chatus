@@ -68,9 +68,13 @@ export function InteractiveChatBackShell({ navigation, gestureEnabled, children 
     flex: 1,
     backgroundColor: 'transparent',
     transform: [{ translateX: translateX.value }],
-    ...(Platform.OS === 'android'
+    ...(Platform.OS === 'android' && translateX.value > 0.5
       ? {
-          elevation: translateX.value > 0.5 ? 12 : 0,
+          elevation: 12,
+          shadowColor: '#000',
+          shadowOffset: { width: -4, height: 0 },
+          shadowOpacity: 0.12,
+          shadowRadius: 8,
         }
       : {}),
   }));

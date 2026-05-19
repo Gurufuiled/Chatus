@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator, type NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ChannelAddAdminScreen,
@@ -42,13 +42,17 @@ import type { ThemeColors } from '../theme/palettes';
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
 
-/** iOS: full-screen interactive pop matching finger (Telegram-style sheet). */
+/**
+ * Telegram-style interactive back: previous screen (chat list) stays mounted and visible
+ * while the chat layer is dragged (iOS native gesture + Android InteractiveChatBackShell).
+ */
 const CHAT_INTERACTIVE_BACK_STACK_OPTIONS = {
+  presentation: 'transparentModal' as const,
   fullScreenGestureEnabled: true,
   animationMatchesGesture: true,
   fullScreenGestureShadowEnabled: true,
-  /** Let the previous stack screen show through when the chat body is translated (Android shell + iOS gesture). */
   contentStyle: { backgroundColor: 'transparent' },
+  ...(Platform.OS === 'android' ? { animation: 'slide_from_right' as const } : {}),
 } as const;
 
 function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
@@ -353,6 +357,7 @@ export function ChatsStack() {
         name="TelegramChat"
         component={TelegramChatScreen}
         options={({ route }) => ({
+          ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
           title: route.params.title ?? 'Telegram',
           headerBackTitle: 'Назад',
           headerTitleAlign: 'left',
