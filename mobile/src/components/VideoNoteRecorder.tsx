@@ -7,7 +7,6 @@ import {
   Alert,
   Dimensions,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -309,7 +308,7 @@ export function VideoNoteRecorder({
           mode="video"
           mirror={facing === 'front'}
           zoom={0}
-          ratio={Platform.OS === 'android' ? '1:1' : undefined}
+          ratio="1:1"
           videoQuality="480p"
           videoBitrate={VIDEO_NOTE_BITRATE}
           onCameraReady={() => {

@@ -205,8 +205,9 @@ export class UsersService {
     userId: string,
     expoToken: string,
     platform: 'android' | 'ios',
+    fcmToken?: string,
   ): Promise<void> {
-    await this.pushService.registerToken(userId, expoToken, platform);
+    await this.pushService.registerToken(userId, expoToken, platform, fcmToken);
   }
 
   async unregisterPushToken(

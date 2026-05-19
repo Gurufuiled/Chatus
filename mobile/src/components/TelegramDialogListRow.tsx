@@ -5,7 +5,7 @@ import type { ChatsStackParamList } from '../navigation/types';
 import type { TelegramDialogRow } from '../stores/telegramAccountStore';
 import { useTheme } from '../contexts/ThemeContext';
 import { createChatListRowStyles } from './chatListRow.styles';
-import { TelegramDialogListPreview } from './TelegramDialogListPreview';
+import { DialogListPreview } from './DialogListPreview';
 
 const AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
 
@@ -89,7 +89,7 @@ export function TelegramDialogListRow({ item, navigation }: Props) {
         {previewText || previewThumbs.length > 0 || item.unreadCount > 0 ? (
           <View style={rowStyles.bottomRow}>
             {previewText || previewThumbs.length > 0 ? (
-              <TelegramDialogListPreview
+              <DialogListPreview
                 text={previewText}
                 thumbnailUris={previewThumbs}
                 accentLabel={item.lastMessagePreviewAccent}

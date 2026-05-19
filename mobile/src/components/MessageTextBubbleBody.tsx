@@ -19,10 +19,12 @@ export function MessageTextBubbleBody({
 }: MessageTextBubbleBodyProps) {
   return (
     <View style={[styles.row, rowStyle]}>
-      <Text style={[textStyle, styles.text]}>
-        {text || ' '}
-        {viewCountNode}
-      </Text>
+      <View style={styles.textWrap}>
+        <Text style={textStyle}>
+          {text || ' '}
+          {viewCountNode}
+        </Text>
+      </View>
       <View style={styles.metaSlot}>{meta}</View>
     </View>
   );
@@ -34,7 +36,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 6,
   },
-  text: {
+  textWrap: {
+    flex: 1,
+    minWidth: 0,
     flexShrink: 1,
   },
   metaSlot: {

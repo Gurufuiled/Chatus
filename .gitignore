@@ -40,6 +40,10 @@ target/
 *.key
 *.mobileprovision
 
+# Firebase secrets (service account key for server FCM push)
+firebase-service-account*.json
+google-services.json
+
 # Local notes / agent context (не в репозитории); содержимое docs кроме планирования в подпапках
 /docs/*
 !/docs/p2p/

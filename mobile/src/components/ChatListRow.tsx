@@ -6,8 +6,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
 import { createChatListRowStyles } from './chatListRow.styles';
+import { DialogListPreview } from './DialogListPreview';
 import { MessageStatusIcon } from './MessageTimeStatus';
 import { getChatListTitle } from '../presentation';
+import { buildChatusDialogPreviewForChat } from '../utils/chatusDialogPreview';
 
 const AVATAR_COLORS = [
   '#5B8DEF',
@@ -56,35 +58,54 @@ export const ChatListRow = React.memo(function ChatListRow({
 }: ChatListRowProps) {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createChatListRowStyles(themeColors), [themeColors]);
-  const lastMessageMetaKey = messageStore(
+  const lastMessageSnapshotKey = messageStore(
     React.useCallback(
       (state) => {
         const chatMessages = state.messagesByChatId[chat.id] ?? [];
         const lastMessage = chat.last_message_id
           ? chatMessages.find((message) => message.id === chat.last_message_id)
           : null;
+        const preview = buildChatusDialogPreviewForChat(chat, lastMessage ?? null);
         return JSON.stringify({
           s: lastMessage?.sender_id ?? null,
           t: lastMessage?.status ?? '',
+          p: preview.text,
+          th: preview.thumbnailUris,
+          a: preview.accentLabel ? 1 : 0,
         });
       },
-      [chat.id, chat.last_message_id]
-    )
+      [chat, chat.id, chat.last_message_id],
+    ),
   );
 
-  const { lastMessageSenderId, lastMessageStatus } = React.useMemo(() => {
+  const { lastMessageSenderId, lastMessageStatus, dialogPreview } = React.useMemo(() => {
     try {
-      const parsed = JSON.parse(lastMessageMetaKey) as { s: string | null; t: string };
-      return { lastMessageSenderId: parsed.s, lastMessageStatus: parsed.t };
+      const parsed = JSON.parse(lastMessageSnapshotKey) as {
+        s: string | null;
+        t: string;
+        p: string;
+        th: string[];
+        a: number;
+      };
+      return {
+        lastMessageSenderId: parsed.s,
+        lastMessageStatus: parsed.t,
+        dialogPreview: {
+          text: parsed.p ?? '',
+          thumbnailUris: Array.isArray(parsed.th) ? parsed.th : [],
+          accentLabel: parsed.a === 1,
+        },
+      };
     } catch {
-      return { lastMessageSenderId: null as string | null, lastMessageStatus: '' };
+      return {
+        lastMessageSenderId: null as string | null,
+        lastMessageStatus: '',
+        dialogPreview: buildChatusDialogPreviewForChat(chat, null),
+      };
     }
-  }, [lastMessageMetaKey]);
+  }, [chat, lastMessageSnapshotKey]);
 
   const title = getChatListTitle(chat);
-  const preview =
-    chat.last_message_preview ||
-    (chat.chat_type === 'channel' ? chat.description || 'Канал' : null);
   const avatarUrl = resolveAvatarUrl(chat.avatar_url);
   const initial = (title.trim()[0] || '?').toUpperCase();
   const avatarColor = getAvatarColor(title);
@@ -138,11 +159,16 @@ export const ChatListRow = React.memo(function ChatListRow({
           ) : null}
         </View>
         <View style={styles.bottomRow}>
-          {preview ? (
-            <Text style={styles.preview} numberOfLines={1}>
-              {preview}
-            </Text>
-          ) : <View style={styles.previewPlaceholder} />}
+          {dialogPreview.text || dialogPreview.thumbnailUris.length > 0 ? (
+            <DialogListPreview
+              text={dialogPreview.text}
+              thumbnailUris={dialogPreview.thumbnailUris}
+              accentLabel={dialogPreview.accentLabel}
+              colors={themeColors}
+            />
+          ) : (
+            <View style={styles.previewPlaceholder} />
+          )}
           {showUnreadBadge ? (
             <View
               style={[

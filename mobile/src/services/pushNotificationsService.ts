@@ -217,7 +217,9 @@ export function resetTelegramPushRegistrationFlag(): void {
 }
 
 /**
- * После успешного входа: разрешения, канал Android, Expo token → бэкенд.
+ * После успешного входа: разрешения, канал Android, Expo token + FCM token → бэкенд.
+ * FCM token (нативный) нужен серверу для прямой отправки через Firebase Admin SDK —
+ * это единственный способ показать уведомление при полностью убитом процессе приложения.
  */
 export async function registerPushWithBackendAfterLogin(): Promise<void> {
   if (!shouldAttemptPushRegistration()) {
@@ -258,12 +260,29 @@ export async function registerPushWithBackendAfterLogin(): Promise<void> {
     return;
   }
 
+  // Нативный FCM device token (Android) — для прямой доставки через Firebase Admin SDK
+  let fcmToken: string | undefined;
+  if (Platform.OS === 'android') {
+    try {
+      const deviceRes = await Notifications.getDevicePushTokenAsync();
+      if (deviceRes.type === 'android' && typeof deviceRes.data === 'string') {
+        fcmToken = deviceRes.data.trim() || undefined;
+      }
+    } catch (e) {
+      console.warn('[push] getDevicePushTokenAsync failed (non-critical)', e);
+    }
+  }
+
   const platform = Platform.OS === 'ios' ? 'ios' : 'android';
   try {
-    const r = await apiPost('/users/me/push-token', {
+    const body: Record<string, unknown> = {
       expo_token: expoToken,
       platform,
-    });
+    };
+    if (fcmToken) {
+      body.fcm_token = fcmToken;
+    }
+    const r = await apiPost('/users/me/push-token', body);
     if (!r.ok) {
       const text = (await r.text().catch(() => '')).slice(0, 400);
       console.warn('[push] POST /users/me/push-token failed', r.status, text);
@@ -276,7 +295,7 @@ export async function registerPushWithBackendAfterLogin(): Promise<void> {
 
   lastRegisteredToken = expoToken;
   if (__DEV__) {
-    console.log('[push] Expo token registered with backend');
+    console.log('[push] Expo token registered with backend', fcmToken ? '(+ FCM token)' : '');
   }
 }
 

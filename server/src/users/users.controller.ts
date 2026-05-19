@@ -102,7 +102,7 @@ export class UsersController {
     @CurrentUser() user: User,
     @Body() dto: RegisterPushTokenDto,
   ) {
-    await this.usersService.registerPushToken(user.id, dto.expo_token, dto.platform);
+    await this.usersService.registerPushToken(user.id, dto.expo_token, dto.platform, dto.fcm_token);
     return { ok: true };
   }
 

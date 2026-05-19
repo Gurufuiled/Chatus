@@ -48,6 +48,7 @@ import {
   CHAT_MSG_VERTICAL_PADDING,
 } from '../presentation/telegramChatUi';
 import {
+  buildInputMessageVideoNoteContent,
   fileUriToPath,
   formattedText,
   formatTime,
@@ -872,7 +873,6 @@ export function TelegramChatScreen() {
       if (!Number.isFinite(chatId)) return;
       const tempId = -Date.now();
       const activeReplyToMessageId = replyToMessageId;
-      const localPath = fileUriToPath(result.uri);
       const optimistic: TelegramMessageRow = {
         id: `temp-${Math.abs(tempId)}`,
         messageId: tempId,
@@ -890,30 +890,38 @@ export function TelegramChatScreen() {
       setReplyToMessageId(null);
       try {
         await ensureReady();
+        const inputMessageContent = buildInputMessageVideoNoteContent({
+          videoUri: result.uri,
+          thumbnailUri: result.thumbnailUri,
+          durationMs: result.durationMs,
+          lengthPx: TELEGRAM_VIDEO_NOTE_SIDE_PX,
+        });
         const response = (await tdlibClient.send({
           '@type': 'sendMessage',
           chat_id: chatId,
           reply_to: getInputReplyTo(activeReplyToMessageId),
-          input_message_content: {
-            '@type': 'inputMessageVideoNote',
-            video_note: {
-              '@type': 'inputFileLocal',
-              path: localPath,
-            },
-            duration: Math.max(1, Math.round(result.durationMs / 1000)),
-            length: TELEGRAM_VIDEO_NOTE_SIDE_PX,
-          },
+          input_message_content: inputMessageContent,
         })) as Record<string, unknown>;
         throwIfTdError(response);
         const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
-        if (mapped) {
-          setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), {
-            ...mapped,
-            mediaUri: mapped.mediaUri ?? result.uri,
-            thumbnailUri: mapped.thumbnailUri ?? result.thumbnailUri,
-            durationMs: mapped.durationMs ?? result.durationMs,
-          }));
+        if (!mapped) {
+          throw new Error('Telegram не вернул отправленное сообщение.');
         }
+        if (mapped.kind === 'video') {
+          const sentId = typeof response.id === 'number' ? response.id : null;
+          if (sentId != null) {
+            await tdlibDeleteMessages(chatId, [sentId], true).catch(() => undefined);
+          }
+          throw new Error(
+            'Файл не подошёл для кружка (нужно квадратное видео). Запишите ещё раз: свайп вверх по кнопке микрофона → удержание → отпустите.',
+          );
+        }
+        setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), {
+          ...mapped,
+          mediaUri: mapped.mediaUri ?? result.uri,
+          thumbnailUri: mapped.thumbnailUri ?? result.thumbnailUri,
+          durationMs: mapped.durationMs ?? result.durationMs,
+        }));
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
@@ -1111,7 +1119,10 @@ export function TelegramChatScreen() {
       ) : null;
 
       /** Как в `ChatMessageList`: полная ширина строки → `messageWrap` с боковым padding и `alignItems` для своих/чужих. */
-      const pressableRowStyle = { width: '100%' as const };
+      const pressableRowStyle =
+        !isMe && isGroupChat
+          ? ({ flex: 1, minWidth: 0 } as const)
+          : ({ width: '100%' } as const);
       const pressableA11y = telegramSelectionMode
         ? {
             accessibilityRole: 'button' as const,
@@ -1225,19 +1236,43 @@ export function TelegramChatScreen() {
           ? styles.channelIncomingWrap
           : isChannel && isMe
             ? styles.channelOutgoingPostWrap
-            : contentMeasureStyle,
+            : !isMe && isGroupChat
+              ? styles.groupIncomingBubbleMeasure
+              : contentMeasureStyle,
       ];
 
       const channelPostMedia = isChannel;
 
       const textBubbleColorStyle = isMe
         ? (isLastInGroup ? styles.bubbleMe : styles.bubbleMeChained)
-        : (isLastInGroup ? styles.bubbleOther : styles.bubbleOtherChained);
+        : [
+            isLastInGroup ? styles.bubbleOther : styles.bubbleOtherChained,
+            isGroupChat && styles.groupMessageSurface,
+          ];
 
       const outgoingGradientBubbleStyle = [
         styles.bubble,
         isLastInGroup ? { borderBottomRightRadius: 6 } : null,
       ];
+
+      const mediaStackStyle = channelIncoming ? styles.mediaStackChannel : styles.mediaStack;
+
+      const wrapTelegramMediaBubble = (content: React.ReactNode) => (
+        <View style={mediaStackStyle}>
+          {isMe && useViewportOutgoingGradient ? (
+            <MeBubbleChrome
+              active
+              scrollTick={scrollTick}
+              fillColor={chatTheme.bubbleMe}
+              style={styles.mediaOutgoingChrome}
+            >
+              {content}
+            </MeBubbleChrome>
+          ) : (
+            content
+          )}
+        </View>
+      );
 
       if (item.kind === 'voice') {
         if (!item.voiceUri) {
@@ -1431,6 +1466,29 @@ export function TelegramChatScreen() {
       }
 
       if (item.kind === 'image' && item.mediaUri) {
+        const imageBubble = (
+          <ImageBubble
+            uri={item.mediaUri}
+            isMe={isMe}
+            width={item.width}
+            height={item.height}
+            caption={item.text}
+            time={formatTime(item.dateMs)}
+            status={item.status}
+            header={bubbleHeader}
+            bubbleMeColor={isMe ? meBubbleFill : colors.bubbleMe}
+            outgoingTextColor={isMe ? outgoingBubbleTextColor : '#FFFFFF'}
+            incomingBubbleBackground={colors.bubbleOther}
+            incomingBubbleBorderColor={colors.bubbleOtherBorder}
+            incomingCaptionTextColor={colors.textPrimary}
+            viewCount={item.viewCount}
+            viewCountShortLabel={viewCountFormatted ?? undefined}
+            mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
+            incomingChannelPost={channelIncoming}
+            footer={discussionFooter}
+          />
+        );
+
         return wrapSelectionShell(
           <Pressable
             {...pressableA11y}
@@ -1442,64 +1500,38 @@ export function TelegramChatScreen() {
               collapsable={false}
               style={measureShellStyle}
             >
-              {isMe && useViewportOutgoingGradient ? (
-                <MeBubbleChrome
-                  active
-                  scrollTick={scrollTick}
-                  fillColor={chatTheme.bubbleMe}
-                  style={[{ alignSelf: 'flex-end' }, outgoingGradientBubbleStyle, { overflow: 'hidden' }]}
-                >
-                  <ImageBubble
-                    uri={item.mediaUri}
-                    isMe={isMe}
-                    width={item.width}
-                    height={item.height}
-                    caption={item.text}
-                    time={formatTime(item.dateMs)}
-                    status={item.status}
-                    header={bubbleHeader}
-                    bubbleMeColor={meBubbleFill}
-                    outgoingTextColor={outgoingBubbleTextColor}
-                    incomingBubbleBackground={colors.bubbleOther}
-                    incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                    incomingCaptionTextColor={colors.textPrimary}
-                    viewCount={item.viewCount}
-                    viewCountShortLabel={viewCountFormatted ?? undefined}
-                    mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
-                    incomingChannelPost={channelIncoming}
-                    footer={discussionFooter}
-                    style={outgoingGradientBubbleStyle}
-                  />
-                </MeBubbleChrome>
-              ) : (
-                <ImageBubble
-                  uri={item.mediaUri}
-                  isMe={isMe}
-                  width={item.width}
-                  height={item.height}
-                  caption={item.text}
-                  time={formatTime(item.dateMs)}
-                  status={item.status}
-                  header={bubbleHeader}
-                  bubbleMeColor={colors.bubbleMe}
-                  outgoingTextColor="#FFFFFF"
-                  incomingBubbleBackground={colors.bubbleOther}
-                  incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                  incomingCaptionTextColor={colors.textPrimary}
-                  viewCount={item.viewCount}
-                  viewCountShortLabel={viewCountFormatted ?? undefined}
-                  mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
-                  incomingChannelPost={channelIncoming}
-                  footer={discussionFooter}
-                  style={outgoingGradientBubbleStyle}
-                />
-              )}
+              {channelIncoming ? imageBubble : wrapTelegramMediaBubble(imageBubble)}
             </View>
           </Pressable>,
         );
       }
 
       if (item.kind === 'video' && item.mediaUri) {
+        const videoBubble = (
+          <VideoBubble
+            uri={item.mediaUri}
+            thumbnailUri={item.thumbnailUri ?? undefined}
+            isMe={isMe}
+            width={item.width}
+            height={item.height}
+            durationMs={item.durationMs ?? 0}
+            caption={item.text}
+            time={formatTime(item.dateMs)}
+            status={item.status}
+            header={bubbleHeader}
+            bubbleMeColor={isMe ? meBubbleFill : colors.bubbleMe}
+            outgoingTextColor={isMe ? outgoingBubbleTextColor : '#FFFFFF'}
+            incomingBubbleBackground={colors.bubbleOther}
+            incomingBubbleBorderColor={colors.bubbleOtherBorder}
+            incomingCaptionTextColor={colors.textPrimary}
+            viewCount={item.viewCount}
+            viewCountShortLabel={viewCountFormatted ?? undefined}
+            mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
+            incomingChannelPost={channelIncoming}
+            footer={discussionFooter}
+          />
+        );
+
         return wrapSelectionShell(
           <Pressable
             {...pressableA11y}
@@ -1511,62 +1543,7 @@ export function TelegramChatScreen() {
               collapsable={false}
               style={measureShellStyle}
             >
-              {isMe && useViewportOutgoingGradient ? (
-                <MeBubbleChrome
-                  active
-                  scrollTick={scrollTick}
-                  fillColor={chatTheme.bubbleMe}
-                  style={[{ alignSelf: 'flex-end' }, outgoingGradientBubbleStyle, { overflow: 'hidden' }]}
-                >
-                  <VideoBubble
-                    uri={item.mediaUri}
-                    thumbnailUri={item.thumbnailUri ?? undefined}
-                    isMe={isMe}
-                    width={item.width}
-                    height={item.height}
-                    durationMs={item.durationMs ?? 0}
-                    caption={item.text}
-                    time={formatTime(item.dateMs)}
-                    status={item.status}
-                    header={bubbleHeader}
-                    bubbleMeColor={meBubbleFill}
-                    outgoingTextColor={outgoingBubbleTextColor}
-                    incomingBubbleBackground={colors.bubbleOther}
-                    incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                    incomingCaptionTextColor={colors.textPrimary}
-                    viewCount={item.viewCount}
-                    viewCountShortLabel={viewCountFormatted ?? undefined}
-                    mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
-                    incomingChannelPost={channelIncoming}
-                    footer={discussionFooter}
-                    style={outgoingGradientBubbleStyle}
-                  />
-                </MeBubbleChrome>
-              ) : (
-                <VideoBubble
-                  uri={item.mediaUri}
-                  thumbnailUri={item.thumbnailUri ?? undefined}
-                  isMe={isMe}
-                  width={item.width}
-                  height={item.height}
-                  durationMs={item.durationMs ?? 0}
-                  caption={item.text}
-                  time={formatTime(item.dateMs)}
-                  status={item.status}
-                  header={bubbleHeader}
-                  bubbleMeColor={colors.bubbleMe}
-                  outgoingTextColor="#FFFFFF"
-                  incomingBubbleBackground={colors.bubbleOther}
-                  incomingBubbleBorderColor={colors.bubbleOtherBorder}
-                  incomingCaptionTextColor={colors.textPrimary}
-                  viewCount={item.viewCount}
-                  viewCountShortLabel={viewCountFormatted ?? undefined}
-                  mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
-                  incomingChannelPost={channelIncoming}
-                  footer={discussionFooter}
-                  style={outgoingGradientBubbleStyle}
-                />
-              )}
+              {channelIncoming ? videoBubble : wrapTelegramMediaBubble(videoBubble)}
             </View>
           </Pressable>,
         );

@@ -363,14 +363,20 @@ export async function mapTdMessage(
     const file = getNestedRecord(videoNote?.video);
     const thumbnail = getNestedRecord(videoNote?.thumbnail);
     const thumbnailFile = getNestedRecord(thumbnail?.file);
-    const [uri, thumbnailUri] = await Promise.all([resolveTdFileUri(file), resolveTdFileUri(thumbnailFile)]);
+    const mini = getNestedRecord(videoNote?.minithumbnail);
+    const miniData = typeof mini?.data === 'string' && mini.data.length > 8 ? mini.data : null;
+    const miniUri = miniData ? `data:image/jpeg;base64,${miniData}` : null;
+    const [uri, thumbnailUri] = await Promise.all([
+      resolveTdFileUri(file),
+      resolveTdFileUri(thumbnailFile),
+    ]);
     const side = getNumber(videoNote?.length);
     return {
       ...base,
       kind: uri ? 'video_note' : 'service',
       text: 'Видеосообщение',
       mediaUri: uri,
-      thumbnailUri,
+      thumbnailUri: thumbnailUri ?? miniUri,
       width: side,
       height: side,
       durationMs: (getNumber(videoNote?.duration) ?? 0) * 1000,

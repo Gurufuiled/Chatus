@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 import type { ThemeColors } from '../../theme/palettes';
-import { withAlpha } from '../../theme/stylePrimitives';
+import { bubbleRadius, withAlpha } from '../../theme/stylePrimitives';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../../presentation';
 import {
   CHAT_BUBBLE_MAX_WIDTH_PCT,
@@ -113,6 +113,19 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     messageContentMeasure: {
       flexShrink: 1,
     },
+    /** Медиа-баблы (фото/видео) — без padding `bubble`, как в Chatus `mediaStack`. */
+    mediaStack: {
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
+    },
+    mediaStackChannel: {
+      maxWidth: '100%',
+      alignSelf: 'stretch',
+    },
+    mediaOutgoingChrome: {
+      alignSelf: 'flex-end',
+      overflow: 'hidden',
+      ...bubbleRadius.mine,
+    },
     bubble: {
       maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
       borderRadius: 16,
@@ -210,6 +223,17 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     groupIncomingContent: {
       minWidth: 0,
       flexShrink: 1,
+      flexGrow: 1,
+    },
+    /** Ширина бабла в группе — на всю колонку после аватара (как Chatus). */
+    groupIncomingBubbleMeasure: {
+      width: '100%',
+      minWidth: 0,
+      alignSelf: 'stretch',
+    },
+    groupMessageSurface: {
+      maxWidth: '100%',
+      alignSelf: 'flex-start',
     },
     viewCountText: {
       fontSize: 11,
