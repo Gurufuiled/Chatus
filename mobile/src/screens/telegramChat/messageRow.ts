@@ -22,9 +22,40 @@ export function optimisticOutgoingMessage(
   };
 }
 
+/** Lowercase haystack for in-chat search (text, captions, type labels). */
+export function getTelegramSearchHaystack(row: TelegramMessageRow): string {
+  const parts: string[] = [];
+  const text = row.text.trim();
+  if (text) parts.push(text);
+  if (row.fileName?.trim()) parts.push(row.fileName.trim());
+  switch (row.kind) {
+    case 'voice':
+      parts.push('голосовое сообщение');
+      break;
+    case 'video_note':
+      parts.push('видеосообщение');
+      break;
+    case 'image':
+      if (!text) parts.push('фото');
+      break;
+    case 'video':
+      if (!text) parts.push('видео');
+      break;
+    case 'album':
+      parts.push('альбом');
+      break;
+    case 'file':
+      if (!text && !row.fileName?.trim()) parts.push('файл');
+      break;
+    default:
+      break;
+  }
+  return parts.join(' ').toLowerCase();
+}
+
 export function getTelegramCopyableContent(row: TelegramMessageRow): string {
   if (row.kind === 'text') return row.text.trim();
-  if (row.kind === 'image' || row.kind === 'video') return row.text.trim();
+  if (row.kind === 'image' || row.kind === 'video' || row.kind === 'album') return row.text.trim();
   if (row.kind === 'file') return row.fileName?.trim() || row.text.trim();
   return '';
 }
@@ -37,12 +68,18 @@ export function canTelegramSwipeReply(row: TelegramMessageRow): boolean {
     row.kind === 'video_note' ||
     row.kind === 'image' ||
     row.kind === 'video' ||
+    row.kind === 'album' ||
     row.kind === 'file'
   );
 }
 
 export function getTelegramReplyPreviewText(row: TelegramMessageRow): string {
   if (row.kind === 'text') return row.text.trim() || 'Пустое сообщение';
+  if (row.kind === 'album') {
+    const count = row.albumMedia?.length ?? 0;
+    const label = count > 1 ? `Альбом (${count})` : 'Альбом';
+    return row.text.trim() ? `${label}: ${row.text.trim()}` : label;
+  }
   if (row.kind === 'image') return row.text.trim() ? `Фото: ${row.text.trim()}` : 'Фото';
   if (row.kind === 'video') return row.text.trim() ? `Видео: ${row.text.trim()}` : 'Видео';
   if (row.kind === 'video_note') return 'Видеосообщение';
@@ -53,6 +90,12 @@ export function getTelegramReplyPreviewText(row: TelegramMessageRow): string {
 
 export function getTelegramReplyThumbnailUri(row: TelegramMessageRow | null | undefined): string | null {
   if (!row) return null;
+  if (row.kind === 'album') {
+    const first = row.albumMedia?.[0];
+    if (!first) return null;
+    if (first.kind === 'image') return first.mediaUri?.trim() || null;
+    return first.thumbnailUri?.trim() || first.mediaUri?.trim() || null;
+  }
   if (row.kind === 'image') return row.mediaUri?.trim() || null;
   if (row.kind === 'video') return row.thumbnailUri?.trim() || null;
   if (row.kind === 'video_note')
@@ -62,7 +105,16 @@ export function getTelegramReplyThumbnailUri(row: TelegramMessageRow | null | un
 
 export function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: number): Message {
   let media: Message['media'] | undefined;
-  if (row.kind === 'image' || row.kind === 'video' || row.kind === 'file') {
+  if (row.kind === 'album' && row.albumMedia && row.albumMedia.length > 0) {
+    media = row.albumMedia.map((item) => ({
+      media_type: item.kind,
+      remote_url: item.mediaUri ?? undefined,
+      thumbnail_url: item.thumbnailUri ?? undefined,
+      width: item.width,
+      height: item.height,
+      duration_ms: item.durationMs,
+    }));
+  } else if (row.kind === 'image' || row.kind === 'video' || row.kind === 'file') {
     media = [
       {
         media_type: row.kind,
@@ -103,13 +155,17 @@ export function telegramRowToInputReplyMessage(row: TelegramMessageRow, chatId: 
     chat_id: String(chatId),
     sender_id: row.outgoing ? 'telegram:self' : 'telegram:peer',
     msg_type:
-      row.kind === 'image' ||
-      row.kind === 'video' ||
-      row.kind === 'file' ||
-      row.kind === 'voice' ||
-      row.kind === 'video_note'
-        ? row.kind
-        : 'text',
+      row.kind === 'album'
+        ? row.albumMedia?.[0]?.kind === 'video'
+          ? 'video'
+          : 'image'
+        : row.kind === 'image' ||
+            row.kind === 'video' ||
+            row.kind === 'file' ||
+            row.kind === 'voice' ||
+            row.kind === 'video_note'
+          ? row.kind
+          : 'text',
     content: row.kind === 'text' ? row.text : row.text || null,
     reply_to_id: row.replyToMessageId != null ? String(row.replyToMessageId) : null,
     is_edited: 0,
@@ -169,7 +225,8 @@ export function upsertMessage(
     (item) =>
       item.id !== next.id &&
       item.messageId !== next.messageId &&
-      (oldMessageId == null || item.messageId !== oldMessageId),
+      (oldMessageId == null || item.messageId !== oldMessageId) &&
+      !(oldMessageId != null && item.albumMessageIds?.includes(oldMessageId)),
   );
   return [next, ...withoutSame].sort((a, b) => b.messageId - a.messageId);
 }
@@ -194,5 +251,10 @@ export function applyReadOutboxStatus(
 }
 
 export function markMessageFailed(rows: TelegramMessageRow[], messageId: number): TelegramMessageRow[] {
-  return rows.map((item) => (item.messageId === messageId ? { ...item, status: 'failed' } : item));
+  return rows.map((item) => {
+    if (item.messageId === messageId || item.albumMessageIds?.includes(messageId)) {
+      return { ...item, status: 'failed' };
+    }
+    return item;
+  });
 }

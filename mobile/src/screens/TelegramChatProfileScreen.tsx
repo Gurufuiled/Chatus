@@ -468,11 +468,16 @@ export function TelegramChatProfileScreen() {
   }, [chatId, ensureReady, isMuted]);
 
   const handleSearchPress = useCallback(() => {
-    navigation.navigate('TelegramChat', {
-      telegramChatId,
-      title: displayName,
-      avatarUri: avatarUrl ?? routeAvatarUri ?? null,
-      chatType: route.params.chatType ?? null,
+    navigation.navigate({
+      name: 'TelegramChat',
+      params: {
+        telegramChatId,
+        title: displayName,
+        avatarUri: avatarUrl ?? routeAvatarUri ?? null,
+        chatType: route.params.chatType ?? null,
+        startSearch: true,
+      },
+      merge: true,
     });
   }, [
     avatarUrl,

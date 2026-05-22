@@ -21,6 +21,7 @@ import {
   tdlibUnpinChatMessage,
 } from './tdlibChatActions';
 import type { TelegramChatStyles } from './telegramChatStyles';
+import { getTelegramRowTdMessageIds } from './telegramAlbumRows';
 import type { TelegramMessageMenuState, TelegramMessageRow } from './types';
 import type { ChatTheme } from '../../theme/chatThemes';
 
@@ -265,11 +266,13 @@ export function useTelegramChatMenu({
   );
 
   const confirmTelegramDelete = useCallback(
-    async (row: TelegramMessageRow, tdId: number) => {
+    async (row: TelegramMessageRow) => {
+      const ids = getTelegramRowTdMessageIds(row);
+      if (ids.length === 0) return;
       const revoke = row.outgoing === true;
       try {
         await ensureReady();
-        await tdlibDeleteMessages(chatId, [tdId], revoke);
+        await tdlibDeleteMessages(chatId, ids, revoke);
         closeMenu();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -335,10 +338,12 @@ export function useTelegramChatMenu({
       }
 
       if (key === 'forward') {
-        if (tdId == null) return;
+        if (!row) return;
+        const forwardIds = getTelegramRowTdMessageIds(row);
+        if (forwardIds.length === 0) return;
         closeMenu();
         setTimeout(() => {
-          onStartForward([tdId]);
+          onStartForward(forwardIds);
         }, 150);
         return;
       }
@@ -375,8 +380,8 @@ export function useTelegramChatMenu({
         return;
       }
 
-      if (key === 'delete_confirm' && row && tdId != null) {
-        void confirmTelegramDelete(row, tdId);
+      if (key === 'delete_confirm' && row) {
+        void confirmTelegramDelete(row);
       }
     },
     [confirmTelegramDelete, menuState, messagesRef],
@@ -401,7 +406,12 @@ export function useTelegramChatMenu({
 
   const renderTelegramMenuPreviewBody = useCallback(
     (message: Message, forcedWidth?: number) => {
-      const row = messagesRef.current.find((r) => r.id === message.id);
+      const numericId = Number(message.id);
+      const row =
+        (!Number.isNaN(numericId) ? messageById.get(numericId) : undefined) ??
+        messagesRef.current.find(
+          (r) => r.id === message.id || String(r.messageId) === message.id,
+        );
       return (
         <TelegramChatMenuPreviewBody
           message={message}

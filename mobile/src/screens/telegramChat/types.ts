@@ -5,8 +5,21 @@ export type TelegramMessageKind =
   | 'image'
   | 'video'
   | 'file'
+  | 'album'
   | 'service';
+
 export type TelegramMessageStatus = 'sending' | 'sent' | 'read' | 'failed';
+
+/** One tile in a grouped photo/video album (TDLib `media_album_id`). */
+export type TelegramAlbumMediaItem = {
+  messageId: number;
+  kind: 'image' | 'video';
+  mediaUri?: string | null;
+  thumbnailUri?: string | null;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+};
 
 export type TelegramMessageRow = {
   id: string;
@@ -26,6 +39,12 @@ export type TelegramMessageRow = {
   height?: number;
   fileName?: string;
   fileSize?: number;
+  /** TDLib `media_album_id` for photo/video rows before collapse. */
+  mediaAlbumId?: number;
+  /** Collapsed album tiles (kind === `album`). */
+  albumMedia?: TelegramAlbumMediaItem[];
+  /** All TDLib message ids in the album (forward / delete). */
+  albumMessageIds?: number[];
   /** Display name of the sender – populated for incoming messages in group/supergroup chats. */
   senderName?: string | null;
   /** TDLib user id for incoming messages from `messageSenderUser` (groups / supergroups). */

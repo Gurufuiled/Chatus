@@ -47,6 +47,8 @@ export type ChatsStackParamList = {
     chatType?: string | null;
     /** Jump to message after navigating from profile shared media */
     focusMessageId?: number;
+    /** Open in-chat search (e.g. from profile) */
+    startSearch?: boolean;
     /** Discussion thread inside supergroup / linked discussion chat */
     messageThreadId?: number;
   };

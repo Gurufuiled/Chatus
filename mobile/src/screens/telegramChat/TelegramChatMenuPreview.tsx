@@ -8,6 +8,7 @@ import { ReplyPreview } from '../../components/ReplyPreview';
 import { VideoBubble } from '../../components/VideoBubble';
 import { VideoNoteBubble } from '../../components/VideoNoteBubble';
 import { VoiceBubble } from '../../components/VoiceBubble';
+import { TelegramMediaAlbumBubble } from '../../components/TelegramMediaAlbumBubble';
 import type { Message } from '../../stores/types';
 import type { ThemeColors } from '../../theme/palettes';
 import { formatTime } from './composer';
@@ -48,7 +49,7 @@ export function TelegramChatMenuPreviewBody({
   resolvedScheme: resolvedSchemeProp,
   scrollTick = 0,
 }: TelegramChatMenuPreviewProps) {
-  if (!row || String(row.messageId) !== message.id) return <View />;
+  if (!row || (String(row.messageId) !== message.id && row.id !== message.id)) return <View />;
   const fixedWidthStyle = forcedWidth ? { width: forcedWidth, maxWidth: forcedWidth } : undefined;
   const isMe = row.outgoing;
   const resolvedScheme = resolvedSchemeProp ?? 'light';
@@ -198,6 +199,28 @@ export function TelegramChatMenuPreviewBody({
           }
           scrollTick={scrollTick}
           registerPlaybackState={false}
+        />
+      </View>
+    );
+  }
+
+  if (row.kind === 'album' && row.albumMedia && row.albumMedia.length > 0) {
+    return (
+      <View style={fixedWidthStyle}>
+        <TelegramMediaAlbumBubble
+          items={row.albumMedia}
+          isMe={isMe}
+          caption={row.text}
+          time={formatTime(row.dateMs)}
+          status={row.status}
+          styles={styles}
+          chatTheme={chatTheme}
+          viewportOutgoingGradient={usePreviewOutgoingGradient}
+          scrollTick={scrollTick}
+          incomingCaptionBg={colors.bubbleOther}
+          incomingCaptionBorder={colors.bubbleOtherBorder}
+          incomingCaptionText={colors.textPrimary}
+          incomingCaptionMeta={colors.textSecondary}
         />
       </View>
     );

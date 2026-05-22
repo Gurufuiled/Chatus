@@ -7,6 +7,7 @@ import {
   setCachedUserName,
 } from '../../services/tdlib/userNameCache';
 import { previewForUnsupported } from './composer';
+import { getTdMediaAlbumId } from './telegramAlbumRows';
 import type { TelegramMessageRow, TelegramMessageStatus } from './types';
 
 export type MapTdMessageOptions = {
@@ -289,6 +290,7 @@ export async function mapTdMessage(
     outgoing || !loadAvatar ? undefined : incomingSender?.avatarUri;
   const viewCount = getTdViewCount(raw);
   const { discussionReplyCount, discussionChatId, messageThreadId } = getTdDiscussionFields(raw);
+  const mediaAlbumId = getTdMediaAlbumId(raw);
   const base = {
     id: String(id),
     messageId: id,
@@ -303,6 +305,7 @@ export async function mapTdMessage(
     discussionReplyCount,
     discussionChatId,
     messageThreadId,
+    mediaAlbumId,
   };
 
   if (kind === 'messageText') {

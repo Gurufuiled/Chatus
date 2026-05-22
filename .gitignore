@@ -50,6 +50,8 @@ google-services.json
 !/docs/p2p/**
 !/docs/tasks/
 !/docs/tasks/**
+!/docs/telegram/
+!/docs/telegram/**
 /steps/
 /Improvements/
 

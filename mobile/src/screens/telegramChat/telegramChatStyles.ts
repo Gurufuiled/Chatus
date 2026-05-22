@@ -358,6 +358,146 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       maxWidth: '100%',
       width: '100%',
     },
+    albumBubble: {
+      maxWidth: '100%',
+      borderRadius: 10,
+      overflow: 'hidden',
+      backgroundColor: 'transparent',
+    },
+    albumBubbleMe: {
+      alignSelf: 'flex-end',
+    },
+    albumBubbleOther: {
+      alignSelf: 'flex-start',
+    },
+    albumGridClip: {
+      borderRadius: 10,
+      overflow: 'hidden',
+      backgroundColor: '#D8DEE7',
+    },
+    albumRow: {
+      flexDirection: 'row',
+      gap: 1.5,
+    },
+    albumColumn: {
+      gap: 1.5,
+    },
+    albumGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 1.5,
+    },
+    albumTile: {
+      overflow: 'hidden',
+      backgroundColor: '#C8D0DC',
+    },
+    albumImage: {
+      width: '100%',
+      height: '100%',
+    },
+    albumVideoBadge: {
+      position: 'absolute',
+      left: 6,
+      bottom: 6,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: 'rgba(15,23,42,0.68)',
+    },
+    albumVideoDuration: {
+      fontSize: 10,
+      lineHeight: 12,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    albumTimeOverlay: {
+      position: 'absolute',
+      right: 6,
+      bottom: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+      borderRadius: 999,
+      backgroundColor: 'rgba(15,23,42,0.62)',
+    },
+    albumExtraOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(15,23,42,0.42)',
+    },
+    albumExtraText: {
+      fontSize: 22,
+      lineHeight: 26,
+      fontWeight: '800',
+      color: '#FFFFFF',
+    },
+    albumCaptionWrap: {
+      paddingHorizontal: 10,
+      paddingTop: 7,
+      paddingBottom: 6,
+    },
+    albumCaptionMe: {
+      backgroundColor: colors.bubbleMe,
+    },
+    albumCaptionOther: {
+      backgroundColor: colors.bubbleOther,
+    },
+    albumCaptionText: {
+      fontSize: 15,
+      lineHeight: 20,
+      color: colors.textPrimary,
+    },
+    messageContentHighlighted: {
+      borderRadius: 22,
+      shadowColor: '#F59E0B',
+      shadowOpacity: 0.28,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 8,
+    },
+    searchMatchOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      pointerEvents: 'box-none',
+      zIndex: 24,
+    },
+    searchMatchNavColumn: {
+      position: 'absolute',
+      right: 10,
+      top: '30%',
+      gap: 10,
+      alignItems: 'center',
+    },
+    searchMatchNavButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: 'rgba(18, 22, 28, 0.5)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.14)',
+    },
+    searchMatchNavButtonPressed: {
+      opacity: 0.78,
+    },
+    searchMatchCounterPill: {
+      position: 'absolute',
+      left: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: 'rgba(18, 22, 28, 0.52)',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255,255,255,0.1)',
+    },
+    searchMatchCounterText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
   });
 }
 

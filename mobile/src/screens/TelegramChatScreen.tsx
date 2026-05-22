@@ -1,6 +1,19 @@
 import Feather from '@expo/vector-icons/Feather';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Image, Pressable, Text, View, useWindowDimensions, type ViewStyle } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Image,
+  InteractionManager,
+  Keyboard,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+  type ViewStyle,
+  Platform,
+} from 'react-native';
 import { BlurTargetView } from 'expo-blur';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,11 +26,15 @@ import {
 import Reanimated, { useAnimatedKeyboard, useSharedValue } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
+import { ChatTopBanners } from '../components/ChatTopBanners';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
+import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import { formatPresence, formatGroupSubtitle } from '../navigation/ChatsStack';
 import { TelegramForwardSheet } from '../components/TelegramForwardSheet';
 import { FileBubble } from '../components/FileBubble';
 import { ImageBubble } from '../components/ImageBubble';
-import { InputBar, type FilePickResult, type MediaPickResult } from '../components/InputBar';
+import { InputBar, type FilePickResult, type MediaAlbumPickResult, type MediaPickResult } from '../components/InputBar';
+import { TelegramMediaAlbumBubble } from '../components/TelegramMediaAlbumBubble';
 import { MessageTextBubbleBody } from '../components/MessageTextBubbleBody';
 import { MessageTimeStatus } from '../components/MessageTimeStatus';
 import { ReplySwipeWrapper } from '../components/ReplySwipeWrapper';
@@ -61,6 +78,7 @@ import {
   canTelegramSwipeReply,
   getTelegramReplyPreviewText,
   getTelegramReplyThumbnailUri,
+  getTelegramSearchHaystack,
   isSameTelegramChain,
   markMessageFailed,
   optimisticOutgoingMessage,
@@ -79,8 +97,17 @@ import {
   mapTdMessage,
   mapTdMessages,
 } from './telegramChat/tdlibMapping';
-import type { TelegramMessageRow } from './telegramChat/types';
-import { tdlibDeleteMessages, tdlibForwardMessages } from './telegramChat/tdlibChatActions';
+import {
+  getTelegramRowTdMessageIds,
+  mergeTelegramFeedRows,
+  normalizeTelegramFeedRows,
+} from './telegramChat/telegramAlbumRows';
+import type { TelegramAlbumMediaItem, TelegramMessageRow } from './telegramChat/types';
+import {
+  tdlibDeleteMessages,
+  tdlibForwardMessages,
+  tdlibUnpinChatMessage,
+} from './telegramChat/tdlibChatActions';
 import {
   deleteTelegramMessagesFromCache,
   loadTelegramMessagesFromCache,
@@ -88,6 +115,7 @@ import {
 } from './telegramChat/telegramMessageCache';
 import { scheduleNeighborTelegramChatsPreload } from './telegramChat/telegramChatPreload';
 import { useTelegramChatMenu } from './telegramChat/useTelegramChatMenu';
+import { renderTextWithSearchHighlight } from '../utils/searchHighlightText';
 
 const TELEGRAM_PEER_AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
 /** TDLib `inputMessageVideoNote.length` — квадрат, ≤640, как у записи кружка в Chatus. */
@@ -135,6 +163,7 @@ export function TelegramChatScreen() {
     avatarUri,
     chatType: routeChatType,
     focusMessageId,
+    startSearch,
     messageThreadId,
   } = route.params;
   const telegramWallpaperKey = `telegram:${telegramChatId}`;
@@ -189,6 +218,14 @@ export function TelegramChatScreen() {
     setScrollTick((t) => (t + 1) & 0xffff);
   }, []);
 
+  const [isSearchMode, setIsSearchMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchActiveMatchIndex, setSearchActiveMatchIndex] = useState(0);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const searchInputRef = useRef<TextInput | null>(null);
+  const matchedMessageIdsRef = useRef<string[]>([]);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const headerTitle = useMemo(() => title || `Telegram ${telegramChatId}`, [telegramChatId, title]);
   const headerSubtitle = useMemo(() => {
     if (memberCount != null && memberCount > 0) {
@@ -202,6 +239,11 @@ export function TelegramChatScreen() {
     const map = new Map<number, TelegramMessageRow>();
     for (const message of messages) {
       map.set(message.messageId, message);
+      if (message.kind === 'album' && message.albumMessageIds) {
+        for (const albumId of message.albumMessageIds) {
+          map.set(albumId, message);
+        }
+      }
     }
     return map;
   }, [messages]);
@@ -211,6 +253,27 @@ export function TelegramChatScreen() {
     [chatId, replyToRow],
   );
   const replyAuthorName = replyToRow ? (replyToRow.outgoing ? 'Вы' : headerTitle) : null;
+
+  const pinnedRow = useMemo(() => {
+    if (pinnedMessageId == null) return null;
+    return messageById.get(pinnedMessageId) ?? null;
+  }, [messageById, pinnedMessageId]);
+
+  const pinnedMessageText = useMemo(() => {
+    if (pinnedMessageId == null) return null;
+    if (pinnedRow) return getTelegramReplyPreviewText(pinnedRow);
+    return 'Закреплённое сообщение';
+  }, [pinnedMessageId, pinnedRow]);
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const matchedMessageIds = useMemo(() => {
+    if (!normalizedSearchQuery) return [];
+    return messages
+      .filter((row) => getTelegramSearchHaystack(row).includes(normalizedSearchQuery))
+      .map((row) => row.id);
+  }, [messages, normalizedSearchQuery]);
+  matchedMessageIdsRef.current = matchedMessageIds;
+  const searchMatchSignature = matchedMessageIds.join('|');
 
   const telegramSelectionMode = selectedTelegramMessageIds.length > 0;
 
@@ -254,7 +317,10 @@ export function TelegramChatScreen() {
   }, [messages, selectedTelegramMessageIds]);
 
   const selectedTdMessageIds = useMemo(() => {
-    const ids = selectedTelegramRows.filter((r) => r.messageId > 0).map((r) => r.messageId);
+    const ids: number[] = [];
+    for (const row of selectedTelegramRows) {
+      ids.push(...getTelegramRowTdMessageIds(row));
+    }
     return [...new Set(ids)].sort((a, b) => a - b);
   }, [selectedTelegramRows]);
 
@@ -335,12 +401,16 @@ export function TelegramChatScreen() {
     if (!canBatchTdLib || !Number.isFinite(chatId)) return;
     const outgoingIds = [
       ...new Set(
-        selectedTelegramRows.filter((r) => r.messageId > 0 && r.outgoing).map((r) => r.messageId),
+        selectedTelegramRows
+          .filter((r) => r.outgoing)
+          .flatMap((r) => getTelegramRowTdMessageIds(r)),
       ),
     ];
     const incomingIds = [
       ...new Set(
-        selectedTelegramRows.filter((r) => r.messageId > 0 && !r.outgoing).map((r) => r.messageId),
+        selectedTelegramRows
+          .filter((r) => !r.outgoing)
+          .flatMap((r) => getTelegramRowTdMessageIds(r)),
       ),
     ];
 
@@ -414,6 +484,116 @@ export function TelegramChatScreen() {
     scrollTick,
   });
 
+  const handleCancelSearch = useCallback(() => {
+    setIsSearchMode(false);
+    setSearchQuery('');
+    setSearchActiveMatchIndex(0);
+    setHighlightedMessageId(null);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
+    Keyboard.dismiss();
+  }, []);
+
+  const handleOpenSearch = useCallback(() => {
+    setIsSearchMode(true);
+    InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    });
+  }, []);
+
+  const scrollToMessageRowId = useCallback(
+    (
+      rowId: string,
+      missingTitle?: string,
+      options?: { persistHighlight?: boolean },
+    ) => {
+      const targetIndex = messages.findIndex((m) => m.id === rowId);
+      if (targetIndex < 0) {
+        if (missingTitle) {
+          Alert.alert(missingTitle, 'Нужное сообщение пока не загружено в этот экран.');
+        }
+        return false;
+      }
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToIndex({
+          index: targetIndex,
+          animated: true,
+          viewPosition: 0.45,
+        });
+      });
+      setHighlightedMessageId(rowId);
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+      if (!options?.persistHighlight) {
+        highlightTimeoutRef.current = setTimeout(() => {
+          setHighlightedMessageId(null);
+          highlightTimeoutRef.current = null;
+        }, 1800);
+      }
+      return true;
+    },
+    [messages],
+  );
+
+  const handleSearchMatchNext = useCallback(() => {
+    setSearchActiveMatchIndex((i) => {
+      const list = matchedMessageIdsRef.current;
+      if (list.length === 0) return 0;
+      return (i + 1) % list.length;
+    });
+  }, []);
+
+  const handleSearchMatchPrev = useCallback(() => {
+    setSearchActiveMatchIndex((i) => {
+      const list = matchedMessageIdsRef.current;
+      if (list.length === 0) return 0;
+      return (i - 1 + list.length) % list.length;
+    });
+  }, []);
+
+  const handlePinnedBannerPress = useCallback(() => {
+    if (pinnedMessageId == null) return;
+    const row = messageById.get(pinnedMessageId);
+    if (row) {
+      scrollToMessageRowId(row.id, 'Сообщение не найдено');
+      return;
+    }
+    const byIndex = messages.find((m) => m.messageId === pinnedMessageId);
+    if (byIndex) {
+      scrollToMessageRowId(byIndex.id, 'Сообщение не найдено');
+    } else {
+      Alert.alert('Сообщение не найдено', 'Закреплённое сообщение пока не загружено в этот экран.');
+    }
+  }, [messageById, messages, pinnedMessageId, scrollToMessageRowId]);
+
+  const handlePinnedBannerClose = useCallback(() => {
+    if (pinnedMessageId == null || !Number.isFinite(chatId)) return;
+    void (async () => {
+      try {
+        await ensureReady();
+        await tdlibUnpinChatMessage(chatId, pinnedMessageId);
+        setPinnedMessageId(null);
+      } catch (err) {
+        Alert.alert('Открепить', err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, [chatId, ensureReady, pinnedMessageId]);
+
+  const openTelegramChatProfile = useCallback(() => {
+    navigation.navigate('TelegramChatProfile', {
+      telegramChatId,
+      title: headerTitle,
+      avatarUri: avatarUri ?? null,
+      chatType: routeChatType ?? null,
+    });
+  }, [avatarUri, headerTitle, navigation, routeChatType, telegramChatId]);
+
   const handleOpenTelegramMemberProfile = useCallback(
     async (row: TelegramMessageRow) => {
       if (row.senderUserId == null) return;
@@ -470,14 +650,7 @@ export function TelegramChatScreen() {
           accessibilityRole="button"
           accessibilityLabel={headerTitle}
           accessibilityHint="Открывает профиль"
-          onPress={() =>
-            navigation.navigate('TelegramChatProfile', {
-              telegramChatId,
-              title: headerTitle,
-              avatarUri: avatarUri ?? null,
-              chatType: routeChatType ?? null,
-            })
-          }
+          onPress={openTelegramChatProfile}
           style={({ pressed }) => [
             headerChromeStyles.pressableRow,
             pressed ? headerChromeStyles.pressablePressed : null,
@@ -502,14 +675,33 @@ export function TelegramChatScreen() {
           </View>
         </Pressable>
       ),
-      headerRight: undefined,
+      headerRight: isSearchMode
+        ? undefined
+        : () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Поиск в чате"
+              onPress={() => handleOpenSearch()}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.65 : 1,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+              })}
+            >
+              <Feather name="search" size={22} color={colors.textPrimary} />
+            </Pressable>
+          ),
     });
   }, [
     avatarUri,
     clearTelegramSelection,
+    colors.accent,
+    colors.textPrimary,
+    handleOpenSearch,
+    isSearchMode,
+    openTelegramChatProfile,
     routeChatType,
     telegramChatId,
-    colors.accent,
     headerChromeStyles,
     headerSubtitle,
     headerTitle,
@@ -521,23 +713,117 @@ export function TelegramChatScreen() {
   messagesRef.current = messages;
 
   useEffect(() => {
-    if (focusMessageId == null || !Number.isFinite(focusMessageId)) return;
-    const ix = messages.findIndex((m) => m.messageId === focusMessageId);
-    if (ix < 0) return;
-    const frame = requestAnimationFrame(() => {
-      try {
-        listRef.current?.scrollToIndex({
-          index: ix,
-          animated: true,
-          viewPosition: 0.5,
-        });
-      } catch {
-        /* scrollToIndex can throw before layout */
-      }
-      navigation.setParams({ focusMessageId: undefined });
+    if (!startSearch) return;
+    setIsSearchMode(true);
+    const task = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [focusMessageId, messages, navigation]);
+    navigation.setParams({ startSearch: undefined });
+    return () => task.cancel();
+  }, [navigation, startSearch]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSearchMode) return;
+    setSearchActiveMatchIndex(0);
+  }, [normalizedSearchQuery, isSearchMode]);
+
+  useEffect(() => {
+    setSearchActiveMatchIndex((i) => {
+      const L = matchedMessageIdsRef.current.length;
+      if (L === 0) return 0;
+      return Math.min(i, L - 1);
+    });
+  }, [searchMatchSignature]);
+
+  useEffect(() => {
+    if (isSearchMode && !normalizedSearchQuery) {
+      setHighlightedMessageId(null);
+    }
+  }, [isSearchMode, normalizedSearchQuery]);
+
+  useEffect(() => {
+    if (!isSearchMode || !normalizedSearchQuery) return;
+    const list = matchedMessageIdsRef.current;
+    if (list.length === 0) {
+      setHighlightedMessageId(null);
+      return;
+    }
+    const idx = Math.min(searchActiveMatchIndex, list.length - 1);
+    const id = list[idx];
+    if (!id) return;
+    const timer = setTimeout(() => {
+      scrollToMessageRowId(id, undefined, { persistHighlight: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [
+    isSearchMode,
+    normalizedSearchQuery,
+    scrollToMessageRowId,
+    searchActiveMatchIndex,
+    searchMatchSignature,
+  ]);
+
+  useEffect(() => {
+    if (focusMessageId == null || !Number.isFinite(focusMessageId)) return;
+    const row = messages.find((m) => m.messageId === focusMessageId);
+    if (!row) return;
+    const didScroll = scrollToMessageRowId(row.id, 'Сообщение не найдено');
+    if (didScroll) {
+      navigation.setParams({ focusMessageId: undefined });
+    }
+  }, [focusMessageId, messages, navigation, scrollToMessageRowId]);
+
+  const pinnedMessageMissingInFeed = useMemo(() => {
+    if (pinnedMessageId == null) return false;
+    return !messages.some((m) => m.messageId === pinnedMessageId);
+  }, [messages, pinnedMessageId]);
+
+  useEffect(() => {
+    if (!pinnedMessageMissingInFeed || !Number.isFinite(chatId) || pinnedMessageId == null) return;
+
+    const fetchId = pinnedMessageId;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureReady();
+        const raw = (await tdlibClient.send({
+          '@type': 'getMessage',
+          chat_id: chatId,
+          message_id: fetchId,
+        })) as Record<string, unknown>;
+        throwIfTdError(raw);
+        const row = await mapTdMessage(raw, lastReadOutboxMessageIdRef.current, {
+          loadSenderAvatar: false,
+          mediaLocalOnly: true,
+        });
+        if (
+          !row ||
+          cancelled ||
+          !mountedRef.current ||
+          pinnedMessageId !== fetchId
+        ) {
+          return;
+        }
+        setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, row)));
+      } catch {
+        /* preview falls back to generic label */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, ensureReady, pinnedMessageId, pinnedMessageMissingInFeed]);
 
   useEffect(() => {
     return () => {
@@ -667,17 +953,11 @@ export function TelegramChatScreen() {
         mediaLocalOnly: true,
       } as const;
 
-      const mergeMapped = (mapped: TelegramMessageRow[], appendOlder: boolean) => {
+      const mergeMapped = (mapped: TelegramMessageRow[]) => {
         if (isStaleLoad() || mapped.length === 0) return;
         setMessages((prev) => {
           if (isStaleLoad()) return prev;
-          const merged = [...prev];
-          for (const item of mapped) {
-            const idx = merged.findIndex((existing) => existing.id === item.id);
-            if (idx >= 0) merged[idx] = item;
-            else merged.push(item);
-          }
-          const sorted = merged.sort((a, b) => b.messageId - a.messageId);
+          const sorted = mergeTelegramFeedRows(prev, mapped);
           oldestMessageIdRef.current = sorted.length > 0 ? sorted[sorted.length - 1].messageId : 0;
           return sorted;
         });
@@ -790,7 +1070,15 @@ export function TelegramChatScreen() {
               messageThreadId !== 0
                 ? messageThreadId
                 : 0;
-            setMessages((prev) => prev.filter((m) => !idSet.has(m.messageId)));
+            setMessages((prev) =>
+              normalizeTelegramFeedRows(
+                prev.filter(
+                  (m) =>
+                    !idSet.has(m.messageId) &&
+                    !m.albumMessageIds?.some((albumId) => idSet.has(albumId)),
+                ),
+              ),
+            );
             void deleteTelegramMessagesFromCache(chatId, threadParam, [...idSet]).catch(() => {});
             return;
           }
@@ -846,7 +1134,7 @@ export function TelegramChatScreen() {
             mediaLocalOnly: true,
           }).then((row) => {
             if (!row || !mountedRef.current) return;
-            setMessages((prev) => upsertMessage(prev, row, oldMessageId));
+            setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, row, oldMessageId)));
             void persistTelegramMessages(chatId, threadParam, [row]).catch(() => {});
           });
         } catch {
@@ -1100,6 +1388,103 @@ export function TelegramChatScreen() {
     [sendInputMessageContent],
   );
 
+  const sendMediaAlbum = useCallback(
+    async (result: MediaAlbumPickResult) => {
+      const items = result.items.slice(0, 10);
+      if (items.length === 0) return;
+      if (items.length === 1) {
+        await sendMedia({ ...items[0]!, caption: result.caption });
+        return;
+      }
+      if (!Number.isFinite(chatId)) return;
+
+      const activeReplyToMessageId = replyToMessageId;
+      const caption = result.caption?.trim() ?? '';
+      const tempAnchorId = -Date.now();
+      const albumItems: TelegramAlbumMediaItem[] = items.map((item, index) => ({
+        messageId: tempAnchorId - index - 1,
+        kind: item.kind,
+        mediaUri: item.uri,
+        thumbnailUri: item.previewUri,
+        width: item.width,
+        height: item.height,
+        durationMs: item.durationMs,
+      }));
+      const optimistic: TelegramMessageRow = {
+        id: `temp-album-${Math.abs(tempAnchorId)}`,
+        messageId: tempAnchorId,
+        kind: 'album',
+        text: caption,
+        outgoing: true,
+        dateMs: Date.now(),
+        status: 'sending',
+        replyToMessageId: activeReplyToMessageId,
+        mediaAlbumId: tempAnchorId,
+        albumMedia: albumItems,
+        albumMessageIds: albumItems.map((part) => part.messageId),
+      };
+      setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, optimistic)));
+      setReplyToMessageId(null);
+
+      const contents = items.map((item, index) => {
+        const isLast = index === items.length - 1;
+        const cap = formattedText(isLast ? result.caption : undefined);
+        if (item.kind === 'video') {
+          return {
+            '@type': 'inputMessageVideo',
+            video: getLocalInputFile(item.uri),
+            duration: Math.max(1, Math.round((item.durationMs ?? 1000) / 1000)),
+            width: Math.max(1, Math.round(item.width ?? 1)),
+            height: Math.max(1, Math.round(item.height ?? 1)),
+            supports_streaming: true,
+            caption: cap,
+          };
+        }
+        return {
+          '@type': 'inputMessagePhoto',
+          photo: getLocalInputFile(item.uri),
+          width: Math.max(1, Math.round(item.width ?? 1)),
+          height: Math.max(1, Math.round(item.height ?? 1)),
+          caption: cap,
+        };
+      });
+
+      try {
+        await ensureReady();
+        const response = (await tdlibClient.send({
+          '@type': 'sendMessageAlbum',
+          chat_id: chatId,
+          reply_to: getInputReplyTo(activeReplyToMessageId),
+          input_message_contents: contents,
+        })) as Record<string, unknown>;
+        throwIfTdError(response);
+        const rawMessages = Array.isArray(response.messages) ? response.messages : [];
+        const mapped = await mapTdMessages(
+          rawMessages.filter(
+            (part): part is Record<string, unknown> => part != null && typeof part === 'object',
+          ),
+          lastReadOutboxMessageIdRef.current,
+        );
+        if (mapped.length === 0) {
+          throw new Error('Telegram не вернул отправленный альбом.');
+        }
+        setMessages((prev) =>
+          mergeTelegramFeedRows(
+            prev.filter((row) => row.id !== optimistic.id),
+            mapped,
+          ),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setMessages((prev) =>
+          prev.map((row) => (row.id === optimistic.id ? { ...row, status: 'failed' } : row)),
+        );
+        Alert.alert('Не удалось отправить альбом', message);
+      }
+    },
+    [chatId, ensureReady, replyToMessageId, sendMedia],
+  );
+
   const sendFile = useCallback(
     async (result: FilePickResult) => {
       await sendInputMessageContent(
@@ -1326,6 +1711,7 @@ export function TelegramChatScreen() {
         ? { alignSelf: 'flex-end' }
         : { alignSelf: 'flex-start' };
 
+      const isHighlighted = highlightedMessageId === item.id;
       const measureShellStyle = [
         styles.messageContentMeasure,
         channelIncoming
@@ -1335,6 +1721,7 @@ export function TelegramChatScreen() {
             : !isMe && isGroupChat
               ? styles.groupIncomingBubbleMeasure
               : contentMeasureStyle,
+        isHighlighted && styles.messageContentHighlighted,
       ];
 
       const channelPostMedia = isChannel;
@@ -1580,6 +1967,43 @@ export function TelegramChatScreen() {
         );
       }
 
+      if (item.kind === 'album' && item.albumMedia && item.albumMedia.length > 0) {
+        const albumBubble = (
+          <TelegramMediaAlbumBubble
+            items={item.albumMedia}
+            isMe={isMe}
+            caption={item.text}
+            time={formatTime(item.dateMs)}
+            status={item.status}
+            styles={styles}
+            chatTheme={chatTheme}
+            viewportOutgoingGradient={useViewportOutgoingGradient}
+            scrollTick={scrollTick}
+            incomingCaptionBg={isMe ? undefined : colors.bubbleOther}
+            incomingCaptionBorder={isMe ? undefined : colors.bubbleOtherBorder}
+            incomingCaptionText={isMe ? undefined : colors.textPrimary}
+            incomingCaptionMeta={isMe ? undefined : colors.textSecondary}
+            footer={discussionFooter}
+          />
+        );
+
+        return wrapSelectionShell(
+          <Pressable
+            {...pressableA11y}
+            style={pressableRowStyle}
+            accessibilityLabel={`${isMe ? 'Я' : headerTitle}: альбом${item.text ? `, ${item.text}` : ''}`}
+          >
+            <View
+              ref={(node) => setMessageContentRef(item.id, node)}
+              collapsable={false}
+              style={measureShellStyle}
+            >
+              {channelIncoming ? albumBubble : wrapTelegramMediaBubble(albumBubble)}
+            </View>
+          </Pressable>,
+        );
+      }
+
       if (item.kind === 'image' && item.mediaUri) {
         const imageBubble = (
           <ImageBubble
@@ -1788,15 +2212,28 @@ export function TelegramChatScreen() {
         >{` \uD83D\uDC41 ${viewCountFormatted}`}</Text>
       ) : null;
 
-      const textBubbleContent = (
-        <MessageTextBubbleBody
-          text={item.text ?? ''}
-          textStyle={outgoingMessageTextStyle}
-          rowStyle={styles.bubbleContentRow}
-          viewCountNode={viewCountNode}
-          meta={metaNode}
-        />
-      );
+      const textBubbleContent =
+        normalizedSearchQuery && (item.text?.trim() ?? '').length > 0 ? (
+          <View style={styles.bubbleContentRow}>
+            <View style={{ flexShrink: 1 }}>
+              {renderTextWithSearchHighlight(
+                item.text ?? '',
+                normalizedSearchQuery,
+                outgoingMessageTextStyle,
+              )}
+              {viewCountNode}
+            </View>
+            <View style={{ flexShrink: 0 }}>{metaNode}</View>
+          </View>
+        ) : (
+          <MessageTextBubbleBody
+            text={item.text ?? ''}
+            textStyle={outgoingMessageTextStyle}
+            rowStyle={styles.bubbleContentRow}
+            viewCountNode={viewCountNode}
+            meta={metaNode}
+          />
+        );
 
       const textBubbleBody = (
         <>
@@ -1862,6 +2299,8 @@ export function TelegramChatScreen() {
       telegramSelectionMode,
       toggleTelegramSelection,
       windowWidth,
+      normalizedSearchQuery,
+      highlightedMessageId,
     ],
   );
 
@@ -1869,14 +2308,105 @@ export function TelegramChatScreen() {
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <InteractiveChatBackShell
         navigation={navigation}
-        gestureEnabled={!telegramSelectionMode && menuState == null && forwardMessageIds.length === 0}
+        gestureEnabled={
+          !telegramSelectionMode &&
+          menuState == null &&
+          forwardMessageIds.length === 0 &&
+          !isSearchMode
+        }
       >
+        {Platform.OS === 'android' ? (
+          <CustomAndroidChatHeader
+            title={title || 'Telegram'}
+            subtitle={headerSubtitle ?? (isGroupChat ? formatGroupSubtitle(undefined) : formatPresence(undefined, undefined))}
+            avatarUrl={avatarUri}
+            isGroupChat={isGroupChat}
+            peerId={routeChatType === 'private' ? telegramChatId : null}
+            currentUserId={null}
+            chatId={telegramChatId}
+            members={null}
+            navigation={navigation}
+            telegramTitleOnly
+            titleNavDisabled={telegramSelectionMode}
+            onTitlePress={openTelegramChatProfile}
+            onSearchPress={
+              telegramSelectionMode || isSearchMode ? undefined : handleOpenSearch
+            }
+          />
+        ) : null}
+
       <View style={{ flex: 1, backgroundColor: chatTheme.canvasColor }}>
         <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.flexChatBody}>
           <View style={styles.wallpaperLayer} pointerEvents="none">
             <ChatBackgroundPattern themeId={wallpaperThemeId} />
           </View>
+          <ChatTopBanners
+            selectionMode={telegramSelectionMode}
+            selectedCount={selectedTelegramMessageIds.length}
+            onClearSelection={clearTelegramSelection}
+            activeVoiceVisible={false}
+            activeVoiceAuthor={null}
+            activeVoiceIsPlaying={false}
+            activeVoiceRateLabel="1×"
+            activeVoiceProgress={0}
+            onToggleVoicePlayback={() => undefined}
+            onCycleVoiceRate={() => undefined}
+            onStopVoice={() => undefined}
+            activeVideoNoteVisible={false}
+            activeVideoNoteAuthor={null}
+            activeVideoNoteIsPlaying={false}
+            activeVideoNoteProgress={0}
+            activeVideoNoteDurationLabel="0:00"
+            onToggleVideoNotePlayback={() => undefined}
+            onStopVideoNote={() => undefined}
+            pinnedMessageText={telegramSelectionMode || isSearchMode ? null : pinnedMessageText}
+            onPinnedPress={handlePinnedBannerPress}
+            onPinnedClose={handlePinnedBannerClose}
+            isSearchMode={isSearchMode}
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            onCancelSearch={handleCancelSearch}
+            searchInputRef={searchInputRef}
+          />
+
           <Reanimated.View style={[{ flex: 1 }, listKeyboardAnimatedStyle]}>
+            {isSearchMode && normalizedSearchQuery.length > 0 && matchedMessageIds.length > 0 ? (
+              <View style={styles.searchMatchOverlay} pointerEvents="box-none">
+                <View
+                  style={[
+                    styles.searchMatchCounterPill,
+                    { bottom: inputBarHeight + composerDockPaddingBottom + 6 },
+                  ]}
+                >
+                  <Text style={styles.searchMatchCounterText}>
+                    {`${searchActiveMatchIndex + 1} из ${matchedMessageIds.length}`}
+                  </Text>
+                </View>
+                <View style={styles.searchMatchNavColumn}>
+                  <Pressable
+                    accessibilityLabel="Предыдущий результат поиска"
+                    onPress={handleSearchMatchPrev}
+                    style={({ pressed }) => [
+                      styles.searchMatchNavButton,
+                      pressed && styles.searchMatchNavButtonPressed,
+                    ]}
+                  >
+                    <Feather name="chevron-up" size={22} color="#FFFFFF" />
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Следующий результат поиска"
+                    onPress={handleSearchMatchNext}
+                    style={({ pressed }) => [
+                      styles.searchMatchNavButton,
+                      pressed && styles.searchMatchNavButtonPressed,
+                    ]}
+                  >
+                    <Feather name="chevron-down" size={22} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+
             <FlatList
               ref={listRef}
               data={messages}
@@ -2005,6 +2535,7 @@ export function TelegramChatScreen() {
                   onSendVoice={sendVoice}
                   onSendVideoNote={sendVideoNote}
                   onSendMedia={sendMedia}
+                  onSendMediaAlbum={sendMediaAlbum}
                   onSendFile={sendFile}
                   replyToMessage={replyToInputMessage}
                   replyAuthorName={replyAuthorName}
@@ -2024,6 +2555,7 @@ export function TelegramChatScreen() {
         </BlurTargetView>
       </View>
       </InteractiveChatBackShell>
+
       <ChatContextMenuOverlay
         menuState={menuState}
         activeMenuMessage={activeMenuMessage}

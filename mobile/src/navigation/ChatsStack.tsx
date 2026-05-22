@@ -52,16 +52,23 @@ const CHAT_INTERACTIVE_BACK_STACK_OPTIONS = {
   animationMatchesGesture: true,
   fullScreenGestureShadowEnabled: true,
   contentStyle: { backgroundColor: 'transparent' },
-  ...(Platform.OS === 'android' ? { animation: 'slide_from_right' as const } : {}),
+  ...(Platform.OS === 'android'
+    ? {
+        animation: 'slide_from_right' as const,
+        customAnimationOnSwipe: true,
+        gestureEnabled: true,
+        gestureDirection: 'horizontal' as const,
+      }
+    : {}),
 } as const;
 
-function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
+export function formatPresence(isOnline?: boolean, lastSeen?: number | null) {
   if (isOnline) return 'в сети';
   if (!lastSeen) return 'был(а) недавно';
   return 'был(а) недавно';
 }
 
-function formatGroupSubtitle(memberCount?: number) {
+export function formatGroupSubtitle(memberCount?: number) {
   if (typeof memberCount === 'number' && memberCount > 0) {
     if (memberCount % 10 === 1 && memberCount % 100 !== 11) return `${memberCount} участник`;
     if (
@@ -84,7 +91,7 @@ function getChatPeerId(
   return chat.members?.find((member) => member.user_id !== currentUserId)?.user_id ?? null;
 }
 
-function ChatHeaderTitle({
+export function ChatHeaderTitle({
   title,
   subtitle,
   avatarUrl,
@@ -143,7 +150,7 @@ function getGroupMemberDisplayName(m: NonNullable<Chat['members']>[number]): str
   );
 }
 
-function GroupChatHeaderMembers({
+export function GroupChatHeaderMembers({
   members,
   currentUserId,
   chatId,
@@ -316,6 +323,7 @@ export function ChatsStack() {
 
           return {
             ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+            headerShown: Platform.OS !== 'android',
             title,
             headerBackTitle: 'Назад',
             headerTitleAlign: 'left',
@@ -358,6 +366,7 @@ export function ChatsStack() {
         component={TelegramChatScreen}
         options={({ route }) => ({
           ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+          headerShown: Platform.OS !== 'android',
           title: route.params.title ?? 'Telegram',
           headerBackTitle: 'Назад',
           headerTitleAlign: 'left',
@@ -416,6 +425,7 @@ export function ChatsStack() {
           const avatarUrl = resolveAvatarUrl(channel?.avatar_url);
           return {
             ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+            headerShown: Platform.OS !== 'android',
             headerBackTitle: 'Назад',
             headerTitleAlign: 'left',
             headerTitle: () => (
@@ -473,7 +483,7 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChannelDiscussion"
         component={ChannelDiscussionScreen}
-        options={{ title: 'Обсуждение', headerBackTitle: 'Назад', ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS }}
+        options={{ title: 'Обсуждение', headerBackTitle: 'Назад', ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS, headerShown: Platform.OS !== 'android' }}
       />
 
       <Stack.Screen
@@ -527,7 +537,7 @@ export function ChatsStack() {
   );
 }
 
-function createChatsStackStyles(colors: ThemeColors) {
+export function createChatsStackStyles(colors: ThemeColors) {
   const chip = GROUP_HEADER_MEMBER_CHIP;
   const chipR = chip / 2;
   return StyleSheet.create({
