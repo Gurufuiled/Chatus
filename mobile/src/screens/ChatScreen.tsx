@@ -16,6 +16,7 @@ import {
   Text,
   TextInput,
   View,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -63,6 +64,9 @@ import {
   useVideoNotePlayer,
 } from '../components/VideoNoteBubble';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
+import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import { formatPresence, formatGroupSubtitle } from '../navigation/ChatsStack';
+
 import {
   MeBubbleChrome,
   shouldUseDarkDefaultOutgoingBubbleGradient,
@@ -2695,6 +2699,26 @@ export function ChatScreen() {
     ];
   }, [activeMenuMessage, currentUserId, menuMode, pinnedMessageId, themeColors]);
 
+
+  const isGroupChat = currentChat?.chat_type === 'group';
+  const peerId =
+    currentChat?.chat_type === 'private'
+      ? currentChat.members?.find((m) => m.user_id !== currentUserId)?.user_id ?? null
+      : null;
+  const peerMember = currentChat?.members?.find((m) => m.user_id === peerId);
+  const presenceByUserId = uiStore((state) => state.presenceByUserId);
+  const presence = peerId
+    ? presenceByUserId[peerId] ?? {
+        is_online: peerMember?.user?.is_online ?? false,
+        last_seen: peerMember?.user?.last_seen ?? undefined,
+      }
+    : undefined;
+  const title = route.params.chatTitle ?? 'Чат';
+  const subtitle = isGroupChat
+    ? formatGroupSubtitle(currentChat?.members?.length)
+    : formatPresence(presence?.is_online, presence?.last_seen);
+  const avatarUrl = resolveAvatarUrl(currentChat?.avatar_url);
+
   return (
     <View style={[styles.container, styles.chatRootTransparent]}>
       <InteractiveChatBackShell
@@ -2707,6 +2731,20 @@ export function ChatScreen() {
           !isSearchMode
         }
       >
+        {Platform.OS === 'android' ? (
+          <CustomAndroidChatHeader
+            title={title}
+            subtitle={subtitle}
+            avatarUrl={avatarUrl}
+            isGroupChat={isGroupChat}
+            peerId={peerId}
+            currentUserId={currentUserId}
+            chatId={chatId}
+            members={currentChat?.members ?? null}
+            navigation={navigation}
+          />
+        ) : null}
+
       <BlurTargetView
         ref={blurTargetRef}
         collapsable={false}

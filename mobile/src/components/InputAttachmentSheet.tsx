@@ -1,4 +1,5 @@
 import React from 'react';
+import { GalleryPhotoPreview } from './GalleryPhotoPreview';
 import {
   Dimensions,
   Modal,
@@ -11,12 +12,19 @@ import {
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Gesture, GestureDetector, NativeViewGestureHandler } from 'react-native-gesture-handler';
+import {
+  FlatList as GestureHandlerFlatList,
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from 'react-native-gesture-handler';
 import Reanimated, {
   Extrapolation,
   interpolate,
   runOnJS,
   scrollTo,
+  useAnimatedProps,
+  useAnimatedReaction,
   useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -54,12 +62,24 @@ type AttachmentAction = {
   onPress: () => Promise<void>;
 };
 
+export type GallerySheetVariant = 'attachment' | 'avatar';
+
+export type GallerySheetBottomButton = {
+  label: string;
+  onPress: () => void | Promise<void>;
+};
+
 type InputAttachmentSheetProps = {
   visible: boolean;
+  /** attachment — чат/вложения; avatar — выбор одного фото (профиль, канал, группа). */
+  variant?: GallerySheetVariant;
+  headerSubtitle?: string;
   galleryEnabled: boolean;
   galleryItems: GalleryItem[];
   galleryLoading: boolean;
   galleryDenied: boolean;
+  /** Текст при отказе в доступе к медиатеке (по умолчанию — фото и видео). */
+  galleryDeniedHint?: string;
   attachmentActions: AttachmentAction[];
   selectedItems: GalleryItem[];
   captionValue: string;
@@ -68,6 +88,12 @@ type InputAttachmentSheetProps = {
   onCaptionChange: (text: string) => void;
   onSendSelected: () => void;
   onRunAttachmentAction: (action: () => Promise<void>) => void;
+  /** Нижняя кнопка вместо дока режимов (например «Все фото…» для аватара). */
+  bottomButton?: GallerySheetBottomButton;
+  galleryInteractDisabled?: boolean;
+  /** URI после обрезки в превью (itemId → file://…). */
+  editedUris?: Map<string, string>;
+  onEditedUriChange?: (itemId: string, uri: string) => void;
 };
 
 function createAttachmentSheetStyles(c: ThemeColors) {
@@ -122,8 +148,15 @@ function createAttachmentSheetStyles(c: ThemeColors) {
       backgroundColor: c.accent,
     },
     selectedPillText: { fontSize: 16, fontWeight: '800', color: c.textSecondaryMuted },
-    titlePill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    titlePill: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
     sheetTitle: { fontSize: 17, fontWeight: '800', color: c.textPrimary },
+    sheetSubtitle: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    headerSpacer: { width: 42, height: 42 },
     flex: { flex: 1 },
     galleryGrid: { paddingBottom: 78 },
     galleryRow: { gap: 1, marginBottom: 1 },
@@ -242,6 +275,25 @@ function createAttachmentSheetStyles(c: ThemeColors) {
       justifyContent: 'center',
       backgroundColor: c.accent,
     },
+    bottomPrimaryBtn: {
+      minHeight: 54,
+      borderRadius: 22,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      paddingHorizontal: 16,
+      backgroundColor: c.buttonBackground,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+      shadowColor: shadow,
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 7,
+    },
+    bottomPrimaryBtnPressed: { opacity: 0.88 },
+    bottomPrimaryBtnLabel: { fontSize: 15, fontWeight: '800', color: c.accent },
   });
 }
 
@@ -254,23 +306,26 @@ function SheetActionIcon({ tone, iconColor }: { tone: AttachmentAction['tone']; 
   return <Feather name="file-text" size={19} color={iconColor} />;
 }
 
-const AnimatedFlatList = Reanimated.createAnimatedComponent(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  require('react-native').FlatList
-);
+const AnimatedGalleryFlatList = Reanimated.createAnimatedComponent(GestureHandlerFlatList<GalleryItem>);
 
 const GalleryCell = React.memo(function GalleryCell({
   item,
   selectedIndex,
   onToggle,
+  onPreview,
   styles,
   iconMuted,
+  showSelectionBadge,
+  disabled,
 }: {
   item: GalleryItem;
   selectedIndex: number | null;
   onToggle: (item: GalleryItem) => void;
+  onPreview?: (item: GalleryItem) => void;
   styles: AttachmentSheetStyles;
   iconMuted: string;
+  showSelectionBadge: boolean;
+  disabled?: boolean;
 }) {
   const [thumbnailUri, setThumbnailUri] = React.useState(() =>
     item.kind === 'video' ? getCachedVideoThumbnailUri(item.uri) ?? '' : ''
@@ -295,7 +350,11 @@ const GalleryCell = React.memo(function GalleryCell({
 
   return (
     <View style={styles.galleryCellOuter}>
-      <Pressable style={styles.galleryCell} onPress={() => onToggle(item)}>
+      <Pressable
+        style={styles.galleryCell}
+        disabled={disabled}
+        onPress={() => (onPreview ? onPreview(item) : onToggle(item))}
+      >
         {previewUri ? (
           <Image source={{ uri: previewUri }} style={styles.galleryImage} resizeMode="cover" />
         ) : (
@@ -312,9 +371,18 @@ const GalleryCell = React.memo(function GalleryCell({
             </View>
           </>
         ) : null}
-        <View style={[styles.selectCircle, isSelected && styles.selectCircleSelected]}>
-          {isSelected ? <Text style={styles.selectCircleText}>{selectedIndex}</Text> : null}
-        </View>
+        {showSelectionBadge ? (
+          <Pressable
+            style={[styles.selectCircle, isSelected && styles.selectCircleSelected]}
+            onPress={(e) => {
+              e.stopPropagation();
+              onToggle(item);
+            }}
+            hitSlop={6}
+          >
+            {isSelected ? <Text style={styles.selectCircleText}>{selectedIndex}</Text> : null}
+          </Pressable>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -323,20 +391,28 @@ const GalleryCell = React.memo(function GalleryCell({
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const COLLAPSED_H = Math.round(SCREEN_HEIGHT * 0.58);
 const SPRING_CFG = { damping: 26, stiffness: 280, mass: 0.88 } as const;
-const CLOSE_VELOCITY_Y = 850;
-const EXPAND_VELOCITY_Y = -750;
+const CLOSE_VELOCITY_Y = 900;
+const EXPAND_VELOCITY_Y = -900;
+/** sheetTranslateY below this = fully expanded (grid may scroll). */
+const SHEET_EXPANDED_EPS = 6;
+const SCROLL_AT_TOP_EPS = 8;
+const SCROLL_ENABLE_TY = 3;
+const SCROLL_DISABLE_TY = 48;
 
-function clampSheetHeight(value: number, maxHeight: number): number {
+function clampSheetTranslateY(value: number, maxTranslate: number): number {
   'worklet';
-  return Math.max(0, Math.min(maxHeight, value));
+  return Math.max(0, Math.min(maxTranslate, value));
 }
 
 export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   visible,
+  variant = 'attachment',
+  headerSubtitle,
   galleryEnabled,
   galleryItems,
   galleryLoading,
   galleryDenied,
+  galleryDeniedHint,
   attachmentActions,
   selectedItems,
   captionValue,
@@ -345,25 +421,38 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   onCaptionChange,
   onSendSelected,
   onRunAttachmentAction,
+  bottomButton,
+  galleryInteractDisabled = false,
+  editedUris,
+  onEditedUriChange,
 }: InputAttachmentSheetProps) {
+  const isAvatarVariant = variant === 'avatar';
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = React.useMemo(() => createAttachmentSheetStyles(colors), [colors]);
   const expandedH = Math.round(SCREEN_HEIGHT - insets.top);
+  const collapsedTranslateY = Math.max(0, expandedH - COLLAPSED_H);
 
-  // --- Shared values ---
-  const sheetH = useSharedValue(COLLAPSED_H);
+  // 0 = полный экран, collapsedTranslateY = ~58%, expandedH = закрыто
+  const sheetTranslateY = useSharedValue(collapsedTranslateY);
   const scrollY = useSharedValue(0);
-  const dragStartH = useSharedValue(COLLAPSED_H);
-  const maxSheetH = useSharedValue(expandedH);
-  const listRef = useAnimatedRef<Reanimated.FlatList<GalleryItem>>();
+  const dragStartTranslateY = useSharedValue(collapsedTranslateY);
+  const maxTranslateY = useSharedValue(expandedH);
+  const snapCollapsedY = useSharedValue(collapsedTranslateY);
 
   React.useEffect(() => {
-    maxSheetH.value = expandedH;
-  }, [expandedH, maxSheetH]);
+    maxTranslateY.value = expandedH;
+    snapCollapsedY.value = collapsedTranslateY;
+  }, [collapsedTranslateY, expandedH, maxTranslateY, snapCollapsedY]);
 
-  // --- JS state for close trigger ---
   const [shouldClose, setShouldClose] = React.useState(false);
+  const [galleryOpenEpoch, setGalleryOpenEpoch] = React.useState(0);
+  const listRef = useAnimatedRef<React.ComponentRef<typeof AnimatedGalleryFlatList>>();
+  const gridPanRef = React.useRef<any>(null);
+  const listScrollEnabled = useSharedValue(false);
+  const lastTranslationYGrid = useSharedValue(0);
+  const lastTranslationYHeader = useSharedValue(0);
+
   React.useEffect(() => {
     if (shouldClose) {
       setShouldClose(false);
@@ -371,96 +460,230 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
     }
   }, [shouldClose, onClose]);
 
+  const resetGalleryScrollPosition = React.useCallback(() => {
+    scrollY.value = 0;
+    scrollTo(listRef, 0, 0, false);
+  }, [listRef, scrollY]);
+
   React.useEffect(() => {
     if (visible) {
+      setGalleryOpenEpoch((n) => n + 1);
       scrollY.value = 0;
-      sheetH.value = 0;
-      sheetH.value = withSpring(COLLAPSED_H, SPRING_CFG);
-    } else {
-      sheetH.value = COLLAPSED_H;
-      scrollY.value = 0;
+      listScrollEnabled.value = false;
+      sheetTranslateY.value = expandedH;
+      sheetTranslateY.value = withSpring(collapsedTranslateY, SPRING_CFG);
+      return undefined;
     }
-  }, [visible, sheetH, scrollY]);
+    sheetTranslateY.value = collapsedTranslateY;
+    scrollY.value = 0;
+    listScrollEnabled.value = false;
+    return undefined;
+  }, [
+    visible,
+    collapsedTranslateY,
+    expandedH,
+    listScrollEnabled,
+    scrollY,
+    sheetTranslateY,
+  ]);
+
+  React.useEffect(() => {
+    if (!visible || galleryOpenEpoch === 0) {
+      return undefined;
+    }
+    scrollY.value = 0;
+    const raf = requestAnimationFrame(() => {
+      resetGalleryScrollPosition();
+    });
+    const timer = setTimeout(resetGalleryScrollPosition, 100);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [galleryOpenEpoch, resetGalleryScrollPosition, scrollY, visible]);
 
   const requestClose = React.useCallback(() => {
     setShouldClose(true);
   }, []);
 
-  const nativeScrollRef = React.useRef<NativeViewGestureHandler>(null);
-  const hasGalleryList = galleryEnabled && !galleryLoading && !galleryDenied && galleryItems.length > 0;
+  useAnimatedReaction(
+    () => sheetTranslateY.value,
+    (ty, prev) => {
+      if (prev == null) {
+        listScrollEnabled.value = ty <= SCROLL_ENABLE_TY;
+        return;
+      }
+      if (!listScrollEnabled.value && ty <= SCROLL_ENABLE_TY) {
+        listScrollEnabled.value = true;
+      } else if (listScrollEnabled.value && ty >= SCROLL_DISABLE_TY) {
+        listScrollEnabled.value = false;
+      }
+    },
+    [listScrollEnabled],
+  );
+
+  const [isFullyExpanded, setIsFullyExpanded] = React.useState(false);
+
+  useAnimatedReaction(
+    () => listScrollEnabled.value,
+    (enabled, prev) => {
+      if (enabled !== prev) {
+        runOnJS(setIsFullyExpanded)(enabled);
+      }
+    },
+    [setIsFullyExpanded],
+  );
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
-      const y = event.contentOffset.y;
-      const prev = scrollY.value;
-      const maxH = maxSheetH.value;
-
-      if (sheetH.value < maxH - 0.5 && y > 0 && y > prev) {
-        const dy = y - prev;
-        const room = maxH - sheetH.value;
-        const absorb = Math.min(dy, room);
-        if (absorb > 0) {
-          sheetH.value += absorb;
-          const nextY = Math.max(0, y - absorb);
-          scrollY.value = nextY;
-          scrollTo(listRef, 0, nextY, false);
-          return;
-        }
-      }
-
-      scrollY.value = y;
+      scrollY.value = Math.max(0, event.contentOffset.y);
     },
   });
 
-  /** Pan на шапку + сетку: высота следует за пальцем; при scrollY>0 вниз — сначала список. */
-  const sheetPan = React.useMemo(() => {
-    let pan = Gesture.Pan().activeOffsetY([-6, 6]).failOffsetX([-14, 14]);
-    if (hasGalleryList) {
-      pan = pan.simultaneousWithExternalGesture(nativeScrollRef);
-    }
-    return pan
-      .onStart(() => {
-        dragStartH.value = sheetH.value;
-      })
-      .onUpdate((e) => {
-        const maxH = maxSheetH.value;
-        const next = dragStartH.value - e.translationY;
-        const pullingDown = e.translationY > 0;
-        if (scrollY.value > 0.5 && pullingDown) {
-          return;
-        }
-        sheetH.value = clampSheetHeight(next, maxH);
-      })
-      .onEnd((e) => {
-        const vel = e.velocityY;
-        const cur = sheetH.value;
-        const maxH = maxSheetH.value;
-        const mid = (COLLAPSED_H + maxH) * 0.5;
-        if (vel > CLOSE_VELOCITY_Y || cur < COLLAPSED_H * 0.42) {
-          sheetH.value = withTiming(0, { duration: 220, easing: Easing.in(Easing.cubic) }, (finished) => {
-            if (finished) {
-              runOnJS(requestClose)();
-            }
-          });
-          return;
-        }
-        if (vel < EXPAND_VELOCITY_Y || cur > mid + 24) {
-          sheetH.value = withSpring(maxH, SPRING_CFG);
-          return;
-        }
-        if (cur < mid - 24) {
-          sheetH.value = withSpring(COLLAPSED_H, SPRING_CFG);
-          return;
-        }
-        sheetH.value = withSpring(cur >= mid ? maxH : COLLAPSED_H, SPRING_CFG);
-      });
-  }, [dragStartH, hasGalleryList, maxSheetH, requestClose, scrollY, sheetH]);
-
-  const sheetStyle = useAnimatedStyle(() => ({ height: sheetH.value }));
-
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(sheetH.value, [0, COLLAPSED_H, maxSheetH.value], [0, 0.38, 0.52], Extrapolation.CLAMP),
+  const listAnimatedProps = useAnimatedProps(() => ({
+    scrollEnabled: listScrollEnabled.value,
+    bounces: listScrollEnabled.value,
   }));
+
+  const settleSheetPosition = (velocityY: number, ty: number) => {
+    'worklet';
+    const maxTy = maxTranslateY.value;
+    const snapCollapsed = snapCollapsedY.value;
+    const closeThreshold = snapCollapsed + (maxTy - snapCollapsed) * 0.32;
+
+    if (velocityY > CLOSE_VELOCITY_Y || ty >= closeThreshold) {
+      sheetTranslateY.value = withTiming(maxTy, { duration: 200, easing: Easing.in(Easing.cubic) }, (finished) => {
+        if (finished) {
+          runOnJS(requestClose)();
+        }
+      });
+      return;
+    }
+
+    const distToExpanded = ty;
+    const distToCollapsed = Math.abs(ty - snapCollapsed);
+    const preferExpanded = velocityY < EXPAND_VELOCITY_Y || distToExpanded < distToCollapsed;
+    const nextScrollEnabled = preferExpanded;
+    sheetTranslateY.value = withSpring(preferExpanded ? 0 : snapCollapsed, SPRING_CFG, (finished) => {
+      if (finished) {
+        listScrollEnabled.value = nextScrollEnabled;
+      }
+    });
+  };
+
+  const headerSheetPan = React.useMemo(
+    () =>
+      Gesture.Pan()
+        .maxPointers(1)
+        .activeOffsetY([-5, 5])
+        .failOffsetX([-22, 22])
+        .onBegin(() => {
+          dragStartTranslateY.value = sheetTranslateY.value;
+          lastTranslationYHeader.value = 0;
+        })
+        .onUpdate((e) => {
+          const deltaY = e.translationY - lastTranslationYHeader.value;
+          lastTranslationYHeader.value = e.translationY;
+
+          const maxTy = maxTranslateY.value;
+          sheetTranslateY.value = clampSheetTranslateY(sheetTranslateY.value + deltaY, maxTy);
+
+          if (sheetTranslateY.value <= SCROLL_ENABLE_TY) {
+            if (!listScrollEnabled.value) {
+              listScrollEnabled.value = true;
+            }
+          } else {
+            if (listScrollEnabled.value) {
+              listScrollEnabled.value = false;
+            }
+          }
+        })
+        .onEnd((e) => {
+          settleSheetPosition(e.velocityY, sheetTranslateY.value);
+        }),
+    [
+      dragStartTranslateY,
+      listScrollEnabled,
+      maxTranslateY,
+      sheetTranslateY,
+      lastTranslationYHeader,
+    ]
+  );
+
+  const gridSheetPan = React.useMemo(
+    () => {
+      const g = Gesture.Pan()
+        .withRef(gridPanRef)
+        .maxPointers(1)
+        .failOffsetX([-22, 22]);
+
+      if (isFullyExpanded) {
+        g.activeOffsetY([5, 9999]).failOffsetY([-9999, -15]);
+      } else {
+        g.activeOffsetY([-5, 5]);
+      }
+
+      return g
+        .onBegin(() => {
+          dragStartTranslateY.value = sheetTranslateY.value;
+          lastTranslationYGrid.value = 0;
+        })
+        .onUpdate((e) => {
+          const expanded = sheetTranslateY.value <= SHEET_EXPANDED_EPS;
+
+          // If expanded, list is scrolled down, and dragging down: let list scroll, do not drag sheet
+          if (expanded && scrollY.value > SCROLL_AT_TOP_EPS && e.translationY > 0) {
+            return;
+          }
+
+          // If expanded and dragging up: let list scroll, do not drag sheet
+          if (expanded && e.translationY < 0) {
+            return;
+          }
+
+          const deltaY = e.translationY - lastTranslationYGrid.value;
+          lastTranslationYGrid.value = e.translationY;
+
+          const maxTy = maxTranslateY.value;
+          sheetTranslateY.value = clampSheetTranslateY(sheetTranslateY.value + deltaY, maxTy);
+
+          if (sheetTranslateY.value <= SCROLL_ENABLE_TY) {
+            if (!listScrollEnabled.value) {
+              listScrollEnabled.value = true;
+            }
+          } else {
+            if (listScrollEnabled.value) {
+              listScrollEnabled.value = false;
+            }
+          }
+        })
+        .onEnd((e) => {
+          settleSheetPosition(e.velocityY, sheetTranslateY.value);
+        });
+    },
+    [
+      isFullyExpanded,
+      dragStartTranslateY,
+      listScrollEnabled,
+      maxTranslateY,
+      scrollY,
+      sheetTranslateY,
+      lastTranslationYGrid,
+    ]
+  );
+
+  const sheetInnerStyle = useAnimatedStyle(() => ({
+    height: expandedH,
+    transform: [{ translateY: sheetTranslateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => {
+    const maxTy = maxTranslateY.value;
+    const visible = maxTy - sheetTranslateY.value;
+    return {
+      opacity: interpolate(visible, [0, COLLAPSED_H, expandedH], [0, 0.38, 0.52], Extrapolation.CLAMP),
+    };
+  });
 
   // --- Gallery helpers ---
   const selectedById = React.useMemo(() => {
@@ -468,6 +691,18 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
     selectedItems.forEach((item, i) => map.set(item.id, i + 1));
     return map;
   }, [selectedItems]);
+
+  const [previewIndex, setPreviewIndex] = React.useState<number | null>(null);
+
+  const handlePreviewPhoto = React.useCallback(
+    (item: GalleryItem) => {
+      const idx = galleryItems.findIndex((g) => g.id === item.id);
+      if (idx >= 0) setPreviewIndex(idx);
+    },
+    [galleryItems],
+  );
+
+  const closePreview = React.useCallback(() => setPreviewIndex(null), []);
 
   const keyExtractor = React.useCallback((item: GalleryItem) => item.id, []);
 
@@ -477,141 +712,206 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
         item={item}
         selectedIndex={selectedById.get(item.id) ?? null}
         onToggle={onToggleGalleryItem}
+        onPreview={isAvatarVariant ? undefined : handlePreviewPhoto}
         styles={styles}
         iconMuted={colors.iconMuted}
+        showSelectionBadge={!isAvatarVariant}
+        disabled={galleryInteractDisabled}
       />
     ),
-    [selectedById, onToggleGalleryItem, styles, colors.iconMuted],
+    [colors.iconMuted, galleryInteractDisabled, handlePreviewPhoto, isAvatarVariant, onToggleGalleryItem, selectedById, styles],
   );
 
-  const hasSelection = selectedItems.length > 0;
+  const hasSelection = !isAvatarVariant && selectedItems.length > 0;
+  const deniedHint =
+    galleryDeniedHint ??
+    (isAvatarVariant
+      ? 'Нужен доступ к фото, чтобы показать недавние снимки.'
+      : 'Нужен доступ к фото и видео.');
+  const emptyHint = isAvatarVariant ? 'В галерее устройства пока нет фото.' : 'Медиа не найдены.';
+
+  const galleryList = (
+    <AnimatedGalleryFlatList
+      key={`gallery-${galleryOpenEpoch}`}
+      ref={listRef}
+      simultaneousHandlers={gridPanRef}
+      animatedProps={listAnimatedProps}
+      data={galleryItems}
+      keyExtractor={keyExtractor}
+      renderItem={renderItem}
+      numColumns={3}
+      style={styles.flex}
+      contentContainerStyle={[styles.galleryGrid, { paddingBottom: hasSelection ? 74 : 78 }]}
+      columnWrapperStyle={styles.galleryRow}
+      showsVerticalScrollIndicator={false}
+      removeClippedSubviews
+      overScrollMode="never"
+      bounces={false}
+      initialNumToRender={18}
+      maxToRenderPerBatch={12}
+      windowSize={5}
+      updateCellsBatchingPeriod={40}
+      keyboardShouldPersistTaps="handled"
+      onScroll={scrollHandler}
+      scrollEventThrottle={16}
+    />
+  );
 
   return (
+    <>
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.root}>
+      <GestureHandlerRootView style={styles.root}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
           <Reanimated.View pointerEvents="none" style={[styles.backdropFill, backdropStyle]} />
         </Pressable>
 
-        <Reanimated.View
-          style={[
-            styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 8) + 10 },
-            sheetStyle,
-          ]}
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: expandedH,
+            overflow: 'hidden',
+          }}
         >
-          <GestureDetector gesture={sheetPan}>
-            <View style={styles.flex}>
-            <View style={styles.handleArea}>
-              <View style={styles.handlePill} />
-              <View style={styles.sheetHeader}>
-                <Pressable style={styles.headerCircle} onPress={onClose} hitSlop={8}>
-                  <Feather name="x" size={24} color={colors.textPrimary} />
-                </Pressable>
-
-                {hasSelection ? (
-                  <View style={styles.selectedPill}>
-                    <Feather name="check" size={16} color={colors.textSecondaryMuted} />
-                    <Text style={styles.selectedPillText}>{selectedItems.length}</Text>
-                  </View>
-                ) : null}
-
-                <View style={styles.titlePill}>
-                  <Text style={styles.sheetTitle}>Недавние</Text>
-                </View>
-
-                <Pressable style={styles.headerCircle} hitSlop={8}>
-                  <Feather name="more-horizontal" size={24} color={colors.textPrimary} />
-                </Pressable>
-              </View>
-            </View>
-
-          {/* Gallery content */}
-          {galleryEnabled ? (
-            galleryLoading ? (
-              <View style={styles.flex}>
-                <GallerySkeletonGrid rows={4} />
-              </View>
-            ) : galleryDenied ? (
-              <View style={styles.galleryPlaceholder}>
-                <Text style={styles.galleryHint}>Нужен доступ к фото и видео.</Text>
-              </View>
-            ) : galleryItems.length > 0 ? (
-              <NativeViewGestureHandler ref={nativeScrollRef}>
-                <AnimatedFlatList
-                  ref={listRef}
-                  data={galleryItems}
-                  keyExtractor={keyExtractor}
-                  renderItem={renderItem}
-                  numColumns={3}
-                  style={styles.flex}
-                  contentContainerStyle={[
-                    styles.galleryGrid,
-                    { paddingBottom: hasSelection ? 74 : 78 },
-                  ]}
-                  columnWrapperStyle={styles.galleryRow}
-                  showsVerticalScrollIndicator={false}
-                  removeClippedSubviews
-                  bounces
-                  overScrollMode="always"
-                  initialNumToRender={18}
-                  maxToRenderPerBatch={12}
-                  windowSize={5}
-                  updateCellsBatchingPeriod={40}
-                  keyboardShouldPersistTaps="handled"
-                  onScroll={scrollHandler}
-                  scrollEventThrottle={16}
-                />
-              </NativeViewGestureHandler>
-            ) : (
-              <View style={styles.galleryPlaceholder}>
-                <Text style={styles.galleryHint}>Медиа не найдены.</Text>
-              </View>
-            )
-          ) : null}
-            </View>
-          </GestureDetector>
-
-          {/* Bottom dock — вне pan, чтобы не мешать вводу подписи */}
-          <View
-            pointerEvents="box-none"
-            style={[styles.bottomAccessory, { bottom: Math.max(insets.bottom, 8) + 8 }]}
+          <Reanimated.View
+            style={[
+              styles.sheet,
+              { paddingBottom: Math.max(insets.bottom, 8) + 10 },
+              sheetInnerStyle,
+            ]}
           >
-            {hasSelection ? (
-              <View style={styles.captionBar}>
-                <TextInput
-                  value={captionValue}
-                  onChangeText={onCaptionChange}
-                  placeholder="Добавить подпись..."
-                  placeholderTextColor={colors.placeholder}
-                  style={styles.captionInput}
-                  multiline
-                />
-                <Pressable style={styles.sendBtn} onPress={onSendSelected}>
-                  <Feather name="send" size={20} color={colors.textSecondaryMuted} />
-                </Pressable>
-              </View>
-            ) : (
-              <View style={styles.modeDock}>
-                <View style={[styles.modeAction, styles.modeActionActive]}>
-                  <MaterialCommunityIcons name="image-multiple" size={22} color={colors.accent} />
-                  <Text style={[styles.modeActionLabel, styles.modeActionLabelActive]}>Галерея</Text>
-                </View>
-                {attachmentActions.map((action) => (
-                  <Pressable
-                    key={action.key}
-                    style={styles.modeAction}
-                    onPress={() => onRunAttachmentAction(action.onPress)}
-                  >
-                    <SheetActionIcon tone={action.tone} iconColor={colors.iconMuted} />
-                    <Text style={styles.modeActionLabel}>{action.title}</Text>
+            <GestureDetector gesture={headerSheetPan}>
+              <View style={styles.handleArea}>
+                <View style={styles.handlePill} />
+                <View style={styles.sheetHeader}>
+                  <Pressable style={styles.headerCircle} onPress={onClose} hitSlop={8}>
+                    <Feather name="x" size={24} color={colors.textPrimary} />
                   </Pressable>
-                ))}
+
+                  {hasSelection ? (
+                    <View style={styles.selectedPill}>
+                      <Feather name="check" size={16} color={colors.textSecondaryMuted} />
+                      <Text style={styles.selectedPillText}>{selectedItems.length}</Text>
+                    </View>
+                  ) : isAvatarVariant ? (
+                    <View style={styles.headerSpacer} />
+                  ) : null}
+
+                  <View style={styles.titlePill}>
+                    <Text style={styles.sheetTitle}>Недавние</Text>
+                    {headerSubtitle ? (
+                      <Text style={styles.sheetSubtitle} numberOfLines={1}>
+                        {headerSubtitle}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {isAvatarVariant ? (
+                    <View style={styles.headerSpacer} />
+                  ) : (
+                    <Pressable style={styles.headerCircle} hitSlop={8}>
+                      <Feather name="more-horizontal" size={24} color={colors.textPrimary} />
+                    </Pressable>
+                  )}
+                </View>
               </View>
-            )}
-          </View>
-        </Reanimated.View>
-      </View>
+            </GestureDetector>
+
+            <View style={styles.flex}>
+              {galleryEnabled ? (
+                galleryLoading ? (
+                  <GallerySkeletonGrid rows={4} />
+                ) : galleryDenied ? (
+                  <View style={styles.galleryPlaceholder}>
+                    <Text style={styles.galleryHint}>{deniedHint}</Text>
+                  </View>
+                ) : galleryItems.length > 0 ? (
+                  <GestureDetector gesture={gridSheetPan}>
+                    {galleryList}
+                  </GestureDetector>
+                ) : (
+                  <View style={styles.galleryPlaceholder}>
+                    <Text style={styles.galleryHint}>{emptyHint}</Text>
+                  </View>
+                )
+              ) : null}
+            </View>
+
+              {/* Bottom dock внутри движущейся шторки */}
+              <View
+                pointerEvents="box-none"
+                style={[styles.bottomAccessory, { bottom: Math.max(insets.bottom, 8) + 8 }]}
+              >
+                {hasSelection ? (
+                  <View style={styles.captionBar}>
+                    <TextInput
+                      value={captionValue}
+                      onChangeText={onCaptionChange}
+                      placeholder="Добавить подпись..."
+                      placeholderTextColor={colors.placeholder}
+                      style={styles.captionInput}
+                      multiline
+                    />
+                    <Pressable style={styles.sendBtn} onPress={onSendSelected}>
+                      <Feather name="send" size={20} color={colors.textSecondaryMuted} />
+                    </Pressable>
+                  </View>
+                ) : bottomButton ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.bottomPrimaryBtn,
+                      pressed && styles.bottomPrimaryBtnPressed,
+                    ]}
+                    onPress={() => {
+                      void Promise.resolve(bottomButton.onPress());
+                    }}
+                    disabled={galleryInteractDisabled}
+                  >
+                    <MaterialCommunityIcons name="folder-image" size={22} color={colors.accent} />
+                    <Text style={styles.bottomPrimaryBtnLabel}>{bottomButton.label}</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.modeDock}>
+                    <View style={[styles.modeAction, styles.modeActionActive]}>
+                      <MaterialCommunityIcons name="image-multiple" size={22} color={colors.accent} />
+                      <Text style={[styles.modeActionLabel, styles.modeActionLabelActive]}>Галерея</Text>
+                    </View>
+                    {attachmentActions.map((action) => (
+                      <Pressable
+                        key={action.key}
+                        style={styles.modeAction}
+                        onPress={() => onRunAttachmentAction(action.onPress)}
+                      >
+                        <SheetActionIcon tone={action.tone} iconColor={colors.iconMuted} />
+                        <Text style={styles.modeActionLabel}>{action.title}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+          </Reanimated.View>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
+
+      <GalleryPhotoPreview
+        visible={previewIndex != null}
+        items={galleryItems}
+        initialIndex={previewIndex ?? 0}
+        selectedById={selectedById}
+        captionValue={captionValue}
+        editedUris={editedUris}
+        onEditedUriChange={onEditedUriChange}
+        onCaptionChange={onCaptionChange}
+        onClose={closePreview}
+        onToggleSelect={onToggleGalleryItem}
+        onSend={() => {
+          closePreview();
+          onSendSelected();
+        }}
+      />
+    </>
   );
 });

@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Platform,
   type LayoutChangeEvent,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -53,6 +54,7 @@ import {
   ChatContextMenuOverlay,
   ChatInputDock,
   InteractiveChatBackShell,
+  CustomAndroidChatHeader,
   LoadErrorState,
   MessageTimeStatus,
   ReplyPreview,
@@ -1260,6 +1262,20 @@ export function ChannelDiscussionScreen() {
   return (
     <View style={[styles.container, styles.discussionRootTransparent]}>
       <InteractiveChatBackShell navigation={navigation} gestureEnabled={!menuState}>
+        {Platform.OS === 'android' ? (
+          <CustomAndroidChatHeader
+            title="Обсуждение"
+            subtitle={undefined}
+            avatarUrl={null}
+            isGroupChat={false}
+            peerId={null}
+            currentUserId={null}
+            chatId={channelId}
+            members={null}
+            navigation={navigation}
+          />
+        ) : null}
+
       <BlurTargetView
         ref={blurTargetRef}
         collapsable={false}

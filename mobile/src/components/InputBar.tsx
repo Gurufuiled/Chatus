@@ -906,6 +906,25 @@ export function InputBar({
 
   const resolveGalleryItemForSend = useCallback(
     async (item: GalleryItem) => {
+      const editedUri = item.localUri?.trim();
+      if (
+        item.kind === 'image' &&
+        editedUri &&
+        (editedUri.startsWith('file://') ||
+          editedUri.startsWith('content://') ||
+          editedUri.startsWith('/'))
+      ) {
+        const fileName = item.fileName ?? 'photo.jpg';
+        return {
+          kind: 'image' as const,
+          uri: editedUri,
+          width: item.width,
+          height: item.height,
+          fileName,
+          mimeType: inferMimeTypeFromFileName(fileName, 'image'),
+        } satisfies MediaPickResult;
+      }
+
       const assetInfo = await MediaLibrary.getAssetInfoAsync(item.id).catch(() => null);
       const kind =
         assetInfo?.mediaType != null ? resolveGalleryItemKind(assetInfo.mediaType) : item.kind;
@@ -965,6 +984,28 @@ export function InputBar({
       Alert.alert('Ошибка', 'Не удалось отправить выбранные медиа. Попробуй еще раз.');
     }
   }, [galleryCaption, onSendMedia, onSendMediaAlbum, resolveGalleryItemForSend, selectedGalleryItems]);
+
+  const galleryEditedUris = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const it of galleryItems) {
+      const local = it.localUri?.trim();
+      if (local) map.set(it.id, local);
+    }
+    for (const it of selectedGalleryItems) {
+      const local = it.localUri?.trim();
+      if (local) map.set(it.id, local);
+    }
+    return map;
+  }, [galleryItems, selectedGalleryItems]);
+
+  const handleGalleryEditedUri = useCallback((itemId: string, uri: string) => {
+    setSelectedGalleryItems((prev) =>
+      prev.map((it) => (it.id === itemId ? { ...it, localUri: uri } : it)),
+    );
+    setGalleryItems((prev) =>
+      prev.map((it) => (it.id === itemId ? { ...it, localUri: uri } : it)),
+    );
+  }, []);
 
   const closeAttachmentSheet = useCallback(() => {
     setShowAttachmentSheet(false);
@@ -1693,6 +1734,8 @@ export function InputBar({
         onClose={closeAttachmentSheet}
         onToggleGalleryItem={handleToggleGalleryItem}
         onCaptionChange={setGalleryCaption}
+        editedUris={galleryEditedUris}
+        onEditedUriChange={handleGalleryEditedUri}
         onSendSelected={() => {
           void handleSendSelectedGalleryItems();
         }}

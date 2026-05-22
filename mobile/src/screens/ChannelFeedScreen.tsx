@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Platform,
   type LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -33,6 +34,7 @@ import {
   ChatContextMenuOverlay,
   ChatForwardSheet,
   InteractiveChatBackShell,
+  CustomAndroidChatHeader,
   LoadErrorState,
 } from '../components';
 import {
@@ -2131,6 +2133,20 @@ export function ChannelFeedScreen() {
         navigation={navigation}
         gestureEnabled={!menuState && forwardSourceMessageIds.length === 0}
       >
+        {Platform.OS === 'android' ? (
+          <CustomAndroidChatHeader
+            title={lockedTitle}
+            subtitle={`${detail?.channel?.subscriber_count ?? 0} подписчиков`}
+            avatarUrl={lockedAvatar}
+            isGroupChat={false}
+            peerId={null}
+            currentUserId={null}
+            chatId={channelId}
+            members={null}
+            navigation={navigation}
+          />
+        ) : null}
+
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={[styles.container, { backgroundColor: c.chatBackground }]}>
       <ChatBackgroundPattern />
       {feedError && sortedFeed.length === 0 ? (
