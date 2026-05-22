@@ -72,4 +72,8 @@ export type TelegramMessageMenuState = {
   menuTop: number;
   menuLeft: number;
   placement: 'above' | 'below';
+  /** Полная высота пузыря в ленте (до обрезки под экран). */
+  previewNaturalHeight: number;
+  /** С какого края показывать обрезанное превью (по умолчанию низ). */
+  previewVerticalAlign?: 'top' | 'bottom';
 } | null;

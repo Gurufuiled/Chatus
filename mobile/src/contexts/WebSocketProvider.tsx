@@ -23,6 +23,7 @@ import { LineSyncService } from '../services/LineSyncService';
 import type { Message } from '../stores/types';
 import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
+import { normalizeMessageFlag } from '../utils/messageFlags';
 import { normalizeMessageTransport } from '../utils/messageTransport';
 import { buildMessageListPreviewText } from '../utils/messageListPreview';
 import { buildPendingLineSyncRowForText, shouldLinkLineSyncOptimisticEchoToServer } from '../services/lineSyncEventBuilder';
@@ -149,8 +150,8 @@ function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
     forwarded_from_name: payload.forwarded_from_name ?? null,
     forwarded_from_chat_id: payload.forwarded_from_chat_id ?? null,
     forwarded_from_sender_id: payload.forwarded_from_sender_id ?? null,
-    is_edited: payload.is_edited ? 1 : 0,
-    is_deleted: payload.is_deleted ? 1 : 0,
+    is_edited: normalizeMessageFlag(payload.is_edited),
+    is_deleted: normalizeMessageFlag(payload.is_deleted),
     status: payload.status,
     transport: normalizeMessageTransport(payload.transport),
     server_id: null,

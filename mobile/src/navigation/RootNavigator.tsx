@@ -8,7 +8,7 @@ import { MainTabs } from './MainTabs';
 import { useTheme } from '../contexts/ThemeContext';
 
 export function RootNavigator() {
-  const { isLoading, isAuthenticated, login } = useAuth();
+  const { isLoading, isAuthenticated, completeLoginSession } = useAuth();
   const { colors } = useTheme();
 
   const styles = React.useMemo(
@@ -42,7 +42,7 @@ export function RootNavigator() {
 
   return (
     <>
-      <AuthStack onLogin={login} />
+      <AuthStack onLoginSession={completeLoginSession} />
       <SloWebView />
     </>
   );

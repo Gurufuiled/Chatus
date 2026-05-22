@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Dimensions, Text, View } from 'react-native';
 import { FileBubble } from '../../components/FileBubble';
 import { ImageBubble } from '../../components/ImageBubble';
 import { MessageTextBubbleBody } from '../../components/MessageTextBubbleBody';
@@ -22,9 +22,13 @@ import {
 import { DEFAULT_CHAT_THEME_ID, getChatTheme, type ChatTheme } from '../../theme/chatThemes';
 import type { ResolvedColorScheme } from '../../theme/palettes';
 
+const SCREEN_WIDTH = Dimensions.get('window').width;
+
 export type TelegramChatMenuPreviewProps = {
   message: Message;
   forcedWidth?: number;
+  /** Высота окна превью в оверлее (обрезка длинных постов / альбомов). */
+  previewMaxHeight?: number;
   row: TelegramMessageRow | undefined;
   messageById: Map<number, TelegramMessageRow>;
   colors: ThemeColors;
@@ -36,9 +40,22 @@ export type TelegramChatMenuPreviewProps = {
   scrollTick?: number;
 };
 
+function menuMediaClamp(
+  forcedWidth: number | undefined,
+  previewMaxHeight: number | undefined,
+): { maxWidth: number; maxHeight: number } | undefined {
+  if (!previewMaxHeight || previewMaxHeight < 80) return undefined;
+  const maxWidth = Math.max(120, (forcedWidth ?? SCREEN_WIDTH * 0.72) - 8);
+  return {
+    maxWidth,
+    maxHeight: Math.max(96, previewMaxHeight - 16),
+  };
+}
+
 export function TelegramChatMenuPreviewBody({
   message,
   forcedWidth,
+  previewMaxHeight,
   row,
   messageById,
   colors,
@@ -204,6 +221,8 @@ export function TelegramChatMenuPreviewBody({
     );
   }
 
+  const mediaClamp = menuMediaClamp(forcedWidth, previewMaxHeight);
+
   if (row.kind === 'album' && row.albumMedia && row.albumMedia.length > 0) {
     return (
       <View style={fixedWidthStyle}>
@@ -243,6 +262,7 @@ export function TelegramChatMenuPreviewBody({
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingCaptionTextColor={colors.textPrimary}
+          mediaClamp={mediaClamp}
         />
       </View>
     );
@@ -267,6 +287,7 @@ export function TelegramChatMenuPreviewBody({
           incomingBubbleBackground={colors.bubbleOther}
           incomingBubbleBorderColor={colors.bubbleOtherBorder}
           incomingCaptionTextColor={colors.textPrimary}
+          mediaClamp={mediaClamp}
         />
       </View>
     );

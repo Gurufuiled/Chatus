@@ -232,6 +232,13 @@ export function createSettingsScreenStyles(c: ThemeColors) {
     servicesText: { flex: 1, minWidth: 0 },
     servicesTitle: { fontSize: 16, fontWeight: '600', color: c.textPrimary },
     servicesSubtitle: { marginTop: 2, fontSize: 13, color: c.textSecondary },
+    telegramStatusBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      marginRight: 6,
+    },
+    telegramStatusBadgeText: { fontSize: 12, fontWeight: '700' },
     servicesChevron: {
       fontSize: 22,
       color: c.textSecondary,

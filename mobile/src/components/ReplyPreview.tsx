@@ -29,7 +29,7 @@ function getMediaLabel(message: Message): string {
 
 export function buildReplyPreviewText(message: Message | null | undefined): string {
   if (!message) return '';
-  if (message.is_deleted) return 'Сообщение удалено';
+  if (message.is_deleted === 1) return 'Сообщение удалено';
 
   if (message.msg_type === 'text') {
     const text = message.content?.trim();
@@ -50,7 +50,7 @@ export function buildReplyPreviewText(message: Message | null | undefined): stri
 }
 
 export function getReplyPreviewThumbnailUri(message: Message | null | undefined): string | null {
-  if (!message || message.is_deleted) return null;
+  if (!message || message.is_deleted === 1) return null;
 
   if (message.msg_type === 'video_note' || message.msg_type === 'video') {
     const videoThumbnail = message.media?.[0]?.thumbnail_url?.trim();

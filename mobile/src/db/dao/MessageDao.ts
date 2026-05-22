@@ -5,6 +5,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { MessageRow } from '../types';
 import { getDatabase } from '../../services/DatabaseService';
+import { normalizeMessageFlag } from '../../utils/messageFlags';
 import { normalizeMessageTransport } from '../../utils/messageTransport';
 
 export class MessageDao {
@@ -16,6 +17,8 @@ export class MessageDao {
     return {
       ...row,
       transport: normalizeMessageTransport(row.transport),
+      is_edited: normalizeMessageFlag(row.is_edited),
+      is_deleted: normalizeMessageFlag(row.is_deleted),
     };
   }
 

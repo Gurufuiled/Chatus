@@ -1,15 +1,16 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../screens';
+import type { AuthSession } from '../services/AuthService';
 import type { AuthStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
 
 type Props = {
-  onLogin: () => void;
+  onLoginSession: (session: AuthSession) => Promise<void>;
 };
 
-export function AuthStack({ onLogin }: Props) {
+export function AuthStack({ onLoginSession }: Props) {
   return (
     <Stack.Navigator
       id={undefined as never}
@@ -18,7 +19,7 @@ export function AuthStack({ onLogin }: Props) {
       }}
     >
       <Stack.Screen name="Login">
-        {() => <LoginScreen onLogin={onLogin} />}
+        {() => <LoginScreen onLoginSession={onLoginSession} />}
       </Stack.Screen>
     </Stack.Navigator>
   );

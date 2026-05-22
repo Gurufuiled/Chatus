@@ -5,7 +5,7 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
-import { API_BASE_URL, LOGINUS_CLIENT_ID, OAUTH_REDIRECT_URI } from '../config';
+import { API_BASE_URL } from '../config';
 import { initDatabase } from './DatabaseService';
 import { AuthSessionDao } from '../db/dao/AuthSessionDao';
 import { SyncQueueDao } from '../db/dao/SyncQueueDao';
@@ -38,16 +38,6 @@ export interface AuthSession {
 }
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 min
-
-function randomOAuthState(): string {
-  try {
-    const bytes = new Uint8Array(16);
-    globalThis.crypto.getRandomValues(bytes);
-    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
-}
 
 export function apiUserToUserRow(u: ApiUser): UserRow {
   return {
@@ -92,41 +82,41 @@ export class AuthService {
   private readonly syncQueueDao = new SyncQueueDao();
   private readonly userDao = new UserDao();
 
-  /** Returns { url, redirect_uri } for Loginus. redirect_uri must match Loginus config (HTTP). */
+  /** Returns { url, redirect_uri } for Loginus. redirect_uri must be HTTP(S) callback с сервера (не messenger://). */
   async getLoginUrl(): Promise<{ url: string; redirect_uri: string }> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
       console.log('[Auth] getLoginUrl: fetching', API_BASE_URL + '/auth/login-url');
-      const res = await fetch(`${API_BASE_URL}/auth/login-url`);
-      if (res.ok) {
-        const data = (await res.json()) as { url: string; redirect_uri?: string };
-        if (data.url) {
-          const result = {
-            url: data.url,
-            redirect_uri: data.redirect_uri ?? OAUTH_REDIRECT_URI,
-          };
-          console.log('[Auth] getLoginUrl: OK from backend', { redirect_uri: result.redirect_uri });
-          return result;
-        }
+      const res = await fetch(`${API_BASE_URL}/auth/login-url`, { signal: controller.signal });
+      if (!res.ok) {
+        throw new Error(`Сервер ответил ${res.status}`);
       }
-      console.warn('[Auth] getLoginUrl: backend response not ok', res.status);
+      const data = (await res.json()) as { url?: string; redirect_uri?: string };
+      if (!data.url) {
+        throw new Error('Пустой ответ login-url');
+      }
+      const redirect_uri = (data.redirect_uri ?? '').trim();
+      if (!redirect_uri.startsWith('http://') && !redirect_uri.startsWith('https://')) {
+        throw new Error(
+          'Некорректный redirect_uri с сервера. Проверьте LOGINUS_REDIRECT_URI на VPS (должен быть http://…/api/auth/callback).',
+        );
+      }
+      console.log('[Auth] getLoginUrl: OK', { redirect_uri });
+      return { url: data.url, redirect_uri };
     } catch (e) {
-      console.warn('[Auth] getLoginUrl: fetch failed, using fallback', e);
-      // Fallback to local construction
+      const msg =
+        e instanceof Error && e.name === 'AbortError'
+          ? 'Сервер не ответил за 30 с'
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      throw new Error(
+        `${msg}. Без API Chatus форма Loginus в приложении не откроется — проверьте ${API_BASE_URL}/auth/login-url`,
+      );
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const params = new URLSearchParams({
-      client_id: LOGINUS_CLIENT_ID || 'messenger',
-      redirect_uri: OAUTH_REDIRECT_URI,
-      response_type: 'code',
-      scope: 'openid email profile',
-      state: randomOAuthState(),
-    });
-    const fallback = {
-      url: `https://loginus.startapus.com/ru/auth?${params.toString()}`,
-      redirect_uri: OAUTH_REDIRECT_URI,
-    };
-    console.log('[Auth] getLoginUrl: FALLBACK (backend unreachable)', { redirect_uri: fallback.redirect_uri });
-    return fallback;
   }
 
   /** Exchange OAuth code for tokens, save session, return user + tokens. */

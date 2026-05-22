@@ -26,6 +26,7 @@ import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createSettingsScreenStyles } from './settingsScreen.styles';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
+import { getTelegramSettingsConnectionMeta } from './telegramAuth/telegramAuthPresentation';
 
 export function SettingsScreen() {
   const { colors: themeColors } = useTheme();
@@ -47,6 +48,10 @@ export function SettingsScreen() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
   const telegramAuthStatus = telegramAccountStore((s) => s.authStatus);
+  const telegramConnectionMeta = useMemo(
+    () => getTelegramSettingsConnectionMeta(telegramAuthStatus),
+    [telegramAuthStatus],
+  );
 
   const openTelegram = useCallback(() => {
     if (telegramAuthStatus !== 'ready') {
@@ -244,16 +249,21 @@ export function SettingsScreen() {
             </View>
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Telegram</Text>
-              <Text style={styles.servicesSubtitle}>
-                {telegramAuthStatus === 'ready'
-                  ? 'Выйти из аккаунта'
-                  : telegramAuthStatus === 'waiting_password'
-                    ? 'Ввести пароль двухэтапной проверки (2FA)'
-                    : telegramAuthStatus === 'waiting_code'
-                      ? 'Ввести код из Telegram или SMS'
-                      : telegramAuthStatus === 'error'
-                        ? 'Ошибка входа — откройте, чтобы повторить'
-                        : 'Войти по номеру телефона'}
+              <Text style={styles.servicesSubtitle}>{telegramConnectionMeta.subtitle}</Text>
+            </View>
+            <View
+              style={[
+                styles.telegramStatusBadge,
+                { backgroundColor: telegramConnectionMeta.badgeBg },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.telegramStatusBadgeText,
+                  { color: telegramConnectionMeta.badgeText },
+                ]}
+              >
+                {telegramConnectionMeta.badge}
               </Text>
             </View>
             <Text style={styles.servicesChevron}>›</Text>

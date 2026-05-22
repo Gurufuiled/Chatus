@@ -132,7 +132,7 @@ function buildForwardPayload(message: Message, forwardedFrom?: ForwardMetadata):
   forwarded_from_chat_id: string | null;
   forwarded_from_sender_id: string | null;
 } | null {
-  if (message.is_deleted) return null;
+  if (message.is_deleted === 1) return null;
 
   const media = message.media?.[0];
   const remoteUrl = media?.remote_url ?? null;

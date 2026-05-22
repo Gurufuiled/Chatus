@@ -291,7 +291,8 @@ const styles = StyleSheet.create({
   },
   menuPreviewOverlay: {
     position: 'absolute',
-    zIndex: 5,
+    zIndex: 12,
+    elevation: 11,
   },
   menuPreviewWrap: {
     flexShrink: 1,
@@ -322,8 +323,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
-    zIndex: 6,
+    elevation: 14,
+    zIndex: 14,
   },
   reactionEmoji: {
     fontSize: 24,
@@ -361,8 +362,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
-    zIndex: 4,
+    elevation: 10,
+    zIndex: 10,
   },
   menuCardTint: {
     ...StyleSheet.absoluteFillObject,

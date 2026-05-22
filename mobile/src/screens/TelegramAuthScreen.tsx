@@ -1,9 +1,7 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Reanimated, { useAnimatedKeyboard } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainTabParamList, SettingsStackParamList } from '../navigation/types';
@@ -20,6 +20,33 @@ import { applyTdlibParameters } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { runTdlibAuthorizationQuery } from '../services/tdlib/tdlibAuthQueue';
 import { telegramAccountStore, type TelegramAuthStatus } from '../stores/telegramAccountStore';
+import {
+  useChatComposerDockPaddingBottom,
+  useChatComposerKeyboardLiftStyles,
+} from '../utils/chatComposerKeyboard';
+import {
+  getAuthWizardStepIndex,
+  resolveAuthWizardStep,
+  showCodeDeliveryInfo,
+  type AuthWizardStep,
+} from './telegramAuth/telegramAuthPresentation';
+
+const WIZARD_STEPS: AuthWizardStep[] = ['phone', 'code', 'password'];
+
+const STEP_COPY: Record<AuthWizardStep, { title: string; subtitle: string }> = {
+  phone: {
+    title: 'Номер телефона',
+    subtitle: 'Отдельный аккаунт от Chatus. Код придёт в Telegram или по SMS.',
+  },
+  code: {
+    title: 'Код подтверждения',
+    subtitle: 'Введите цифры из Telegram или SMS.',
+  },
+  password: {
+    title: 'Двухэтапная проверка',
+    subtitle: 'Облачный пароль из настроек Telegram → Конфиденциальность.',
+  },
+};
 
 function mapTdlibAuthToStore(authType: string | undefined): TelegramAuthStatus {
   switch (authType) {
@@ -218,11 +245,11 @@ export function TelegramAuthScreen() {
         return;
       }
       if (currentStatus === 'waiting_code') {
-        Alert.alert('Код уже отправлен', 'Введите код из Telegram или SMS ниже.');
+        Alert.alert('Код уже отправлен', 'Введите код на этом шаге.');
         return;
       }
       if (currentStatus === 'waiting_password') {
-        Alert.alert('Нужен пароль 2FA', 'Сначала введите код, затем облачный пароль внизу экрана.');
+        Alert.alert('Нужен пароль 2FA', 'Сначала введите код. Пароль запросится на следующем шаге.');
         return;
       }
 
@@ -249,13 +276,13 @@ export function TelegramAuthScreen() {
       if (probeType === 'authorizationStateWaitCode' || probeType === 'authorizationStateWaitEmailCode') {
         telegramAccountStore.getState().setAuthStatus('waiting_code');
         await telegramAccountStore.getState().persistSnapshot();
-        Alert.alert('Код уже отправлен', 'Введите код из Telegram или SMS ниже.');
+        Alert.alert('Код уже отправлен', 'Введите код на этом шаге.');
         return;
       }
       if (probeType === 'authorizationStateWaitPassword') {
         telegramAccountStore.getState().setAuthStatus('waiting_password');
         await telegramAccountStore.getState().persistSnapshot();
-        Alert.alert('Нужен пароль 2FA', 'Сначала введите код, затем облачный пароль внизу экрана.');
+        Alert.alert('Нужен пароль 2FA', 'Сначала введите код. Пароль запросится на следующем шаге.');
         return;
       }
       if (
@@ -481,8 +508,11 @@ export function TelegramAuthScreen() {
         }
         return;
       }
+      if (status === 'waiting_password') {
+        return;
+      }
       if (status !== 'waiting_code') {
-        Alert.alert('Telegram', 'Сначала отправьте номер и дождитесь кода.');
+        Alert.alert('Telegram', 'Статус входа изменился. Откройте экран заново или сбросьте сессию.');
         return;
       }
       await runTdlibAuthorizationQuery(async () => {
@@ -534,8 +564,12 @@ export function TelegramAuthScreen() {
         }
         return;
       }
+      if (status === 'waiting_code') {
+        Alert.alert('Telegram', 'Сначала введите код подтверждения.');
+        return;
+      }
       if (status !== 'waiting_password') {
-        Alert.alert('Telegram', 'Сначала введите код из Telegram или SMS.');
+        Alert.alert('Telegram', 'Сессия сброшена или шаг изменился. Откройте экран заново.');
         return;
       }
       await runTdlibAuthorizationQuery(async () => {
@@ -580,6 +614,14 @@ export function TelegramAuthScreen() {
   }, []);
 
   const status = telegramAccountStore((s) => s.authStatus);
+  const authStep = resolveAuthWizardStep(status);
+  const wizardStepIndex = getAuthWizardStepIndex(authStep);
+  const stepCopy = STEP_COPY[authStep];
+  const insets = useSafeAreaInsets();
+  const animatedKeyboard = useAnimatedKeyboard();
+  const { dockAnimatedStyle } = useChatComposerKeyboardLiftStyles(animatedKeyboard);
+  const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
+  const passwordInputRef = useRef<TextInput>(null);
 
   const canSendPhone = !preparing && !busy && apiId != null && apiHash && status !== 'ready';
   const phonePrimary =
@@ -587,18 +629,51 @@ export function TelegramAuthScreen() {
     status === 'idle' ||
     status === 'error' ||
     status === 'waiting_parameters';
+  const showAuthForm = apiId != null && apiHash && status !== 'ready';
+  const scrollBottomPad = authStep === 'password' ? 168 + composerDockPaddingBottom : 32;
+
+  useEffect(() => {
+    if (authStep !== 'password' || preparing) return;
+    const timer = setTimeout(() => passwordInputRef.current?.focus(), 320);
+    return () => clearTimeout(timer);
+  }, [authStep, preparing]);
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.chatBackground }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.scroll}>
+    <View style={[styles.flex, { backgroundColor: colors.chatBackground }]}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={[styles.title, { color: colors.textPrimary }]}>Telegram</Text>
-        <Text style={[styles.subtitle, { color: ui.hint }]}>
-          Введите номер — код придёт в приложение Telegram (или по SMS). Аккаунт Telegram отдельный от Chatus
-          (Loginus).
-        </Text>
+
+        {showAuthForm ? (
+          <View style={styles.progressRow}>
+            {WIZARD_STEPS.map((step, index) => (
+              <View
+                key={step}
+                style={[
+                  styles.progressDot,
+                  {
+                    backgroundColor:
+                      index <= wizardStepIndex ? colors.accent : isLight ? '#D1D9E6' : colors.separator,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        {showAuthForm ? (
+          <>
+            <Text style={[styles.stepTitle, { color: colors.textPrimary }]}>{stepCopy.title}</Text>
+            <Text style={[styles.subtitle, { color: ui.hint }]}>{stepCopy.subtitle}</Text>
+          </>
+        ) : (
+          <Text style={[styles.subtitle, { color: ui.hint }]}>
+            Аккаунт Telegram отдельный от Chatus.
+          </Text>
+        )}
 
         {bootstrapError ? (
           <Text style={[styles.errorBanner, { color: '#C62828', backgroundColor: isLight ? '#FFEBEE' : '#3A1F1F' }]}>
@@ -623,12 +698,8 @@ export function TelegramAuthScreen() {
           </View>
         ) : null}
 
-        {apiId != null && apiHash && status !== 'ready' ? (
+        {showAuthForm && authStep === 'phone' ? (
           <>
-            <Text style={[styles.fieldLabel, { color: ui.label }]}>Номер телефона</Text>
-            <Text style={[styles.phoneHint, { color: ui.hint }]}>
-              Нужен международный формат: плюс и код страны (+7…). Можно ввести 8 988… или 988… — подставим +7 автоматически.
-            </Text>
             <TextInput
               value={phone}
               onChangeText={setPhone}
@@ -645,11 +716,15 @@ export function TelegramAuthScreen() {
                 },
               ]}
             />
+            <Pressable onPress={() => Alert.alert('Формат номера', 'Международный формат: +7 и 10 цифр. Можно ввести 8 988… или 988… — подставим +7.')} hitSlop={8}>
+              <Text style={[styles.linkHint, { color: colors.accent }]}>Как ввести номер?</Text>
+            </Pressable>
             <Pressable
               onPress={() => void submitPhone()}
               disabled={!canSendPhone || !phonePrimary}
               style={({ pressed }) => [
                 styles.primaryBtn,
+                styles.primaryBtnSpaced,
                 {
                   backgroundColor: colors.accent,
                   opacity: !canSendPhone || !phonePrimary ? 0.45 : pressed ? 0.9 : 1,
@@ -662,12 +737,16 @@ export function TelegramAuthScreen() {
                 <Text style={styles.primaryBtnText}>Получить код</Text>
               )}
             </Pressable>
+          </>
+        ) : null}
 
-            <Text style={[styles.fieldLabel, { color: ui.label, marginTop: 20 }]}>Код</Text>
-            <Text style={[styles.codeDeliveryHint, { color: ui.hint }]}>
-              Обычно код приходит в уже открытый Telegram на другом телефоне или компьютере. Если других сессий нет —
-              придёт SMS на этот номер (не «сообщения» от оператора).
-            </Text>
+        {showAuthForm && authStep === 'code' ? (
+          <>
+            <View style={styles.codeHintRow}>
+              <Pressable onPress={showCodeDeliveryInfo} hitSlop={8}>
+                <Text style={[styles.linkHint, { color: colors.accent }]}>Где взять код?</Text>
+              </Pressable>
+            </View>
             <TextInput
               value={code}
               onChangeText={setCode}
@@ -703,68 +782,107 @@ export function TelegramAuthScreen() {
               onPress={() => void submitCode()}
               disabled={busy || preparing || status !== 'waiting_code'}
               style={({ pressed }) => [
-                styles.secondaryBtn,
+                styles.primaryBtn,
                 {
-                  backgroundColor: ui.secondaryBtnBg,
-                  opacity: busy || preparing || status !== 'waiting_code' ? 0.45 : pressed ? 0.92 : 1,
+                  backgroundColor: colors.accent,
+                  opacity: busy || preparing || status !== 'waiting_code' ? 0.45 : pressed ? 0.9 : 1,
                 },
               ]}
             >
-              <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>Войти с этим кодом</Text>
-            </Pressable>
-
-            <Text style={[styles.fieldLabel, { color: ui.label, marginTop: 20 }]}>
-              Облачный пароль (если включена 2FA)
-            </Text>
-            <Text style={[styles.hintSmall, { color: ui.hint }]}>
-              Только если в Telegram включена двухэтапная проверка — после кода запросит пароль.
-            </Text>
-            <TextInput
-              value={cloudPassword}
-              onChangeText={setCloudPassword}
-              placeholder="Пароль из настроек Telegram"
-              placeholderTextColor={ui.placeholder}
-              secureTextEntry
-              autoCapitalize="none"
-              editable={!busy && !preparing}
-              style={[
-                styles.input,
-                {
-                  borderColor: ui.border,
-                  backgroundColor: ui.fieldBg,
-                  color: colors.textPrimary,
-                },
-              ]}
-            />
-            <Pressable
-              onPress={() => void submitPassword()}
-              disabled={busy || preparing || status !== 'waiting_password'}
-              style={({ pressed }) => [
-                styles.secondaryBtn,
-                {
-                  backgroundColor: ui.secondaryBtnBg,
-                  opacity: busy || preparing || status !== 'waiting_password' ? 0.45 : pressed ? 0.92 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>Подтвердить пароль 2FA</Text>
+              {busy && status === 'waiting_code' ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Продолжить</Text>
+              )}
             </Pressable>
           </>
+        ) : null}
+
+        {showAuthForm && authStep === 'password' ? (
+          <Text style={[styles.hintSmall, { color: ui.hint, marginTop: 4 }]}>
+            Пароль вводится в панели внизу — она поднимается вместе с клавиатурой.
+          </Text>
         ) : null}
 
         <Pressable onPress={resetTg} style={styles.resetWrap} hitSlop={12}>
           <Text style={styles.resetText}>Сбросить сессию Telegram на устройстве</Text>
         </Pressable>
       </ScrollView>
-    </KeyboardAvoidingView>
+
+      {showAuthForm && authStep === 'password' ? (
+        <Reanimated.View
+          style={[
+            styles.passwordDock,
+            dockAnimatedStyle,
+            {
+              backgroundColor: isLight ? '#FFFFFF' : colors.inputBackgroundSolid,
+              borderTopColor: ui.border,
+              paddingBottom: composerDockPaddingBottom,
+            },
+          ]}
+        >
+          <Text style={[styles.fieldLabel, { color: ui.label }]}>Облачный пароль</Text>
+          <TextInput
+            ref={passwordInputRef}
+            value={cloudPassword}
+            onChangeText={setCloudPassword}
+            placeholder="Пароль 2FA"
+            placeholderTextColor={ui.placeholder}
+            secureTextEntry
+            autoCapitalize="none"
+            editable={!busy && !preparing}
+            style={[
+              styles.input,
+              styles.passwordDockInput,
+              {
+                borderColor: ui.border,
+                backgroundColor: ui.fieldBg,
+                color: colors.textPrimary,
+              },
+            ]}
+          />
+          <Pressable
+            onPress={() => void submitPassword()}
+            disabled={busy || preparing || status !== 'waiting_password'}
+            style={({ pressed }) => [
+              styles.primaryBtn,
+              {
+                backgroundColor: colors.accent,
+                opacity: busy || preparing || status !== 'waiting_password' ? 0.45 : pressed ? 0.9 : 1,
+              },
+            ]}
+          >
+            {busy && status === 'waiting_password' ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryBtnText}>Продолжить</Text>
+            )}
+          </Pressable>
+        </Reanimated.View>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { padding: 16, paddingBottom: 32 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 8 },
+  scroll: { padding: 16, flexGrow: 1 },
+  title: { fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  stepTitle: { fontSize: 18, fontWeight: '700', marginBottom: 6 },
   subtitle: { fontSize: 15, lineHeight: 21, marginBottom: 20 },
+  progressRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  progressDot: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+  codeHintRow: { marginBottom: 10 },
+  linkHint: { fontSize: 14, fontWeight: '600', marginBottom: 12 },
+  primaryBtnSpaced: { marginTop: 4 },
   errorBanner: {
     fontSize: 14,
     lineHeight: 20,
@@ -809,4 +927,14 @@ const styles = StyleSheet.create({
   secondaryBtnText: { fontWeight: '700', fontSize: 15 },
   resetWrap: { marginTop: 28 },
   resetText: { color: '#E53935', fontWeight: '600', fontSize: 15 },
+  passwordDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  passwordDockInput: { marginBottom: 10 },
 });

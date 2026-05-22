@@ -7,7 +7,6 @@ import type { ThemeColors, ResolvedColorScheme } from '../../theme/palettes';
 import {
   estimateMenuCardHeight,
   MENU_EDGE_GAP,
-  MENU_HEIGHT,
   MENU_WIDTH,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
@@ -25,8 +24,12 @@ import { getTelegramRowTdMessageIds } from './telegramAlbumRows';
 import type { TelegramMessageMenuState, TelegramMessageRow } from './types';
 import type { ChatTheme } from '../../theme/chatThemes';
 
-/** Совпадает с высотой полосы реакций + зазор над превью в `ChatContextMenuOverlay`. */
-const MENU_REACTION_STACK = 42 + 6;
+/** Совпадает с `REACTION_BAR_HEIGHT` + зазор в `ChatContextMenuOverlay`. */
+const REACTION_BAR_HEIGHT = 42;
+const REACTION_ABOVE_GAP = 6;
+const MENU_REACTION_STACK = REACTION_BAR_HEIGHT + REACTION_ABOVE_GAP;
+const TELEGRAM_MENU_ACTION_COUNT = 6;
+const MENU_LAYOUT_GAP = 8;
 
 type EdgeInsets = { top: number; bottom: number; left: number; right: number };
 type TelegramMenuMode = 'actions' | 'deleteConfirm';
@@ -213,6 +216,14 @@ export function useTelegramChatMenu({
     }).start();
   }, [menuAnim, menuState]);
 
+  const resolveMenuCardHeight = useCallback((mode: TelegramMenuMode) => {
+    const actionCount = mode === 'deleteConfirm' ? 2 : TELEGRAM_MENU_ACTION_COUNT;
+    return Math.max(
+      estimateMenuCardHeight(actionCount),
+      estimateMenuCardHeight(2),
+    ) + 10;
+  }, []);
+
   const openTelegramMessageMenu = useCallback(
     (row: TelegramMessageRow) => {
       if (row.messageId <= 0) return;
@@ -221,11 +232,10 @@ export function useTelegramChatMenu({
       if (!target) return;
       Keyboard.dismiss();
       target.measureInWindow((pageX, pageY, width, height) => {
-        const menuGap = 4;
-        const menuCardHeight = Math.max(MENU_HEIGHT, estimateMenuCardHeight(2)) + 10;
+        const menuCardHeight = resolveMenuCardHeight('actions');
         const bottomSafety = 28;
-        const composerOffset = inputBarHeight + Math.max(insets.bottom, 12);
-        const effectiveBottom = SCREEN_HEIGHT - (composerOffset + bottomSafety);
+        /** `inputBarHeight` уже включает paddingBottom дока из onLayout. */
+        const effectiveBottom = SCREEN_HEIGHT - (inputBarHeight + bottomSafety);
         const previewWidth = Math.min(Math.ceil(width) + 1, SCREEN_WIDTH - MENU_EDGE_GAP * 2);
         const previewLeft = Math.max(
           MENU_EDGE_GAP,
@@ -233,15 +243,20 @@ export function useTelegramChatMenu({
         );
         const reactionReserve = showMenuReactions ? MENU_REACTION_STACK : 0;
         const minPreviewTop = Math.max(insets.top + 12, MENU_EDGE_GAP) + reactionReserve;
-        const spaceForPreview = effectiveBottom - minPreviewTop - menuGap - menuCardHeight;
+        const spaceForPreview =
+          effectiveBottom - minPreviewTop - MENU_LAYOUT_GAP - menuCardHeight;
         const previewDisplayHeight = Math.min(height, Math.max(0, spaceForPreview));
-        const columnBelowPreview = previewDisplayHeight + menuGap + menuCardHeight;
-        let previewTop = Math.min(pageY, effectiveBottom - columnBelowPreview);
+        const columnBelowPreview = previewDisplayHeight + MENU_LAYOUT_GAP + menuCardHeight;
+        const maxPreviewTopSoMenuFits = effectiveBottom - columnBelowPreview;
+
+        let previewTop = Math.min(pageY, maxPreviewTopSoMenuFits);
         previewTop = Math.max(minPreviewTop, previewTop);
+
         if (previewTop + columnBelowPreview > effectiveBottom) {
           previewTop = Math.max(MENU_EDGE_GAP + reactionReserve, effectiveBottom - columnBelowPreview);
         }
-        const menuTop = previewTop + previewDisplayHeight + menuGap;
+
+        const menuTop = previewTop + previewDisplayHeight + MENU_LAYOUT_GAP;
         const menuLeftBase = row.outgoing
           ? previewLeft + previewWidth - MENU_WIDTH
           : previewLeft;
@@ -256,13 +271,15 @@ export function useTelegramChatMenu({
           previewLeft,
           previewWidth,
           previewHeight: previewDisplayHeight,
+          previewNaturalHeight: height,
+          previewVerticalAlign: previewDisplayHeight < height - 1 ? 'top' : undefined,
           menuTop,
           menuLeft,
           placement: 'below',
         });
       });
     },
-    [insets.bottom, insets.top, inputBarHeight, showMenuReactions],
+    [insets.top, inputBarHeight, resolveMenuCardHeight, showMenuReactions],
   );
 
   const confirmTelegramDelete = useCallback(
@@ -416,6 +433,7 @@ export function useTelegramChatMenu({
         <TelegramChatMenuPreviewBody
           message={message}
           forcedWidth={forcedWidth}
+          previewMaxHeight={menuState?.previewHeight}
           row={row}
           messageById={messageById}
           colors={colors}
@@ -428,7 +446,18 @@ export function useTelegramChatMenu({
         />
       );
     },
-    [chatThemeProp, colors, headerTitle, isGroupChat, messageById, messagesRef, resolvedSchemeProp, scrollTick, styles],
+    [
+      chatThemeProp,
+      colors,
+      headerTitle,
+      isGroupChat,
+      menuState?.previewHeight,
+      messageById,
+      messagesRef,
+      resolvedSchemeProp,
+      scrollTick,
+      styles,
+    ],
   );
 
   return {

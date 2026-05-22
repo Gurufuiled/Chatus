@@ -100,15 +100,14 @@ export class MailboxService {
     for (const row of expired) {
       await this.deleteMailboxUploadFilesForMessage(row.id);
     }
-    const result = await this.prisma.message.updateMany({
+    const result = await this.prisma.message.deleteMany({
       where: {
         mailboxExpiresAt: { not: null, lt: now },
         isDeleted: false,
       },
-      data: { isDeleted: true, content: null, mailboxExpiresAt: null },
     });
     if (result.count > 0) {
-      this.log.log(`Pruned ${result.count} expired mailbox messages`);
+      this.log.log(`Hard-deleted ${result.count} expired mailbox messages`);
     }
   }
 

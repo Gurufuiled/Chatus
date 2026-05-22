@@ -804,7 +804,7 @@ export function TelegramChatScreen() {
         throwIfTdError(raw);
         const row = await mapTdMessage(raw, lastReadOutboxMessageIdRef.current, {
           loadSenderAvatar: false,
-          mediaLocalOnly: true,
+          mediaLocalOnly: false,
         });
         if (
           !row ||
@@ -948,11 +948,6 @@ export function TelegramChatScreen() {
           ? messageThreadId
           : 0;
 
-      const mapHistoryOptions = {
-        loadSenderAvatar: false,
-        mediaLocalOnly: true,
-      } as const;
-
       const mergeMapped = (mapped: TelegramMessageRow[]) => {
         if (isStaleLoad() || mapped.length === 0) return;
         setMessages((prev) => {
@@ -989,7 +984,11 @@ export function TelegramChatScreen() {
           rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
           lastReadOutboxMessageIdRef.current,
           8,
-          mapHistoryOptions,
+          {
+            loadSenderAvatar: false,
+            /** Локальный кэш TDLib — без блокирующих downloadFile; сеть — подтягиваем файлы. */
+            mediaLocalOnly: onlyLocal,
+          },
         );
       };
 
@@ -998,7 +997,7 @@ export function TelegramChatScreen() {
           try {
             const cached = await loadTelegramMessagesFromCache(chatId, threadParam);
             if (mountedRef.current && cached.length > 0) {
-              mergeMapped(cached, false);
+              mergeMapped(cached);
               setLoading(false);
             }
           } catch {
@@ -1012,7 +1011,7 @@ export function TelegramChatScreen() {
           try {
             const localMapped = await fetchBatch(true);
             if (mountedRef.current && localMapped.length > 0) {
-              mergeMapped(localMapped, false);
+              mergeMapped(localMapped);
               setLoading(false);
             }
           } catch {
@@ -1022,7 +1021,7 @@ export function TelegramChatScreen() {
 
         const mapped = await fetchBatch(false);
         if (!mountedRef.current || isStaleLoad()) return;
-        mergeMapped(mapped, older);
+        mergeMapped(mapped);
         if (!isStaleLoad()) setLastError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1131,7 +1130,7 @@ export function TelegramChatScreen() {
               : 0;
           void mapTdMessage(rawMessage, lastReadOutboxMessageIdRef.current, {
             loadSenderAvatar: false,
-            mediaLocalOnly: true,
+            mediaLocalOnly: false,
           }).then((row) => {
             if (!row || !mountedRef.current) return;
             setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, row, oldMessageId)));
@@ -1999,6 +1998,59 @@ export function TelegramChatScreen() {
               style={measureShellStyle}
             >
               {channelIncoming ? albumBubble : wrapTelegramMediaBubble(albumBubble)}
+            </View>
+          </Pressable>,
+        );
+      }
+
+      if (item.kind === 'image' && !item.mediaUri) {
+        const placeholderBody = (
+          <>
+            {bubbleHeader}
+            <MessageTextBubbleBody
+              text={item.text?.trim() || 'Фото'}
+              textStyle={outgoingMessageTextStyle}
+              rowStyle={styles.bubbleContentRow}
+              meta={
+                <MessageTimeStatus
+                  time={formatTime(item.dateMs)}
+                  status={item.status}
+                  isMe={isMe}
+                  compact
+                  timeColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+                  iconColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+                />
+              }
+            />
+          </>
+        );
+        return wrapSelectionShell(
+          <Pressable
+            {...pressableA11y}
+            style={pressableRowStyle}
+            accessibilityLabel={`${isMe ? 'Я' : headerTitle}: фото${item.text ? `, ${item.text}` : ''}`}
+          >
+            <View
+              ref={(node) => setMessageContentRef(item.id, node)}
+              collapsable={false}
+              style={measureShellStyle}
+            >
+              {isMe ? (
+                <MeBubbleChrome
+                  active={useViewportOutgoingGradient}
+                  scrollTick={scrollTick}
+                  fillColor={chatTheme.bubbleMe}
+                  style={[
+                    styles.bubble,
+                    isLastInGroup ? { borderBottomRightRadius: 6 } : null,
+                    !useViewportOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
+                  ]}
+                >
+                  {placeholderBody}
+                </MeBubbleChrome>
+              ) : (
+                <View style={[styles.bubble, textBubbleColorStyle]}>{placeholderBody}</View>
+              )}
             </View>
           </Pressable>,
         );

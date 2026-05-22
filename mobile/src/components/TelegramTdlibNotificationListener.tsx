@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import {
@@ -15,7 +16,13 @@ import { telegramUiStore } from '../stores/telegramUiStore';
  * Также слушает updateAuthorizationState и синхронизирует стор немедленно — без polling'а.
  */
 export function TelegramTdlibNotificationListener() {
+  const { isAuthenticated } = useAuth();
+
   useEffect(() => {
+    if (!isAuthenticated) {
+      return undefined;
+    }
+
     let unsubTd: (() => void) | undefined;
     let unsubAuth: (() => void) | undefined;
 
@@ -129,7 +136,7 @@ export function TelegramTdlibNotificationListener() {
       unsubTd?.();
       unsubAuth?.();
     };
-  }, []);
+  }, [isAuthenticated]);
 
   return null;
 }

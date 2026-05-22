@@ -113,7 +113,7 @@ function textPreviewFromContent(msg: Message): ChatusDialogPreview | null {
 export function buildChatusDialogPreviewFromMessage(
   msg: Message | null | undefined,
 ): ChatusDialogPreview {
-  if (!msg || msg.is_deleted) {
+  if (!msg || msg.is_deleted === 1) {
     return { text: '', thumbnailUris: [], accentLabel: false };
   }
 

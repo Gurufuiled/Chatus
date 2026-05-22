@@ -13,6 +13,7 @@ import { authStore } from '../stores/authStore';
 import { uiStore } from '../stores/uiStore';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
+import { normalizeMessageFlag } from '../utils/messageFlags';
 import { normalizeMessageTransport } from '../utils/messageTransport';
 
 const MAX_RETRIES = 5;
@@ -270,9 +271,8 @@ function mapApiMessageToMessage(api: ApiMessage): Message {
     forwarded_from_name: api.forwarded_from_name ?? null,
     forwarded_from_chat_id: api.forwarded_from_chat_id ?? null,
     forwarded_from_sender_id: api.forwarded_from_sender_id ?? null,
-    /** API / Nest может отдать boolean; `??` оставил бы true/false и ломал бы `=== 1` в UI. */
-    is_edited: api.is_edited ? 1 : 0,
-    is_deleted: api.is_deleted ? 1 : 0,
+    is_edited: normalizeMessageFlag(api.is_edited),
+    is_deleted: normalizeMessageFlag(api.is_deleted),
     status: api.status,
     transport: normalizeMessageTransport(api.transport),
     server_id: api.server_id ?? null,
@@ -870,6 +870,16 @@ class SyncServiceClass {
         console.log('[SyncService] fetchMessagesForChat', chatId, 'count=', data.length, 'first=', { id: data[0]?.id, content: data[0]?.content, msg_type: data[0]?.msg_type });
       }
       const mapped: Message[] = data.map(mapApiMessageToMessage);
+      if (__DEV__) {
+        const deletedCount = mapped.filter((m) => m.is_deleted === 1).length;
+        if (deletedCount > 0) {
+          console.log(
+            '[SyncService] fetchMessagesForChat',
+            chatId,
+            `deleted=${deletedCount}/${mapped.length}`,
+          );
+        }
+      }
       messageStore.getState().setMessages(chatId, mapped);
     } catch {
       // ignore

@@ -12,6 +12,8 @@ type AuthContextType = {
   user: ReturnType<typeof authStore.getState>['user'];
   accessToken: string | null;
   login: () => Promise<void>;
+  /** После обмена OAuth-кода — сразу в стор, без повторного чтения SQLite. */
+  completeLoginSession: (session: AuthSession) => Promise<void>;
   logout: () => Promise<void>;
   /** SLO URL to open in WebView after logout. Cleared when SLO completes. */
   sloUrlToOpen: string | null;
@@ -71,9 +73,27 @@ export function AuthProvider({ children, initialSession = null }: AuthProviderPr
   }, [isAuthenticated, accessToken]);
 
   const login = useCallback(async () => {
-    await authStore.getState().restoreSession();
-    syncFromStore();
+    setIsLoading(true);
+    try {
+      await authStore.getState().restoreSession();
+      syncFromStore();
+    } finally {
+      setIsLoading(false);
+    }
   }, [syncFromStore]);
+
+  const completeLoginSession = useCallback(
+    async (session: AuthSession) => {
+      setIsLoading(true);
+      try {
+        authStore.getState().setSession(apiUserToUserRow(session.user), session.accessToken);
+        syncFromStore();
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [syncFromStore],
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -102,6 +122,7 @@ export function AuthProvider({ children, initialSession = null }: AuthProviderPr
         user,
         accessToken,
         login,
+        completeLoginSession,
         logout,
         sloUrlToOpen,
         clearSloUrl,

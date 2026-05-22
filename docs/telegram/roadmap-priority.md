@@ -28,7 +28,7 @@
 | Альбом: отображение | Расширить `TelegramMessageKind`, маппинг grouped messages | Высокая |
 | Стикеры TG в ленте | `messageSticker` в `tdlibMapping` + компонент | Средняя |
 | Inline-реакции | Прокинуть TDLib reactions + UI как в `ChatMessageList` | Средняя |
-| Voice/video note banners | `ChatTopBanners` + плеер из Chatus | Средняя |
+| Voice/video note banners   | `ChatTopBanners` + плеер из Chatus | Средняя |
 | Theme picker в чате | `ChatThemePickerModal` + `uiStore` по `telegramChatId` | Низкая |
 | Reply rules для канала | Отключить swipe/menu reply на `channelIncoming` для не-админа | Низкая |
 

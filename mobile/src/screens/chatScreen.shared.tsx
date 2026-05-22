@@ -252,7 +252,7 @@ export function getDeletedPlaceholder(isMe: boolean): string {
 }
 
 export function getCopyableContent(message: Message): string {
-  if (message.is_deleted) return '';
+  if (message.is_deleted === 1) return '';
   if (message.msg_type === 'text') {
     const t = message.content?.trim() ?? '';
     const composite = t ? tryParseCompositeMessage(t) : null;

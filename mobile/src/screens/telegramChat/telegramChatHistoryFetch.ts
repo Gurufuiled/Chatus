@@ -9,9 +9,14 @@ import type { TelegramMessageRow } from './types';
 
 export const TELEGRAM_HISTORY_PAGE_SIZE = 50;
 
-const MAP_HISTORY_OPTIONS = {
+const MAP_HISTORY_LOCAL_OPTIONS = {
   loadSenderAvatar: false,
   mediaLocalOnly: true,
+} as const;
+
+const MAP_HISTORY_REMOTE_OPTIONS = {
+  loadSenderAvatar: false,
+  mediaLocalOnly: false,
 } as const;
 
 export type FetchTelegramHistoryParams = {
@@ -65,7 +70,7 @@ export async function fetchTelegramHistoryBatch(
     rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
     lastReadOutboxMessageId,
     8,
-    MAP_HISTORY_OPTIONS,
+    onlyLocal ? MAP_HISTORY_LOCAL_OPTIONS : MAP_HISTORY_REMOTE_OPTIONS,
   );
   return { rows, lastReadOutboxMessageId };
 }

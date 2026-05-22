@@ -2,6 +2,7 @@ import { resolveMediaUrl } from '../config';
 import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
+import { normalizeMessageFlag } from '../utils/messageFlags';
 import { normalizeMessageTransport } from '../utils/messageTransport';
 import type { ChannelDetail } from '../stores/channelStore';
 
@@ -289,8 +290,8 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
     is_channel_post: api.is_channel_post ? 1 : 0,
     view_count: api.view_count ?? 0,
     comment_count: api.comment_count ?? 0,
-    is_edited: api.is_edited ? 1 : 0,
-    is_deleted: api.is_deleted ? 1 : 0,
+    is_edited: normalizeMessageFlag(api.is_edited),
+    is_deleted: normalizeMessageFlag(api.is_deleted),
     status: api.status,
     transport: normalizeMessageTransport(api.transport),
     server_id: null,
