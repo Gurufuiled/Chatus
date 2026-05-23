@@ -10,14 +10,14 @@
 /** Horizontal padding on the FlatList content — 0 so insets match Chatus (`messageWrap`). */
 export const CHAT_MSG_HORIZONTAL_PADDING = 0;
 
-/** Inset from screen edge to bubble column (same as `messageWrap.paddingHorizontal` in Chatus). */
-export const CHAT_MESSAGE_WRAP_HORIZONTAL_PADDING = 12;
+/** Inset from screen edge to bubble column (Telegram Android ~7–8dp). */
+export const CHAT_MESSAGE_WRAP_HORIZONTAL_PADDING = 8;
 
 /** Vertical padding at top and bottom of the message list. */
 export const CHAT_MSG_VERTICAL_PADDING = 12;
 
-/** Max bubble width — same cap as `chatScreen.styles` bubble / mediaStack. */
-export const CHAT_BUBBLE_MAX_WIDTH_PCT = '82%';
+/** Max bubble width — Telegram Android uses ~88% of the available width. */
+export const CHAT_BUBBLE_MAX_WIDTH_PCT = '88%';
 
 /** Incoming канал-посты: как в `ChannelFeedScreen` (`postBubble`), не на всю ширину экрана. */
 export const TELEGRAM_CHANNEL_POST_CARD_MAX_WIDTH_PCT = '90%';

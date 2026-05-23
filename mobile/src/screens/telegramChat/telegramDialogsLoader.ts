@@ -17,8 +17,12 @@ export function matchesDialogQuery(row: TelegramDialogRow, normalizedQuery: stri
       : row.chatType === 'group' || row.chatType === 'supergroup'
         ? 'группа group'
         : '';
-  const haystack = [row.title, row.lastMessagePreview, typeLabel]
-    .filter(Boolean)
+  const haystack = [
+    typeof row.title === 'string' ? row.title : '',
+    typeof row.lastMessagePreview === 'string' ? row.lastMessagePreview : '',
+    typeLabel,
+  ]
+    .filter((part) => part.length > 0)
     .join(' ')
     .toLowerCase();
   return haystack.includes(normalizedQuery);

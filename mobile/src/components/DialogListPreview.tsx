@@ -21,7 +21,7 @@ export function DialogListPreview({
   colors,
   placeholder = '',
 }: DialogListPreviewProps) {
-  const trimmed = text.trim() || placeholder.trim();
+  const trimmed = (typeof text === 'string' ? text : '').trim() || placeholder.trim();
   const thumbs = thumbnailUris.filter(Boolean).slice(0, 3);
 
   if (!trimmed && thumbs.length === 0) {

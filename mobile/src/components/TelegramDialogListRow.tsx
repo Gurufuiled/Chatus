@@ -32,12 +32,15 @@ export function TelegramDialogListRow({ item, navigation }: Props) {
   const rowStyles = useMemo(() => createChatListRowStyles(colors), [colors]);
   const isChannel = item.chatType === 'channel';
   const isGroup = item.chatType === 'group' || item.chatType === 'supergroup';
-  const previewText = item.lastMessagePreview;
-  const previewThumbs = item.lastMessageThumbnailUris ?? [];
+  const title = typeof item.title === 'string' ? item.title : 'Чат';
+  const previewText = typeof item.lastMessagePreview === 'string' ? item.lastMessagePreview : '';
+  const previewThumbs = Array.isArray(item.lastMessageThumbnailUris)
+    ? item.lastMessageThumbnailUris.filter((uri): uri is string => typeof uri === 'string' && uri.length > 0)
+    : [];
 
   const rowNavParams = {
     telegramChatId: item.chatId,
-    title: item.title,
+    title,
     avatarUri: item.avatarUri ?? null,
     chatType: item.chatType ?? null,
   };
@@ -46,7 +49,7 @@ export function TelegramDialogListRow({ item, navigation }: Props) {
     <View style={rowStyles.row}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Профиль: ${item.title}`}
+        accessibilityLabel={`Профиль: ${title}`}
         accessibilityHint="Открывает экран профиля чата или канала"
         onPress={() => navigation.navigate('TelegramChatProfile', rowNavParams)}
       >
@@ -58,11 +61,11 @@ export function TelegramDialogListRow({ item, navigation }: Props) {
               rowStyles.avatarPlaceholder,
               isChannel
                 ? rowStyles.channelAvatarPlaceholder
-                : { backgroundColor: getAvatarColor(item.title) },
+                : { backgroundColor: getAvatarColor(title) },
             ]}
           >
             <Text style={rowStyles.avatarPlaceholderText}>
-              {isChannel ? '📢' : (item.title.trim()[0] || '?').toUpperCase()}
+              {isChannel ? '📢' : (title.trim()[0] || '?').toUpperCase()}
             </Text>
           </View>
         )}
@@ -74,7 +77,7 @@ export function TelegramDialogListRow({ item, navigation }: Props) {
         <View style={rowStyles.topRow}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 }}>
             <Text style={rowStyles.title} numberOfLines={1}>
-              {item.title}
+              {title}
             </Text>
             {isChannel ? (
               <Text style={{ fontSize: 11, color: colors.accent }}>канал</Text>

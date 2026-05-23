@@ -21,6 +21,16 @@ export type TelegramAlbumMediaItem = {
   durationMs?: number;
 };
 
+export type TelegramWebPagePreview = {
+  url: string;
+  siteName?: string;
+  title?: string;
+  description?: string;
+  photoUri?: string | null;
+  photoWidth?: number;
+  photoHeight?: number;
+};
+
 export type TelegramMessageRow = {
   id: string;
   messageId: number;
@@ -59,6 +69,8 @@ export type TelegramMessageRow = {
   messageThreadId?: number;
   /** Approximate comment count from `interaction_info.reply_info.reply_count`. */
   discussionReplyCount?: number;
+  /** Rich web page preview parsed from messageText */
+  webPagePreview?: TelegramWebPagePreview | null;
 };
 
 /** Same layout contract as `ChatScreen` context menu — drives `ChatContextMenuOverlay`. */

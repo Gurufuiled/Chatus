@@ -228,11 +228,12 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     /** Группа: бабл по содержимому, не на всю колонку (иначе ломается перенос текста). */
     groupIncomingBubbleMeasure: {
       alignSelf: 'flex-start',
-      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
+      maxWidth: '100%',
       minWidth: 0,
     },
     groupMessageSurface: {
       alignSelf: 'flex-start',
+      maxWidth: '100%',
     },
     viewCountText: {
       fontSize: 11,
@@ -394,6 +395,14 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     albumImage: {
       width: '100%',
       height: '100%',
+    },
+    albumTilePlaceholder: {
+      flex: 1,
+      width: '100%',
+      height: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#C8D0DC',
     },
     albumVideoBadge: {
       position: 'absolute',

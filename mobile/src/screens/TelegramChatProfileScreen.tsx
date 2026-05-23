@@ -113,12 +113,18 @@ function buildTdlibInfoRows(
 ): InfoRow[] {
   const rows: InfoRow[] = [];
   const phone =
-    typeof fullInfo?.phone_number === 'string' ? fullInfo.phone_number.trim() : '';
+    typeof user?.phone_number === 'string' ? user.phone_number.trim() : '';
   if (phone) {
     rows.push({ id: 'phone', label: 'Телефон', value: phone, icon: 'phone' });
   }
-  const username =
-    typeof user?.username === 'string' && user.username.trim() ? user.username.trim() : '';
+  const usernamesObj = getNestedRecord(user?.usernames);
+  const activeUsernames = Array.isArray(usernamesObj?.active_usernames) ? usernamesObj.active_usernames : [];
+  const editableUsername = typeof usernamesObj?.editable_username === 'string' ? usernamesObj.editable_username : null;
+  const fallbackUsername = typeof user?.username === 'string' ? user.username : null;
+  
+  const rawUsername = activeUsernames[0] || editableUsername || fallbackUsername || '';
+  const username = typeof rawUsername === 'string' ? rawUsername.trim() : '';
+  
   if (username) {
     rows.push({
       id: 'username',
@@ -127,8 +133,13 @@ function buildTdlibInfoRows(
       icon: 'at-sign',
     });
   }
-  const bioObj = getNestedRecord(fullInfo?.bio);
-  const bioText = typeof bioObj?.text === 'string' ? bioObj.text.trim() : '';
+  const bioValue = fullInfo?.bio;
+  const bioObj = getNestedRecord(bioValue);
+  const bioText = typeof bioObj?.text === 'string' 
+    ? bioObj.text.trim() 
+    : typeof bioValue === 'string' 
+      ? bioValue.trim() 
+      : '';
   if (bioText) {
     rows.push({ id: 'bio', label: 'О себе', value: bioText });
   }
@@ -297,10 +308,16 @@ export function TelegramChatProfileScreen() {
           const u = user as Record<string, unknown>;
           const f = full as Record<string, unknown>;
           const fn = typeof u.first_name === 'string' ? u.first_name.trim() : '';
-          const ln = typeof u.last_name === 'string' ? u.last_name.trim() : '';
           const combined = [fn, ln].filter(Boolean).join(' ').trim();
           if (combined) setDisplayName(combined);
-          const uname = typeof u.username === 'string' && u.username.trim() ? u.username.trim() : '';
+          
+          const unameObj = getNestedRecord(u.usernames);
+          const activeUnames = Array.isArray(unameObj?.active_usernames) ? unameObj.active_usernames : [];
+          const editableUname = typeof unameObj?.editable_username === 'string' ? unameObj.editable_username : null;
+          const fallbackUname = typeof u.username === 'string' ? u.username : null;
+          const rawUname = activeUnames[0] || editableUname || fallbackUname || '';
+          const uname = typeof rawUname === 'string' ? rawUname.trim() : '';
+          
           setHandleLabel(uname ? `@${uname}` : null);
           setStatusLabel(formatTdUserStatus(getNestedRecord(u.status)));
           setInfoRows(buildTdlibInfoRows(u, f));

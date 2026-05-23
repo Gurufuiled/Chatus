@@ -5,6 +5,12 @@ export function getTdMediaAlbumId(raw: Record<string, unknown>): number | undefi
   if (typeof id === 'number' && Number.isFinite(id) && id !== 0) {
     return id;
   }
+  if (typeof id === 'string' && id.trim() !== '') {
+    const parsed = Number(id);
+    if (Number.isFinite(parsed) && parsed !== 0) {
+      return parsed;
+    }
+  }
   return undefined;
 }
 
@@ -40,7 +46,7 @@ function buildAlbumRow(parts: TelegramMessageRow[]): TelegramMessageRow | null {
 
   const anchor = sorted[sorted.length - 1]!;
   const captionRow =
-    [...sorted].reverse().find((row) => row.text.trim().length > 0) ?? anchor;
+    [...sorted].reverse().find((row) => (row.text ?? '').trim().length > 0) ?? anchor;
   const albumMessageIds = sorted.map((row) => row.messageId);
   const mediaAlbumId = anchor.mediaAlbumId ?? sorted[0]?.mediaAlbumId;
 
@@ -49,7 +55,7 @@ function buildAlbumRow(parts: TelegramMessageRow[]): TelegramMessageRow | null {
     id: mediaAlbumId != null ? `album-${mediaAlbumId}` : `album-${anchor.messageId}`,
     messageId: anchor.messageId,
     kind: 'album',
-    text: captionRow.text,
+    text: captionRow.text ?? '',
     albumMedia: items,
     albumMessageIds,
     mediaAlbumId,
@@ -122,26 +128,10 @@ export function mergeTelegramFeedRows(
 
   const incomingIds = new Set(incoming.map((row) => row.id));
   const incomingMessageIds = new Set(incoming.map((row) => row.messageId));
-  const incomingAlbumIds = new Set(
-    incoming.map((row) => row.mediaAlbumId).filter((id): id is number => id != null && id !== 0),
-  );
 
+  /** Replace by id/messageId only; album regrouping is done in normalizeTelegramFeedRows. */
   const merged = prev.filter((existing) => {
     if (incomingIds.has(existing.id) || incomingMessageIds.has(existing.messageId)) {
-      return false;
-    }
-    if (
-      existing.kind === 'album' &&
-      existing.mediaAlbumId != null &&
-      incomingAlbumIds.has(existing.mediaAlbumId)
-    ) {
-      return false;
-    }
-    if (
-      existing.mediaAlbumId != null &&
-      incomingAlbumIds.has(existing.mediaAlbumId) &&
-      (existing.kind === 'image' || existing.kind === 'video')
-    ) {
       return false;
     }
     return true;

@@ -25,7 +25,7 @@ export function optimisticOutgoingMessage(
 /** Lowercase haystack for in-chat search (text, captions, type labels). */
 export function getTelegramSearchHaystack(row: TelegramMessageRow): string {
   const parts: string[] = [];
-  const text = row.text.trim();
+  const text = (row.text ?? '').trim();
   if (text) parts.push(text);
   if (row.fileName?.trim()) parts.push(row.fileName.trim());
   switch (row.kind) {
@@ -54,9 +54,9 @@ export function getTelegramSearchHaystack(row: TelegramMessageRow): string {
 }
 
 export function getTelegramCopyableContent(row: TelegramMessageRow): string {
-  if (row.kind === 'text') return row.text.trim();
-  if (row.kind === 'image' || row.kind === 'video' || row.kind === 'album') return row.text.trim();
-  if (row.kind === 'file') return row.fileName?.trim() || row.text.trim();
+  if (row.kind === 'text') return (row.text ?? '').trim();
+  if (row.kind === 'image' || row.kind === 'video' || row.kind === 'album') return (row.text ?? '').trim();
+  if (row.kind === 'file') return row.fileName?.trim() || (row.text ?? '').trim();
   return '';
 }
 
@@ -74,18 +74,19 @@ export function canTelegramSwipeReply(row: TelegramMessageRow): boolean {
 }
 
 export function getTelegramReplyPreviewText(row: TelegramMessageRow): string {
-  if (row.kind === 'text') return row.text.trim() || 'Пустое сообщение';
+  if (row.kind === 'text') return (row.text ?? '').trim() || 'Пустое сообщение';
+  const text = (row.text ?? '').trim();
   if (row.kind === 'album') {
     const count = row.albumMedia?.length ?? 0;
     const label = count > 1 ? `Альбом (${count})` : 'Альбом';
-    return row.text.trim() ? `${label}: ${row.text.trim()}` : label;
+    return text ? `${label}: ${text}` : label;
   }
-  if (row.kind === 'image') return row.text.trim() ? `Фото: ${row.text.trim()}` : 'Фото';
-  if (row.kind === 'video') return row.text.trim() ? `Видео: ${row.text.trim()}` : 'Видео';
+  if (row.kind === 'image') return text ? `Фото: ${text}` : 'Фото';
+  if (row.kind === 'video') return text ? `Видео: ${text}` : 'Видео';
   if (row.kind === 'video_note') return 'Видеосообщение';
   if (row.kind === 'voice') return 'Голосовое сообщение';
   if (row.kind === 'file') return row.fileName?.trim() || 'Файл';
-  return row.text.trim() || 'Сообщение';
+  return text || 'Сообщение';
 }
 
 export function getTelegramReplyThumbnailUri(row: TelegramMessageRow | null | undefined): string | null {

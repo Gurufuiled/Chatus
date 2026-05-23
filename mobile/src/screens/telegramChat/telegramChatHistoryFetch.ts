@@ -9,13 +9,11 @@ import type { TelegramMessageRow } from './types';
 
 export const TELEGRAM_HISTORY_PAGE_SIZE = 50;
 
-const MAP_HISTORY_LOCAL_OPTIONS = {
-  loadSenderAvatar: false,
+const MAP_HISTORY_LOCAL_OPTIONS_BASE = {
   mediaLocalOnly: true,
 } as const;
 
-const MAP_HISTORY_REMOTE_OPTIONS = {
-  loadSenderAvatar: false,
+const MAP_HISTORY_REMOTE_OPTIONS_BASE = {
   mediaLocalOnly: false,
 } as const;
 
@@ -66,11 +64,14 @@ export async function fetchTelegramHistoryBatch(
   ]);
   throwIfTdError(response);
   const rawMessages = Array.isArray(response.messages) ? response.messages : [];
+  const mapOptions = onlyLocal
+    ? { ...MAP_HISTORY_LOCAL_OPTIONS_BASE, loadSenderAvatar: params.isGroupChat === true }
+    : { ...MAP_HISTORY_REMOTE_OPTIONS_BASE, loadSenderAvatar: params.isGroupChat === true };
   const rows = await mapTdMessages(
     rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
     lastReadOutboxMessageId,
     8,
-    onlyLocal ? MAP_HISTORY_LOCAL_OPTIONS : MAP_HISTORY_REMOTE_OPTIONS,
+    mapOptions,
   );
   return { rows, lastReadOutboxMessageId };
 }

@@ -1,5 +1,26 @@
 import type { TelegramDialogRow } from '../../stores/telegramAccountStore';
 
+/** Coerce persisted / partial TDLib rows so list UI never calls methods on undefined. */
+export function normalizeTelegramDialogRow(row: TelegramDialogRow): TelegramDialogRow {
+  const chatId = String(row.chatId ?? row.id ?? '');
+  const id = String(row.id ?? chatId);
+  return {
+    ...row,
+    id,
+    chatId,
+    title: typeof row.title === 'string' && row.title.trim() ? row.title.trim() : `Чат ${chatId}`,
+    lastMessagePreview: typeof row.lastMessagePreview === 'string' ? row.lastMessagePreview : '',
+    lastMessageThumbnailUris: Array.isArray(row.lastMessageThumbnailUris)
+      ? row.lastMessageThumbnailUris.filter((uri): uri is string => typeof uri === 'string' && uri.length > 0)
+      : undefined,
+    unreadCount: typeof row.unreadCount === 'number' && Number.isFinite(row.unreadCount) ? row.unreadCount : 0,
+  };
+}
+
+export function normalizeTelegramDialogRows(rows: TelegramDialogRow[]): TelegramDialogRow[] {
+  return rows.map(normalizeTelegramDialogRow);
+}
+
 /**
  * When `getChat` / enrichment fails for a dialog row, keep the last known
  * metadata from the store so channel badges and avatars do not disappear.

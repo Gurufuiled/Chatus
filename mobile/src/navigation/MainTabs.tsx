@@ -104,12 +104,14 @@ function TabBarItem({
 
   const showBadge = routeName === 'Chats' && totalUnreadCount > 0;
   const badgeLabel = totalUnreadCount > 999 ? '999+' : String(totalUnreadCount);
+  
+  const iconColor = focused ? '#FFFFFF' : color;
 
   return (
-    <View style={[tabStyles.tabButton, focused && tabStyles.tabButtonActive]}>
+    <View style={tabStyles.tabButton}>
       <View style={tabStyles.tabButtonContent}>
-        <View>
-          {getTabIcon(routeName, color, focused, tabStyles)}
+        <View style={focused ? tabStyles.iconPillActive : tabStyles.iconPillInactive}>
+          {getTabIcon(routeName, iconColor, focused, tabStyles)}
           {showBadge && (
             <View style={tabStyles.tabBadge}>
               <Text style={tabStyles.tabBadgeText} numberOfLines={1} adjustsFontSizeToFit>{badgeLabel}</Text>
@@ -162,17 +164,19 @@ function AnimatedTabButton(props: BottomTabBarButtonProps) {
 export function MainTabs() {
   const insets = useSafeAreaInsets();
   const { colors: themeColors, resolvedScheme } = useTheme();
-  const tabInactiveTint = resolvedScheme === 'dark' ? '#9AA0A6' : '#273142';
-  const styles = React.useMemo(() => createMainTabsStyles(themeColors), [themeColors]);
+  const tabInactiveTint = resolvedScheme === 'dark' ? '#9AA0A6' : '#8E8E93';
+  const styles = React.useMemo(() => createMainTabsStyles(themeColors, resolvedScheme), [themeColors, resolvedScheme]);
+  
+  const bottomInset = Math.max(insets.bottom, 16);
+  
   const tabBarStyle = React.useMemo(
     () => [
       styles.tabBar,
       {
-        height: 57 + Math.max(insets.bottom, 0),
-        paddingBottom: Math.max(insets.bottom, 5),
+        bottom: bottomInset,
       },
     ],
-    [insets.bottom, styles.tabBar]
+    [bottomInset, styles.tabBar]
   );
 
   return (
@@ -199,14 +203,6 @@ export function MainTabs() {
         ),
       })}
     >
-      <Tab.Screen
-        name="Contacts"
-        component={ContactsScreen}
-        options={{
-          title: 'Контакты',
-          tabBarButton: (props) => <AnimatedTabButton {...props} />,
-        }}
-      />
       <Tab.Screen
         name="Chats"
         component={ChatsStack}
@@ -239,6 +235,14 @@ export function MainTabs() {
         }}
       />
       <Tab.Screen
+        name="Contacts"
+        component={ContactsScreen}
+        options={{
+          title: 'Контакты',
+          tabBarButton: (props) => <AnimatedTabButton {...props} />,
+        }}
+      />
+      <Tab.Screen
         name="Settings"
         component={SettingsStack}
         options={({ route }) => {
@@ -260,18 +264,21 @@ export function MainTabs() {
   );
 }
 
-function createMainTabsStyles(themeColors: ThemeColors) {
+function createMainTabsStyles(themeColors: ThemeColors, resolvedScheme: 'light' | 'dark') {
   return StyleSheet.create({
   tabBar: {
-    height: 57,
-    paddingTop: 6,
-    paddingBottom: 5,
-    paddingHorizontal: 10,
-    backgroundColor: themeColors.inputBackgroundSolid,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: themeColors.separator,
-    elevation: 0,
-    shadowOpacity: 0,
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: resolvedScheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
+    borderTopWidth: 0,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   hiddenTabBar: {
     display: 'none',
@@ -280,28 +287,40 @@ function createMainTabsStyles(themeColors: ThemeColors) {
     paddingVertical: 0,
   },
   tabButton: {
-    height: 43,
-    minWidth: 0,
-    paddingHorizontal: 10,
-    borderRadius: 14,
+    flex: 1,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  tabButtonActive: {
-    backgroundColor: 'transparent',
-  },
   tabButtonContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
+    gap: 4,
+  },
+  iconPillActive: {
+    width: 60,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: themeColors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconPillInactive: {
+    width: 60,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   customLabel: {
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     letterSpacing: 0.1,
     textAlign: 'center',
-    minWidth: 56,
+    width: '100%',
+    overflow: 'visible',
   },
   iconFrame: {
     width: 24,
@@ -310,12 +329,12 @@ function createMainTabsStyles(themeColors: ThemeColors) {
     justifyContent: 'center',
   },
   iconFocused: {
-    transform: [{ scale: 1.03 }],
+    transform: [{ scale: 1 }],
   },
   tabBadge: {
     position: 'absolute',
     top: -4,
-    right: -10,
+    right: 6,
     backgroundColor: '#FF3B30',
     minWidth: 18,
     height: 18,
@@ -324,7 +343,7 @@ function createMainTabsStyles(themeColors: ThemeColors) {
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: themeColors.inputBackgroundSolid,
+    borderColor: resolvedScheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
   },
   tabBadgeText: {
     color: '#FFFFFF',

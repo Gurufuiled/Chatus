@@ -39,6 +39,7 @@ import { MessageTextBubbleBody } from '../components/MessageTextBubbleBody';
 import { MessageTimeStatus } from '../components/MessageTimeStatus';
 import { ReplySwipeWrapper } from '../components/ReplySwipeWrapper';
 import { ReplyPreview } from '../components/ReplyPreview';
+import { WebPagePreviewBubble } from '../components/WebPagePreviewBubble';
 import { TelegramChannelCommentsBar } from '../components/TelegramChannelCommentsBar';
 import { VideoBubble } from '../components/VideoBubble';
 import { VideoNoteBubble } from '../components/VideoNoteBubble';
@@ -94,6 +95,7 @@ import {
   getNestedRecord,
   getPinnedMessageIdFromChat,
   loadLastReadOutboxMessageId,
+  hydrateTelegramAlbumRows,
   mapTdMessage,
   mapTdMessages,
 } from './telegramChat/tdlibMapping';
@@ -803,7 +805,7 @@ export function TelegramChatScreen() {
         })) as Record<string, unknown>;
         throwIfTdError(raw);
         const row = await mapTdMessage(raw, lastReadOutboxMessageIdRef.current, {
-          loadSenderAvatar: false,
+          loadSenderAvatar: isGroupChat,
           mediaLocalOnly: false,
         });
         if (
@@ -985,7 +987,7 @@ export function TelegramChatScreen() {
           lastReadOutboxMessageIdRef.current,
           8,
           {
-            loadSenderAvatar: false,
+            loadSenderAvatar: isGroupChat,
             /** Локальный кэш TDLib — без блокирующих downloadFile; сеть — подтягиваем файлы. */
             mediaLocalOnly: onlyLocal,
           },
@@ -1019,8 +1021,16 @@ export function TelegramChatScreen() {
           }
         }
 
-        const mapped = await fetchBatch(false);
+        let mapped = await fetchBatch(false);
         if (!mountedRef.current || isStaleLoad()) return;
+        if (!older && mapped.length > 0) {
+          mapped = await hydrateTelegramAlbumRows(
+            chatId,
+            normalizeTelegramFeedRows(mapped),
+            lastReadOutboxMessageIdRef.current,
+          );
+          if (!mountedRef.current || isStaleLoad()) return;
+        }
         mergeMapped(mapped);
         if (!isStaleLoad()) setLastError(null);
       } catch (err) {
@@ -1129,7 +1139,7 @@ export function TelegramChatScreen() {
               ? messageThreadId
               : 0;
           void mapTdMessage(rawMessage, lastReadOutboxMessageIdRef.current, {
-            loadSenderAvatar: false,
+            loadSenderAvatar: isGroupChat,
             mediaLocalOnly: false,
           }).then((row) => {
             if (!row || !mountedRef.current) return;
@@ -1547,6 +1557,13 @@ export function TelegramChatScreen() {
           textColor={isMe ? chatTheme.replyTextMe : colors.textSecondary}
           authorColor={isMe ? chatTheme.replyAuthorMe : colors.accent}
           thumbnailUri={getTelegramReplyThumbnailUri(replyTarget)}
+          onPress={() => {
+            if (replyTarget) {
+              scrollToMessageRowId(replyTarget.id, 'Исходное сообщение не загружено', {
+                persistHighlight: true,
+              });
+            }
+          }}
         />
       ) : null;
       const handleOpenMessageMenu = () => {
@@ -1744,7 +1761,11 @@ export function TelegramChatScreen() {
         isLastInGroup ? { borderBottomRightRadius: 6 } : null,
       ];
 
-      const mediaStackStyle = channelIncoming ? styles.mediaStackChannel : styles.mediaStack;
+      const mediaStackStyle = channelIncoming
+        ? styles.mediaStackChannel
+        : !isMe && isGroupChat
+          ? [styles.mediaStack, { maxWidth: '100%' as const }]
+          : styles.mediaStack;
 
       const wrapTelegramMediaBubble = (content: React.ReactNode) => (
         <View style={mediaStackStyle}>
@@ -2153,7 +2174,9 @@ export function TelegramChatScreen() {
               style={
                 channelIncoming
                   ? measureShellStyle
-                  : [styles.fileBubbleWrap, styles.messageContentMeasure, contentMeasureStyle]
+                  : !isMe && isGroupChat
+                    ? [styles.fileBubbleWrap, styles.messageContentMeasure, { maxWidth: '100%' as const }, contentMeasureStyle]
+                    : [styles.fileBubbleWrap, styles.messageContentMeasure, contentMeasureStyle]
               }
             >
               {isMe && useViewportOutgoingGradient ? (
@@ -2287,17 +2310,28 @@ export function TelegramChatScreen() {
           />
         );
 
+      const webPageNode = item.webPagePreview ? (
+        <WebPagePreviewBubble
+          preview={item.webPagePreview}
+          accentColor={isMe ? chatTheme.bubbleMeAccent : colors.accent}
+          textColor={isMe ? chatTheme.bubbleMeText : colors.textPrimary}
+          peerFirstLineId={String(chatId)}
+        />
+      ) : null;
+
       const textBubbleBody = (
         <>
           {discussionFooter ? (
             <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
               {bubbleHeader}
               {textBubbleContent}
+              {webPageNode}
             </View>
           ) : (
             <>
               {bubbleHeader}
               {textBubbleContent}
+              {webPageNode}
             </>
           )}
           {discussionFooter}

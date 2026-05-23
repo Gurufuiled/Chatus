@@ -52,10 +52,7 @@ export function TelegramMediaAlbumBubble({
   incomingCaptionMeta,
   footer,
 }: TelegramMediaAlbumBubbleProps) {
-  const media = useMemo(
-    () => items.filter((item) => tileUri(item).length > 0).slice(0, 10),
-    [items],
-  );
+  const media = useMemo(() => items.slice(0, 10), [items]);
   if (media.length === 0) return null;
 
   const visibleMedia = media.slice(0, 9);
@@ -69,7 +66,13 @@ export function TelegramMediaAlbumBubble({
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
     return (
       <View key={`${item.messageId}-${index}`} style={[st.albumTile, style]}>
-        <Image source={{ uri }} style={st.albumImage} contentFit="cover" />
+        {uri.length > 0 ? (
+          <Image source={{ uri }} style={st.albumImage} contentFit="cover" />
+        ) : (
+          <View style={st.albumTilePlaceholder}>
+            <Feather name="image" size={22} color="#8E99A8" />
+          </View>
+        )}
         {item.kind === 'video' ? (
           <View style={st.albumVideoBadge}>
             <Feather name="play" size={10} color="#FFFFFF" />

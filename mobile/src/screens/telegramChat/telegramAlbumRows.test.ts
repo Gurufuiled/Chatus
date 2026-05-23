@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { collapseTelegramAlbumRows } from './telegramAlbumRows';
+import { collapseTelegramAlbumRows, mergeTelegramFeedRows } from './telegramAlbumRows';
 import type { TelegramMessageRow } from './types';
 
 function row(
@@ -56,5 +56,11 @@ const duplicateAlbum = collapseTelegramAlbumRows([
 ]);
 assert.equal(duplicateAlbum.length, 1);
 assert.equal(duplicateAlbum[0]?.kind, 'album');
+
+const paginatedAlbum = mergeTelegramFeedRows([row(105, 'image', 55)], [row(104, 'image', 55), row(103, 'image', 55)]);
+assert.equal(paginatedAlbum.length, 1);
+assert.equal(paginatedAlbum[0]?.kind, 'album');
+assert.equal(paginatedAlbum[0]?.albumMedia?.length, 3);
+assert.equal(paginatedAlbum[0]?.albumMessageIds?.join(','), '103,104,105');
 
 console.log('telegramAlbumRows.test.ts: ok');

@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { resetTelegramPushRegistrationFlag } from '../services/pushNotificationsService';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
+import { normalizeTelegramDialogRows } from '../screens/telegramChat/telegramDialogFallback';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
 
@@ -87,7 +88,9 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
         phoneNumberHint:
           typeof parsed.phoneNumberHint === 'string' ? parsed.phoneNumberHint : null,
         lastError: null,
-        dialogs: Array.isArray(parsed.dialogs) ? parsed.dialogs : [],
+        dialogs: Array.isArray(parsed.dialogs)
+          ? normalizeTelegramDialogRows(parsed.dialogs as TelegramDialogRow[])
+          : [],
       });
     } catch {
       set({ lastError: 'Не удалось загрузить состояние Telegram' });
@@ -109,7 +112,7 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
   setTelegramUserId: (telegramUserId) => set({ telegramUserId }),
   setPhoneHint: (phoneNumberHint) => set({ phoneNumberHint }),
   setLastError: (lastError) => set({ lastError }),
-  setDialogs: (dialogs) => set({ dialogs }),
+  setDialogs: (dialogs) => set({ dialogs: normalizeTelegramDialogRows(dialogs) }),
 
   resetTelegramSession: async () => {
     try {

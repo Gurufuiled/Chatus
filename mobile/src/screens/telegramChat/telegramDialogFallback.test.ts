@@ -3,7 +3,7 @@
  * Run: npx tsx src/screens/telegramChat/telegramDialogFallback.test.ts
  */
 
-import { buildChatRowLoadFailure } from './telegramDialogFallback';
+import { buildChatRowLoadFailure, normalizeTelegramDialogRow } from './telegramDialogFallback';
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg);
@@ -49,7 +49,19 @@ function runTests(): void {
   });
   assert(noUnread.unreadCount === 0, 'default unread 0');
 
-  console.log('telegramDialogFallback buildChatRowLoadFailure: all tests passed');
+  const broken = normalizeTelegramDialogRow({
+    id: '7',
+    chatId: '7',
+    title: 'Test',
+    lastMessagePreview: undefined as unknown as string,
+    lastMessageThumbnailUris: [null, 'file:///a.jpg', 42] as unknown as string[],
+    unreadCount: undefined as unknown as number,
+  });
+  assert(broken.lastMessagePreview === '', 'missing preview → empty string');
+  assert(broken.lastMessageThumbnailUris?.length === 1, 'filter invalid thumb uris');
+  assert(broken.unreadCount === 0, 'missing unread → 0');
+
+  console.log('telegramDialogFallback: all tests passed');
 }
 
 runTests();
