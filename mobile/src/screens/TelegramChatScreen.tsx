@@ -198,6 +198,7 @@ export function TelegramChatScreen() {
   const [selectedTelegramMessageIds, setSelectedTelegramMessageIds] = useState<string[]>([]);
   const [canPost, setCanPost] = useState(true);
   const [memberCount, setMemberCount] = useState<number | null>(null);
+  const [channelMemberStatus, setChannelMemberStatus] = useState<string | null>(null);
   /** Чат обсуждения канала (`getSupergroupFullInfo.linked_chat_id`), если у сообщения нет `reply_in_chat_id`. */
   const [channelLinkedDiscussionChatId, setChannelLinkedDiscussionChatId] = useState<number | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
@@ -881,6 +882,10 @@ export function TelegramChatScreen() {
             throwIfTdError(sg);
             if (!cancelled && typeof sg.member_count === 'number') {
               setMemberCount(sg.member_count);
+            }
+            if (!cancelled && sg.status != null) {
+              const statusType = (sg.status as Record<string, unknown>)['@type'];
+              if (typeof statusType === 'string') setChannelMemberStatus(statusType);
             }
             if (isBroadcastChannel && !cancelled) {
               try {
@@ -2275,37 +2280,33 @@ export function TelegramChatScreen() {
           compact
           timeColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
           iconColor={isMe ? outgoingBubbleMetaColor : colors.textSecondary}
+          viewCount={viewCountFormatted || undefined}
         />
       );
 
-      const viewCountNode = viewCountFormatted ? (
-        <Text
-          style={[
-            styles.viewCountText,
-            isMe ? { color: chatTheme.bubbleMeMeta } : null,
-          ]}
-        >{` \uD83D\uDC41 ${viewCountFormatted}`}</Text>
-      ) : null;
+      const spacer = viewCountFormatted != null
+        ? '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0' 
+        : '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0';
 
       const textBubbleContent =
         normalizedSearchQuery && (item.text?.trim() ?? '').length > 0 ? (
-          <View style={styles.bubbleContentRow}>
-            <View style={{ flexShrink: 1 }}>
+          <View style={{ position: 'relative', alignSelf: 'stretch' }}>
+            <Text style={outgoingMessageTextStyle}>
               {renderTextWithSearchHighlight(
                 item.text ?? '',
                 normalizedSearchQuery,
                 outgoingMessageTextStyle,
               )}
-              {viewCountNode}
-            </View>
-            <View style={{ flexShrink: 0 }}>{metaNode}</View>
+              {spacer}
+            </Text>
+            <View style={{ position: 'absolute', bottom: 0, right: 0 }}>{metaNode}</View>
           </View>
         ) : (
           <MessageTextBubbleBody
             text={item.text ?? ''}
             textStyle={outgoingMessageTextStyle}
             rowStyle={styles.bubbleContentRow}
-            viewCountNode={viewCountNode}
+            hasViews={viewCountFormatted != null}
             meta={metaNode}
           />
         );
@@ -2630,10 +2631,44 @@ export function TelegramChatScreen() {
                     isVoiceRecordingShared.value = active;
                   }}
                   placeholder="Сообщение"
+                  isChannelAdmin={isChannel}
+                  channelSilentMode={false} // Placeholder for actual silent mode state
+                  onToggleChannelSilentMode={() => {
+                    Alert.alert('Информация', 'Функция беззвучной отправки будет реализована позже.');
+                  }}
                 />
               ) : (
-                <View style={styles.readOnlyFooter} accessibilityLabel="Только для чтения">
-                  <Text style={styles.readOnlyText}>Только для чтения</Text>
+                <View style={styles.readOnlyFooter} accessibilityLabel="Панель действий">
+                  {isChannel ? (
+                    channelMemberStatus === 'chatMemberStatusLeft' ? (
+                      <Pressable 
+                        onPress={() => {
+                          tdlibClient.send({ '@type': 'joinChat', chat_id: chatId })
+                            .then(() => setChannelMemberStatus('chatMemberStatusMember'))
+                            .catch(() => Alert.alert('Ошибка', 'Не удалось подписаться на канал'));
+                        }}
+                        style={{ paddingHorizontal: 24, paddingVertical: 8 }}
+                      >
+                        <Text style={[styles.readOnlyText, { color: colors.accent, fontWeight: '500' }]}>
+                          Подписаться
+                        </Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable 
+                        onPress={() => {
+                          const nextMute = true; // Placeholder for toggle mute
+                          Alert.alert('Звук', 'Переключение уведомлений будет реализовано позже.');
+                        }}
+                        style={{ paddingHorizontal: 24, paddingVertical: 8 }}
+                      >
+                        <Text style={[styles.readOnlyText, { color: colors.textSecondary }]}>
+                          Убрать звук
+                        </Text>
+                      </Pressable>
+                    )
+                  ) : (
+                    <Text style={styles.readOnlyText}>Только для чтения</Text>
+                  )}
                 </View>
               )}
             </View>

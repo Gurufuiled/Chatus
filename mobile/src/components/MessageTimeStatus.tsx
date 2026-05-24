@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { colors, typography } from '../theme/colors';
+import Feather from '@expo/vector-icons/Feather';
 
 const STATUS_TEXT_ICONS: Record<string, string> = {
   sending: '\u23F1',
@@ -15,6 +16,7 @@ interface MessageTimeStatusProps {
   compact?: boolean;
   timeColor?: string;
   iconColor?: string;
+  viewCount?: string;
 }
 
 interface MessageStatusIconProps {
@@ -149,9 +151,26 @@ export function MessageTimeStatus({
   compact = false,
   timeColor,
   iconColor,
+  viewCount,
 }: MessageTimeStatusProps) {
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
+      {viewCount ? (
+        <View style={styles.viewCountWrap}>
+          <Feather name="eye" size={compact ? 11 : 12} color={timeColor || colors.textSecondary} />
+          <Text
+            style={[
+              styles.time,
+              isMe && styles.timeMe,
+              compact && styles.timeCompact,
+              timeColor ? { color: timeColor } : null,
+              { marginLeft: 2, marginRight: 4 },
+            ]}
+          >
+            {viewCount}
+          </Text>
+        </View>
+      ) : null}
       <Text
         style={[
           styles.time,
@@ -180,6 +199,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
     gap: 3,
     flexShrink: 0,
+  },
+  viewCountWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   containerCompact: {
     marginTop: 0,

@@ -114,6 +114,12 @@ export interface InputBarProps {
   replyPeerFirstLineId?: string | null;
   /** Chatus: кнопка стикеров + шторка; стикеры friend-пака вставляются в поле как эмодзи, solo-отправка — JSON `encodeStickerPayload` в `onSendText`. */
   chatusStickersComposer?: boolean;
+  /** Если true, заменяет микрофон на колокольчик (админ канала). */
+  isChannelAdmin?: boolean;
+  /** Текущий статус беззвучного режима (админ канала). */
+  channelSilentMode?: boolean;
+  /** Коллбек при нажатии на колокольчик. */
+  onToggleChannelSilentMode?: () => void;
 }
 
 type AttachmentAction = {
@@ -1661,6 +1667,19 @@ export function InputBar({
                 >
                   <SendIcon />
                 </Pressable>
+              ) : isChannelAdmin ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Беззвучный режим"
+                  style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
+                  onPress={onToggleChannelSilentMode}
+                >
+                  <Feather 
+                    name={channelSilentMode ? "bell-off" : "bell"} 
+                    size={19} 
+                    color={themeColors.iconMuted} 
+                  />
+                </Pressable>
               ) : (
                 <RNAnimated.View
                   pointerEvents="none"
@@ -1685,7 +1704,7 @@ export function InputBar({
           </View>
           )}
 
-        {!canSend ? (
+        {!canSend && !isChannelAdmin ? (
           voiceRestriction ? (
             // Вместо pan-жеста запуска записи показываем telegram-style хинт.
             <Pressable

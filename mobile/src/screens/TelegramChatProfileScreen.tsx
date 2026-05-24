@@ -51,6 +51,7 @@ import {
   tdlibLeaveChat,
   tdlibSetChatMuted,
   tdlibUnblockUser,
+  tdlibToggleChatIsPinned,
 } from './telegramChat/tdlibChatActions';
 import {
   fetchTdlibChatPhotoUri,
@@ -60,6 +61,7 @@ import {
   tdlibIsUserBlocked,
   tdlibResolveChatPeer,
 } from './telegramChat/tdlibUserProfile';
+import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramRowsToProfileBuckets } from './telegramChat/telegramProfileMedia';
 import type { TelegramMessageRow } from './telegramChat/types';
 
@@ -200,6 +202,9 @@ export function TelegramChatProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(routeAvatarUri ?? null);
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
+  const [isPinned, setIsPinned] = useState(() => {
+    return telegramAccountStore.getState().dialogs.find((d) => d.chatId === telegramChatId)?.isPinned ?? false;
+  });
   const [infoRows, setInfoRows] = useState<InfoRow[]>([]);
   const [peerUserId, setPeerUserId] = useState<number | null>(null);
   const [isGroupPeer, setIsGroupPeer] = useState(false);
@@ -308,6 +313,7 @@ export function TelegramChatProfileScreen() {
           const u = user as Record<string, unknown>;
           const f = full as Record<string, unknown>;
           const fn = typeof u.first_name === 'string' ? u.first_name.trim() : '';
+          const ln = typeof u.last_name === 'string' ? u.last_name.trim() : '';
           const combined = [fn, ln].filter(Boolean).join(' ').trim();
           if (combined) setDisplayName(combined);
           
@@ -697,6 +703,11 @@ export function TelegramChatProfileScreen() {
         iconImage: WALLPAPER_MENU_ICON,
       },
       {
+        key: 'toggle-pin',
+        label: isPinned ? 'Открепить' : 'Закрепить',
+        icon: 'pin',
+      },
+      {
         key: 'delete-chat',
         label: isBroadcastChannel ? 'Покинуть канал' : isGroupPeer ? 'Выйти из чата' : 'Удалить чат',
         icon: 'trash-2',
@@ -711,7 +722,7 @@ export function TelegramChatProfileScreen() {
       });
     }
     return items;
-  }, [isBlocked, isBroadcastChannel, isGroupPeer, peerUserId]);
+  }, [isBlocked, isBroadcastChannel, isGroupPeer, peerUserId, isPinned]);
 
   const moreMenuDeletePanelHeight = isGroupPeer ? 198 : 198;
 
@@ -732,6 +743,14 @@ export function TelegramChatProfileScreen() {
     (key: string) => {
       if (key === 'change-wallpaper') {
         openThemePicker();
+        return;
+      }
+      if (key === 'toggle-pin') {
+        closeMoreMenu(() => {
+          const nextPinned = !isPinned;
+          setIsPinned(nextPinned);
+          tdlibToggleChatIsPinned(chatId, nextPinned).catch(() => setIsPinned(isPinned));
+        });
         return;
       }
       if (key === 'toggle-block') {

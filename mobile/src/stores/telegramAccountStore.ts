@@ -43,6 +43,8 @@ export type TelegramDialogRow = {
   chatType?: TelegramChatType;
   /** Member / subscriber count (undefined if not loaded). */
   memberCount?: number;
+  /** Whether the chat is pinned in the main chat list. */
+  isPinned?: boolean;
 };
 
 type TelegramAccountState = {

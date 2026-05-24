@@ -22,7 +22,8 @@ export type ChatListMenuState = {
 type ChatListActionsMenuProps = {
   visible: boolean;
   menuState: ChatListMenuState;
-  chat: Chat | null;
+  isMuted: boolean;
+  isPinned: boolean;
   onClose: () => void;
   onToggleMute: () => void;
   onTogglePin: () => void;
@@ -69,7 +70,8 @@ function MenuAction({
 export const ChatListActionsMenu = React.memo(function ChatListActionsMenu({
   visible,
   menuState,
-  chat,
+  isMuted,
+  isPinned,
   onClose,
   onToggleMute,
   onTogglePin,
@@ -81,10 +83,10 @@ export const ChatListActionsMenu = React.memo(function ChatListActionsMenu({
     [themeColors],
   );
 
-  if (!visible || !menuState || !chat) return null;
+  if (!visible || !menuState) return null;
 
-  const muteLabel = chat.is_muted === 1 ? 'Включить уведомления' : 'Отключить уведомления';
-  const pinLabel = chat.is_pinned === 1 ? 'Открепить' : 'Закрепить';
+  const muteLabel = isMuted ? 'Включить уведомления' : 'Отключить уведомления';
+  const pinLabel = isPinned ? 'Открепить' : 'Закрепить';
 
   return (
     <Modal

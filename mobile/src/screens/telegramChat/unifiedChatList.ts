@@ -33,7 +33,7 @@ export function mergeUnifiedChatList(
   if (telegramReady) {
     for (const row of telegramDialogs) {
       entries.push({
-        pinned: 0,
+        pinned: row.isPinned ? 1 : 0,
         at: row.lastMessageAt ?? 0,
         item: { type: 'telegram', id: `telegram:${row.id}`, row },
       });

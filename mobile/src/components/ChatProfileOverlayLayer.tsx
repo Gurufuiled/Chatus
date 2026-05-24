@@ -67,18 +67,21 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
 
   const actionMenuCardStyle = useMemo(
     () => ({
-      opacity: actionMenuAnimation,
+      opacity: actionMenuAnimation.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 1],
+      }),
       transform: [
         {
           translateY: actionMenuAnimation.interpolate({
             inputRange: [0, 1],
-            outputRange: [10, 0],
+            outputRange: [20, 0],
           }),
         },
         {
           scale: actionMenuAnimation.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.96, 1],
+            outputRange: [0.95, 1],
           }),
         },
       ],

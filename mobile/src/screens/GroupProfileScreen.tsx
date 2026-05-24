@@ -1036,26 +1036,35 @@ export function GroupProfileScreen() {
     ]);
   }, [chat, closeMoreMenu, navigation]);
 
+  const isPinned = (chat?.is_pinned ?? 0) === 1;
+
   const moreMenuItems = useMemo<AnchoredPopoverMenuItem[]>(
-    () =>
-      isOwner
-        ? [
-            {
-              key: 'delete-group',
-              label: 'Удалить группу',
-              icon: 'trash-2',
-              color: '#D04857',
-            },
-          ]
-        : [
-            {
-              key: 'leave-group',
-              label: 'Покинуть группу',
-              icon: 'log-out',
-              color: '#D04857',
-            },
-          ],
-    [isOwner]
+    () => {
+      const items: AnchoredPopoverMenuItem[] = [
+        {
+          key: 'toggle-pin',
+          label: isPinned ? 'Открепить' : 'Закрепить',
+          icon: 'pin',
+        },
+      ];
+      if (isOwner) {
+        items.push({
+          key: 'delete-group',
+          label: 'Удалить группу',
+          icon: 'trash-2',
+          color: '#D04857',
+        });
+      } else {
+        items.push({
+          key: 'leave-group',
+          label: 'Покинуть группу',
+          icon: 'log-out',
+          color: '#D04857',
+        });
+      }
+      return items;
+    },
+    [isOwner, isPinned]
   );
 
   const handleMoreMenuAction = useCallback(
@@ -1065,11 +1074,25 @@ export function GroupProfileScreen() {
         return;
       }
 
+      if (key === 'toggle-pin') {
+        closeMoreMenu(() => {
+          if (!chat) return;
+          const nextChat = { ...chat, is_pinned: isPinned ? 0 : 1, updated_at: Date.now() };
+          chatStore.getState().updateChat(nextChat);
+          new ChatDao().update({
+            id: chat.id,
+            is_pinned: nextChat.is_pinned,
+            updated_at: nextChat.updated_at,
+          }).catch(() => undefined);
+        });
+        return;
+      }
+
       if (key === 'delete-group') {
         handleDeleteGroup();
       }
     },
-    [handleDeleteGroup, handleLeaveGroup]
+    [handleDeleteGroup, handleLeaveGroup, closeMoreMenu, chat, isPinned]
   );
 
   const actionMenuItems = useMemo<AnchoredPopoverMenuItem[]>(

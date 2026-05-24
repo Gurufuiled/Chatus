@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 import type { TelegramDialogRow } from '../stores/telegramAccountStore';
@@ -25,9 +26,10 @@ function formatChatTime(timestamp: number | null | undefined) {
 type Props = {
   item: TelegramDialogRow;
   navigation: NativeStackNavigationProp<ChatsStackParamList>;
+  onLongPress?: (item: TelegramDialogRow, event: any) => void;
 };
 
-export function TelegramDialogListRow({ item, navigation }: Props) {
+export function TelegramDialogListRow({ item, navigation, onLongPress }: Props) {
   const { colors } = useTheme();
   const rowStyles = useMemo(() => createChatListRowStyles(colors), [colors]);
   const isChannel = item.chatType === 'channel';
@@ -72,6 +74,8 @@ export function TelegramDialogListRow({ item, navigation }: Props) {
       </Pressable>
       <Pressable
         onPress={() => navigation.navigate('TelegramChat', rowNavParams)}
+        onLongPress={(event) => onLongPress?.(item, event)}
+        delayLongPress={220}
         style={({ pressed }) => [rowStyles.content, pressed && rowStyles.rowPressed]}
       >
         <View style={rowStyles.topRow}>
@@ -101,13 +105,18 @@ export function TelegramDialogListRow({ item, navigation }: Props) {
             ) : (
               <View style={rowStyles.previewPlaceholder} />
             )}
-            {item.unreadCount > 0 ? (
-              <View style={[rowStyles.unreadBadge, item.unreadCount > 99 && rowStyles.unreadBadgeWide]}>
-                <Text style={rowStyles.unreadBadgeText}>
-                  {item.unreadCount > 99 ? '99+' : String(item.unreadCount)}
-                </Text>
-              </View>
-            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {item.isPinned ? (
+                <MaterialCommunityIcons name="pin" size={18} color={colors.iconMuted} style={{ transform: [{ rotate: '45deg' }] }} />
+              ) : null}
+              {item.unreadCount > 0 ? (
+                <View style={[rowStyles.unreadBadge, item.unreadCount > 99 && rowStyles.unreadBadgeWide]}>
+                  <Text style={rowStyles.unreadBadgeText}>
+                    {item.unreadCount > 99 ? '99+' : String(item.unreadCount)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
         ) : null}
       </Pressable>

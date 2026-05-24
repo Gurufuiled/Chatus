@@ -146,6 +146,7 @@ export async function loadChatRow(
       unreadCount,
       chatType,
       memberCount,
+      isPinned: Array.isArray(chat.positions) && chat.positions.some((p: any) => p?.list?.['@type'] === 'chatListMain' && p?.is_pinned === true),
     };
   } catch {
     return buildChatRowLoadFailure(chatId, previous);

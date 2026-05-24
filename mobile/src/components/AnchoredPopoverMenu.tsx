@@ -180,20 +180,20 @@ function AnchoredPopoverMenuContent({
   const cardStyle = useMemo(
     () => ({
       opacity: animation.interpolate({
-        inputRange: [0, 0.2, 1],
-        outputRange: [0, 0.6, 1],
+        inputRange: [0, 1],
+        outputRange: [0, 1],
       }),
       transform: [
         {
           translateY: animation.interpolate({
             inputRange: [0, 1],
-            outputRange: [-6, 0],
+            outputRange: [-12, 0],
           }),
         },
         {
           scale: animation.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.985, 1],
+            outputRange: [0.95, 1],
           }),
         },
       ],

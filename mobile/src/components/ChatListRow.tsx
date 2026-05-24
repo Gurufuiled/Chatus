@@ -169,17 +169,22 @@ export const ChatListRow = React.memo(function ChatListRow({
           ) : (
             <View style={styles.previewPlaceholder} />
           )}
-          {showUnreadBadge ? (
-            <View
-              style={[
-                styles.unreadBadge,
-                chat.is_muted === 1 && styles.unreadBadgeMuted,
-                unreadCount > 99 && styles.unreadBadgeWide,
-              ]}
-            >
-              <Text style={styles.unreadBadgeText}>{unreadLabel}</Text>
-            </View>
-          ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {chat.is_pinned === 1 ? (
+              <MaterialCommunityIcons name="pin" size={18} color={themeColors.iconMuted} style={{ transform: [{ rotate: '45deg' }] }} />
+            ) : null}
+            {showUnreadBadge ? (
+              <View
+                style={[
+                  styles.unreadBadge,
+                  chat.is_muted === 1 && styles.unreadBadgeMuted,
+                  unreadCount > 99 && styles.unreadBadgeWide,
+                ]}
+              >
+                <Text style={styles.unreadBadgeText}>{unreadLabel}</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
       </View>
     </Pressable>

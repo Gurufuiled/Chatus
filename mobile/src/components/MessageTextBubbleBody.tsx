@@ -5,42 +5,42 @@ type MessageTextBubbleBodyProps = {
   text: string;
   textStyle: StyleProp<TextStyle>;
   rowStyle?: StyleProp<ViewStyle>;
-  viewCountNode?: React.ReactNode;
   meta: React.ReactNode;
+  /** Pass true if the meta contains a view count, so we pad with more spaces. */
+  hasViews?: boolean;
 };
 
-/** Текст + время/статус в одной строке (как в Chatus): время у нижнего края, без absolute overlay. */
+/** Текст + время/статус (как в Telegram): время position absolute, а в текст добавляются пробелы. */
 export function MessageTextBubbleBody({
   text,
   textStyle,
   rowStyle,
-  viewCountNode,
   meta,
+  hasViews = false,
 }: MessageTextBubbleBodyProps) {
+  // \u00A0 is a non-breaking space
+  const spacer = hasViews 
+    ? '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0' 
+    : '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0';
+
   return (
-    <View style={[styles.row, rowStyle]}>
-      <View style={styles.textWrap}>
-        <Text style={textStyle}>
-          {text || ' '}
-          {viewCountNode}
-        </Text>
-      </View>
-      <View style={styles.metaSlot}>{meta}</View>
+    <View style={[styles.container, rowStyle]}>
+      <Text style={textStyle}>
+        {text || ''}{spacer}
+      </Text>
+      <View style={styles.metaAbsolute}>{meta}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
+  container: {
+    position: 'relative',
+    alignSelf: 'stretch', // take full width up to maxWidth
   },
-  /** Без `flex: 1` / `minWidth: 0` — иначе в shrink-wrap бабле (Telegram исходящие) текст схлопывается в 0 ширины. */
-  textWrap: {
-    flexShrink: 1,
-  },
-  metaSlot: {
-    flexShrink: 0,
+  metaAbsolute: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
   },
 });

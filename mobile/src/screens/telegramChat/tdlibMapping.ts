@@ -185,7 +185,7 @@ async function fetchTdlibUserProfilePhotoUri(user: Record<string, unknown>): Pro
   if (!photo) return null;
   const big = getNestedRecord(photo.big);
   const small = getNestedRecord(photo.small);
-  const file = big ?? small;
+  const file = small ?? big; // Use small for chat feed
   const fid = typeof file?.id === 'number' ? file.id : null;
   if (fid == null) return null;
   return downloadTdlibFile(fid).catch(() => null);

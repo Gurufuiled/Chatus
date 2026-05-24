@@ -20,6 +20,7 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { computeChatListMenuPosition, getChatListTitle } from '../presentation';
 import type { ApiUser } from '../services/AuthService';
 import { createOrFindChat } from '../services/chatService';
+import { tdlibToggleChatIsPinned } from './telegramChat/tdlibChatActions';
 import { searchChannels } from '../services/channelService';
 import { searchUsers } from '../services/profileService';
 import { authStore } from '../stores/authStore';
@@ -150,10 +151,6 @@ export function ChatListScreen() {
   const searchIdRef = React.useRef(0);
 
   const sortedChats = React.useMemo(() => sortChatsForList(chats), [chats]);
-  const activeMenuChat = React.useMemo(
-    () => (menuState ? sortedChats.find((chat) => chat.id === menuState.chatId) ?? null : null),
-    [menuState, sortedChats]
-  );
   const normalizedQuery = deferredQuery.trim().toLowerCase();
   const isSearchActive = normalizedQuery.length > 0;
 
@@ -252,9 +249,20 @@ export function ChatListScreen() {
     sortedChats,
     telegramDialogs,
     telegramReady,
-    userResults,
   ]);
 
+  const activeMenuListItem = React.useMemo(
+    () => {
+      if (!menuState) return null;
+      return listItems.find((item) => {
+        if (item.type === 'chat' && item.chat.id === menuState.chatId) return true;
+        if (item.type === 'telegram' && item.row.id === menuState.chatId) return true;
+        return false;
+      }) ?? null;
+    },
+    [menuState, listItems]
+  );
+  
   const onRefresh = React.useCallback(async () => {
     if (!telegramReady) return;
     setRefreshing(true);
@@ -263,7 +271,7 @@ export function ChatListScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [refreshTelegramDialogs, telegramReady]);
+  }, [telegramReady]);
 
   const handleOpenChat = React.useCallback(
     (chat: Chat, chatTitle: string) => {
@@ -350,51 +358,81 @@ export function ChatListScreen() {
   }, []);
 
   const handleToggleMute = React.useCallback(async () => {
-    if (!activeMenuChat) return;
+    if (!activeMenuListItem) return;
     closeMenu();
-    const nextChat: Chat = {
-      ...activeMenuChat,
-      is_muted: activeMenuChat.is_muted === 1 ? 0 : 1,
-      updated_at: Date.now(),
-    };
-    const nextChats = chats.map((chat) => (chat.id === nextChat.id ? nextChat : chat));
-    await persistAndSetChats(nextChats, nextChat);
-  }, [activeMenuChat, chats, closeMenu, persistAndSetChats]);
+    if (activeMenuListItem.type === 'telegram') {
+      const row = activeMenuListItem.row;
+      // Not implemented here right now for TG, we would need tdlibSetChatMuted
+      return;
+    }
+    if (activeMenuListItem.type === 'chat') {
+      const activeMenuChat = activeMenuListItem.chat;
+      const nextChat: Chat = {
+        ...activeMenuChat,
+        is_muted: activeMenuChat.is_muted === 1 ? 0 : 1,
+        updated_at: Date.now(),
+      };
+      const nextChats = chats.map((chat) => (chat.id === nextChat.id ? nextChat : chat));
+      await persistAndSetChats(nextChats, nextChat);
+    }
+  }, [activeMenuListItem, chats, closeMenu, persistAndSetChats]);
 
   const handleTogglePin = React.useCallback(async () => {
-    if (!activeMenuChat) return;
+    if (!activeMenuListItem) return;
     closeMenu();
-    const nextChat: Chat = {
-      ...activeMenuChat,
-      is_pinned: activeMenuChat.is_pinned === 1 ? 0 : 1,
-      updated_at: Date.now(),
-    };
-    const nextChats = chats.map((chat) => (chat.id === nextChat.id ? nextChat : chat));
-    await persistAndSetChats(nextChats, nextChat);
-  }, [activeMenuChat, chats, closeMenu, persistAndSetChats]);
+    if (activeMenuListItem.type === 'telegram') {
+      const row = activeMenuListItem.row;
+      const nextPinned = !row.isPinned;
+      try {
+        await tdlibToggleChatIsPinned(Number(row.chatId), nextPinned);
+        // Refresh dialogs list
+        await refreshTelegramDialogs();
+      } catch {
+        /* failed to toggle pin */
+      }
+      return;
+    }
+    if (activeMenuListItem.type === 'chat') {
+      const activeMenuChat = activeMenuListItem.chat;
+      const nextChat: Chat = {
+        ...activeMenuChat,
+        is_pinned: activeMenuChat.is_pinned === 1 ? 0 : 1,
+        updated_at: Date.now(),
+      };
+      const nextChats = chats.map((chat) => (chat.id === nextChat.id ? nextChat : chat));
+      await persistAndSetChats(nextChats, nextChat);
+    }
+  }, [activeMenuListItem, chats, closeMenu, persistAndSetChats]);
 
   const handleDeleteChat = React.useCallback(() => {
-    if (!activeMenuChat) return;
-    const chatToDelete = activeMenuChat;
+    if (!activeMenuListItem) return;
     closeMenu();
-
-    Alert.alert('Удалить чат?', 'Чат исчезнет только на этом устройстве.', [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Удалить',
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            await new ChatDao().delete(chatToDelete.id);
-            messageStore.getState().clearMessages(chatToDelete.id);
-            chatStore.getState().removeChat(chatToDelete.id);
-          })().catch(() => {
-            Alert.alert('Не удалось удалить чат', 'Попробуй еще раз чуть позже.');
-          });
+    
+    if (activeMenuListItem.type === 'telegram') {
+      Alert.alert('Удалить чат?', 'Удаление Telegram чатов пока доступно только из профиля чата.', [{ text: 'OK' }]);
+      return;
+    }
+    
+    if (activeMenuListItem.type === 'chat') {
+      const chatToDelete = activeMenuListItem.chat;
+      Alert.alert('Удалить чат?', 'Чат исчезнет только на этом устройстве.', [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              await new ChatDao().delete(chatToDelete.id);
+              messageStore.getState().clearMessages(chatToDelete.id);
+              chatStore.getState().removeChat(chatToDelete.id);
+            })().catch(() => {
+              Alert.alert('Не удалось удалить чат', 'Попробуй еще раз чуть позже.');
+            });
+          },
         },
-      },
-    ]);
-  }, [activeMenuChat, closeMenu]);
+      ]);
+    }
+  }, [activeMenuListItem, closeMenu]);
 
   const renderItem = React.useCallback(
     ({ item }: { item: ChatListItem }) => {
@@ -493,7 +531,18 @@ export function ChatListScreen() {
       <ChatListActionsMenu
         visible={menuState != null}
         menuState={menuState}
-        chat={activeMenuChat}
+        isMuted={
+          activeMenuListItem?.type === 'chat'
+            ? activeMenuListItem.chat.is_muted === 1
+            : false
+        }
+        isPinned={
+          activeMenuListItem?.type === 'chat'
+            ? activeMenuListItem.chat.is_pinned === 1
+            : activeMenuListItem?.type === 'telegram'
+              ? activeMenuListItem.row.isPinned ?? false
+              : false
+        }
         onClose={closeMenu}
         onToggleMute={() => {
           void handleToggleMute();
