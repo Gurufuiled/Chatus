@@ -1044,7 +1044,7 @@ export function GroupProfileScreen() {
         {
           key: 'toggle-pin',
           label: isPinned ? 'Открепить' : 'Закрепить',
-          icon: 'pin',
+          icon: 'pin' as any,
         },
       ];
       if (isOwner) {

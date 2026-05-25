@@ -15,6 +15,7 @@ import { colors, bubbleRadius, typography } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -59,7 +60,11 @@ export interface ImageBubbleProps {
   incomingChannelPost?: boolean;
   footer?: React.ReactNode;
   viewCountShortLabel?: string;
+  /** Full-resolution file still downloading (show centered loader over preview). */
+  loadingFullQuality?: boolean;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
+  isForwarded?: boolean;
+  forwardAccentColor?: string;
 }
 
 function computeDisplaySize(
@@ -125,7 +130,10 @@ export function ImageBubble({
   incomingChannelPost = false,
   footer,
   viewCountShortLabel,
+  loadingFullQuality = false,
   style,
+  isForwarded = false,
+  forwardAccentColor,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const maxW = mediaClamp?.maxWidth ?? MAX_BUBBLE_WIDTH;
@@ -170,6 +178,24 @@ export function ImageBubble({
     });
   }, [normalizedUri, propWidth, propHeight, fixedSize, maxW, maxH]);
 
+  const isDataPreviewUri = normalizedUri.startsWith('data:');
+  const isLocalFileUri = normalizedUri.startsWith('file://');
+  const hasUri = normalizedUri.length > 0;
+  /** expo-image often misses onLoad on full-width channel tiles; RN Image matches menu preview. */
+  const useNativeChannelImage = incomingChannelPost && hasUri;
+
+  useEffect(() => {
+    if (!isDataPreviewUri || incomingChannelPost || loadingFullQuality) return;
+    const t = setTimeout(() => setImageLoaded(true), 80);
+    return () => clearTimeout(t);
+  }, [isDataPreviewUri, incomingChannelPost, loadingFullQuality, normalizedUri]);
+
+  useEffect(() => {
+    if (incomingChannelPost && isLocalFileUri) {
+      setImageLoaded(true);
+    }
+  }, [incomingChannelPost, isLocalFileUri, normalizedUri]);
+
   /** Avoid endless gray placeholder if decode callbacks never fire (seen on some Android builds). */
   useEffect(() => {
     if (!normalizedUri || imageLoaded || loadError) return;
@@ -200,6 +226,15 @@ export function ImageBubble({
   const hasCaption = (caption ?? '').trim().length > 0;
   const hasFooter = Boolean(footer);
   const mediaBottomRounded = !hasCaption && !hasFooter;
+  const awaitingFullQuality =
+    (loadingFullQuality && !isLocalFileUri) || (incomingChannelPost && isDataPreviewUri);
+  const showInitialLoader = incomingChannelPost
+    ? !hasUri && !loadError
+    : !hasUri || (!imageLoaded && !loadError);
+  const showQualityLoader = awaitingFullQuality && !loadError && hasUri;
+  const loaderBoxStyle = incomingChannelPost
+    ? { width: '100%' as const, height: channelImageH }
+    : { width: w, height: h };
 
   return (
     <>
@@ -215,103 +250,177 @@ export function ImageBubble({
                 borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
               }
             : null,
-        isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
-        style,
-      ]}
+          isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+          { maxWidth: incomingChannelPost ? '100%' : (w + 8) },
+          style,
+        ]}
       >
         {header ? (
           <View style={{ maxWidth: w, alignSelf: 'flex-start' }}>{header}</View>
         ) : null}
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="View image fullscreen"
-          onPress={handlePress}
-          style={[
-            styles.imageWrapper,
-            incomingChannelPost
-              ? { width: '100%', height: channelImageH }
-              : { width: w, height: h },
-            isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
-            embedded && styles.imageWrapperEmbedded,
-            incomingChannelPost &&
-              (mediaBottomRounded ? styles.imageWrapperChannelSolo : styles.imageWrapperChannelStacked),
-          ]}
-        >
-          {!imageLoaded && !loadError ? (
-            <View pointerEvents="none" style={[styles.loadingOverlay, { width: w, height: h }]}>
-              <ActivityIndicator color={colors.iconMuted} />
-            </View>
-          ) : null}
-          {loadError ? (
-            <View pointerEvents="none" style={[styles.errorOverlay, { width: w, height: h }]}>
-              <Feather name="image" size={28} color={colors.iconMuted} />
-            </View>
-          ) : null}
-          <Image
-            source={{ uri: normalizedUri }}
-            transition={150}
-            cachePolicy="memory-disk"
-            onError={() => {
-              setLoadError(true);
-              setImageLoaded(true);
-            }}
-            onLoad={(e) => {
-              if (normalizedUri) {
-                loadedImageUris.add(normalizedUri);
-              }
-              if (!propWidth || !propHeight) {
-                setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
-              }
-              setLoadError(false);
-              setImageLoaded(true);
-            }}
-            style={[
-              styles.image,
-              incomingChannelPost
-                ? { width: '100%', height: channelImageH }
-                : { width: w, height: h },
-            ]}
-            contentFit={contentFit}
-          />
+        {(() => {
+          const content = (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View image fullscreen"
+                onPress={handlePress}
+                style={[
+                  styles.imageWrapper,
+                  incomingChannelPost
+                    ? { width: '100%', height: channelImageH }
+                    : { width: w, height: h },
+                  isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
+                  embedded && styles.imageWrapperEmbedded,
+                  incomingChannelPost &&
+                    (mediaBottomRounded ? styles.imageWrapperChannelSolo : styles.imageWrapperChannelStacked),
+                ]}
+              >
+                {showInitialLoader ? (
+                  <View pointerEvents="none" style={[styles.loadingOverlay, loaderBoxStyle]}>
+                    <ActivityIndicator size="large" color={colors.iconMuted} />
+                  </View>
+                ) : null}
+                {showQualityLoader ? (
+                  <View pointerEvents="none" style={[styles.qualityLoadingOverlay, loaderBoxStyle]}>
+                    <ActivityIndicator size="large" color="#FFFFFF" />
+                  </View>
+                ) : null}
+                {loadError ? (
+                  <View pointerEvents="none" style={[styles.errorOverlay, loaderBoxStyle]}>
+                    <Feather name="image" size={28} color={colors.iconMuted} />
+                  </View>
+                ) : null}
+                {hasUri ? (
+                  useNativeChannelImage ? (
+                    <RNImage
+                      key={normalizedUri}
+                      source={{ uri: normalizedUri }}
+                      resizeMode="cover"
+                      onError={() => {
+                        setLoadError(true);
+                        setImageLoaded(true);
+                      }}
+                      onLoad={(e) => {
+                        loadedImageUris.add(normalizedUri);
+                        const src = e.nativeEvent.source;
+                        if ((!propWidth || !propHeight) && src?.width && src?.height) {
+                          setDisplaySize(computeDisplaySize(src.width, src.height, maxW, maxH));
+                        }
+                        setLoadError(false);
+                        setImageLoaded(true);
+                      }}
+                      style={[
+                        incomingChannelPost ? styles.imageChannel : styles.image,
+                        incomingChannelPost
+                          ? { width: '100%', height: channelImageH }
+                          : { width: w, height: h },
+                      ]}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: normalizedUri }}
+                      transition={150}
+                      cachePolicy="memory-disk"
+                      onError={() => {
+                        setLoadError(true);
+                        setImageLoaded(true);
+                      }}
+                      onLoad={(e) => {
+                        loadedImageUris.add(normalizedUri);
+                        if (!propWidth || !propHeight) {
+                          setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
+                        }
+                        setLoadError(false);
+                        setImageLoaded(true);
+                      }}
+                      style={[
+                        styles.image,
+                        { width: w, height: h },
+                      ]}
+                      contentFit={contentFit}
+                    />
+                  )
+                ) : null}
 
-          {time || viewCount != null ? (
-            <View style={styles.overlayMeta}>
-              {viewCount != null ? (
-                <View style={styles.overlayMetric}>
-                  <Feather name="eye" size={12} color="#FFFFFF" />
-                  <Text style={styles.overlayMetricText}>
-                    {viewCountShortLabel ?? String(viewCount)}
-                  </Text>
-                </View>
-              ) : null}
-              {time ? (
-                <MessageTimeStatus
-                  time={time}
-                  status={status ?? 'sent'}
-                  isMe={isMe}
-                  compact
-                  timeColor="#FFFFFF"
-                  iconColor="#FFFFFF"
+                {!hasCaption && (time || viewCount != null) ? (
+                  <View style={styles.overlayMeta}>
+                    {viewCount != null ? (
+                      <View style={styles.overlayMetric}>
+                        <Feather name="eye" size={12} color="#FFFFFF" />
+                        <Text style={styles.overlayMetricText}>
+                          {viewCountShortLabel ?? String(viewCount)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {time ? (
+                      <MessageTimeStatus
+                        time={time}
+                        status={status ?? 'sent'}
+                        isMe={isMe}
+                        compact
+                        timeColor="#FFFFFF"
+                        iconColor="#FFFFFF"
+                      />
+                    ) : null}
+                  </View>
+                ) : null}
+              </Pressable>
+
+              {hasCaption ? (
+                <MessageTextBubbleBody
+                  text={caption ?? ''}
+                  textStyle={[
+                    styles.caption,
+                    incomingChannelPost && styles.captionChannel,
+                    isMe && styles.captionMe,
+                    isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+                    !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
+                  ]}
+                  hasViews={viewCount != null}
+                  meta={
+                    <View style={styles.textMeta}>
+                      {viewCount != null ? (
+                        <View style={styles.textMetric}>
+                          <Feather name="eye" size={13} color={isMe ? 'rgba(255,255,255,0.7)' : colors.iconMuted} />
+                          <Text style={[styles.textMetricText, isMe ? { color: 'rgba(255,255,255,0.7)' } : null]}>
+                            {viewCountShortLabel ?? String(viewCount)}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {time ? (
+                        <MessageTimeStatus
+                          time={time}
+                          status={status ?? 'sent'}
+                          isMe={isMe}
+                          compact
+                        />
+                      ) : null}
+                    </View>
+                  }
                 />
               ) : null}
-            </View>
-          ) : null}
-        </Pressable>
+            </>
+          );
 
-        {hasCaption ? (
-          <Text
-            style={[
-              styles.caption,
-              incomingChannelPost && styles.captionChannel,
-              isMe && styles.captionMe,
-              isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-              !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
-            ]}
-          >
-            {caption}
-          </Text>
-        ) : null}
+          if (isForwarded) {
+            return (
+              <View
+                style={{
+                  borderLeftWidth: 3,
+                  borderLeftColor: forwardAccentColor || colors.accent,
+                  paddingLeft: 8,
+                  marginLeft: 2,
+                  alignSelf: 'stretch',
+                }}
+              >
+                {content}
+              </View>
+            );
+          }
+          return content;
+        })()}
 
         {footer}
 
@@ -421,7 +530,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(243, 244, 246, 0.92)',
-    zIndex: 1,
+    zIndex: 2,
+  },
+  qualityLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    zIndex: 3,
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -433,6 +549,9 @@ const styles = StyleSheet.create({
   image: {
     maxWidth: MAX_BUBBLE_WIDTH,
     maxHeight: MAX_BUBBLE_HEIGHT,
+  },
+  imageChannel: {
+    width: '100%',
   },
   overlayMeta: {
     position: 'absolute',
@@ -475,6 +594,24 @@ const styles = StyleSheet.create({
   },
   captionMe: {
     color: '#FFFFFF',
+  },
+  textMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 4,
+    paddingBottom: 2,
+  },
+  textMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  textMetricText: {
+    color: colors.iconMuted,
+    fontSize: typography.timeStatus,
+    lineHeight: 14,
+    fontWeight: '600',
   },
   fullscreenBackdrop: {
     flex: 1,

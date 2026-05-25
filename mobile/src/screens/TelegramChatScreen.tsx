@@ -26,6 +26,8 @@ import {
 import Reanimated, { useAnimatedKeyboard, useSharedValue } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
+import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
+import type { MediaTile } from '../components/ChatProfileMediaSection';
 import { ChatTopBanners } from '../components/ChatTopBanners';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
 import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
@@ -95,10 +97,15 @@ import {
   getNestedRecord,
   getPinnedMessageIdFromChat,
   loadLastReadOutboxMessageId,
-  hydrateTelegramAlbumRows,
+  hydrateTelegramMediaRows,
   mapTdMessage,
   mapTdMessages,
+  scheduleTdlibFileDownload,
 } from './telegramChat/tdlibMapping';
+import {
+  collectPendingTdlibFileIds,
+  patchMessagesWithTdlibFile,
+} from './telegramChat/telegramFileUpdates';
 import {
   getTelegramRowTdMessageIds,
   mergeTelegramFeedRows,
@@ -115,6 +122,10 @@ import {
   loadTelegramMessagesFromCache,
   persistTelegramMessages,
 } from './telegramChat/telegramMessageCache';
+import {
+  buildTelegramAlbumViewerTiles,
+  findTelegramAlbumViewerIndex,
+} from './telegramChat/telegramAlbumMediaTiles';
 import { scheduleNeighborTelegramChatsPreload } from './telegramChat/telegramChatPreload';
 import { useTelegramChatMenu } from './telegramChat/useTelegramChatMenu';
 import { renderTextWithSearchHighlight } from '../utils/searchHighlightText';
@@ -201,6 +212,10 @@ export function TelegramChatScreen() {
   const [channelMemberStatus, setChannelMemberStatus] = useState<string | null>(null);
   /** Чат обсуждения канала (`getSupergroupFullInfo.linked_chat_id`), если у сообщения нет `reply_in_chat_id`. */
   const [channelLinkedDiscussionChatId, setChannelLinkedDiscussionChatId] = useState<number | null>(null);
+  const [telegramAlbumViewer, setTelegramAlbumViewer] = useState<{
+    items: MediaTile[];
+    index: number;
+  } | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
   const lastReadOutboxMessageIdRef = useRef<number>(0);
   const loadingOlderRef = useRef(false);
@@ -219,6 +234,22 @@ export function TelegramChatScreen() {
   }, []);
   const bumpScrollTickImmediate = useCallback(() => {
     setScrollTick((t) => (t + 1) & 0xffff);
+  }, []);
+
+  const openTelegramAlbumViewer = useCallback(
+    (albumMedia: TelegramAlbumMediaItem[], tappedMessageId: number, caption?: string) => {
+      const tiles = buildTelegramAlbumViewerTiles(albumMedia, caption);
+      if (tiles.length === 0) return;
+      setTelegramAlbumViewer({
+        items: tiles,
+        index: findTelegramAlbumViewerIndex(tiles, tappedMessageId),
+      });
+    },
+    [],
+  );
+
+  const closeTelegramAlbumViewer = useCallback(() => {
+    setTelegramAlbumViewer(null);
   }, []);
 
   const [isSearchMode, setIsSearchMode] = useState(false);
@@ -1005,6 +1036,9 @@ export function TelegramChatScreen() {
             const cached = await loadTelegramMessagesFromCache(chatId, threadParam);
             if (mountedRef.current && cached.length > 0) {
               mergeMapped(cached);
+              for (const fileId of collectPendingTdlibFileIds(cached)) {
+                scheduleTdlibFileDownload(fileId);
+              }
               setLoading(false);
             }
           } catch {
@@ -1019,6 +1053,9 @@ export function TelegramChatScreen() {
             const localMapped = await fetchBatch(true);
             if (mountedRef.current && localMapped.length > 0) {
               mergeMapped(localMapped);
+              for (const fileId of collectPendingTdlibFileIds(localMapped)) {
+                scheduleTdlibFileDownload(fileId);
+              }
               setLoading(false);
             }
           } catch {
@@ -1029,7 +1066,7 @@ export function TelegramChatScreen() {
         let mapped = await fetchBatch(false);
         if (!mountedRef.current || isStaleLoad()) return;
         if (!older && mapped.length > 0) {
-          mapped = await hydrateTelegramAlbumRows(
+          mapped = await hydrateTelegramMediaRows(
             chatId,
             normalizeTelegramFeedRows(mapped),
             lastReadOutboxMessageIdRef.current,
@@ -1037,6 +1074,9 @@ export function TelegramChatScreen() {
           if (!mountedRef.current || isStaleLoad()) return;
         }
         mergeMapped(mapped);
+        for (const fileId of collectPendingTdlibFileIds(mapped)) {
+          scheduleTdlibFileDownload(fileId);
+        }
         if (!isStaleLoad()) setLastError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1060,6 +1100,13 @@ export function TelegramChatScreen() {
         try {
           const update = JSON.parse(json) as Record<string, unknown>;
           const type = update['@type'];
+
+          if (type === 'updateFile') {
+            const file = getNestedRecord(update.file);
+            if (!file) return;
+            setMessages((prev) => patchMessagesWithTdlibFile(prev, file));
+            return;
+          }
 
           if (type === 'updateChatPinnedMessage') {
             if (update.chat_id !== chatId) return;
@@ -1149,6 +1196,9 @@ export function TelegramChatScreen() {
           }).then((row) => {
             if (!row || !mountedRef.current) return;
             setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, row, oldMessageId)));
+            for (const fileId of collectPendingTdlibFileIds([row])) {
+              scheduleTdlibFileDownload(fileId);
+            }
             void persistTelegramMessages(chatId, threadParam, [row]).catch(() => {});
           });
         } catch {
@@ -1858,7 +1908,7 @@ export function TelegramChatScreen() {
                   active
                   scrollTick={scrollTick}
                   fillColor={chatTheme.bubbleMe}
-                  style={[{ alignSelf: 'flex-end' }, outgoingGradientBubbleStyle, { overflow: 'hidden' }]}
+                  style={[{ alignSelf: 'flex-end' }, outgoingGradientBubbleStyle, { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' }]}
                 >
                   <VoiceBubble
                     uri={item.voiceUri}
@@ -1875,7 +1925,7 @@ export function TelegramChatScreen() {
                     incomingBubbleBackground={colors.bubbleOther}
                     incomingBubbleBorderColor={colors.bubbleOtherBorder}
                     incomingDurationColor={colors.textSecondary}
-                    style={outgoingGradientBubbleStyle}
+                    style={undefined}
                   />
                 </MeBubbleChrome>
               ) : (
@@ -2009,6 +2059,11 @@ export function TelegramChatScreen() {
             incomingCaptionText={isMe ? undefined : colors.textPrimary}
             incomingCaptionMeta={isMe ? undefined : colors.textSecondary}
             footer={discussionFooter}
+            incomingChannelPost={channelIncoming}
+            channelAlbumWidth={channelIncoming ? channelMediaClamp.maxWidth : undefined}
+            onTilePress={(messageId) =>
+              openTelegramAlbumViewer(item.albumMedia ?? [], messageId, item.text)
+            }
           />
         );
 
@@ -2029,7 +2084,7 @@ export function TelegramChatScreen() {
         );
       }
 
-      if (item.kind === 'image' && !item.mediaUri) {
+      if (item.kind === 'image' && !item.mediaUri && item.mediaFullFileId == null) {
         const placeholderBody = (
           <>
             {bubbleHeader}
@@ -2082,10 +2137,77 @@ export function TelegramChatScreen() {
         );
       }
 
-      if (item.kind === 'image' && item.mediaUri) {
+      if (item.kind === 'image' && (item.mediaUri || item.mediaFullFileId != null)) {
+        if (channelIncoming) {
+          const channelSinglePhoto = (
+            <TelegramMediaAlbumBubble
+              items={[
+                {
+                  messageId: item.messageId,
+                  kind: 'image',
+                  mediaUri: item.mediaUri,
+                  mediaFullFileId: item.mediaFullFileId,
+                  width: item.width,
+                  height: item.height,
+                },
+              ]}
+              isMe={false}
+              caption={item.text}
+              time={formatTime(item.dateMs)}
+              status={item.status}
+              styles={styles}
+              chatTheme={chatTheme}
+              viewportOutgoingGradient={false}
+              scrollTick={scrollTick}
+              incomingCaptionBg={colors.bubbleOther}
+              incomingCaptionBorder={colors.bubbleOtherBorder}
+              incomingCaptionText={colors.textPrimary}
+              incomingCaptionMeta={colors.textSecondary}
+              footer={discussionFooter}
+              incomingChannelPost
+              channelAlbumWidth={channelMediaClamp.maxWidth}
+              onTilePress={(messageId) =>
+                openTelegramAlbumViewer(
+                  [
+                    {
+                      messageId: item.messageId,
+                      kind: 'image',
+                      mediaUri: item.mediaUri,
+                      mediaFullFileId: item.mediaFullFileId,
+                      width: item.width,
+                      height: item.height,
+                    },
+                  ],
+                  messageId,
+                  item.text,
+                )
+              }
+            />
+          );
+
+          return wrapSelectionShell(
+            <Pressable
+              {...pressableA11y}
+              style={pressableRowStyle}
+              accessibilityLabel={`${headerTitle}: фото${item.text ? `, ${item.text}` : ''}`}
+            >
+              <View
+                ref={(node) => setMessageContentRef(item.id, node)}
+                collapsable={false}
+                style={measureShellStyle}
+              >
+                {channelSinglePhoto}
+              </View>
+            </Pressable>,
+          );
+        }
+
         const imageBubble = (
           <ImageBubble
-            uri={item.mediaUri}
+            uri={item.mediaUri ?? ''}
+            loadingFullQuality={
+              item.mediaFullFileId != null && !item.mediaUri?.trim().startsWith('file://')
+            }
             isMe={isMe}
             width={item.width}
             height={item.height}
@@ -2101,7 +2223,6 @@ export function TelegramChatScreen() {
             viewCount={item.viewCount}
             viewCountShortLabel={viewCountFormatted ?? undefined}
             mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
-            incomingChannelPost={channelIncoming}
             footer={discussionFooter}
           />
         );
@@ -2117,7 +2238,7 @@ export function TelegramChatScreen() {
               collapsable={false}
               style={measureShellStyle}
             >
-              {channelIncoming ? imageBubble : wrapTelegramMediaBubble(imageBubble)}
+              {wrapTelegramMediaBubble(imageBubble)}
             </View>
           </Pressable>,
         );
@@ -2378,6 +2499,7 @@ export function TelegramChatScreen() {
       isGroupChat,
       messageById,
       openTelegramMessageMenu,
+      openTelegramAlbumViewer,
       resolvedScheme,
       scrollTick,
       selectedTelegramIdSet,
@@ -2710,6 +2832,15 @@ export function TelegramChatScreen() {
         onSelectChat={(destChatId) => {
           void handleForwardToTelegramChat(destChatId);
         }}
+      />
+      <ChatProfileMediaViewerModal
+        visible={telegramAlbumViewer != null}
+        items={telegramAlbumViewer?.items ?? []}
+        selectedIndex={telegramAlbumViewer?.index ?? 0}
+        onChangeIndex={(index) =>
+          setTelegramAlbumViewer((prev) => (prev ? { ...prev, index } : null))
+        }
+        onClose={closeTelegramAlbumViewer}
       />
     </View>
   );

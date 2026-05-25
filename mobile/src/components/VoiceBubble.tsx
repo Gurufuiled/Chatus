@@ -43,6 +43,8 @@ export interface VoiceBubbleProps {
   incomingBubbleBorderColor?: string;
   incomingDurationColor?: string;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
+  isForwarded?: boolean;
+  forwardAccentColor?: string;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -141,7 +143,9 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.waveform === next.waveform &&
     prev.inlineReactions === next.inlineReactions &&
     prev.allowMessageReactions === next.allowMessageReactions &&
-    prev.onToggleInlineReaction === next.onToggleInlineReaction
+    prev.onToggleInlineReaction === next.onToggleInlineReaction &&
+    prev.isForwarded === next.isForwarded &&
+    prev.forwardAccentColor === next.forwardAccentColor
   );
 }
 
@@ -167,6 +171,8 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   incomingBubbleBorderColor,
   incomingDurationColor,
   style,
+  isForwarded = false,
+  forwardAccentColor,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -271,88 +277,109 @@ export const VoiceBubble = React.memo(function VoiceBubble({
       ]}
     >
       {header}
-      <View style={styles.mainRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={isPlaying ? 'Pause voice message' : 'Play voice message'}
-          accessibilityState={{ selected: isPlaying }}
-          style={({ pressed }) => [
-            styles.playButton,
-            isMe ? styles.playButtonMe : styles.playButtonOther,
-            pressed && styles.playButtonPressed,
-          ]}
-          onPress={handlePress}
-          hitSlop={8}
-        >
-          <AnimatedPlayPauseIcon
-            isPlaying={isPlaying}
-            size={18}
-            color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
-          />
-        </Pressable>
-
-        <View style={styles.contentColumn}>
-          <Pressable
-            onLayout={handleWaveformLayout}
-            onPress={(event) => {
-              handleWaveformPress(event.nativeEvent.locationX);
-            }}
-            style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
-          >
-            {barHeights.map((barHeight, index) => {
-              const isFilled = renderProgress > 0 && index / barCount <= renderProgress;
-              return (
-                <View
-                  key={index}
-                  style={[
-                    styles.bar,
-                    {
-                      height: barHeight,
-                      backgroundColor: isFilled
-                        ? isMe
-                          ? outgoingTextColor ?? '#FFFFFF'
-                          : '#4A8FF5'
-                        : isMe
-                          ? outgoingTextColor ? `${outgoingTextColor}66` : 'rgba(255, 255, 255, 0.4)'
-                          : '#D2D5DA',
-                    },
-                  ]}
-                />
-              );
-            })}
-          </Pressable>
-
-          <View style={styles.metaRow}>
-            <Text
-              style={[
-                styles.duration,
-                isMe && styles.durationMe,
-                !isMe && incomingDurationColor ? { color: incomingDurationColor } : null,
+      {(() => {
+        const content = (
+          <View style={styles.mainRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={isPlaying ? 'Pause voice message' : 'Play voice message'}
+              accessibilityState={{ selected: isPlaying }}
+              style={({ pressed }) => [
+                styles.playButton,
+                isMe ? styles.playButtonMe : styles.playButtonOther,
+                pressed && styles.playButtonPressed,
               ]}
+              onPress={handlePress}
+              hitSlop={8}
             >
-              {durationLabel}
-            </Text>
-            <View style={styles.metaRight}>
-              {viewCount != null ? (
-                <View style={styles.metricWrap}>
-                  <Feather name="eye" size={12} color="rgba(120, 126, 138, 0.9)" />
-                  <Text style={styles.metricText}>{viewCount}</Text>
+              <AnimatedPlayPauseIcon
+                isPlaying={isPlaying}
+                size={18}
+                color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
+              />
+            </Pressable>
+
+            <View style={styles.contentColumn}>
+              <Pressable
+                onLayout={handleWaveformLayout}
+                onPress={(event) => {
+                  handleWaveformPress(event.nativeEvent.locationX);
+                }}
+                style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
+              >
+                {barHeights.map((barHeight, index) => {
+                  const isFilled = renderProgress > 0 && index / barCount <= renderProgress;
+                  return (
+                    <View
+                      key={index}
+                      style={[
+                        styles.bar,
+                        {
+                          height: barHeight,
+                          backgroundColor: isFilled
+                            ? isMe
+                              ? outgoingTextColor ?? '#FFFFFF'
+                              : '#4A8FF5'
+                            : isMe
+                              ? outgoingTextColor ? `${outgoingTextColor}66` : 'rgba(255, 255, 255, 0.4)'
+                              : '#D2D5DA',
+                        },
+                      ]}
+                    />
+                  );
+                })}
+              </Pressable>
+
+              <View style={styles.metaRow}>
+                <Text
+                  style={[
+                    styles.duration,
+                    isMe && styles.durationMe,
+                    !isMe && incomingDurationColor ? { color: incomingDurationColor } : null,
+                  ]}
+                >
+                  {durationLabel}
+                </Text>
+                <View style={styles.metaRight}>
+                  {viewCount != null ? (
+                    <View style={styles.metricWrap}>
+                      <Feather name="eye" size={12} color="rgba(120, 126, 138, 0.9)" />
+                      <Text style={styles.metricText}>{viewCount}</Text>
+                    </View>
+                  ) : null}
+                  {time ? (
+                    <MessageTimeStatus
+                      time={time}
+                      status={messageStatus ?? 'sent'}
+                      isMe={isMe}
+                      compact
+                      timeColor={isMe ? outgoingMetaColor : undefined}
+                      iconColor={isMe ? outgoingMetaColor : undefined}
+                    />
+                  ) : null}
                 </View>
-              ) : null}
-              {time ? (
-                <MessageTimeStatus
-                  time={time}
-                  status={messageStatus ?? 'sent'}
-                  isMe={isMe}
-                  compact
-                  timeColor={isMe ? outgoingMetaColor : undefined}
-                  iconColor={isMe ? outgoingMetaColor : undefined}
-                />
-              ) : null}
+              </View>
             </View>
           </View>
-        </View>
-      </View>
+        );
+
+        if (isForwarded) {
+          return (
+            <View
+              style={{
+                borderLeftWidth: 3,
+                borderLeftColor: forwardAccentColor || colors.accent,
+                paddingLeft: 8,
+                marginLeft: 2,
+                alignSelf: 'stretch',
+              }}
+            >
+              {content}
+            </View>
+          );
+        }
+        return content;
+      })()}
 
       {inlineReactions?.length ? (
         <MessageReactionInline

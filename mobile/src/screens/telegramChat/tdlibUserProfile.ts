@@ -90,30 +90,23 @@ export async function tdlibIsUserBlocked(userId: number): Promise<boolean> {
   const limit = 100;
   for (let page = 0; page < 10; page += 1) {
     const res = (await tdlibClient.send({
-      '@type': 'getBlockedUsers',
+      '@type': 'getBlockedMessageSenders',
+      block_list: { '@type': 'blockListMain' },
       offset,
       limit,
     })) as Record<string, unknown>;
     throwIfTdError(res);
-    const idsFromArray = Array.isArray(res.user_ids)
-      ? (res.user_ids as unknown[]).filter((x): x is number => typeof x === 'number')
-      : [];
-    const blockedRaw = Array.isArray(res.blocked_users) ? res.blocked_users : [];
-    const idsFromUsers: number[] = [];
-    for (const item of blockedRaw) {
-      const u = getNestedRecord(item);
-      const uid =
-        typeof u?.user_id === 'number'
-          ? u.user_id
-          : typeof u?.id === 'number'
-            ? u.id
-            : null;
-      if (uid != null) idsFromUsers.push(uid);
+
+    const senders = Array.isArray(res.senders) ? res.senders : [];
+    for (const sender of senders) {
+      const s = getNestedRecord(sender);
+      if (s?.['@type'] === 'messageSenderUser' && s.user_id === userId) {
+        return true;
+      }
     }
-    const merged = idsFromArray.length > 0 ? idsFromArray : idsFromUsers;
-    if (merged.includes(userId)) return true;
-    if (merged.length < limit) return false;
-    offset += merged.length;
+
+    if (senders.length < limit) return false;
+    offset += senders.length;
   }
   return false;
 }

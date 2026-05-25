@@ -7,15 +7,20 @@ import {
   Easing,
   GestureResponderEvent,
   Image,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Modal,
   Platform,
   Pressable,
   StatusBar,
   Text,
+  TextInput,
   UIManager,
   View,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ChatProfileHero,
 } from '../components/ChatProfileHero';
@@ -63,6 +68,7 @@ import {
 } from './telegramChat/tdlibUserProfile';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramRowsToProfileBuckets } from './telegramChat/telegramProfileMedia';
+import { patchMessagesWithTdlibFile } from './telegramChat/telegramFileUpdates';
 import type { TelegramMessageRow } from './telegramChat/types';
 
 if (Platform.OS === 'android') {
@@ -117,7 +123,7 @@ function buildTdlibInfoRows(
   const phone =
     typeof user?.phone_number === 'string' ? user.phone_number.trim() : '';
   if (phone) {
-    rows.push({ id: 'phone', label: 'Телефон', value: phone, icon: 'phone' });
+    rows.push({ id: 'phone', label: 'Мобильный', value: phone, icon: 'phone' });
   }
   const usernamesObj = getNestedRecord(user?.usernames);
   const activeUsernames = Array.isArray(usernamesObj?.active_usernames) ? usernamesObj.active_usernames : [];
@@ -186,6 +192,7 @@ function ProfileInfoCard({
 export function TelegramChatProfileScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
+  const insets = useSafeAreaInsets();
   const { telegramChatId, title: routeTitle, avatarUri: routeAvatarUri, chatType: routeChatTypeParam } =
     route.params;
   const chatId = Number.parseInt(telegramChatId, 10);
@@ -209,6 +216,11 @@ export function TelegramChatProfileScreen() {
   const [peerUserId, setPeerUserId] = useState<number | null>(null);
   const [isGroupPeer, setIsGroupPeer] = useState(false);
   const [isBroadcastChannel, setIsBroadcastChannel] = useState(routeChatTypeParam === 'channel');
+
+  const [userRecord, setUserRecord] = useState<Record<string, unknown> | null>(null);
+  const [isEditContactVisible, setIsEditContactVisible] = useState(false);
+  const [firstNameDraft, setFirstNameDraft] = useState('');
+  const [lastNameDraft, setLastNameDraft] = useState('');
 
   useEffect(() => {
     const t = routeTitle?.trim();
@@ -271,6 +283,91 @@ export function TelegramChatProfileScreen() {
         setError(null);
         await ensureReady();
 
+        const loadRichHistory = async (lastRead: number) => {
+          const fetchHistoryBatch = async (fromId: number, limit: number) => {
+            try {
+              const res = (await tdlibClient.send({
+                '@type': 'getChatHistory',
+                chat_id: chatId,
+                from_message_id: fromId,
+                offset: 0,
+                limit,
+                only_local: false,
+              })) as Record<string, unknown>;
+              throwIfTdError(res);
+              return Array.isArray(res.messages) ? res.messages : [];
+            } catch (e) {
+              return [];
+            }
+          };
+
+          const fetchSearchBatch = async (filterType: string, limit: number) => {
+            try {
+              const res = (await tdlibClient.send({
+                '@type': 'searchChatMessages',
+                chat_id: chatId,
+                query: '',
+                sender_id: null,
+                from_message_id: 0,
+                offset: 0,
+                limit,
+                filter: { '@type': filterType },
+                message_thread_id: 0,
+              })) as Record<string, unknown>;
+              throwIfTdError(res);
+              return Array.isArray(res.messages) ? res.messages : [];
+            } catch (e) {
+              return [];
+            }
+          };
+
+          const allRawMap = new Map<number, Record<string, unknown>>();
+
+          // 1. Fetch recent general history (3 batches of 100)
+          let lastMsgId = 0;
+          for (let b = 0; b < 3; b++) {
+            const batch = await fetchHistoryBatch(lastMsgId, 100);
+            if (batch.length === 0) break;
+            for (const msg of batch) {
+              if (msg && typeof msg.id === 'number') {
+                allRawMap.set(msg.id, msg);
+              }
+            }
+            const oldest = batch[batch.length - 1];
+            if (oldest && typeof oldest.id === 'number') {
+              lastMsgId = oldest.id;
+            } else {
+              break;
+            }
+          }
+
+          // 2. Fetch media, files, voice, links in parallel using TDLib search filters
+          const searchFilters = [
+            'searchMessagesFilterPhotoAndVideo',
+            'searchMessagesFilterDocument',
+            'searchMessagesFilterVoiceAndVideoNote',
+            'searchMessagesFilterUrl',
+          ];
+          const searchPromises = searchFilters.map(f => fetchSearchBatch(f, 100));
+          const searchResults = await Promise.all(searchPromises);
+
+          for (const batch of searchResults) {
+            for (const msg of batch) {
+              if (msg && typeof msg.id === 'number') {
+                allRawMap.set(msg.id, msg);
+              }
+            }
+          }
+
+          const rawMerged = Array.from(allRawMap.values());
+          const mapped = await mapTdMessages(
+            rawMerged.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
+            lastRead,
+          );
+          mapped.sort((a, b) => b.dateMs - a.dateMs);
+          return mapped;
+        };
+
         const peer = await tdlibResolveChatPeer(chatId);
         if (cancelled) return;
 
@@ -311,6 +408,7 @@ export function TelegramChatProfileScreen() {
           throwIfTdError(full);
 
           const u = user as Record<string, unknown>;
+          setUserRecord(u);
           const f = full as Record<string, unknown>;
           const fn = typeof u.first_name === 'string' ? u.first_name.trim() : '';
           const ln = typeof u.last_name === 'string' ? u.last_name.trim() : '';
@@ -335,20 +433,7 @@ export function TelegramChatProfileScreen() {
           setIsBlocked(blocked);
 
           const lastRead = await loadLastReadOutboxMessageId(chatId);
-          const hist = (await tdlibClient.send({
-            '@type': 'getChatHistory',
-            chat_id: chatId,
-            from_message_id: 0,
-            offset: 0,
-            limit: 80,
-            only_local: false,
-          })) as Record<string, unknown>;
-          throwIfTdError(hist);
-          const raw = Array.isArray(hist.messages) ? hist.messages : [];
-          const mapped = await mapTdMessages(
-            raw.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
-            lastRead,
-          );
+          const mapped = await loadRichHistory(lastRead);
           if (!cancelled) setHistoryRows(mapped);
           return;
         }
@@ -401,20 +486,7 @@ export function TelegramChatProfileScreen() {
         setInfoRows(buildTdlibInfoRows(null, null, description));
 
         const lastRead = await loadLastReadOutboxMessageId(chatId);
-        const hist = (await tdlibClient.send({
-          '@type': 'getChatHistory',
-          chat_id: chatId,
-          from_message_id: 0,
-          offset: 0,
-          limit: 80,
-          only_local: false,
-        })) as Record<string, unknown>;
-        throwIfTdError(hist);
-        const raw = Array.isArray(hist.messages) ? hist.messages : [];
-        const mapped = await mapTdMessages(
-          raw.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
-          lastRead,
-        );
+        const mapped = await loadRichHistory(lastRead);
         if (!cancelled) setHistoryRows(mapped);
       } catch (e) {
         if (!cancelled) {
@@ -437,6 +509,25 @@ export function TelegramChatProfileScreen() {
     });
     return () => scrollY.removeListener(id);
   }, [isHeroExpanded, scrollY]);
+  useEffect(() => {
+    const unsubscribe = tdlibClient.subscribe((json) => {
+      try {
+        const update = JSON.parse(json) as Record<string, unknown>;
+        const type = update['@type'];
+        if (type === 'updateFile') {
+          const file = getNestedRecord(update.file);
+          if (!file) return;
+          setHistoryRows((prev) => patchMessagesWithTdlibFile(prev, file));
+        }
+      } catch (e) {
+        // ignore
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   const { mediaItems, fileItems, voiceItems, linkItems } = useMemo(
     () => telegramRowsToProfileBuckets(historyRows, displayName),
@@ -705,7 +796,7 @@ export function TelegramChatProfileScreen() {
       {
         key: 'toggle-pin',
         label: isPinned ? 'Открепить' : 'Закрепить',
-        icon: 'pin',
+        icon: 'pin' as any,
       },
       {
         key: 'delete-chat',
@@ -764,12 +855,84 @@ export function TelegramChatProfileScreen() {
     [handleBlockMenuItem, openThemePicker],
   );
 
-  const handleEditPress = useCallback(() => {
-    Alert.alert(
-      'Имя в Telegram',
-      'Отображаемое имя задаётся в аккаунте пользователя в Telegram. Здесь можно изменить только обои чата.',
-    );
+  const openEditContact = useCallback(() => {
+    let fn = '';
+    let ln = '';
+    if (userRecord) {
+      fn = typeof userRecord.first_name === 'string' ? userRecord.first_name.trim() : '';
+      ln = typeof userRecord.last_name === 'string' ? userRecord.last_name.trim() : '';
+    } else {
+      const parts = displayName.trim().split(/\s+/).filter(Boolean);
+      fn = parts[0] ?? '';
+      ln = parts.slice(1).join(' ');
+    }
+    setFirstNameDraft(fn);
+    setLastNameDraft(ln);
+    setIsEditContactVisible(true);
+  }, [displayName, userRecord]);
+
+  const closeEditContact = useCallback(() => {
+    setIsEditContactVisible(false);
   }, []);
+
+  const handleSaveContactName = useCallback(async () => {
+    if (peerUserId == null) {
+      setIsEditContactVisible(false);
+      return;
+    }
+
+    try {
+      await ensureReady();
+      const phone = userRecord && typeof userRecord.phone_number === 'string'
+        ? userRecord.phone_number.trim()
+        : '';
+
+      const res = await tdlibClient.send({
+        '@type': 'addContact',
+        contact: {
+          '@type': 'contact',
+          phone_number: phone,
+          first_name: firstNameDraft.trim(),
+          last_name: lastNameDraft.trim(),
+          user_id: peerUserId,
+          vcard: '',
+        },
+        share_phone_number: false,
+      });
+      throwIfTdError(res);
+
+      const nextName = [firstNameDraft.trim(), lastNameDraft.trim()]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      setDisplayName(nextName || 'Профиль');
+
+      // Update userRecord so next edit doesn't revert
+      setUserRecord((prev) => prev ? {
+        ...prev,
+        first_name: firstNameDraft.trim(),
+        last_name: lastNameDraft.trim(),
+      } : null);
+
+      setIsEditContactVisible(false);
+    } catch (e) {
+      setIsEditContactVisible(false);
+      Alert.alert('Не удалось сохранить имя', e instanceof Error ? e.message : String(e));
+    }
+  }, [peerUserId, userRecord, firstNameDraft, lastNameDraft, ensureReady]);
+
+  const handleEditPress = useCallback(() => {
+    if (peerUserId != null) {
+      openEditContact();
+    } else {
+      Alert.alert(
+        'Имя в Telegram',
+        isBroadcastChannel
+          ? 'Название канала можно отредактировать в приложении Telegram.'
+          : 'Название группы можно отредактировать в приложении Telegram.',
+      );
+    }
+  }, [peerUserId, openEditContact, isBroadcastChannel]);
 
   return (
     <View style={styles.screen}>
@@ -844,6 +1007,70 @@ export function TelegramChatProfileScreen() {
         onCloseActionMenu={() => closeActionMenu()}
         onShowInChat={handleShowInChat}
       />
+
+      <Modal
+        visible={isEditContactVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={closeEditContact}
+      >
+        <KeyboardAvoidingView
+          style={styles.editScreen}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <StatusBar barStyle="dark-content" />
+          <View style={[styles.editTopBar, { paddingTop: Math.max(insets.top + 8, 18) }]}>
+            <Pressable
+              onPress={closeEditContact}
+              style={({ pressed }) => [styles.editNavPill, pressed && styles.editNavPillPressed]}
+            >
+              <Text style={styles.editNavText}>Отмена</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                void handleSaveContactName();
+              }}
+              style={({ pressed }) => [styles.editNavPill, pressed && styles.editNavPillPressed]}
+            >
+              <Text style={[styles.editNavText, styles.editDoneText]}>Готово</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.editAvatarWrap}>
+            <View style={[styles.editAvatarFrame, !avatarUrl ? { backgroundColor: avatarColor } : null]}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.editAvatarImage} />
+              ) : (
+                <Text style={styles.editAvatarInitial}>{initial}</Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.editFieldsCard}>
+            <TextInput
+              value={firstNameDraft}
+              onChangeText={setFirstNameDraft}
+              placeholder="Имя"
+              placeholderTextColor={themeColors.textSecondary}
+              style={styles.editInput}
+              returnKeyType="next"
+              autoFocus
+            />
+            <View style={styles.editInputDivider} />
+            <TextInput
+              value={lastNameDraft}
+              onChangeText={setLastNameDraft}
+              placeholder="Фамилия"
+              placeholderTextColor={themeColors.textSecondary}
+              style={styles.editInput}
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                void handleSaveContactName();
+              }}
+            />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <ChatThemePickerModal
         visible={isThemePickerVisible}

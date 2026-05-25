@@ -54,13 +54,13 @@ import {
   ChatContextMenuOverlay,
   ChatInputDock,
   InteractiveChatBackShell,
-  CustomAndroidChatHeader,
   LoadErrorState,
   MessageTimeStatus,
   ReplyPreview,
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from '../components';
+import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
 import {
   PeerFirstFileBubble,
   PeerFirstImageBubble,

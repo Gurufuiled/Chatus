@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   AnchoredPopoverMenu,
   type AnchoredMenuState,
@@ -81,10 +81,19 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
         {
           scale: actionMenuAnimation.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.95, 1],
+            outputRange: [0.88, 1],
           }),
         },
       ],
+      ...Platform.select({
+        android: {
+          elevation: actionMenuAnimation.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 10],
+          }),
+        },
+        default: {},
+      }),
     }),
     [actionMenuAnimation]
   ) as any;
@@ -171,7 +180,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
     overflow: 'hidden',
   },
   actionMenuItem: {

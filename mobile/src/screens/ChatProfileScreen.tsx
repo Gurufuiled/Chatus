@@ -894,7 +894,7 @@ export function ChatProfileScreen() {
       {
         key: 'toggle-pin',
         label: isPinned ? 'Открепить' : 'Закрепить',
-        icon: 'pin',
+        icon: 'pin' as any,
       },
       {
         key: 'delete-chat',

@@ -3,6 +3,7 @@ import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { BlurView } from 'expo-blur';
+import { Image as ExpoImage } from 'expo-image';
 import {
   ActivityIndicator,
   Animated,
@@ -88,6 +89,8 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
 }) {
   const resolved = useIosResolvableMediaLibraryUri(item.uri);
   const ph = isIosPhAssetUri(item.uri);
+  const targetUri = resolved ?? item.uri;
+  const isBase64Thumbnail = typeof targetUri === 'string' && targetUri.startsWith('data:image');
 
   return (
     <Pressable
@@ -103,11 +106,21 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
           <Feather name="image" size={48} color="rgba(255,255,255,0.45)" />
         </View>
       ) : (
-        <Image
-          source={{ uri: resolved ?? item.uri }}
-          style={styles.media}
-          resizeMode="contain"
-        />
+        <View style={styles.mediaContainer}>
+          <ExpoImage
+            key={targetUri}
+            source={{ uri: targetUri }}
+            style={styles.media}
+            contentFit="contain"
+            transition={250}
+            cachePolicy="memory-disk"
+          />
+          {isBase64Thumbnail ? (
+            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
+              <ActivityIndicator color="#FFFFFF" size="large" />
+            </View>
+          ) : null}
+        </View>
       )}
     </Pressable>
   );
@@ -133,6 +146,8 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
     isPlaying: player.playing,
   });
 
+  const isDownloaded = typeof item.uri === 'string' && item.uri.startsWith('file://');
+
   useEffect(() => {
     if (isActive) return;
 
@@ -151,6 +166,7 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
   }, [item.uri]);
 
   const handlePress = useCallback(() => {
+    if (!isDownloaded) return; // Can't play yet if not downloaded
     try {
       if (!isPlayerMounted) {
         setIsPlayerMounted(true);
@@ -172,12 +188,19 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
     } catch {
       // Best effort only.
     }
-  }, [isPlayerMounted, isPlaying, player]);
+  }, [isPlayerMounted, isPlaying, player, isDownloaded]);
 
   return (
     <Pressable onPress={handlePress} style={styles.slide} {...panHandlers}>
       {previewUri && (!isPlayerMounted || !hasRenderedFrame) ? (
-        <Image source={{ uri: previewUri }} style={styles.media} resizeMode="contain" />
+        <ExpoImage
+          key={previewUri}
+          source={{ uri: previewUri }}
+          style={styles.media}
+          contentFit="contain"
+          transition={250}
+          cachePolicy="memory-disk"
+        />
       ) : null}
       {isPlayerMounted ? (
         <VideoView
@@ -190,7 +213,11 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
           onFirstFrameRender={() => setHasRenderedFrame(true)}
         />
       ) : null}
-      {!isPlaying ? (
+      {!isDownloaded ? (
+        <View style={styles.videoBadge}>
+          <ActivityIndicator color="#FFFFFF" size="small" />
+        </View>
+      ) : !isPlaying ? (
         <View style={styles.videoBadge}>
           <Feather name="play" size={20} color="#FFFFFF" style={styles.playIcon} />
         </View>
@@ -516,6 +543,12 @@ const styles = StyleSheet.create({
   media: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
+  },
+  mediaContainer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   videoBadge: {
     position: 'absolute',

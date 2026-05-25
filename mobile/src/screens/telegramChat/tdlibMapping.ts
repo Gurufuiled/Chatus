@@ -8,7 +8,12 @@ import {
 } from '../../services/tdlib/userNameCache';
 import { previewForUnsupported } from './composer';
 import { getTdMediaAlbumId, mergeTelegramFeedRows } from './telegramAlbumRows';
-import type { TelegramAlbumMediaItem, TelegramMessageRow, TelegramMessageStatus } from './types';
+import type {
+  TelegramAlbumMediaItem,
+  TelegramMessageRow,
+  TelegramMessageStatus,
+  TelegramWebPagePreview,
+} from './types';
 
 export type MapTdMessageOptions = {
   /** When true, fetch sender profile photo for incoming user messages (group / supergroup UI). */
@@ -96,7 +101,10 @@ async function resolveTdFileUri(
   if (mediaLocalOnly) return null;
 
   const fileId = getTdFileId(file);
-  return fileId != null ? await downloadTdlibFile(fileId).catch(() => null) : null;
+  if (fileId != null) {
+    scheduleTdlibFileDownload(fileId);
+  }
+  return null;
 }
 
 function getNumber(value: unknown): number | undefined {
@@ -115,54 +123,107 @@ function listPhotoSizes(photo: Record<string, unknown> | null): PhotoSizeEntry[]
   for (const item of sizes) {
     const size = getNestedRecord(item);
     if (!size) continue;
-    const file = getNestedRecord(size.photo);
+    const file = getNestedRecord(size.photo) ?? getNestedRecord(size.file);
     if (!file) continue;
     const width = getNumber(size.width) ?? 0;
     const height = getNumber(size.height) ?? 0;
-    parsed.push({ size, file, area: width * height });
+    const area = width > 0 && height > 0 ? width * height : 1;
+    parsed.push({ size, file, area });
   }
   return parsed;
 }
 
-/** Prefer largest cached size, then download largest first for high quality. */
+function minithumbnailDataUri(photo: Record<string, unknown> | null): string | null {
+  const mini = getNestedRecord(photo?.minithumbnail);
+  const data = mini?.data;
+  if (typeof data === 'string' && data.length > 8) {
+    return `data:image/jpeg;base64,${data}`;
+  }
+  return null;
+}
+
+export type ResolvedPhoto = {
+  uri: string | null;
+  width?: number;
+  height?: number;
+  /** Largest photo file still downloading; UI shows loader until `updateFile`. */
+  fullFileId?: number;
+};
+
+export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
+  void tdlibClient
+    .send({
+      '@type': 'downloadFile',
+      file_id: fileId,
+      priority,
+      offset: 0,
+      limit: 0,
+      synchronous: false,
+    })
+    .catch(() => undefined);
+}
+
+/** Largest cached file first; preview + async full download when only mini is available. */
 async function resolvePhotoUri(
   photo: Record<string, unknown> | null,
   mediaLocalOnly: boolean,
-): Promise<{ uri: string | null; width?: number; height?: number }> {
-  const sizes = listPhotoSizes(photo).sort((a, b) => b.area - a.area);
-  if (sizes.length === 0) {
-    return { uri: null };
-  }
+): Promise<ResolvedPhoto> {
+  const sizesDesc = listPhotoSizes(photo).sort((a, b) => b.area - a.area);
+  const largest = sizesDesc[0];
+  const displayWidth = largest ? getNumber(largest.size.width) : undefined;
+  const displayHeight = largest ? getNumber(largest.size.height) : undefined;
+  const fullFileId = largest ? getTdFileId(largest.file) ?? undefined : undefined;
 
-  for (const { size, file } of sizes) {
+  for (const { size, file } of sizesDesc) {
     const localUri = getTdFileLocalUri(file);
     if (localUri) {
+      const localFileId = getTdFileId(file);
+      const isLargest = localFileId != null && localFileId === fullFileId;
+      if (!isLargest && fullFileId != null && !mediaLocalOnly) {
+        scheduleTdlibFileDownload(fullFileId);
+        return {
+          uri: localUri,
+          width: getNumber(size.width) ?? displayWidth,
+          height: getNumber(size.height) ?? displayHeight,
+          fullFileId,
+        };
+      }
       return {
         uri: localUri,
-        width: getNumber(size.width),
-        height: getNumber(size.height),
+        width: getNumber(size.width) ?? displayWidth,
+        height: getNumber(size.height) ?? displayHeight,
       };
     }
   }
 
+  const miniUri = minithumbnailDataUri(photo);
+
   if (mediaLocalOnly) {
-    return { uri: null };
+    if (miniUri) {
+      return { uri: miniUri, width: displayWidth, height: displayHeight, fullFileId };
+    }
+    return { uri: null, width: displayWidth, height: displayHeight, fullFileId };
   }
 
-  for (const { size, file } of sizes) {
-    const fileId = getTdFileId(file);
-    if (fileId == null) continue;
-    const uri = await downloadTdlibFile(fileId).catch(() => null);
+  for (const { size, file } of sizesDesc) {
+    const uri = await resolveTdFileUri(file, false);
     if (uri) {
       return {
         uri,
-        width: getNumber(size.width),
-        height: getNumber(size.height),
+        width: getNumber(size.width) ?? displayWidth,
+        height: getNumber(size.height) ?? displayHeight,
       };
     }
   }
 
-  return { uri: null };
+  if (fullFileId != null) {
+    scheduleTdlibFileDownload(fullFileId);
+  }
+  if (miniUri) {
+    return { uri: miniUri, width: displayWidth, height: displayHeight, fullFileId };
+  }
+
+  return { uri: null, width: displayWidth, height: displayHeight, fullFileId };
 }
 
 export async function downloadTdlibFile(fileId: number): Promise<string | null> {
@@ -322,13 +383,15 @@ export async function parseWebPagePreview(
   let photoWidth = 0;
   let photoHeight = 0;
   
+  let photoFileId: number | undefined;
   if (photo) {
-    const parsed = await getTdPhotoUri(photo, mediaLocalOnly);
-    if (parsed) {
+    const parsed = await resolvePhotoUri(photo, mediaLocalOnly);
+    if (parsed.uri) {
       photoUri = parsed.uri;
-      photoWidth = parsed.width;
-      photoHeight = parsed.height;
+      photoWidth = parsed.width ?? 0;
+      photoHeight = parsed.height ?? 0;
     }
+    photoFileId = parsed.fullFileId;
   }
 
   return {
@@ -339,6 +402,7 @@ export async function parseWebPagePreview(
     photoUri,
     photoWidth,
     photoHeight,
+    photoFileId,
   };
 }
 
@@ -398,17 +462,17 @@ export async function mapTdMessage(
     const local = getNestedRecord(voice?.local);
     const localPath = typeof local?.path === 'string' ? local.path.trim() : '';
     const fileId = typeof voice?.id === 'number' ? voice.id : null;
-    const uri = localPath
-      ? `file://${localPath}`
-      : !mediaLocalOnly && fileId != null
-        ? await downloadTdlibFile(fileId).catch(() => null)
-        : null;
+    const uri = localPath ? `file://${localPath}` : null;
     const duration = typeof voiceNote?.duration === 'number' ? voiceNote.duration * 1000 : 0;
+    if (!uri && fileId != null && !mediaLocalOnly) {
+      scheduleTdlibFileDownload(fileId);
+    }
     return {
       ...base,
       kind: 'voice',
       text: 'Голосовое',
       voiceUri: uri,
+      mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       durationMs: duration,
       waveform: [],
     };
@@ -418,11 +482,13 @@ export async function mapTdMessage(
     const photo = getNestedRecord(content.photo);
     const resolved = await resolvePhotoUri(photo, mediaLocalOnly);
     const uri = resolved.uri;
+    const hasLocalFile = typeof uri === 'string' && uri.startsWith('file://');
     return {
       ...base,
       kind: 'image',
       text: caption || (uri ? '' : 'Фото'),
       mediaUri: uri ?? undefined,
+      mediaFullFileId: resolved.fullFileId,
       width: resolved.width,
       height: resolved.height,
     };
@@ -500,26 +566,41 @@ function albumItemHasUri(item: TelegramAlbumMediaItem): boolean {
   return !!(item.thumbnailUri?.trim() || item.mediaUri?.trim());
 }
 
-/** Re-fetch TDLib messages for album tiles that still have no local/network URI. */
-export async function hydrateTelegramAlbumRows(
+function imageRowNeedsHydrate(row: TelegramMessageRow): boolean {
+  if (row.kind !== 'image' || row.messageId <= 0) return false;
+  const uri = row.mediaUri?.trim() ?? '';
+  if (!uri || row.mediaFullFileId != null) return true;
+  return false;
+}
+
+function collectMediaHydrateMessageIds(rows: TelegramMessageRow[]): number[] {
+  const missingIds = new Set<number>();
+  for (const row of rows) {
+    if (row.kind === 'album') {
+      for (const item of row.albumMedia ?? []) {
+        if (item.messageId > 0 && (!albumItemHasUri(item) || item.mediaFullFileId != null)) {
+          missingIds.add(item.messageId);
+        }
+      }
+      continue;
+    }
+    if (imageRowNeedsHydrate(row)) {
+      missingIds.add(row.messageId);
+    }
+  }
+  return [...missingIds];
+}
+
+/** Re-fetch TDLib messages for album tiles / channel photos still missing a file URI. */
+export async function hydrateTelegramMediaRows(
   chatId: number,
   rows: TelegramMessageRow[],
   lastReadOutboxMessageId: number,
   concurrency = 3,
 ): Promise<TelegramMessageRow[]> {
-  const missingIds = new Set<number>();
-  for (const row of rows) {
-    if (row.kind !== 'album') continue;
-    const items = row.albumMedia ?? [];
-    for (const item of items) {
-      if (item.messageId > 0 && !albumItemHasUri(item)) {
-        missingIds.add(item.messageId);
-      }
-    }
-  }
-  if (missingIds.size === 0) return rows;
+  const ids = collectMediaHydrateMessageIds(rows);
+  if (ids.length === 0) return rows;
 
-  const ids = [...missingIds];
   const remapped: TelegramMessageRow[] = [];
   let nextIndex = 0;
 
@@ -551,3 +632,6 @@ export async function hydrateTelegramAlbumRows(
   if (remapped.length === 0) return rows;
   return mergeTelegramFeedRows(rows, remapped);
 }
+
+/** @deprecated Use {@link hydrateTelegramMediaRows}. */
+export const hydrateTelegramAlbumRows = hydrateTelegramMediaRows;

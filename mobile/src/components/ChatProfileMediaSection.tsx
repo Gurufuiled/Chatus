@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
@@ -248,7 +249,16 @@ export const MediaTilePreview = React.memo(function MediaTilePreview({
     );
   }
 
-  return <Image source={{ uri: previewUri }} style={styles.mediaImage} />;
+  return (
+    <ExpoImage
+      key={previewUri}
+      source={{ uri: previewUri }}
+      style={styles.mediaImage}
+      transition={250}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+    />
+  );
 });
 
 const VoiceRow = React.memo(function VoiceRow({
@@ -375,7 +385,14 @@ const VideoNoteVoiceRow = React.memo(function VideoNoteVoiceRow({
     >
       <View style={styles.videoNoteThumbWrap}>
         {previewUri ? (
-          <Image source={{ uri: previewUri }} style={styles.videoNoteThumb} />
+          <ExpoImage
+            key={previewUri}
+            source={{ uri: previewUri }}
+            style={styles.videoNoteThumb}
+            transition={250}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         ) : (
           <View style={styles.videoNoteThumbFallback}>
             <Feather name="video" size={18} color="#FFFFFF" />

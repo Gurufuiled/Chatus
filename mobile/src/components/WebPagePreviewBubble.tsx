@@ -1,7 +1,9 @@
-import React from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import type { TelegramWebPagePreview } from '../screens/telegramChat/types';
 import { usePeerFirstResolvedUri } from './peerFirstMedia';
+import { colors } from '../theme/colors';
 
 type WebPagePreviewBubbleProps = {
   preview: TelegramWebPagePreview;
@@ -20,7 +22,18 @@ export function WebPagePreviewBubble({
   peerFirstLineId,
 }: WebPagePreviewBubbleProps) {
   const resolvedPhotoUri = usePeerFirstResolvedUri(peerFirstLineId, preview.photoUri);
-  const hasPhoto = !!resolvedPhotoUri?.trim();
+  const photoUri = resolvedPhotoUri?.trim() ?? '';
+  const hasPhoto = photoUri.length > 0;
+  const loadingFullQuality = preview.photoFileId != null;
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  useEffect(() => {
+    setImageLoaded(false);
+    if (photoUri.startsWith('data:')) {
+      const t = setTimeout(() => setImageLoaded(true), 80);
+      return () => clearTimeout(t);
+    }
+  }, [photoUri]);
 
   const handlePress = React.useCallback(() => {
     if (preview.url) {
@@ -42,25 +55,38 @@ export function WebPagePreviewBubble({
             {preview.siteName}
           </Text>
         ) : null}
-        
+
         {preview.title ? (
           <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>
             {preview.title}
           </Text>
         ) : null}
-        
+
         {preview.description ? (
-          <Text style={[styles.description, { color: textColor }]} numberOfLines={3}>
+          <Text style={[styles.description, { color: secondaryTextColor }]} numberOfLines={3}>
             {preview.description}
           </Text>
         ) : null}
 
         {hasPhoto ? (
-          <Image
-            source={{ uri: resolvedPhotoUri }}
-            style={styles.photo}
-            resizeMode="cover"
-          />
+          <View style={styles.photoWrap}>
+            {!imageLoaded ? (
+              <View style={styles.photoLoader}>
+                <ActivityIndicator size="large" color={colors.iconMuted} />
+              </View>
+            ) : null}
+            {loadingFullQuality && imageLoaded ? (
+              <View style={styles.photoQualityLoader}>
+                <ActivityIndicator size="large" color="#FFFFFF" />
+              </View>
+            ) : null}
+            <Image
+              source={{ uri: photoUri }}
+              style={styles.photo}
+              contentFit="cover"
+              onLoad={() => setImageLoaded(true)}
+            />
+          </View>
         ) : null}
       </View>
     </Pressable>
@@ -107,11 +133,30 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 6,
   },
-  photo: {
+  photoWrap: {
     width: '100%',
     height: 140,
     borderRadius: 8,
     marginTop: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(243, 244, 246, 0.92)',
+  },
+  photo: {
+    width: '100%',
+    height: '100%',
+  },
+  photoLoader: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+    backgroundColor: 'rgba(243, 244, 246, 0.92)',
+  },
+  photoQualityLoader: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
   },
 });

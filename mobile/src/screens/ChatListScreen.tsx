@@ -345,13 +345,13 @@ export function ChatListScreen() {
     }
   }, []);
 
-  const handleOpenMenu = React.useCallback((chat: Chat, event: GestureResponderEvent) => {
+  const handleOpenMenu = React.useCallback((chatId: string, event: GestureResponderEvent) => {
     const { left, top } = computeChatListMenuPosition(
       event.nativeEvent.pageX,
       event.nativeEvent.pageY,
     );
     setMenuState({
-      chatId: chat.id,
+      chatId,
       top,
       left,
     });
@@ -441,7 +441,13 @@ export function ChatListScreen() {
       }
 
       if (item.type === 'telegram') {
-        return <TelegramDialogListRow item={item.row} navigation={navigation} />;
+        return (
+          <TelegramDialogListRow
+            item={item.row}
+            navigation={navigation}
+            onLongPress={(row, event) => handleOpenMenu(row.id, event as any)}
+          />
+        );
       }
 
       if (item.type === 'contact') {
@@ -464,7 +470,7 @@ export function ChatListScreen() {
           chat={chat}
           currentUserId={currentUserId}
           onPress={(_, chatTitle) => handleOpenChat(chat, chatTitle)}
-          onLongPress={item.type === 'chat' ? handleOpenMenu : () => undefined}
+          onLongPress={item.type === 'chat' ? (c, event) => handleOpenMenu(c.id, event as any) : () => undefined}
         />
       );
     },
@@ -537,11 +543,11 @@ export function ChatListScreen() {
             : false
         }
         isPinned={
-          activeMenuListItem?.type === 'chat'
+          activeMenuListItem?.type === 'telegram'
+            ? activeMenuListItem.row.isPinned ?? false
+            : activeMenuListItem?.type === 'chat'
             ? activeMenuListItem.chat.is_pinned === 1
-            : activeMenuListItem?.type === 'telegram'
-              ? activeMenuListItem.row.isPinned ?? false
-              : false
+            : false
         }
         onClose={closeMenu}
         onToggleMute={() => {

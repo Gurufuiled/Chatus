@@ -16,6 +16,8 @@ export type TelegramAlbumMediaItem = {
   kind: 'image' | 'video';
   mediaUri?: string | null;
   thumbnailUri?: string | null;
+  /** TDLib file id for full image still downloading (`updateFile` will refresh `mediaUri`). */
+  mediaFullFileId?: number;
   width?: number;
   height?: number;
   durationMs?: number;
@@ -29,6 +31,8 @@ export type TelegramWebPagePreview = {
   photoUri?: string | null;
   photoWidth?: number;
   photoHeight?: number;
+  /** Full preview photo still downloading. */
+  photoFileId?: number;
 };
 
 export type TelegramMessageRow = {
@@ -42,6 +46,8 @@ export type TelegramMessageRow = {
   replyToMessageId?: number | null;
   voiceUri?: string | null;
   mediaUri?: string | null;
+  /** TDLib file id for full image while `mediaUri` is only a preview. */
+  mediaFullFileId?: number;
   thumbnailUri?: string | null;
   durationMs?: number;
   waveform?: number[];

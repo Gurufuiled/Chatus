@@ -115,7 +115,7 @@ export const ChatListActionsMenu = React.memo(function ChatListActionsMenu({
           />
           <MenuAction
             label={muteLabel}
-            icon={chat.is_muted === 1 ? 'bell' : 'bell-off'}
+            icon={isMuted ? 'bell' : 'bell-off'}
             onPress={onToggleMute}
             styles={styles}
             textPrimary={themeColors.textPrimary}

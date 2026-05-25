@@ -27,6 +27,7 @@ import {
 } from '../utils/videoThumbnail';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -71,6 +72,8 @@ export interface VideoBubbleProps {
   footer?: React.ReactNode;
   viewCountShortLabel?: string;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
+  isForwarded?: boolean;
+  forwardAccentColor?: string;
 }
 
 function computeDisplaySize(
@@ -441,6 +444,8 @@ export function VideoBubble({
   footer,
   viewCountShortLabel,
   style,
+  isForwarded = false,
+  forwardAccentColor,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -547,86 +552,132 @@ export function VideoBubble({
                 borderColor: incomingBubbleBorderColor ?? colors.bubbleOtherBorder,
               }
             : null,
-        isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
-        style,
-      ]}
+          isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+          { maxWidth: incomingChannelPost ? w : (w + 8) },
+          style,
+        ]}
       >
         {header}
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open video"
-          onPress={handlePress}
-          style={[
-            styles.videoWrapper,
-            { width: w, height: h },
-            isMe ? styles.videoWrapperMe : styles.videoWrapperOther,
-            embedded && styles.videoWrapperEmbedded,
-            incomingChannelPost &&
-              (mediaBottomRounded ? styles.videoWrapperChannelSolo : styles.videoWrapperChannelStacked),
-          ]}
-        >
-          {posterUri ? (
-            <Image 
-              source={{ uri: posterUri }} 
-              style={styles.poster} 
-              contentFit="cover" 
-              cachePolicy="memory-disk"
-              onLoad={(e) => {
-                if (!propWidth || !propHeight) {
-                  setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
-                }
-              }}
-            />
-          ) : (
-            <View style={styles.posterFallback} />
-          )}
+        {(() => {
+          const content = (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open video"
+                onPress={handlePress}
+                style={[
+                  styles.videoWrapper,
+                  { width: w, height: h },
+                  isMe ? styles.videoWrapperMe : styles.videoWrapperOther,
+                  embedded && styles.videoWrapperEmbedded,
+                  incomingChannelPost &&
+                    (mediaBottomRounded ? styles.videoWrapperChannelSolo : styles.videoWrapperChannelStacked),
+                ]}
+              >
+                {posterUri ? (
+                  <Image 
+                    source={{ uri: posterUri }} 
+                    style={styles.poster} 
+                    contentFit="cover" 
+                    cachePolicy="memory-disk"
+                    onLoad={(e) => {
+                      if (!propWidth || !propHeight) {
+                        setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
+                      }
+                    }}
+                  />
+                ) : (
+                  <View style={styles.posterFallback} />
+                )}
 
-          <View pointerEvents="none" style={styles.playBadge}>
-            <Feather name="play" size={25} color="#FFFFFF" style={styles.playIcon} />
-          </View>
+                <View pointerEvents="none" style={styles.playBadge}>
+                  <Feather name="play" size={25} color="#FFFFFF" style={styles.playIcon} />
+                </View>
 
-          <View pointerEvents="none" style={styles.overlayMetaRow}>
-            <View style={styles.durationPill}>
-              <Text style={styles.durationText}>{formatMediaDuration(durationMs)}</Text>
-            </View>
-
-            {time ? (
-              <View style={styles.timePill}>
-                {viewCount != null ? (
-                  <View style={styles.timePillMetric}>
-                    <Feather name="eye" size={12} color="#FFFFFF" />
-                    <Text style={styles.timePillMetricText}>
-                      {viewCountShortLabel ?? String(viewCount)}
-                    </Text>
+                <View pointerEvents="none" style={styles.overlayMetaRow}>
+                  <View style={styles.durationPill}>
+                    <Text style={styles.durationText}>{formatMediaDuration(durationMs)}</Text>
                   </View>
-                ) : null}
-                <MessageTimeStatus
-                  time={time}
-                  status={status ?? 'sent'}
-                  isMe={isMe}
-                  compact
-                  timeColor="#FFFFFF"
-                  iconColor="#FFFFFF"
-                />
-              </View>
-            ) : null}
-          </View>
-        </Pressable>
 
-        {hasCaption ? (
-          <Text
-            style={[
-              styles.caption,
-              incomingChannelPost && styles.captionChannel,
-              isMe && styles.captionMe,
-              isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-              !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
-            ]}
-          >
-            {caption}
-          </Text>
-        ) : null}
+                  {!hasCaption && time ? (
+                    <View style={styles.timePill}>
+                      {viewCount != null ? (
+                        <View style={styles.timePillMetric}>
+                          <Feather name="eye" size={12} color="#FFFFFF" />
+                          <Text style={styles.timePillMetricText}>
+                            {viewCountShortLabel ?? String(viewCount)}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <MessageTimeStatus
+                        time={time}
+                        status={status ?? 'sent'}
+                        isMe={isMe}
+                        compact
+                        timeColor="#FFFFFF"
+                        iconColor="#FFFFFF"
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              </Pressable>
+
+              {hasCaption ? (
+                <MessageTextBubbleBody
+                  text={caption ?? ''}
+                  textStyle={[
+                    styles.caption,
+                    incomingChannelPost && styles.captionChannel,
+                    isMe && styles.captionMe,
+                    isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+                    !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
+                  ]}
+                  hasViews={viewCount != null}
+                  meta={
+                    time || viewCount != null ? (
+                      <View style={styles.textMeta}>
+                        {viewCount != null ? (
+                          <View style={styles.textMetric}>
+                            <Feather name="eye" size={13} color={isMe ? 'rgba(255,255,255,0.7)' : colors.iconMuted} />
+                            <Text style={[styles.textMetricText, isMe ? { color: 'rgba(255,255,255,0.7)' } : null]}>
+                              {viewCountShortLabel ?? String(viewCount)}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {time ? (
+                          <MessageTimeStatus
+                            time={time}
+                            status={status ?? 'sent'}
+                            isMe={isMe}
+                            compact
+                          />
+                        ) : null}
+                      </View>
+                    ) : undefined
+                  }
+                />
+              ) : null}
+            </>
+          );
+
+          if (isForwarded) {
+            return (
+              <View
+                style={{
+                  borderLeftWidth: 3,
+                  borderLeftColor: forwardAccentColor || colors.accent,
+                  paddingLeft: 8,
+                  marginLeft: 2,
+                  alignSelf: 'stretch',
+                }}
+              >
+                {content}
+              </View>
+            );
+          }
+          return content;
+        })()}
 
         {footer}
 
@@ -799,6 +850,24 @@ const styles = StyleSheet.create({
   },
   captionMe: {
     color: '#FFFFFF',
+  },
+  textMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 4,
+    paddingBottom: 2,
+  },
+  textMetric: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  textMetricText: {
+    color: colors.iconMuted,
+    fontSize: typography.timeStatus,
+    lineHeight: 14,
+    fontWeight: '600',
   },
   fullscreenBackdrop: {
     flex: 1,

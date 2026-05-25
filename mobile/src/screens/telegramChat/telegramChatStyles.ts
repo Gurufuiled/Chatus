@@ -371,6 +371,34 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     albumBubbleOther: {
       alignSelf: 'flex-start',
     },
+    /** Канал: одна карточка — сетка, подпись и комментарии без разрыва. */
+    albumChannelPost: {
+      alignSelf: 'stretch',
+      width: '100%',
+      maxWidth: '100%',
+      borderRadius: 14,
+      overflow: 'hidden',
+      backgroundColor: colors.bubbleOther,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.bubbleOtherBorder,
+    },
+    albumChannelGridClip: {
+      borderRadius: 0,
+      borderTopLeftRadius: 14,
+      borderTopRightRadius: 14,
+      overflow: 'hidden',
+      backgroundColor: '#D8DEE7',
+    },
+    albumChannelGridClipSolo: {
+      borderRadius: 14,
+      overflow: 'hidden',
+      backgroundColor: '#D8DEE7',
+    },
+    albumCaptionChannel: {
+      paddingHorizontal: 12,
+      paddingTop: 10,
+      paddingBottom: 4,
+    },
     albumGridClip: {
       borderRadius: 10,
       overflow: 'hidden',
@@ -403,6 +431,13 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: '#C8D0DC',
+    },
+    albumTileLoading: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(15, 23, 42, 0.35)',
+      zIndex: 2,
     },
     albumVideoBadge: {
       position: 'absolute',

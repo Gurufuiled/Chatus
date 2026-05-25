@@ -34,9 +34,9 @@ import {
   ChatContextMenuOverlay,
   ChatForwardSheet,
   InteractiveChatBackShell,
-  CustomAndroidChatHeader,
   LoadErrorState,
 } from '../components';
+import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
 import {
   PeerFirstFileBubble,
   PeerFirstImageBubble,
@@ -2085,10 +2085,22 @@ export function ChannelFeedScreen() {
     [renderPostContent, renderPostExtrasPreview, styles, c],
   );
 
-  const lockedChannel = linkResolve?.channel;
-  const lockedAvatar = resolveAvatarUrl(lockedChannel?.avatar_url ?? null);
-  const lockedTitle = lockedChannel?.name?.trim() || 'Канал';
-  const lockedDesc = lockedChannel?.description?.trim() || '';
+  const headerChannel = React.useMemo(
+    () => detail?.channel ?? channelChat ?? linkResolve?.channel ?? null,
+    [channelChat, detail?.channel, linkResolve?.channel],
+  );
+  const headerTitle = headerChannel?.name?.trim() || 'Канал';
+  const headerAvatar = resolveAvatarUrl(headerChannel?.avatar_url ?? null);
+  const headerSubtitle = `${headerChannel?.subscriber_count ?? 0} подписчиков`;
+
+  const openChannelProfile = React.useCallback(() => {
+    navigation.navigate('ChannelProfile', { channelId });
+  }, [channelId, navigation]);
+
+  const gateChannel = linkResolve?.channel ?? headerChannel;
+  const lockedAvatar = resolveAvatarUrl(gateChannel?.avatar_url ?? null);
+  const lockedTitle = gateChannel?.name?.trim() || headerTitle;
+  const lockedDesc = gateChannel?.description?.trim() || '';
 
   if (privateInviteGate && linkResolve && sortedFeed.length === 0) {
     return (
@@ -2135,15 +2147,16 @@ export function ChannelFeedScreen() {
       >
         {Platform.OS === 'android' ? (
           <CustomAndroidChatHeader
-            title={lockedTitle}
-            subtitle={`${detail?.channel?.subscriber_count ?? 0} подписчиков`}
-            avatarUrl={lockedAvatar}
+            title={headerTitle}
+            subtitle={headerSubtitle}
+            avatarUrl={headerAvatar}
             isGroupChat={false}
             peerId={null}
-            currentUserId={null}
+            currentUserId={currentUserId}
             chatId={channelId}
             members={null}
             navigation={navigation}
+            onTitlePress={openChannelProfile}
           />
         ) : null}
 

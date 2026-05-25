@@ -219,6 +219,9 @@ export function InputBar({
   onCommentCooldownClear,
   replyPeerFirstLineId = null,
   chatusStickersComposer = false,
+  isChannelAdmin,
+  channelSilentMode,
+  onToggleChannelSilentMode,
 }: InputBarProps) {
   const { width: windowWidth } = useWindowDimensions();
   const narrowComposer = windowWidth < COMPOSER_NARROW_BREAKPOINT;

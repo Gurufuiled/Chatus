@@ -117,16 +117,26 @@ export async function tdlibSetChatMuted(chatId: number, muted: boolean): Promise
 
 export async function tdlibBlockUser(userId: number): Promise<void> {
   const res = (await tdlibClient.send({
-    '@type': 'blockUser',
-    user_id: userId,
+    '@type': 'setMessageSenderBlockList',
+    sender_id: {
+      '@type': 'messageSenderUser',
+      user_id: userId,
+    },
+    block_list: {
+      '@type': 'blockListMain',
+    },
   })) as Record<string, unknown>;
   throwIfTdError(res);
 }
 
 export async function tdlibUnblockUser(userId: number): Promise<void> {
   const res = (await tdlibClient.send({
-    '@type': 'unblockUser',
-    user_id: userId,
+    '@type': 'setMessageSenderBlockList',
+    sender_id: {
+      '@type': 'messageSenderUser',
+      user_id: userId,
+    },
+    block_list: null,
   })) as Record<string, unknown>;
   throwIfTdError(res);
 }

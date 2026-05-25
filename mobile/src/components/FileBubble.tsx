@@ -27,6 +27,8 @@ export interface FileBubbleProps {
   incomingSecondaryTextColor?: string;
   incomingCaptionColor?: string;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
+  isForwarded?: boolean;
+  forwardAccentColor?: string;
 }
 
 function formatFileSize(bytes?: number): string | null {
@@ -85,6 +87,8 @@ export function FileBubble({
   incomingSecondaryTextColor,
   incomingCaptionColor,
   style,
+  isForwarded = false,
+  forwardAccentColor,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
   const fileCaption = useMemo(
@@ -119,87 +123,110 @@ export function FileBubble({
     >
       {header}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={uri?.trim() ? 'Open file' : 'File'}
-        disabled={!uri?.trim()}
-        hitSlop={8}
-        onPress={handlePress}
-        style={({ pressed }) => [styles.card, pressed && uri?.trim() ? styles.cardPressed : null]}
-      >
-        <View
-          style={[
-            styles.iconBadge,
-            isMe ? styles.iconBadgeMe : styles.iconBadgeOther,
-            isMe && outgoingAccentColor ? { backgroundColor: outgoingAccentColor } : null,
-          ]}
-        >
-          <View style={styles.documentIcon}>
-            <View
-              style={[
-                styles.documentFold,
-                isMe ? styles.documentFoldMe : styles.documentFoldOther,
-                isMe && outgoingAccentColor ? { borderBottomColor: outgoingAccentColor } : null,
-              ]}
-            />
-            <View style={styles.documentLine} />
-            <View style={[styles.documentLine, styles.documentLineShort]} />
-          </View>
-        </View>
-
-        <View style={styles.infoColumn}>
-          <Text
-            style={[
-              styles.fileName,
-              isMe ? styles.fileNameMe : styles.fileNameOther,
-              isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-              !isMe && incomingFileNameColor ? { color: incomingFileNameColor } : null,
-            ]}
-            numberOfLines={2}
-            ellipsizeMode="tail"
-          >
-            {fileName || 'Unnamed file'}
-          </Text>
-
-          {hasMetaRow ? (
-            <View style={styles.metaRow}>
-              <Text
+      {(() => {
+        const content = (
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={uri?.trim() ? 'Open file' : 'File'}
+              disabled={!uri?.trim()}
+              hitSlop={8}
+              onPress={handlePress}
+              style={({ pressed }) => [styles.card, pressed && uri?.trim() ? styles.cardPressed : null]}
+            >
+              <View
                 style={[
-                  styles.fileSize,
-                  isMe ? styles.fileSizeMe : styles.fileSizeOther,
-                  isMe && outgoingMetaColor ? { color: outgoingMetaColor } : null,
-                  !isMe && incomingSecondaryTextColor ? { color: incomingSecondaryTextColor } : null,
+                  styles.iconBadge,
+                  isMe ? styles.iconBadgeMe : styles.iconBadgeOther,
+                  isMe && outgoingAccentColor ? { backgroundColor: outgoingAccentColor } : null,
                 ]}
               >
-                {sizeText ?? ' '}
-              </Text>
-              {time ? (
-                <MessageTimeStatus
-                  time={time}
-                  status={status ?? 'sent'}
-                  isMe={isMe}
-                  compact
-                  timeColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
-                  iconColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
-                />
-              ) : null}
-            </View>
-          ) : null}
-        </View>
-      </Pressable>
+                <View style={styles.documentIcon}>
+                  <View
+                    style={[
+                      styles.documentFold,
+                      isMe ? styles.documentFoldMe : styles.documentFoldOther,
+                      isMe && outgoingAccentColor ? { borderBottomColor: outgoingAccentColor } : null,
+                    ]}
+                  />
+                  <View style={styles.documentLine} />
+                  <View style={[styles.documentLine, styles.documentLineShort]} />
+                </View>
+              </View>
 
-      {fileCaption ? (
-        <Text
-          style={[
-            styles.caption,
-            isMe ? styles.captionMe : styles.captionOther,
-            isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-            !isMe && incomingCaptionColor ? { color: incomingCaptionColor } : null,
-          ]}
-        >
-          {fileCaption}
-        </Text>
-      ) : null}
+              <View style={styles.infoColumn}>
+                <Text
+                  style={[
+                    styles.fileName,
+                    isMe ? styles.fileNameMe : styles.fileNameOther,
+                    isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+                    !isMe && incomingFileNameColor ? { color: incomingFileNameColor } : null,
+                  ]}
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                >
+                  {fileName || 'Unnamed file'}
+                </Text>
+
+                {hasMetaRow ? (
+                  <View style={styles.metaRow}>
+                    <Text
+                      style={[
+                        styles.fileSize,
+                        isMe ? styles.fileSizeMe : styles.fileSizeOther,
+                        isMe && outgoingMetaColor ? { color: outgoingMetaColor } : null,
+                        !isMe && incomingSecondaryTextColor ? { color: incomingSecondaryTextColor } : null,
+                      ]}
+                    >
+                      {sizeText ?? ' '}
+                    </Text>
+                    {time ? (
+                      <MessageTimeStatus
+                        time={time}
+                        status={status ?? 'sent'}
+                        isMe={isMe}
+                        compact
+                        timeColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
+                        iconColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
+                      />
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+            </Pressable>
+
+            {fileCaption ? (
+              <Text
+                style={[
+                  styles.caption,
+                  isMe ? styles.captionMe : styles.captionOther,
+                  isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+                  !isMe && incomingCaptionColor ? { color: incomingCaptionColor } : null,
+                ]}
+              >
+                {fileCaption}
+              </Text>
+            ) : null}
+          </>
+        );
+
+        if (isForwarded) {
+          return (
+            <View
+              style={{
+                borderLeftWidth: 3,
+                borderLeftColor: forwardAccentColor || colors.accent,
+                paddingLeft: 8,
+                marginLeft: 2,
+                alignSelf: 'stretch',
+              }}
+            >
+              {content}
+            </View>
+          );
+        }
+        return content;
+      })()}
 
       {inlineReactions?.length ? (
         <MessageReactionInline

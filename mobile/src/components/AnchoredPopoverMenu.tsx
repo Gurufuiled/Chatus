@@ -112,9 +112,6 @@ function createAnchoredMenuStyles(c: ThemeColors, scheme: ResolvedColorScheme) {
           shadowRadius: 14,
           shadowOffset: { width: 0, height: 6 },
         },
-        android: {
-          elevation: scheme === 'dark' ? 8 : 2,
-        },
         default: {},
       }),
     },
@@ -187,18 +184,27 @@ function AnchoredPopoverMenuContent({
         {
           translateY: animation.interpolate({
             inputRange: [0, 1],
-            outputRange: [-12, 0],
+            outputRange: [-18, 0],
           }),
         },
         {
           scale: animation.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.95, 1],
+            outputRange: [0.88, 1],
           }),
         },
       ],
+      ...Platform.select({
+        android: {
+          elevation: animation.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, resolvedScheme === 'dark' ? 8 : 2],
+          }),
+        },
+        default: {},
+      }),
     }),
-    [animation],
+    [animation, resolvedScheme],
   ) as any;
 
   const screenWidth = Dimensions.get('window').width;

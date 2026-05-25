@@ -685,6 +685,13 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
     };
   });
 
+  const bottomAccessoryStyle = useAnimatedStyle(() => {
+    const correction = Math.min(sheetTranslateY.value, snapCollapsedY.value);
+    return {
+      transform: [{ translateY: -correction }],
+    };
+  });
+
   // --- Gallery helpers ---
   const selectedById = React.useMemo(() => {
     const map = new Map<string, number>();
@@ -840,9 +847,9 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
             </View>
 
               {/* Bottom dock внутри движущейся шторки */}
-              <View
+              <Reanimated.View
                 pointerEvents="box-none"
-                style={[styles.bottomAccessory, { bottom: Math.max(insets.bottom, 8) + 8 }]}
+                style={[styles.bottomAccessory, { bottom: Math.max(insets.bottom, 8) + 8 }, bottomAccessoryStyle]}
               >
                 {hasSelection ? (
                   <View style={styles.captionBar}>
@@ -890,7 +897,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                     ))}
                   </View>
                 )}
-              </View>
+              </Reanimated.View>
           </Reanimated.View>
         </View>
       </GestureHandlerRootView>

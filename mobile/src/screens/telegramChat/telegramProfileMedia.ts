@@ -44,21 +44,21 @@ export function telegramRowsToProfileBuckets(
 
   for (const row of rows) {
     const dateLabel = formatMessageDate(row.dateMs);
-    if (row.kind === 'image' && row.mediaUri) {
+    if (row.kind === 'image') {
       mediaItems.push({
         id: row.id,
         kind: 'image',
-        uri: row.mediaUri,
-        previewUri: row.mediaUri,
+        uri: row.mediaUri ?? '',
+        previewUri: row.mediaUri ?? undefined,
         caption: row.text?.trim() ? row.text : undefined,
       });
     }
-    if (row.kind === 'video' && row.mediaUri) {
+    if (row.kind === 'video') {
       mediaItems.push({
         id: row.id,
         kind: 'video',
-        uri: row.mediaUri,
-        previewUri: row.thumbnailUri ?? row.mediaUri,
+        uri: row.mediaUri ?? '',
+        previewUri: row.thumbnailUri ?? row.mediaUri ?? undefined,
         durationMs: row.durationMs,
         caption: row.text?.trim() ? row.text : undefined,
       });
@@ -73,22 +73,22 @@ export function telegramRowsToProfileBuckets(
         extension: getFileExtension(row.fileName),
       });
     }
-    if (row.kind === 'voice' && row.voiceUri) {
+    if (row.kind === 'voice') {
       voiceItems.push({
         id: row.id,
         kind: 'voice',
-        uri: row.voiceUri,
+        uri: row.voiceUri ?? null,
         title: row.outgoing ? 'Вы' : peerLabel,
         durationMs: row.durationMs ?? 0,
         waveform: row.waveform ?? [],
         dateLabel,
       });
     }
-    if (row.kind === 'video_note' && row.mediaUri) {
+    if (row.kind === 'video_note') {
       voiceItems.push({
         id: row.id,
         kind: 'video_note',
-        uri: row.mediaUri,
+        uri: row.mediaUri ?? null,
         thumbnailUri: row.thumbnailUri ?? undefined,
         title: row.outgoing ? 'Вы' : peerLabel,
         durationMs: row.durationMs ?? 0,

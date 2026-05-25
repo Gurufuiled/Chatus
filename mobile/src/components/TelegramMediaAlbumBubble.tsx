@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { MessageTimeStatus } from './MessageTimeStatus';
@@ -29,6 +29,11 @@ export type TelegramMediaAlbumBubbleProps = {
   incomingCaptionText?: string;
   incomingCaptionMeta?: string;
   footer?: React.ReactNode;
+  /** Channel incoming post: full-width card, footer attached to album. */
+  incomingChannelPost?: boolean;
+  channelAlbumWidth?: number;
+  /** Tap on tile — `messageId` of the album part. */
+  onTilePress?: (messageId: number) => void;
 };
 
 function tileUri(item: TelegramAlbumMediaItem): string {
@@ -51,26 +56,50 @@ export function TelegramMediaAlbumBubble({
   incomingCaptionText,
   incomingCaptionMeta,
   footer,
+  incomingChannelPost = false,
+  channelAlbumWidth,
+  onTilePress,
 }: TelegramMediaAlbumBubbleProps) {
   const media = useMemo(() => items.slice(0, 10), [items]);
   if (media.length === 0) return null;
 
   const visibleMedia = media.slice(0, 9);
-  const albumWidth = ALBUM_BUBBLE_WIDTH;
+  const albumWidth =
+    incomingChannelPost && channelAlbumWidth != null ? channelAlbumWidth : ALBUM_BUBBLE_WIDTH;
   const gap = 1.5;
   const trimmedCaption = caption?.trim();
+  const hasFooter = Boolean(footer);
+  const gridClipStyle = incomingChannelPost
+    ? hasFooter || trimmedCaption
+      ? st.albumChannelGridClip
+      : st.albumChannelGridClipSolo
+    : st.albumGridClip;
 
   const renderTile = (item: TelegramAlbumMediaItem, index: number, style: object) => {
     const uri = tileUri(item);
     const extraCount = media.length - visibleMedia.length;
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
-    return (
-      <View key={`${item.messageId}-${index}`} style={[st.albumTile, style]}>
+    const playbackUri =
+      item.kind === 'video' ? item.mediaUri?.trim() || '' : uri;
+    const canOpen = onTilePress != null && playbackUri.length > 0;
+    const tileBody = (
+      <>
         {uri.length > 0 ? (
-          <Image source={{ uri }} style={st.albumImage} contentFit="cover" />
+          <>
+            <Image source={{ uri }} style={st.albumImage} contentFit="cover" />
+            {item.mediaFullFileId != null ? (
+              <View style={st.albumTileLoading}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              </View>
+            ) : null}
+          </>
         ) : (
           <View style={st.albumTilePlaceholder}>
-            <Feather name="image" size={22} color="#8E99A8" />
+            {item.mediaFullFileId != null ? (
+              <ActivityIndicator size="small" color="#8E99A8" />
+            ) : (
+              <Feather name="image" size={22} color="#8E99A8" />
+            )}
           </View>
         )}
         {item.kind === 'video' ? (
@@ -86,13 +115,45 @@ export function TelegramMediaAlbumBubble({
             <Text style={st.albumExtraText}>+{extraCount}</Text>
           </View>
         ) : null}
+      </>
+    );
+
+    if (canOpen) {
+      return (
+        <Pressable
+          key={`${item.messageId}-${index}`}
+          accessibilityRole="button"
+          accessibilityLabel="Открыть медиа"
+          onPress={() => onTilePress(item.messageId)}
+          style={[st.albumTile, style]}
+        >
+          {tileBody}
+        </Pressable>
+      );
+    }
+
+    return (
+      <View key={`${item.messageId}-${index}`} style={[st.albumTile, style]}>
+        {tileBody}
       </View>
     );
   };
 
   const grid = (() => {
     if (visibleMedia.length === 1) {
-      return renderTile(visibleMedia[0]!, 0, { width: albumWidth, height: albumWidth });
+      const only = visibleMedia[0]!;
+      const tileW = albumWidth;
+      let tileH = tileW;
+      if (incomingChannelPost) {
+        const iw = only.width ?? 0;
+        const ih = only.height ?? 0;
+        if (iw > 0 && ih > 0) {
+          tileH = Math.min(Math.round(tileW * (ih / iw)), Math.round(tileW * 2));
+        } else {
+          tileH = Math.round(tileW * (9 / 16));
+        }
+      }
+      return renderTile(only, 0, { width: tileW, height: tileH });
     }
     if (visibleMedia.length === 2) {
       const tileWidth = (albumWidth - gap) / 2;
@@ -147,7 +208,7 @@ export function TelegramMediaAlbumBubble({
 
   const albumShell = (
     <>
-      <View style={[st.albumGridClip, { width: albumWidth }]}>
+      <View style={[gridClipStyle, { width: albumWidth }]}>
         {grid}
         {!trimmedCaption ? (
           <View style={st.albumTimeOverlay}>
@@ -166,19 +227,22 @@ export function TelegramMediaAlbumBubble({
         <View
           style={[
             st.albumCaptionWrap,
+            incomingChannelPost && st.albumCaptionChannel,
             isMe
               ? viewportOutgoingGradient
                 ? [st.albumCaptionMe, { backgroundColor: 'transparent' }]
                 : [st.albumCaptionMe, { backgroundColor: chatTheme.bubbleMe }]
               : [
                   st.albumCaptionOther,
-                  incomingCaptionBg
-                    ? {
-                        backgroundColor: incomingCaptionBg,
-                        borderTopWidth: StyleSheet.hairlineWidth,
-                        borderTopColor: incomingCaptionBorder ?? 'transparent',
-                      }
-                    : null,
+                  incomingChannelPost && incomingCaptionBg
+                    ? { backgroundColor: incomingCaptionBg, borderTopWidth: 0 }
+                    : incomingCaptionBg
+                      ? {
+                          backgroundColor: incomingCaptionBg,
+                          borderTopWidth: StyleSheet.hairlineWidth,
+                          borderTopColor: incomingCaptionBorder ?? 'transparent',
+                        }
+                      : null,
                 ],
           ]}
         >
@@ -204,6 +268,10 @@ export function TelegramMediaAlbumBubble({
       {footer}
     </>
   );
+
+  if (incomingChannelPost) {
+    return <View style={st.albumChannelPost}>{albumShell}</View>;
+  }
 
   if (isMe && viewportOutgoingGradient) {
     return (
