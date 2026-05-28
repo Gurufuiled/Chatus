@@ -8,8 +8,7 @@
 # Запуск (из server/traefik/):
 #   docker compose up -d
 #
-# Перед первым запуском: api не должен занимать 80/443/4001/4002 на хосте
-# (в server/docker-compose.yml порты api привязаны к 127.0.0.1).
+# Перед запуском: на хосте свободны 80/443/4001/4002 (api не публикует 4001/4002 — см. ../docker-compose.yml).
 
 services:
   traefik:

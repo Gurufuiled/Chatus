@@ -37,11 +37,9 @@ services:
       context: ..
       dockerfile: server/Dockerfile
     restart: unless-stopped
-    # Только localhost: снаружи API/WS — через Traefik (443, 4001, 4002). См. server/traefik/
+    # Снаружи только через Traefik (443, 4001, 4002). WS/signaling не публикуем на хост — иначе конфликт с Traefik.
     ports:
       - '127.0.0.1:${PORT:-4000}:4000'
-      - '127.0.0.1:${WS_PORT:-4001}:4001'
-      - '127.0.0.1:${SIGNALING_PORT:-4002}:4002'
     env_file:
       - .env
     environment:

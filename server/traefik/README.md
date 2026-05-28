@@ -20,12 +20,12 @@ cp .env.example .env
 
 docker network create traefik-public 2>/dev/null || true
 
-# Перезапуск api (порты только localhost — см. ../docker-compose.yml)
-cd ..
-docker compose up -d api
-
 cd traefik
 docker compose up -d
+
+# api без портов 4001/4002 на хосте (доступ к WS — только через Traefik)
+cd ..
+docker compose up -d api
 docker compose logs -f --tail 50
 ```
 
