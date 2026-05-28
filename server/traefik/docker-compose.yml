@@ -12,7 +12,8 @@
 
 services:
   traefik:
-    image: traefik:v3.3
+    # v3.3 не работает с Docker 29+ (API 1.24 too old); нужен ≥3.6.1
+    image: traefik:v3.6
     container_name: traefik
     restart: unless-stopped
     env_file:

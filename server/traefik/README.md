@@ -37,6 +37,14 @@ curl -sI https://messenger.startapus.com/api/health
 
 Снаружи больше не работает `http://IP:4000` — только **https://messenger.startapus.com**.
 
+## Ошибка «client version 1.24 is too old»
+
+На Docker Engine 29+ нужен образ **Traefik ≥ 3.6.1** (`traefik:v3.6` в compose). Пересоздай контейнер:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
 ## Если порт занят
 
 ```bash
