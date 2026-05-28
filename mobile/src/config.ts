@@ -26,7 +26,9 @@ type PublicEnvKey =
   | 'EXPO_PUBLIC_CLIENT_UPDATE_CHECK_IN_DEV'
   | 'EXPO_PUBLIC_CLIENT_RELEASE_TAG'
   /** Если задан — кнопка «Обновить» открывает этот URL вместо android.apkUrl из манифеста (удобно для Google Drive без коммита id в репо). */
-  | 'EXPO_PUBLIC_CLIENT_UPDATE_APK_URL';
+  | 'EXPO_PUBLIC_CLIENT_UPDATE_APK_URL'
+  /** Публичная политика конфиденциальности (экран входа, RuStore). */
+  | 'EXPO_PUBLIC_PRIVACY_POLICY_URL';
 
 function readExpoPublic(key: PublicEnvKey): string | undefined {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
@@ -105,6 +107,20 @@ function resolveApiUrl(): string {
 }
 
 export const API_BASE_URL = resolveApiUrl();
+
+/** Политика конфиденциальности (152-ФЗ, RuStore). */
+export function getPrivacyPolicyUrl(): string {
+  const explicit = readExpoPublic('EXPO_PUBLIC_PRIVACY_POLICY_URL')?.trim();
+  if (explicit) return explicit;
+  try {
+    const url = new URL(API_BASE_URL);
+    return `${url.origin}/privacy-policy`;
+  } catch {
+    return 'https://messenger.startapus.com/privacy-policy';
+  }
+}
+
+export const PRIVACY_POLICY_URL = getPrivacyPolicyUrl();
 
 export const USE_MOCKS = readExpoPublic('EXPO_PUBLIC_USE_MOCKS') === 'true';
 

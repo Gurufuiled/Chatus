@@ -20,9 +20,18 @@ cd mobile
 cp .env.production.example .env.production
 ```
 
-Отредактируй `.env.production`: **`EXPO_PUBLIC_API_URL`** = `http://<VPS_IP>:4000/api` (или HTTPS, если настроен). **Порт 4001** (WebSocket) и **4002** (signaling) должны быть доступны с телефона на тот же хост (см. `mobile/src/config.ts` — хост берётся из API URL).
+Отредактируй `.env.production`: **`EXPO_PUBLIC_API_URL`** = `https://messenger.startapus.com/api` (прод с Traefik). WebSocket и signaling: **wss** на том же хосте, порты **4001** и **4002** (см. `mobile/src/config.ts`).
 
 `app.config.js` подмешивает `.env.production` **только** при `MOBILE_ENV=production`, поверх значений из `.env`.
+
+### 1.1.0 RuStore / Google Play
+
+В **`.env.production`** для магазинов обязательно:
+
+- `EXPO_PUBLIC_CLIENT_UPDATE_DISABLED=true` — не скачивать APK в обход магазина (`AppUpdateGate`).
+- `EXPO_PUBLIC_PRIVACY_POLICY_URL=https://messenger.startapus.com/privacy-policy` — ссылка с экрана входа.
+
+На сервере должен открываться `GET /privacy-policy` (см. `server/public/privacy-policy.html`).
 
 ### 1.1.1 OTA: манифест и APK с публичного GitHub (Gurufuiled/Chatus)
 
@@ -105,7 +114,7 @@ npx expo prebuild --platform android
 ### 1.3 Что проверить на устройстве
 
 - В настройках телефона разрешён **HTTP** для приложения или используется **HTTPS** на сервере (`app.json` уже включает `usesCleartextTraffic` для Android через `expo-build-properties`).
-- **Loginus**: redirect URI на сервере = публичный URL VPS (`http://<VPS>:4000/api/auth/callback`), тот же стенд, что и у мобильного `EXPO_PUBLIC_API_URL`.
+- **Loginus**: redirect URI на сервере = `https://messenger.startapus.com/api/auth/callback` (как в `server/.env`), тот же стенд, что `EXPO_PUBLIC_API_URL` в `.env.production`.
 
 ---
 
@@ -134,7 +143,8 @@ git pull origin main
 В **`server/.env`** на VPS (не коммитится):
 
 - `DATABASE_URL` / `POSTGRES_PASSWORD` — боевые значения
-- **`LOGINUS_REDIRECT_URI`** и **`LOGINUS_REDIRECT_URI_LOGOUT`** — **публичный** `http://<VPS_IP>:4000/...` (см. комментарии в `server/.env.example`)
+- **`LOGINUS_REDIRECT_URI`** и **`LOGINUS_REDIRECT_URI_LOGOUT`** — `https://messenger.startapus.com/api/auth/callback` и `.../logout-done` (как в Loginus)
+- **`PUBLIC_ORIGIN`** — `https://messenger.startapus.com` (опционально; иначе берётся из redirect URI)
 - `JWT_SECRET`, `LOGINUS_CLIENT_SECRET` — сильные секреты
 - **FCM (Android):** файл `server/firebase-service-account.json` на VPS (не в git). Скопируй с машины разработки, например:
   `scp server/firebase-service-account.json root@<VPS>:/root/chatus/server/`
@@ -158,11 +168,12 @@ docker compose logs -f api
 
 ### 2.4 Порты
 
-На VPS должны быть открыты (firewall / security group):
+На VPS должны быть открыты (firewall / security group), при Traefik:
 
-- **4000** — HTTP API  
-- **4001** — WebSocket чата  
-- **4002** — signaling (P2P)
+- **443** — HTTPS API  
+- **4001** — WSS чата  
+- **4002** — WSS signaling (звонки)  
+- **80** — Let's Encrypt (HTTP challenge)
 
 Postgres в `docker-compose.yml` проброшен на `127.0.0.1` — снаружи не торчит, это нормально.
 
@@ -174,7 +185,7 @@ Postgres в `docker-compose.yml` проброшен на `127.0.0.1` — сна�
 2. Сборка с `MOBILE_ENV=production`  
 3. На VPS `server/.env` → Loginus redirect = тот же хост, что видит телефон  
 4. `docker compose up -d` после `git pull` с корпоративного remote  
-5. Телефон в интернете достучится до `IP:4000`, `:4001`, `:4002`
+5. С телефона: `https://messenger.startapus.com/api`, WSS на `:4001` и `:4002`
 
 ---
 

@@ -15,6 +15,7 @@ RUN npm ci
 
 COPY server/tsconfig.json server/tsconfig.build.json server/nest-cli.json ./
 COPY server/src ./src/
+COPY server/public ./public/
 COPY config/client-update-manifest.json ./client-update-manifest.json
 
 RUN npx prisma generate && npm run build

@@ -35,6 +35,22 @@ async function bootstrap() {
   app.useWebSocketAdapter(new WsAdapter(app));
 
   const expressApp = app.getHttpAdapter().getInstance();
+  const privacyPolicyPath = join(process.cwd(), 'public', 'privacy-policy.html');
+  expressApp.get('/privacy-policy', (_req, res) => {
+    if (!existsSync(privacyPolicyPath)) {
+      res.status(404).type('text/plain').send('privacy-policy.html not found');
+      return;
+    }
+    try {
+      const body = readFileSync(privacyPolicyPath, 'utf8');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(body);
+    } catch {
+      res.status(500).type('text/plain').send('Error reading privacy policy');
+    }
+  });
+
   expressApp.get('/client-update-manifest.json', (_req, res) => {
     const manifestPath = resolveClientUpdateManifestPath();
     if (!manifestPath) {

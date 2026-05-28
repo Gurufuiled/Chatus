@@ -5,13 +5,16 @@ import {
   Animated,
   Easing,
   ImageBackground,
+  Linking,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, PRIVACY_POLICY_URL } from '../config';
 import { authService, type AuthSession } from '../services/AuthService';
 import { PressScale } from '../components/PressScale';
 
@@ -46,6 +49,7 @@ function parseAuthCallbackUrl(url: string): AuthWebPayload | null {
 }
 
 const AUTH_BG = require('../../assets/splash/auth-bg-clean.png');
+const PRIVACY_CONSENT_STORAGE_KEY = '@chatus/privacy_policy_accepted_v1';
 
 /** Dev (USB / emulator) vs remote API — тексты ошибок не должны вводить в заблуждение на release. */
 function apiNetworkHint(): string {
@@ -268,9 +272,30 @@ export function LoginScreen({ onLoginSession }: Props) {
   const [loading, setLoading] = useState(false);
   const [exchanging, setExchanging] = useState(false);
   const [webViewLoading, setWebViewLoading] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const authHandledRef = useRef(false);
   const redirectUriRef = useRef('');
   const loginWebViewRef = useRef<WebView>(null);
+
+  useEffect(() => {
+    void SecureStore.getItemAsync(PRIVACY_CONSENT_STORAGE_KEY).then((v) => {
+      if (v === '1') setPrivacyAccepted(true);
+    });
+  }, []);
+
+  const togglePrivacyAccepted = useCallback(() => {
+    setPrivacyAccepted((prev) => {
+      const next = !prev;
+      void SecureStore.setItemAsync(PRIVACY_CONSENT_STORAGE_KEY, next ? '1' : '0').catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const openPrivacyPolicy = useCallback(() => {
+    void Linking.openURL(PRIVACY_POLICY_URL).catch(() => {
+      Alert.alert('Ошибка', 'Не удалось открыть политику конфиденциальности.');
+    });
+  }, []);
 
   const finishAuthPayload = useCallback(
     async (payload: AuthWebPayload, redirectUriFallback: string) => {
@@ -313,6 +338,13 @@ export function LoginScreen({ onLoginSession }: Props) {
 
   const handleLoginPress = useCallback(async () => {
     if (loading) return;
+    if (!privacyAccepted) {
+      Alert.alert(
+        'Согласие обязательно',
+        'Чтобы войти, подтвердите, что вы ознакомились с политикой конфиденциальности и принимаете условия обработки персональных данных.',
+      );
+      return;
+    }
     setLoading(true);
     authHandledRef.current = false;
     try {
@@ -335,7 +367,7 @@ export function LoginScreen({ onLoginSession }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loading, privacyAccepted]);
 
   const onMessage = useCallback(
     async (event: { nativeEvent: { data: string } }) => {
@@ -416,11 +448,33 @@ export function LoginScreen({ onLoginSession }: Props) {
         <BrandHeader />
         <View style={styles.content}>
           <View style={styles.buttonWrap}>
+            <View style={styles.privacyRow}>
+              <Pressable
+                style={[styles.privacyBox, privacyAccepted && styles.privacyBoxOn]}
+                onPress={togglePrivacyAccepted}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: privacyAccepted }}
+                accessibilityLabel="Согласие с политикой конфиденциальности"
+              >
+                {privacyAccepted ? <Text style={styles.privacyCheck}>✓</Text> : null}
+              </Pressable>
+              <Text style={styles.privacyText}>
+                Я принимаю{' '}
+                <Text style={styles.privacyLink} onPress={openPrivacyPolicy}>
+                  политику конфиденциальности
+                </Text>{' '}
+                и даю согласие на обработку персональных данных
+              </Text>
+            </View>
             <PressScale
-              style={[styles.button, loading && styles.buttonPressed]}
+              style={[
+                styles.button,
+                (loading || !privacyAccepted) && styles.buttonPressed,
+                !privacyAccepted && styles.buttonDisabled,
+              ]}
               pressedScale={0.96}
               onPress={handleLoginPress}
-              disabled={loading}
+              disabled={loading || !privacyAccepted}
               accessibilityRole="button"
               accessibilityLabel="Войти с помощью Loginus"
             >
@@ -532,8 +586,49 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 24,
     right: 24,
-    top: '72%',
+    top: '64%',
     alignItems: 'center',
+    gap: 14,
+  },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    width: '100%',
+    maxWidth: 340,
+  },
+  privacyBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(15, 23, 42, 0.35)',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  privacyBoxOn: {
+    borderColor: '#0A84FF',
+    backgroundColor: '#0A84FF',
+  },
+  privacyCheck: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 16,
+  },
+  privacyText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  privacyLink: {
+    color: '#0A84FF',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   button: {
     minWidth: 260,
@@ -551,6 +646,10 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.86,
+  },
+  buttonDisabled: {
+    backgroundColor: '#94A3B8',
+    shadowOpacity: 0.06,
   },
   buttonText: {
     color: '#FFFFFF',
