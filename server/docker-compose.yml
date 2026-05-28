@@ -55,7 +55,40 @@ services:
       - chatus_uploads:/app/uploads
       # read-only: ключ не в образе и не в git
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+    labels:
+      - "traefik.enable=true"
+      
+      # 1. HTTP API (Порт 4000) -> Домен messenger.startapus.com
+      - "traefik.http.routers.chatus-api.rule=Host(`messenger.startapus.com`)"
+      - "traefik.http.routers.chatus-api.entrypoints=websecure"
+      - "traefik.http.routers.chatus-api.tls=true"
+      - "traefik.http.routers.chatus-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.chatus-api.service=chatus-api-service"
+      - "traefik.http.services.chatus-api-service.loadbalancer.server.port=4000"
+
+      # 2. WebSockets (Порт 4001) -> Домен messenger.startapus.com (Порт 4001 в Traefik)
+      - "traefik.http.routers.chatus-ws.rule=Host(`messenger.startapus.com`)"
+      - "traefik.http.routers.chatus-ws.entrypoints=port4001" # Требуется настроить entrypoint 4001 в Traefik
+      - "traefik.http.routers.chatus-ws.tls=true"
+      - "traefik.http.routers.chatus-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.chatus-ws.service=chatus-ws-service"
+      - "traefik.http.services.chatus-ws-service.loadbalancer.server.port=4001"
+
+      # 3. WebRTC Signaling (Порт 4002) -> Домен messenger.startapus.com (Порт 4002 в Traefik)
+      - "traefik.http.routers.chatus-sig.rule=Host(`messenger.startapus.com`)"
+      - "traefik.http.routers.chatus-sig.entrypoints=port4002" # Требуется настроить entrypoint 4002 в Traefik
+      - "traefik.http.routers.chatus-sig.tls=true"
+      - "traefik.http.routers.chatus-sig.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.chatus-sig.service=chatus-sig-service"
+      - "traefik.http.services.chatus-sig-service.loadbalancer.server.port=4002"
+    networks:
+      - default
+      - traefik-public # Подключение к общей сети Traefik для проксирования и выписки SSL
 
 volumes:
   chatus_pgdata:
   chatus_uploads:
+
+networks:
+  traefik-public:
+    external: true # Внешняя сеть Traefik, созданная на сервере Павла (например, 'traefik-public', 'web' или 'proxy')
