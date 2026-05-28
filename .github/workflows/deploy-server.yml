@@ -73,6 +73,8 @@ jobs:
             if [ ! -f "$FA_KEY" ]; then
               echo "::warning title=FCM disabled::firebase-service-account.json missing in $COMPOSE_DIR — scp the key from Firebase Console before next deploy (Android FCM direct push off until present)."
             fi
+            # Traefik (Павел) подключается к той же external-сети; до его установки создаём сеть, чтобы compose up не падал.
+            docker network inspect traefik-public >/dev/null 2>&1 || docker network create traefik-public
             docker compose build api
             docker compose up -d api
             docker compose ps api
