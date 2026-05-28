@@ -1,0 +1,49 @@
+# Traefik для Chatus (HTTPS + WSS на 443 / 4001 / 4002).
+# Читает Docker-лейблы с контейнера api в сети traefik-public.
+#
+# Подготовка:
+#   cp .env.example .env   # укажи ACME_EMAIL для Let's Encrypt
+#   docker network create traefik-public 2>/dev/null || true
+#
+# Запуск (из server/traefik/):
+#   docker compose up -d
+#
+# Перед первым запуском: api не должен занимать 80/443/4001/4002 на хосте
+# (в server/docker-compose.yml порты api привязаны к 127.0.0.1).
+
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: traefik
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - --api.dashboard=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik-public
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.port4001.address=:4001
+      - --entrypoints.port4002.address=:4002
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - '80:80'
+      - '443:443'
+      - '4001:4001'
+      - '4002:4002'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_acme:/acme
+    networks:
+      - traefik-public
+
+volumes:
+  traefik_acme:
+
+networks:
+  traefik-public:
+    external: true
