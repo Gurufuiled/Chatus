@@ -36,6 +36,7 @@ export type Message = MessageRow & {
     file_size?: number;
     mime_type?: string;
     remote_url?: string;
+    local_path?: string;
   }[];
   reactions?: {
     emoji: string;

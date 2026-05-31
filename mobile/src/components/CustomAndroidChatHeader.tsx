@@ -9,6 +9,7 @@ import {
   createChatsStackStyles,
 } from '../navigation/ChatsStack';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { ChatsStackParamList } from '../navigation/types';
 
 interface CustomAndroidChatHeaderProps {
   title: string;
@@ -19,7 +20,7 @@ interface CustomAndroidChatHeaderProps {
   currentUserId: string | null;
   chatId: string;
   members: any[] | null;
-  navigation: NativeStackNavigationProp<any>;
+  navigation: any;
   /** When set, title row opens this instead of Chatus GroupProfile / ChatProfile. */
   onTitlePress?: () => void;
   onSearchPress?: () => void;
