@@ -42,6 +42,8 @@ import { buildReplyPreviewText, getReplyPreviewThumbnailUri } from './ReplyPrevi
 import { usePeerFirstResolvedUri } from './peerFirstMedia';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
 import { StickerPackSheet } from './StickerPackSheet';
+import { SendChannelSelector } from './SendChannelSelector';
+import { PlatformSourceIcon } from './PlatformSourceIcon';
 import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
 import {
   friendStickerIdToEmoji,
@@ -120,6 +122,9 @@ export interface InputBarProps {
   channelSilentMode?: boolean;
   /** Коллбек при нажатии на колокольчик. */
   onToggleChannelSilentMode?: () => void;
+  sendChannel?: import('../stores/types').MessageSource;
+  onSendChannelChange?: (channel: import('../stores/types').MessageSource) => void;
+  telegramAvailable?: boolean;
 }
 
 type AttachmentAction = {
@@ -222,6 +227,9 @@ export function InputBar({
   isChannelAdmin,
   channelSilentMode,
   onToggleChannelSilentMode,
+  sendChannel = 'chatus',
+  onSendChannelChange,
+  telegramAvailable = false,
 }: InputBarProps) {
   const { width: windowWidth } = useWindowDimensions();
   const narrowComposer = windowWidth < COMPOSER_NARROW_BREAKPOINT;
@@ -232,6 +240,7 @@ export function InputBar({
   const inputRef = useRef<TextInput>(null);
   const [stickerSheetVisible, setStickerSheetVisible] = useState(false);
   const [stickerSheetBootTab, setStickerSheetBootTab] = useState<StickerPanelTopTab | null>(null);
+  const [showChannelSelector, setShowChannelSelector] = useState(false);
   const [inputText, setInputText] = useState('');
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
@@ -1667,8 +1676,19 @@ export function InputBar({
                   accessibilityLabel="Отправить"
                   style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
                   onPress={handleSend}
+                  onLongPress={() => {
+                    if (onSendChannelChange) {
+                      setShowChannelSelector(true);
+                    }
+                  }}
                 >
-                  <SendIcon />
+                  {onSendChannelChange && sendChannel === 'telegram' ? (
+                    <PlatformSourceIcon source="telegram" size={20} />
+                  ) : onSendChannelChange && sendChannel === 'chatus' ? (
+                    <PlatformSourceIcon source="chatus" size={20} />
+                  ) : (
+                    <SendIcon />
+                  )}
                 </Pressable>
               ) : isChannelAdmin ? (
                 <Pressable
@@ -1770,6 +1790,16 @@ export function InputBar({
           onComplete={handleVideoNoteComplete}
           onCancel={handleVideoNoteCancel}
           blurTargetRef={blurTargetRef}
+        />
+      )}
+
+      {onSendChannelChange && (
+        <SendChannelSelector
+          visible={showChannelSelector}
+          currentChannel={sendChannel}
+          onSelect={onSendChannelChange}
+          onDismiss={() => setShowChannelSelector(false)}
+          telegramAvailable={telegramAvailable}
         />
       )}
 
