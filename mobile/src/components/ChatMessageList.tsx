@@ -298,6 +298,7 @@ function MediaAlbumBubble({
               compact
               timeColor="#FFFFFF"
               iconColor="#FFFFFF"
+              source={message.source}
             />
           </View>
         ) : null}
@@ -338,6 +339,7 @@ function MediaAlbumBubble({
             compact
             timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
             iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+            source={message.source}
           />
         </View>
       ) : null}
@@ -1282,6 +1284,7 @@ const MessageRow = React.memo(function MessageRow({
             status={item.status}
             isMe={isMe}
             compact
+            source={item.source}
           />
         </View>
       );
@@ -1390,6 +1393,7 @@ const MessageRow = React.memo(function MessageRow({
                 compact
                 timeColor={stickerMetaColor}
                 iconColor={stickerIconColor}
+                source={bodyItem.source}
               />
             </View>
           );
@@ -1459,6 +1463,7 @@ const MessageRow = React.memo(function MessageRow({
               compact
               timeColor={stickerMetaColor}
               iconColor={stickerIconColor}
+              source={bodyItem.source}
             />
           </View>
         );

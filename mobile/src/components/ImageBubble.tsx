@@ -15,6 +15,7 @@ import { colors, bubbleRadius, typography } from '../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import type { MessageSource } from '../stores/types';
 import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -65,6 +66,7 @@ export interface ImageBubbleProps {
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
   isForwarded?: boolean;
   forwardAccentColor?: string;
+  source?: MessageSource;
 }
 
 function computeDisplaySize(
@@ -134,6 +136,7 @@ export function ImageBubble({
   style,
   isForwarded = false,
   forwardAccentColor,
+  source,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
   const maxW = mediaClamp?.maxWidth ?? MAX_BUBBLE_WIDTH;
@@ -362,6 +365,7 @@ export function ImageBubble({
                         compact
                         timeColor="#FFFFFF"
                         iconColor="#FFFFFF"
+                        source={source}
                       />
                     ) : null}
                   </View>
@@ -395,6 +399,7 @@ export function ImageBubble({
                           status={status ?? 'sent'}
                           isMe={isMe}
                           compact
+                          source={source}
                         />
                       ) : null}
                     </View>

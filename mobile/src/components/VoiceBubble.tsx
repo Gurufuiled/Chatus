@@ -15,6 +15,7 @@ import { stopActiveVideoNotePlayback } from './VideoNoteBubble';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 import { AnimatedPlayPauseIcon } from './AnimatedPlayPauseIcon';
+import type { MessageSource } from '../stores/types';
 
 /** Throttle waveform bar re-renders to ~8fps while playing (125ms) — imperceptible visually. */
 const WAVEFORM_RENDER_THROTTLE_MS = 125;
@@ -45,6 +46,7 @@ export interface VoiceBubbleProps {
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
   isForwarded?: boolean;
   forwardAccentColor?: string;
+  source?: MessageSource;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -173,6 +175,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   style,
   isForwarded = false,
   forwardAccentColor,
+  source,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -355,6 +358,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
                       compact
                       timeColor={isMe ? outgoingMetaColor : undefined}
                       iconColor={isMe ? outgoingMetaColor : undefined}
+                      source={source}
                     />
                   ) : null}
                 </View>

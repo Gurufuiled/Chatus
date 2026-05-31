@@ -40,6 +40,7 @@ import {
 } from '../utils/mediaDuration';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import type { MessageSource } from '../stores/types';
 import { OutgoingBubbleGradientShell } from './OutgoingBubbleViewportGradient';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -308,6 +309,7 @@ export interface VideoNoteBubbleProps {
   /** Свои сообщения + тёмная тема default: круглое кольцо градиента вместо квадратного MeBubbleChrome. */
   viewportOutgoingGradient?: boolean;
   scrollTick?: number;
+  source?: MessageSource;
 }
 
 function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
@@ -357,6 +359,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   outgoingAccentColor: _outgoingAccentColor,
   viewportOutgoingGradient = false,
   scrollTick = 0,
+  source,
 }: VideoNoteBubbleProps) {
   const generatedNoteId = React.useId();
   const noteId = messageId ?? generatedNoteId;
@@ -1380,6 +1383,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
                 compact
                 timeColor="#FFFFFF"
                 iconColor="#FFFFFF"
+                source={source}
               />
             </View>
           </View>

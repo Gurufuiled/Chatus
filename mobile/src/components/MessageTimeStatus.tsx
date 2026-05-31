@@ -3,6 +3,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { colors, typography } from '../theme/colors';
 import Feather from '@expo/vector-icons/Feather';
+import { PlatformSourceIcon } from './PlatformSourceIcon';
+import type { MessageSource } from '../stores/types';
 
 const STATUS_TEXT_ICONS: Record<string, string> = {
   sending: '\u23F1',
@@ -17,6 +19,7 @@ interface MessageTimeStatusProps {
   timeColor?: string;
   iconColor?: string;
   viewCount?: string;
+  source?: MessageSource;
 }
 
 interface MessageStatusIconProps {
@@ -152,9 +155,13 @@ export function MessageTimeStatus({
   timeColor,
   iconColor,
   viewCount,
+  source,
 }: MessageTimeStatusProps) {
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
+      {source && (
+        <PlatformSourceIcon source={source} size={compact ? 10 : 12} />
+      )}
       {viewCount ? (
         <View style={styles.viewCountWrap}>
           <Feather name="eye" size={compact ? 11 : 12} color={timeColor || colors.textSecondary} />

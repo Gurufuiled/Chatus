@@ -27,6 +27,7 @@ import {
 } from '../utils/videoThumbnail';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import type { MessageSource } from '../stores/types';
 import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -74,6 +75,7 @@ export interface VideoBubbleProps {
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
   isForwarded?: boolean;
   forwardAccentColor?: string;
+  source?: MessageSource;
 }
 
 function computeDisplaySize(
@@ -446,6 +448,7 @@ export function VideoBubble({
   style,
   isForwarded = false,
   forwardAccentColor,
+  source,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
   const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
@@ -617,6 +620,7 @@ export function VideoBubble({
                         compact
                         timeColor="#FFFFFF"
                         iconColor="#FFFFFF"
+                        source={source}
                       />
                     </View>
                   ) : null}
@@ -651,6 +655,7 @@ export function VideoBubble({
                             status={status ?? 'sent'}
                             isMe={isMe}
                             compact
+                            source={source}
                           />
                         ) : null}
                       </View>

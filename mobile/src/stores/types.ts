@@ -9,7 +9,10 @@ export type User = UserRow;
 
 export type Chat = ChatRow;
 
+export type MessageSource = 'chatus' | 'telegram';
+
 export type Message = MessageRow & {
+  source?: MessageSource;
   sender_name?: string | null;
   sender_avatar_url?: string | null;
   forwarded_from_message_id?: string | null;

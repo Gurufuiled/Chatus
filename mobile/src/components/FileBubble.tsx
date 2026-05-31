@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { bubbleRadius, colors, typography } from '../theme/colors';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import type { MessageSource } from '../stores/types';
 
 export interface FileBubbleProps {
   fileName: string;
@@ -29,6 +30,7 @@ export interface FileBubbleProps {
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
   isForwarded?: boolean;
   forwardAccentColor?: string;
+  source?: MessageSource;
 }
 
 function formatFileSize(bytes?: number): string | null {
@@ -89,6 +91,7 @@ export function FileBubble({
   style,
   isForwarded = false,
   forwardAccentColor,
+  source,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
   const fileCaption = useMemo(
@@ -188,6 +191,7 @@ export function FileBubble({
                         compact
                         timeColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
                         iconColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
+                        source={source}
                       />
                     ) : null}
                   </View>
