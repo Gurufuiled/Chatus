@@ -447,29 +447,11 @@ export function LoginScreen({ onLoginSession }: Props) {
       <SafeAreaView style={styles.welcomeSafe} edges={['top', 'bottom', 'left', 'right']} pointerEvents="box-none">
         <BrandHeader />
         <View style={styles.content}>
-          <View style={styles.buttonWrap}>
-            <View style={styles.privacyRow}>
-              <Pressable
-                style={[styles.privacyBox, privacyAccepted && styles.privacyBoxOn]}
-                onPress={togglePrivacyAccepted}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: privacyAccepted }}
-                accessibilityLabel="Согласие с политикой конфиденциальности"
-              >
-                {privacyAccepted ? <Text style={styles.privacyCheck}>✓</Text> : null}
-              </Pressable>
-              <Text style={styles.privacyText}>
-                Я принимаю{' '}
-                <Text style={styles.privacyLink} onPress={openPrivacyPolicy}>
-                  политику конфиденциальности
-                </Text>{' '}
-                и даю согласие на обработку персональных данных
-              </Text>
-            </View>
+          <View style={styles.footerWrap}>
             <PressScale
               style={[
                 styles.button,
-                (loading || !privacyAccepted) && styles.buttonPressed,
+                loading && styles.buttonPressed,
                 !privacyAccepted && styles.buttonDisabled,
               ]}
               pressedScale={0.96}
@@ -484,6 +466,25 @@ export function LoginScreen({ onLoginSession }: Props) {
                 <Text style={styles.buttonText}>Войти с помощью Loginus</Text>
               )}
             </PressScale>
+            <View style={styles.privacyRow}>
+              <Pressable
+                style={[styles.privacyBox, privacyAccepted && styles.privacyBoxOn]}
+                onPress={togglePrivacyAccepted}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: privacyAccepted }}
+                accessibilityLabel="Согласие с политикой конфиденциальности"
+                hitSlop={8}
+              >
+                {privacyAccepted ? <Text style={styles.privacyCheck}>✓</Text> : null}
+              </Pressable>
+              <Text style={styles.privacyText}>
+                Я принимаю{' '}
+                <Text style={styles.privacyLink} onPress={openPrivacyPolicy}>
+                  политику конфиденциальности
+                </Text>{' '}
+                и даю согласие на обработку персональных данных
+              </Text>
+            </View>
           </View>
         </View>
       </SafeAreaView>
@@ -582,13 +583,13 @@ const styles = StyleSheet.create({
   content: {
     ...StyleSheet.absoluteFillObject,
   },
-  buttonWrap: {
+  footerWrap: {
     position: 'absolute',
     left: 24,
     right: 24,
-    top: '64%',
+    bottom: 28,
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
   },
   privacyRow: {
     flexDirection: 'row',
@@ -596,6 +597,7 @@ const styles = StyleSheet.create({
     gap: 10,
     width: '100%',
     maxWidth: 340,
+    paddingHorizontal: 4,
   },
   privacyBox: {
     width: 22,
@@ -620,9 +622,9 @@ const styles = StyleSheet.create({
   },
   privacyText: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#334155',
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#475569',
     fontWeight: '500',
   },
   privacyLink: {

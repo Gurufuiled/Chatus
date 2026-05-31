@@ -72,6 +72,15 @@ cp .env.production.example .env.production
 
 После правки JSON сделай **`git push`** в ветку, с которой тянется `EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL` (например `main` на raw.githubusercontent.com).
 
+### 1.2.1 Версия в APK (важно для RuStore)
+
+Меняй **одновременно**:
+
+- `mobile/app.json` → `expo.version` и `expo.android.versionCode`
+- `mobile/android/app/build.gradle` → `versionName` и `versionCode` (Gradle **не** подтягивает их из `app.json` автоматически при `assembleRelease`)
+
+После смены версии: `npm run android:assembleRelease:prod`.
+
 ### 1.2 Сборка release APK (локально, Expo prebuild / Gradle)
 
 Из каталога **`mobile/`** (один раз: `npm install`, чтобы подтянулся `cross-env`):
