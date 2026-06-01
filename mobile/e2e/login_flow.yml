@@ -1,0 +1,8 @@
+appId: com.chatus.app
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "login-button" # We will need to make sure the app has this or tap the visible text
+- tapOn: "Войти" # Example in russian assuming default locale based on instructions/permissions
+- assertVisible: "Chats"
