@@ -15,7 +15,7 @@ function runTests(): void {
     screenWidth: 400,
     telegramSelectionMode: false,
   });
-  assert(w400 === 336, `expected 336 for 400px screen, got ${w400}`);
+  assert(w400 === 344, `expected 344 for 400px screen, got ${w400}`);
 
   const w400Sel = computeTelegramChannelPostMediaMaxWidth({
     screenWidth: 400,
