@@ -40,7 +40,7 @@ function resolveMediaThumbnailUri(
     return thumbPath.startsWith('file://') ? thumbPath : `file://${thumbPath}`;
   }
 
-  const localPath = media.local_path?.trim();
+  const localPath = media.thumbnail_path?.trim();
   if (localPath) {
     return localPath.startsWith('file://') || localPath.startsWith('content://')
       ? localPath
@@ -64,7 +64,7 @@ function hasResolvableVisualSource(media: NonNullable<Message['media']>[number])
     media.remote_url?.trim() ||
       media.thumbnail_url?.trim() ||
       media.thumbnail_path?.trim() ||
-      media.local_path?.trim(),
+      media.thumbnail_path?.trim(),
   );
 }
 
