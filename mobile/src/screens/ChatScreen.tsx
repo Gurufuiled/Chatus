@@ -31,6 +31,9 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
+import { useUnifiedMessages } from '../hooks/useUnifiedMessages';
+import { MessageSource } from '../stores/types';
+
 import { LineSyncEventDao } from '../db';
 import { buildPendingLineSyncRowFromOutgoingMessage } from '../services/lineSyncEventBuilder';
 import { canForwardMessage, TransportService } from '../services/TransportService';
@@ -487,7 +490,25 @@ export function ChatScreen() {
   /** One successful LINE_SUMMARY send to a group peer per focus spell per chatId (C3). */
   const groupPeerSummarySentRef = useRef<string | null>(null);
 
-  const messages = messageStore(
+  const authUser = authStore.getState().user;
+  const initialChat = chatStore.getState().chats.find((c) => c.id === route.params.chatId);
+  const contactPhone = (initialChat as any)?.kind === 'direct' || (initialChat as any)?.kind === 'direct' ? (Object.values(initialChat.members).find((m: any) => m.id !== authUser?.id) as any)?.phoneNumber : undefined;
+
+  const { unifiedMessages, telegramAvailable, sendTelegramMessage } = useUnifiedMessages(route.params.chatId, contactPhone);
+  const messages = unifiedMessages as any;
+  const [sendChannel, setSendChannel] = useState<MessageSource>('chatus');
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  useEffect(() => {
+    // using memory flag for now as requested
+    if (telegramAvailable) {
+      setShowTooltip(true);
+    }
+  }, [telegramAvailable]);
+
+  const dismissTooltip = () => setShowTooltip(false);
+
+  const chatusMessages = messageStore(
     useCallback(
       (state) => state.messagesByChatId[chatId] ?? EMPTY_MESSAGES,
       [chatId]
@@ -2957,12 +2978,48 @@ export function ChatScreen() {
               inputBarAnimatedStyle,
               { paddingBottom: composerDockPaddingBottom },
             ]}
-            onSendText={handleSendText}
-            onSendVoice={handleSendVoice}
-            onSendVideoNote={handleSendVideoNote}
-            onSendMedia={handleSendMedia}
-            onSendMediaAlbum={handleSendMediaAlbum}
-            onSendFile={handleSendFile}
+            onSendText={(text) => {
+              if (sendChannel === 'telegram' && sendTelegramMessage) {
+                sendTelegramMessage(text);
+              } else {
+                handleSendText(text);
+              }
+            }}
+            onSendVoice={(res) => {
+              if (sendChannel === 'telegram') {
+                Alert.alert("Telegram", "Отправка голосовых в Telegram пока в разработке.");
+              } else {
+                handleSendVoice(res);
+              }
+            }}
+            onSendVideoNote={(res) => {
+              if (sendChannel === 'telegram') {
+                Alert.alert("Telegram", "Отправка видео в Telegram пока в разработке.");
+              } else {
+                handleSendVideoNote(res);
+              }
+            }}
+            onSendMedia={(res) => {
+              if (sendChannel === 'telegram') {
+                Alert.alert("Telegram", "Отправка медиа в Telegram пока в разработке.");
+              } else {
+                handleSendMedia(res);
+              }
+            }}
+            onSendMediaAlbum={(res) => {
+              if (sendChannel === 'telegram') {
+                Alert.alert("Telegram", "Отправка альбомов в Telegram пока в разработке.");
+              } else {
+                handleSendMediaAlbum(res);
+              }
+            }}
+            onSendFile={(res) => {
+              if (sendChannel === 'telegram') {
+                Alert.alert("Telegram", "Отправка файлов в Telegram пока в разработке.");
+              } else {
+                handleSendFile(res);
+              }
+            }}
             blurTargetRef={blurTargetRef}
             replyToMessage={replyToMessage}
             replyAuthorName={replyAuthorName}
@@ -2970,6 +3027,9 @@ export function ChatScreen() {
             isScreenFocused={isFocused}
             replyPeerFirstLineId={replyToMessage?.chat_id ?? chatId}
             chatusStickersComposer
+            telegramAvailable={telegramAvailable}
+            sendChannel={sendChannel}
+            onSendChannelChange={setSendChannel}
           />
         )}
       </BlurTargetView>
@@ -3017,6 +3077,22 @@ export function ChatScreen() {
         onApply={handleApplyTheme}
         onClose={() => setIsThemePickerVisible(false)}
       />
+
+      {telegramAvailable && showTooltip && (
+        <View style={{
+          position: 'absolute',
+          bottom: 120,
+          right: 20,
+          backgroundColor: '#333',
+          padding: 12,
+          borderRadius: 8,
+          zIndex: 100
+        }}>
+          <Text style={{ color: 'white' }}>Удерживайте кнопку отправки (или медиа), чтобы сменить канал</Text>
+          <Text style={{ color: '#007AFF', marginTop: 8 }} onPress={dismissTooltip}>Понятно</Text>
+        </View>
+      )}
+
     </View>
   );
 }

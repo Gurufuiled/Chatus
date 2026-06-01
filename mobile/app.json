@@ -45,7 +45,13 @@
         }
       ],
       "expo-image",
-      "./plugins/withIosProductionPlist"
+      "./plugins/withIosProductionPlist",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Разрешите доступ к контактам для поиска друзей в Chatus и Telegram."
+        }
+      ]
     ],
     "name": "Chatus",
     "slug": "chatus",

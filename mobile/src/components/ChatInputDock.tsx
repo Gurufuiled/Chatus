@@ -1,3 +1,4 @@
+import type { MessageSource } from '../stores/types';
 import React from 'react';
 import Reanimated from 'react-native-reanimated';
 import type { LayoutChangeEvent, StyleProp, ViewStyle, View } from 'react-native';
@@ -11,6 +12,9 @@ import {
 } from './InputBar';
 
 type ChatInputDockProps = {
+  telegramAvailable?: boolean;
+  sendChannel?: MessageSource;
+  onSendChannelChange?: (channel: MessageSource) => void;
   onLayout: (event: LayoutChangeEvent) => void;
   animatedStyle: StyleProp<ViewStyle>;
   placeholder?: string;
@@ -34,6 +38,9 @@ type ChatInputDockProps = {
 };
 
 export function ChatInputDock({
+  telegramAvailable,
+  sendChannel,
+  onSendChannelChange,
   onLayout,
   animatedStyle,
   placeholder,
@@ -58,6 +65,9 @@ export function ChatInputDock({
   return (
     <Reanimated.View onLayout={onLayout} style={[animatedStyle, { overflow: 'visible' }]}>
       <InputBar
+        telegramAvailable={telegramAvailable}
+        sendChannel={sendChannel as any}
+        onSendChannelChange={onSendChannelChange as any}
         placeholder={placeholder}
         onSendText={onSendText}
         onSendVoice={onSendVoice}
