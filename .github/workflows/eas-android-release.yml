@@ -70,7 +70,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: mobile
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: EAS build (Android, production APK)
         working-directory: mobile
