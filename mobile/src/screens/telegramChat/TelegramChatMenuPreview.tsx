@@ -326,13 +326,7 @@ export function TelegramChatMenuPreviewBody({
         text={row.text ?? ''}
         textStyle={outgoingMessageTextStyle}
         rowStyle={styles.bubbleContentRow}
-        viewCountNode={
-          viewCountFormatted ? (
-            <Text
-              style={[styles.viewCountText, isMe ? { color: chatTheme.bubbleMeMeta } : null]}
-            >{` 👁 ${viewCountFormatted}`}</Text>
-          ) : null
-        }
+        hasViews={!!viewCountFormatted}
         meta={
           <MessageTimeStatus
             time={formatTime(row.dateMs)}
