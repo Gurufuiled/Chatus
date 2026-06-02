@@ -8,8 +8,7 @@ import {
   GroupChatHeaderMembers,
   createChatsStackStyles,
 } from '../navigation/ChatsStack';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ChatsStackParamList } from '../navigation/types';
+import type { NavigationProp } from '@react-navigation/native';
 
 interface CustomAndroidChatHeaderProps {
   title: string;
@@ -20,7 +19,7 @@ interface CustomAndroidChatHeaderProps {
   currentUserId: string | null;
   chatId: string;
   members: any[] | null;
-  navigation: any;
+  navigation: NavigationProp<any>;
   /** When set, title row opens this instead of Chatus GroupProfile / ChatProfile. */
   onTitlePress?: () => void;
   onSearchPress?: () => void;
@@ -102,7 +101,7 @@ export function CustomAndroidChatHeader({
               members={members as any}
               currentUserId={currentUserId}
               chatId={chatId}
-              navigation={navigation}
+              navigation={navigation as any}
               stackStyles={stackStyles}
               headerBorderColor={colors.toolbar}
             />

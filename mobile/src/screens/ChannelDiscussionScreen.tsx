@@ -1261,7 +1261,7 @@ export function ChannelDiscussionScreen() {
 
   return (
     <View style={[styles.container, styles.discussionRootTransparent]}>
-      <InteractiveChatBackShell navigation={navigation} gestureEnabled={!menuState}>
+      <InteractiveChatBackShell navigation={navigation as any} gestureEnabled={!menuState}>
         {Platform.OS === 'android' ? (
           <CustomAndroidChatHeader
             title="Обсуждение"
