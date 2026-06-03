@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -28,6 +28,7 @@ import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createContactsScreenStyles } from './contactsScreen.styles';
 import { formatContactPresenceSubtitle } from '../utils/presenceFormat';
+import { contactsStore, type PhoneBookContact } from '../stores/contactsStore';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -81,6 +82,32 @@ export function ContactsScreen() {
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const chats = chatStore((s) => s.chats);
   const presenceByUserId = uiStore((s) => s.presenceByUserId);
+
+  const permissionStatus = contactsStore((s) => s.permissionStatus);
+  const phoneBookContacts = contactsStore((s) => s.phoneBookContacts);
+  const isSyncingContacts = contactsStore((s) => s.isSyncing);
+
+  // Check permission on mount and sync contacts on focus
+  useEffect(() => {
+    void contactsStore.getState().checkPermission();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (contactsStore.getState().permissionStatus === 'granted') {
+        void contactsStore.getState().syncContacts();
+      }
+    }, [])
+  );
+
+  const chatusPhoneContacts = useMemo(
+    () => phoneBookContacts.filter((c) => c.hasChatus),
+    [phoneBookContacts]
+  );
+
+  const handleRequestPermission = useCallback(async () => {
+    await contactsStore.getState().requestPermission();
+  }, []);
 
   const contactsFromChats = useMemo(
     () => buildContactsFromChats(chats, currentUserId),
@@ -245,6 +272,42 @@ export function ContactsScreen() {
     );
   };
 
+  const renderPhoneBookContact = useCallback(
+    ({ item }: { item: PhoneBookContact }) => {
+      const avatarUrl = resolveAvatarUrl(item.chatusAvatarUrl ?? null);
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => {
+            if (item.chatusUserId) {
+              void handleStartChat({ id: item.chatusUserId, display_name: item.deviceName, handle: item.chatusHandle ?? null } as ApiUser);
+            }
+          }}
+          disabled={!item.chatusUserId}
+        >
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>
+                {(item.deviceName || '?')[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.info}>
+            <Text style={styles.displayName} numberOfLines={1}>
+              {item.deviceName}
+            </Text>
+            <Text style={styles.handle} numberOfLines={1}>
+              {item.chatusHandle ? `@${item.chatusHandle}` : item.phoneNumber}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    },
+    [handleStartChat, styles]
+  );
+
   const searchG = TELEGRAM_PROFILE_GLYPHS.search;
 
   const listEmpty = isSearchMode ? (
@@ -290,11 +353,46 @@ export function ContactsScreen() {
           ListEmptyComponent={listEmpty}
         />
       ) : (
-        <FlatList<ContactFromChatRow>
-          data={contactsFromChats}
-          keyExtractor={(item) => item.chat.id}
-          renderItem={renderContactFromChat}
-          ListEmptyComponent={listEmpty}
+        <FlatList
+          data={[
+            ...contactsFromChats.map((item) => ({ type: 'chat' as const, key: item.chat.id, data: item })),
+            ...(chatusPhoneContacts.length > 0
+              ? [
+                  { type: 'sectionHeader' as const, key: 'header:phonebook', data: null },
+                  ...chatusPhoneContacts.map((item) => ({ type: 'phonebook' as const, key: `pb:${item.phoneNumber}`, data: item })),
+                ]
+              : []),
+          ]}
+          keyExtractor={(item) => item.key}
+          renderItem={({ item }) => {
+            if (item.type === 'sectionHeader') {
+              return (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionHeaderText}>В телефонной книге</Text>
+                </View>
+              );
+            }
+            if (item.type === 'phonebook') {
+              return renderPhoneBookContact({ item: item.data as PhoneBookContact });
+            }
+            return renderContactFromChat({ item: item.data as ContactFromChatRow });
+          }}
+          ListHeaderComponent={
+            permissionStatus !== 'granted' ? (
+              <Pressable
+                style={({ pressed }) => [styles.permissionBanner, pressed && { opacity: 0.85 }]}
+                onPress={() => void handleRequestPermission()}
+              >
+                <Text style={styles.permissionBannerText}>
+                  Разрешите доступ к контактам, чтобы найти друзей в Chatus
+                </Text>
+                <Text style={styles.permissionBannerButton}>Разрешить</Text>
+              </Pressable>
+            ) : null
+          }
+          ListEmptyComponent={
+            permissionStatus !== 'granted' ? null : listEmpty
+          }
         />
       )}
     </View>

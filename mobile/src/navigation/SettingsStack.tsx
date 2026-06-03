@@ -2,6 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
   AppearanceSettingsScreen,
+  ChatSettingsScreen,
   EditProfileScreen,
   FeedbackComposeScreen,
   FeedbackListScreen,
@@ -48,6 +49,11 @@ export function SettingsStack() {
         name="Appearance"
         component={AppearanceSettingsScreen}
         options={{ title: 'Оформление', headerBackTitle: 'Назад' }}
+      />
+      <Stack.Screen
+        name="ChatSettings"
+        component={ChatSettingsScreen}
+        options={{ title: 'Настройки чатов', headerBackTitle: 'Назад' }}
       />
       <Stack.Screen
         name="Services"

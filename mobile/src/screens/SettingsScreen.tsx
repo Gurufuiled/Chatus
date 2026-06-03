@@ -313,8 +313,9 @@ export function SettingsScreen() {
             title="Настройки чатов"
             iconD={sg.chat.d}
             iconFillRule={sg.chat.fillRule}
-            placeholder
-            onPress={() => showComingSoon('Настройки чатов')}
+            placeholder={false}
+            showChevron
+            onPress={() => navigation.navigate('ChatSettings')}
           />
           <SettingsIconRow
             title="Язык"

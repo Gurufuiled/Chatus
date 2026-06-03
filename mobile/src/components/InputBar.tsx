@@ -1671,25 +1671,36 @@ export function InputBar({
               ) : null}
 
               {canSend ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Отправить"
-                  style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
-                  onPress={handleSend}
-                  onLongPress={() => {
-                    if (onSendChannelChange) {
-                      setShowChannelSelector(true);
-                    }
-                  }}
-                >
-                  {onSendChannelChange && sendChannel === 'telegram' ? (
-                    <PlatformSourceIcon source="telegram" size={20} />
-                  ) : onSendChannelChange && sendChannel === 'chatus' ? (
-                    <PlatformSourceIcon source="chatus" size={20} />
-                  ) : (
-                    <SendIcon />
+                <View style={{ position: 'relative', zIndex: 100 }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Отправить"
+                    style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
+                    onPress={handleSend}
+                    onLongPress={() => {
+                      if (onSendChannelChange) {
+                        setShowChannelSelector(true);
+                      }
+                    }}
+                  >
+                    {onSendChannelChange && sendChannel === 'telegram' ? (
+                      <PlatformSourceIcon source="telegram" size={20} />
+                    ) : onSendChannelChange && sendChannel === 'chatus' ? (
+                      <PlatformSourceIcon source="chatus" size={20} />
+                    ) : (
+                      <SendIcon />
+                    )}
+                  </Pressable>
+                  {onSendChannelChange && showChannelSelector && (
+                    <SendChannelSelector
+                      visible={showChannelSelector}
+                      currentChannel={sendChannel}
+                      onSelect={onSendChannelChange}
+                      onDismiss={() => setShowChannelSelector(false)}
+                      telegramAvailable={telegramAvailable}
+                    />
                   )}
-                </Pressable>
+                </View>
               ) : isChannelAdmin ? (
                 <Pressable
                   accessibilityRole="button"
@@ -1793,15 +1804,7 @@ export function InputBar({
         />
       )}
 
-      {onSendChannelChange && (
-        <SendChannelSelector
-          visible={showChannelSelector}
-          currentChannel={sendChannel}
-          onSelect={onSendChannelChange}
-          onDismiss={() => setShowChannelSelector(false)}
-          telegramAvailable={telegramAvailable}
-        />
-      )}
+
 
     </>
   );

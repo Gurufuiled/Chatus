@@ -8,6 +8,8 @@ export type ConnectionStatus = 'offline' | 'connecting' | 'online';
 export type TypingEntry = { userId: string; at: number };
 export type PresenceEntry = { is_online: boolean; last_seen?: number };
 
+export type ChatListFilter = 'all' | 'chatus_only' | 'telegram_only';
+
 export type PushNotificationData = {
   id: string;
   chatId: string;
@@ -33,6 +35,8 @@ type UIState = {
   /** Global app appearance: system / light / dark */
   appAppearancePreference: AppAppearancePreference;
   isAppAppearanceHydrated: boolean;
+  chatListFilter: ChatListFilter;
+  isChatListFilterHydrated: boolean;
 };
 
 type UIActions = {
@@ -54,6 +58,8 @@ type UIActions = {
   dismissPushNotification: () => void;
   setAppAppearancePreference: (preference: AppAppearancePreference) => void;
   hydrateAppAppearance: () => Promise<void>;
+  setChatListFilter: (filter: ChatListFilter) => void;
+  hydrateChatListFilter: () => Promise<void>;
 };
 
 const TYPING_STALE_MS = 5000;
@@ -61,6 +67,7 @@ const PINNED_MESSAGES_KEY = 'ui.pinnedMessageIdByChatId';
 const CHAT_THEMES_KEY = 'ui.chatThemeIdByChatId';
 const BLOCKED_USERS_KEY = 'ui.blockedUserIds';
 const APP_APPEARANCE_KEY = 'ui.appAppearancePreference';
+const CHAT_LIST_FILTER_KEY = 'ui.chatListFilter';
 
 const initialState: UIState = {
   connectionStatus: 'offline',
@@ -77,6 +84,8 @@ const initialState: UIState = {
   pushNotification: null,
   appAppearancePreference: 'system',
   isAppAppearanceHydrated: false,
+  chatListFilter: 'all',
+  isChatListFilterHydrated: false,
 };
 
 export const uiStore = create<UIState & UIActions>((set) => ({
@@ -229,6 +238,28 @@ export const uiStore = create<UIState & UIActions>((set) => ({
       });
     } catch {
       set({ isAppAppearanceHydrated: true });
+    }
+  },
+
+  setChatListFilter: (filter) => {
+    void SecureStore.setItemAsync(CHAT_LIST_FILTER_KEY, filter).catch(() => {});
+    set({ chatListFilter: filter });
+  },
+
+  hydrateChatListFilter: async () => {
+    try {
+      const raw = await SecureStore.getItemAsync(CHAT_LIST_FILTER_KEY);
+      const allowed: ChatListFilter[] = ['all', 'chatus_only', 'telegram_only'];
+      const next =
+        raw && allowed.includes(raw as ChatListFilter)
+          ? (raw as ChatListFilter)
+          : 'all';
+      set({
+        chatListFilter: next,
+        isChatListFilterHydrated: true,
+      });
+    } catch {
+      set({ isChatListFilterHydrated: true });
     }
   },
 }));

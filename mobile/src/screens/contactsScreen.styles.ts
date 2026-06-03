@@ -87,5 +87,42 @@ export function createContactsScreenStyles(c: ThemeColors) {
       fontSize: 16,
       color: c.placeholder,
     },
+    sectionHeader: {
+      paddingHorizontal: 16,
+      paddingTop: 20,
+      paddingBottom: 8,
+      backgroundColor: c.chatBackground,
+    },
+    sectionHeaderText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    permissionBanner: {
+      marginHorizontal: 12,
+      marginTop: 12,
+      marginBottom: 4,
+      padding: 16,
+      backgroundColor: c.inputBackgroundSolid,
+      borderRadius: 14,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.separator,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    permissionBannerText: {
+      flex: 1,
+      fontSize: 14,
+      color: c.textPrimary,
+      marginRight: 12,
+    },
+    permissionBannerButton: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: c.accent,
+    },
   });
 }

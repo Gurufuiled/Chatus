@@ -31,6 +31,7 @@ export default function App() {
     initDatabase()
       .then(async () => {
         await uiStore.getState().hydrateAppAppearance();
+        await uiStore.getState().hydrateChatListFilter();
         await telegramAccountStore.getState().hydrate();
         await ensureAndroidPushChannels();
         return authService.restoreSession();

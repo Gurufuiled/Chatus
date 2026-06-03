@@ -26,6 +26,7 @@ export { ChannelMonetizationScreen } from './ChannelMonetizationScreen';
 export { ContactsScreen } from './ContactsScreen';
 export { SettingsScreen } from './SettingsScreen';
 export { AppearanceSettingsScreen } from './AppearanceSettingsScreen';
+export { ChatSettingsScreen } from './ChatSettingsScreen';
 export { ServicesScreen } from './ServicesScreen';
 export { MiniAppScreen } from './MiniAppScreen';
 export { FeedbackListScreen } from './FeedbackListScreen';

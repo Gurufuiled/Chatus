@@ -27,6 +27,7 @@ import { authStore } from '../stores/authStore';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
+import { uiStore } from '../stores/uiStore';
 import { messageStore } from '../stores/messageStore';
 import type { Chat } from '../stores/types';
 import { ChatListSearchBar } from '../components/ChatListSearchBar';
@@ -138,6 +139,7 @@ export function ChatListScreen() {
   const chats = chatStore((s) => s.chats);
   const telegramDialogs = telegramAccountStore((s) => s.dialogs);
   const telegramReady = telegramAccountStore((s) => s.authStatus === 'ready');
+  const chatListFilter = uiStore((s) => s.chatListFilter);
   const refreshTelegramDialogs = useTelegramDialogsRefresh(telegramReady);
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -206,18 +208,21 @@ export function ChatListScreen() {
 
   const listItems = React.useMemo<ChatListItem[]>(() => {
     if (!isSearchActive) {
-      return mergeUnifiedChatList(sortedChats, telegramDialogs, telegramReady);
+      const filteredChats = chatListFilter === 'telegram_only' ? [] : sortedChats;
+      const filteredDialogs = chatListFilter === 'chatus_only' ? [] : telegramDialogs;
+      const filteredTelegramReady = chatListFilter === 'chatus_only' ? false : telegramReady;
+      return mergeUnifiedChatList(filteredChats, filteredDialogs, filteredTelegramReady);
     }
 
-    const localChats = sortedChats.filter((chat) => matchesChatQuery(chat, normalizedQuery));
-    const telegramMatches = telegramReady
+    const localChats = chatListFilter === 'telegram_only' ? [] : sortedChats.filter((chat) => matchesChatQuery(chat, normalizedQuery));
+    const telegramMatches = chatListFilter === 'chatus_only' ? [] : (telegramReady
       ? telegramDialogs.filter((row) => matchesDialogQuery(row, normalizedQuery))
-      : [];
+      : []);
     const existingChatIds = new Set(sortedChats.map((chat) => chat.id));
-    const remoteChannels = channelResults.filter((channel) => !existingChatIds.has(channel.id));
-    const users = currentUserId
+    const remoteChannels = chatListFilter === 'telegram_only' ? [] : channelResults.filter((channel) => !existingChatIds.has(channel.id));
+    const users = chatListFilter === 'telegram_only' ? [] : (currentUserId
       ? userResults.filter((user) => user.id !== currentUserId)
-      : userResults;
+      : userResults);
 
     const items: ChatListItem[] = [];
     if (localChats.length > 0) {
@@ -243,6 +248,7 @@ export function ChatListScreen() {
     return items;
   }, [
     channelResults,
+    chatListFilter,
     currentUserId,
     isSearchActive,
     normalizedQuery,
