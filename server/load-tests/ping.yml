@@ -1,0 +1,20 @@
+config:
+  target: "http://localhost:4000"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: Warm up
+    - duration: 120
+      arrivalRate: 50
+      rampTo: 100
+      name: Spike
+  environments:
+    production:
+      target: "https://api.example.com"
+
+scenarios:
+  - name: "Health check and basic endpoint ping"
+    flow:
+      - get:
+          url: "/"
+      - think: 1

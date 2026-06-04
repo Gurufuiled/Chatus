@@ -1272,7 +1272,7 @@ export function ChannelDiscussionScreen() {
             currentUserId={null}
             chatId={channelId}
             members={null}
-            navigation={navigation}
+            navigation={navigation as any}
           />
         ) : null}
 

@@ -1,0 +1,11 @@
+appId: com.chatus.app
+---
+- launchApp
+- tapOn:
+    id: "chat-list-item-0" # Wait for list to load and tap first item
+- tapOn:
+    id: "message-input"
+- inputText: "Hello from Maestro!"
+- tapOn:
+    id: "send-button"
+- assertVisible: "Hello from Maestro!"

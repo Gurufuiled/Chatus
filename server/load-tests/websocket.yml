@@ -1,0 +1,16 @@
+config:
+  target: "ws://localhost:4000"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: WS Warm up
+  engines:
+    ws: {}
+
+scenarios:
+  - name: "WebSocket Connection Test"
+    engine: "ws"
+    flow:
+      - send: '{"event":"ping","data":{}}'
+      - think: 5
+      - send: '{"event":"ping","data":{}}'
