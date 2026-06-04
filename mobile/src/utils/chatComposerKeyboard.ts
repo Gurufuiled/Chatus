@@ -29,7 +29,14 @@ export type ChatComposerAnimatedKeyboard = {
  * контент сдвигается), для Android этот флаг нужно будет снова включать или определять режим
  * динамически — иначе композер окажется под клавиатурой. Сейчас явно ориентируемся на resize.
  */
-export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = true;
+/** iOS / adjustPan: смещаем и док, и список. */
+export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = Platform.OS !== 'android';
+
+/**
+ * Android: абсолютный док не всегда поднимается с `adjustResize` (MIUI / gesture nav).
+ * Поднимаем только док по `useAnimatedKeyboard`, без `marginBottom` у списка — иначе двойной зазор.
+ */
+export const CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT = Platform.OS === 'android';
 
 /**
  * Стили смещения абсолютного дока и нижнего отступа списка относительно клавиатуры.
@@ -42,7 +49,10 @@ export function useChatComposerKeyboardLiftStyles(
   const dockAnimatedStyle = useAnimatedStyle(() => {
     if (isVoiceRecordingShared?.value) return { transform: [{ translateY: 0 }] };
     const kb = Math.max(animatedKeyboard.height.value, 0);
-    const offset = CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET ? kb : 0;
+    const offset =
+      CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET || CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT
+        ? kb
+        : 0;
     return { transform: [{ translateY: -offset }] };
   });
 

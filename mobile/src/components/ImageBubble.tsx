@@ -374,6 +374,7 @@ export function ImageBubble({
 
               {hasCaption ? (
                 <MessageTextBubbleBody
+                  fillWidth
                   text={caption ?? ''}
                   textStyle={[
                     styles.caption,

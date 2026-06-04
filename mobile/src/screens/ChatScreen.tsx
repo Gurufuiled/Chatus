@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
+import * as SecureStore from 'expo-secure-store';
 import { BlurTargetView } from 'expo-blur';
 import Feather from '@expo/vector-icons/Feather';
 import {
@@ -157,6 +158,8 @@ function warnLineSyncLocalInsert(reason: string, detail?: unknown): void {
     console.warn(`[LineSync] ${reason}`);
   }
 }
+
+const SEND_CHANNEL_COACHMARK_KEY = 'ui.sendChannelCoachmarkDismissed.v1';
 
 type ChatRoute = RouteProp<ChatsStackParamList, 'Chat'>;
 type ChatNavigation = NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
@@ -517,6 +520,7 @@ export function ChatScreen() {
   }>({ visible: false, anchor: null });
   const composerFocusRef = useRef<(() => void) | null>(null);
   const [showTooltip, setShowTooltip] = useState(false);
+  const sendChannelCoachmarkCheckedRef = useRef(false);
 
   const requestCloseSendChannelMenu = useCallback(() => {
     setSendChannelMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
@@ -561,13 +565,28 @@ export function ChatScreen() {
   );
 
   useEffect(() => {
-    // using memory flag for now as requested
-    if (telegramAvailable) {
-      setShowTooltip(true);
+    if (!telegramAvailable) {
+      sendChannelCoachmarkCheckedRef.current = false;
+      setShowTooltip(false);
+      return;
     }
+    if (sendChannelCoachmarkCheckedRef.current) return;
+    sendChannelCoachmarkCheckedRef.current = true;
+    let cancelled = false;
+    void SecureStore.getItemAsync(SEND_CHANNEL_COACHMARK_KEY).then((raw) => {
+      if (!cancelled && raw !== '1') {
+        setShowTooltip(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [telegramAvailable]);
 
-  const dismissTooltip = () => setShowTooltip(false);
+  const dismissTooltip = useCallback(() => {
+    setShowTooltip(false);
+    void SecureStore.setItemAsync(SEND_CHANNEL_COACHMARK_KEY, '1').catch(() => undefined);
+  }, []);
 
   const chatusMessages = messageStore(
     useCallback(
@@ -3156,20 +3175,48 @@ export function ChatScreen() {
         onClose={() => setIsThemePickerVisible(false)}
       />
 
-      {telegramAvailable && showTooltip && (
-        <View style={{
-          position: 'absolute',
-          bottom: 120,
-          right: 20,
-          backgroundColor: '#333',
-          padding: 12,
-          borderRadius: 8,
-          zIndex: 100
-        }}>
-          <Text style={{ color: 'white' }}>Удерживайте кнопку отправки (или медиа), чтобы сменить канал</Text>
-          <Text style={{ color: '#007AFF', marginTop: 8 }} onPress={dismissTooltip}>Понятно</Text>
+      {telegramAvailable && showTooltip ? (
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            left: 12,
+            right: 12,
+            bottom: inputBarHeight + 10,
+            zIndex: 100,
+            alignItems: 'center',
+          }}
+        >
+          <View
+            style={{
+              maxWidth: 340,
+              width: '100%',
+              backgroundColor: 'rgba(28, 32, 38, 0.94)',
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderRadius: 14,
+              shadowColor: '#000',
+              shadowOpacity: 0.22,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 10,
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 20 }}>
+              Удерживайте кнопку отправки (или медиа), чтобы сменить канал
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Понятно"
+              onPress={dismissTooltip}
+              hitSlop={8}
+              style={({ pressed }) => ({ marginTop: 10, alignSelf: 'flex-start', opacity: pressed ? 0.7 : 1 })}
+            >
+              <Text style={{ color: '#5EB3F6', fontSize: 15, fontWeight: '600' }}>Понятно</Text>
+            </Pressable>
+          </View>
         </View>
-      )}
+      ) : null}
 
     </View>
   );

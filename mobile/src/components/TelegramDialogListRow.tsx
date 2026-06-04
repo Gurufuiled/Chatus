@@ -7,6 +7,7 @@ import type { TelegramDialogRow } from '../stores/telegramAccountStore';
 import { useTheme } from '../contexts/ThemeContext';
 import { createChatListRowStyles } from './chatListRow.styles';
 import { DialogListPreview } from './DialogListPreview';
+import { formatMessageTime } from '../utils/formatMessageTime';
 
 const AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
 
@@ -20,7 +21,7 @@ function getAvatarColor(seed: string) {
 
 function formatChatTime(timestamp: number | null | undefined) {
   if (!timestamp) return '';
-  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return formatMessageTime(timestamp);
 }
 
 type Props = {

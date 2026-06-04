@@ -1,9 +1,6 @@
 import { tdlibClient } from '../../services/tdlib/TdlibClient';
 import { throwIfTdError } from '../../services/tdlib/tdlibErrors';
-import {
-  downloadTdlibFile,
-  getNestedRecord,
-} from './tdlibMapping';
+import { getNestedRecord } from './tdlibMapping';
 
 /** Одна строка в списке диалогов — как в Telegram. */
 const DIALOG_PREVIEW_TEXT_MAX = 80;
@@ -70,8 +67,26 @@ async function fetchFullLastMessage(
 
 function getTdFileLocalUri(file: Record<string, unknown> | null): string | null {
   const local = getNestedRecord(file?.local);
+  if (local?.is_downloading_completed !== true) return null;
   const path = typeof local?.path === 'string' ? local.path.trim() : '';
   return path ? `file://${path}` : null;
+}
+
+/**
+ * Фоновая (несинхронная) загрузка тумбнейла для строки диалога: не блокируем список сетью.
+ * Фото и так показывают мгновенный base64-minithumbnail; полный тумб подтянется при следующем рефреше.
+ */
+function requestBackgroundThumbnailDownload(fileId: number): void {
+  void tdlibClient
+    .send({
+      '@type': 'downloadFile',
+      file_id: fileId,
+      priority: 1,
+      offset: 0,
+      limit: 0,
+      synchronous: false,
+    })
+    .catch(() => undefined);
 }
 
 function getNumber(value: unknown): number | undefined {
@@ -115,19 +130,25 @@ async function resolvePhotoThumbnailUri(photo: Record<string, unknown> | null): 
   const localUri = getTdFileLocalUri(file);
   if (localUri) return localUri;
   const fileId = typeof file.id === 'number' ? file.id : null;
-  return fileId != null ? downloadTdlibFile(fileId).catch(() => null) : null;
+  if (fileId != null) requestBackgroundThumbnailDownload(fileId);
+  return null;
 }
 
 async function resolveVideoThumbnailUri(
   container: Record<string, unknown> | null,
 ): Promise<string | null> {
+  // Мгновенный base64-minithumbnail (как у фото) — чтобы строка не была пустой до фоновой докачки.
+  const miniUri = minithumbnailDataUri(container);
+  if (miniUri) return miniUri;
+
   const thumbnail = getNestedRecord(container?.thumbnail);
   const thumbnailFile = getNestedRecord(thumbnail?.file);
   if (!thumbnailFile) return null;
   const localUri = getTdFileLocalUri(thumbnailFile);
   if (localUri) return localUri;
   const fileId = typeof thumbnailFile.id === 'number' ? thumbnailFile.id : null;
-  return fileId != null ? downloadTdlibFile(fileId).catch(() => null) : null;
+  if (fileId != null) requestBackgroundThumbnailDownload(fileId);
+  return null;
 }
 
 function mediaLabel(text: string, accent = true): TelegramDialogPreview {

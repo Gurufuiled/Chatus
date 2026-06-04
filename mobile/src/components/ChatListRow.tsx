@@ -10,6 +10,7 @@ import { DialogListPreview } from './DialogListPreview';
 import { MessageStatusIcon } from './MessageTimeStatus';
 import { getChatListTitle } from '../presentation';
 import { buildChatusDialogPreviewForChat } from '../utils/chatusDialogPreview';
+import { formatMessageTime } from '../utils/formatMessageTime';
 
 const AVATAR_COLORS = [
   '#5B8DEF',
@@ -33,10 +34,7 @@ function getAvatarColor(seed: string) {
 
 function formatChatTime(timestamp: number | null) {
   if (!timestamp) return '';
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatMessageTime(timestamp);
 }
 
 function getStatusColor(status: string, accent: string, iconMuted: string) {

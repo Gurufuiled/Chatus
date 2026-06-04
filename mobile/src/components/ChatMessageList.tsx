@@ -28,6 +28,7 @@ import { bubbleRadius, colors, withAlpha } from '../theme/colors';
 import { getOutgoingReactionAccent, type ChatTheme } from '../theme/chatThemes';
 import { ForwardHeader } from './ForwardHeader';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 import {
   ReplyPreview,
   buildReplyPreviewText,
@@ -48,6 +49,7 @@ import {
   type MessageAuthorPresentation,
   resolveForwardedSenderAvatarUrl,
 } from '../screens/chatScreen.shared';
+import { CHAT_BUBBLE_MAX_WIDTH_PCT } from '../presentation/chatBubbleMetrics';
 import { DOUBLE_TAP_REACTION_EMOJI } from './ChatContextMenuOverlay';
 import { ReplySwipeWrapper } from './ReplySwipeWrapper';
 import { formatMediaDuration } from '../utils/mediaDuration';
@@ -1399,7 +1401,7 @@ const MessageRow = React.memo(function MessageRow({
           );
           if (!isMe) {
             return (
-              <View style={{ alignSelf: 'flex-start', maxWidth: '82%' }}>
+              <View style={{ alignSelf: 'flex-start', maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT }}>
                 {renderIncomingHeader()}
                 {renderReplySnippet()}
                 {strip}
@@ -1409,7 +1411,7 @@ const MessageRow = React.memo(function MessageRow({
             );
           }
           return (
-            <View style={{ alignSelf: 'flex-end', maxWidth: '82%' }}>
+            <View style={{ alignSelf: 'flex-end', maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT }}>
               {renderIncomingHeader()}
               {renderReplySnippet()}
               {strip}
@@ -1470,7 +1472,7 @@ const MessageRow = React.memo(function MessageRow({
 
         if (!isMe) {
           return (
-            <View style={{ alignSelf: 'flex-start', maxWidth: '82%' }}>
+            <View style={{ alignSelf: 'flex-start', maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT }}>
               {renderIncomingHeader()}
               {renderReplySnippet()}
               <View
@@ -1492,7 +1494,7 @@ const MessageRow = React.memo(function MessageRow({
         }
 
         return (
-          <View style={{ alignSelf: 'flex-end', maxWidth: '82%' }}>
+          <View style={{ alignSelf: 'flex-end', maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT }}>
             {renderIncomingHeader()}
             {renderReplySnippet()}
             <MeBubbleChrome
@@ -1581,6 +1583,7 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.bubble,
+              { alignSelf: 'flex-start' as const },
               isGroupIncoming && styles.groupMessageSurface,
               styles.bubbleOther,
               {
@@ -1591,20 +1594,28 @@ const MessageRow = React.memo(function MessageRow({
           >
             {renderIncomingHeader()}
             {renderReplySnippet()}
-            <View style={[styles.bubbleContentRow, forwardBorderStyle]}>
-              {renderTextWithSearchHighlight(displayContent, searchHighlightQuery, [
-                styles.textContent,
-                { color: themeColors.textPrimary },
-              ])}
-              <MessageTimeStatus
-                time={formatTime(bodyItem.created_at)}
-                status={bodyItem.status}
-                isMe={isMe}
-                compact
-                timeColor={themeColors.textSecondary}
-                iconColor={themeColors.textSecondary}
-              />
-            </View>
+            <MessageTextBubbleBody
+              text={searchHighlightQuery ? undefined : displayContent}
+              textStyle={[styles.textContent, { color: themeColors.textPrimary }]}
+              rowStyle={[styles.bubbleContentRow, forwardBorderStyle]}
+              meta={
+                <MessageTimeStatus
+                  time={formatTime(bodyItem.created_at)}
+                  status={bodyItem.status}
+                  isMe={isMe}
+                  compact
+                  timeColor={themeColors.textSecondary}
+                  iconColor={themeColors.textSecondary}
+                />
+              }
+            >
+              {searchHighlightQuery
+                ? renderTextWithSearchHighlight(displayContent, searchHighlightQuery, [
+                    styles.textContent,
+                    { color: themeColors.textPrimary },
+                  ])
+                : null}
+            </MessageTextBubbleBody>
             {inlineReactionList?.length ? (
               <MessageReactionInline
                 reactions={inlineReactionList}
@@ -1625,27 +1636,40 @@ const MessageRow = React.memo(function MessageRow({
           fillColor={chatTheme.bubbleMe}
           style={[
             styles.bubble,
+            { alignSelf: 'flex-end' as const },
             isGroupIncoming && styles.groupMessageSurface,
             !useViewportOutgoingGradient ? styles.bubbleMe : null,
           ]}
         >
           {renderIncomingHeader()}
           {renderReplySnippet()}
-          <View style={[styles.bubbleContentRow, forwardBorderStyle]}>
-            {renderTextWithSearchHighlight(displayContent, searchHighlightQuery, [
+          <MessageTextBubbleBody
+            text={searchHighlightQuery ? undefined : displayContent}
+            textStyle={[
               styles.textContent,
               styles.textContentMe,
               { color: chatTheme.bubbleMeText },
-            ])}
-            <MessageTimeStatus
-              time={formatTime(bodyItem.created_at)}
-              status={bodyItem.status}
-              isMe
-              compact
-              timeColor={chatTheme.bubbleMeMeta}
-              iconColor={chatTheme.bubbleMeMeta}
-            />
-          </View>
+            ]}
+            rowStyle={[styles.bubbleContentRow, forwardBorderStyle]}
+            meta={
+              <MessageTimeStatus
+                time={formatTime(bodyItem.created_at)}
+                status={bodyItem.status}
+                isMe
+                compact
+                timeColor={chatTheme.bubbleMeMeta}
+                iconColor={chatTheme.bubbleMeMeta}
+              />
+            }
+          >
+            {searchHighlightQuery
+              ? renderTextWithSearchHighlight(displayContent, searchHighlightQuery, [
+                  styles.textContent,
+                  styles.textContentMe,
+                  { color: chatTheme.bubbleMeText },
+                ])
+              : null}
+          </MessageTextBubbleBody>
           {inlineReactionList?.length ? (
             <MessageReactionInline
               reactions={inlineReactionList}
@@ -1697,7 +1721,7 @@ const MessageRow = React.memo(function MessageRow({
             <View
               style={[
                 styles.repliedMediaBubble,
-                { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : '82%' },
+                { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : CHAT_BUBBLE_MAX_WIDTH_PCT },
                 isGroupIncoming && styles.groupMessageSurface,
                 styles.repliedMediaBubbleOther,
                 {
@@ -1720,7 +1744,7 @@ const MessageRow = React.memo(function MessageRow({
               fillColor={chatTheme.bubbleMe}
               style={[
                 styles.repliedMediaBubble,
-                { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : '82%' },
+                { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : CHAT_BUBBLE_MAX_WIDTH_PCT },
                 isGroupIncoming && styles.groupMessageSurface,
                 bubbleRadius.mine,
               ]}
@@ -1735,7 +1759,7 @@ const MessageRow = React.memo(function MessageRow({
           <View
             style={[
               styles.repliedMediaBubble,
-              { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : '82%' },
+              { width: repliedVoiceBubbleWidth, maxWidth: isGroupIncoming ? '100%' : CHAT_BUBBLE_MAX_WIDTH_PCT },
               isGroupIncoming && styles.groupMessageSurface,
               styles.repliedMediaBubbleMe,
               { backgroundColor: chatTheme.bubbleMe },
@@ -2876,15 +2900,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 16,
-    maxWidth: '82%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
   },
+  /** Групповой входящий пузырь: ширина по контенту с лимитом из `bubble` (86%), не на всю колонку. */
   groupMessageSurface: {
-    maxWidth: '100%',
     alignSelf: 'flex-start',
   },
   /** Ограничение как у текстового бабла — короткий `chatus://c/x` не должен сжимать превью. */
   channelLinkOuter: {
-    maxWidth: '82%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
   },
   bubbleMe: {
     backgroundColor: colors.bubbleMe,
@@ -2909,7 +2933,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   mediaStack: {
-    maxWidth: '82%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
   },
   videoNoteHeaderBadge: {
     alignSelf: 'flex-start',
@@ -3081,7 +3105,7 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   repliedMediaBubble: {
-    maxWidth: '82%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
     paddingHorizontal: 6,
     paddingTop: 6,
     paddingBottom: 4,
@@ -3104,7 +3128,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 16,
-    maxWidth: '82%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
   },
   deletedBubbleMe: {
     backgroundColor: '#D8E8F9',

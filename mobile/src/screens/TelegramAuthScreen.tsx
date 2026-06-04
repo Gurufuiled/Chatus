@@ -12,10 +12,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
-import Reanimated, { useAnimatedKeyboard } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useFocusEffect,
@@ -41,10 +39,6 @@ import {
 } from "../stores/telegramAccountStore";
 import { requestContactsAndSync } from "../services/ContactSyncService";
 import {
-  useChatComposerDockPaddingBottom,
-  useChatComposerKeyboardLiftStyles,
-} from "../utils/chatComposerKeyboard";
-import {
   getAuthWizardStepIndex,
   resolveAuthWizardStep,
   showCodeDeliveryInfo,
@@ -55,6 +49,9 @@ import {
   readWaitPasswordAuthInfo,
 } from "./telegramAuth/tdlibAuthErrors";
 import { AuthWizardTextField } from "./telegramAuth/AuthWizardTextField";
+import { TelegramAuthPasswordDock } from "./telegramAuth/TelegramAuthPasswordDock";
+import { TelegramAuthPhoneFields } from "./telegramAuth/TelegramAuthPhoneFields";
+import { waitForAuthorizationTransition } from "./telegramAuth/tdlibAuthFlow";
 
 const WIZARD_STEPS: AuthWizardStep[] = ["phone", "code", "password"];
 
@@ -137,6 +134,13 @@ function withTimeout<T>(
   });
 }
 
+function isAuthFlowTimeout(message: string): boolean {
+  return (
+    message.includes("не подтвердил код за") ||
+    message.includes("не подтвердил пароль за")
+  );
+}
+
 function defaultPhoneNumberAuthenticationSettings(): Record<string, unknown> {
   return {
     "@type": "phoneNumberAuthenticationSettings",
@@ -169,6 +173,7 @@ export function TelegramAuthScreen() {
   const firstScreenFocus = useRef(true);
   /** Не уводить в чаты, если пользователь уже ушёл с экрана, а sync завершился позже. */
   const screenFocusedRef = useRef(false);
+  const authWaitAbortRef = useRef<AbortController | null>(null);
 
   const { apiId, apiHash } = useMemo(() => getTelegramBuildCredentials(), []);
   const isLight = resolvedScheme === "light";
@@ -203,6 +208,33 @@ export function TelegramAuthScreen() {
       ?.navigate("Chats", { screen: "ChatList" });
   }, [navigation]);
 
+  const completeAuthSuccess = useCallback(
+    async (options?: { navigateToChats?: boolean }) => {
+      telegramAccountStore.getState().setAuthStatus("ready");
+      telegramAccountStore.getState().setTelegramUserId(0);
+      await telegramAccountStore.getState().persistSnapshot();
+      requestContactsAndSync().catch(console.error);
+
+      if (navigation.canGoBack()) {
+        navigation.popToTop();
+      }
+
+      const goChats = options?.navigateToChats !== false;
+      if (goChats && screenFocusedRef.current) {
+        telegramAccountStore.getState().setDialogsSyncing(true);
+        openTelegramChats();
+        return;
+      }
+      if (goChats && !screenFocusedRef.current) {
+        Alert.alert(
+          "Telegram",
+          "Вход выполнен. Откройте вкладку «Чаты», чтобы увидеть диалоги Telegram.",
+        );
+      }
+    },
+    [navigation, openTelegramChats],
+  );
+
   const syncAuthorizationFromTdlib =
     useCallback(async (): Promise<TelegramAuthStatus> => {
       if (apiId == null || !apiHash) {
@@ -231,16 +263,13 @@ export function TelegramAuthScreen() {
         telegramAccountStore.getState().setAuthStatus("ready");
         await telegramAccountStore.getState().persistSnapshot();
         requestContactsAndSync().catch(console.error);
-        if (screenFocusedRef.current) {
-          openTelegramChats();
-        }
         return "ready";
       }
       const next = mapTdlibAuthToStore(t);
       telegramAccountStore.getState().setAuthStatus(next);
       await telegramAccountStore.getState().persistSnapshot();
       return next;
-    }, [apiHash, apiId, openTelegramChats]);
+    }, [apiHash, apiId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -271,12 +300,14 @@ export function TelegramAuthScreen() {
       return () => {
         cancelled = true;
         screenFocusedRef.current = false;
+        authWaitAbortRef.current?.abort();
+        authWaitAbortRef.current = null;
       };
     }, [apiHash, apiId, syncAuthorizationFromTdlib]),
   );
 
-  const submitPhone = useCallback(async () => {
-    const trimmed = normalizeTelegramPhone(phone);
+  const submitPhone = useCallback(async (rawPhone?: string) => {
+    const trimmed = normalizeTelegramPhone(rawPhone ?? phone);
     if (!trimmed || trimmed.length < 8) {
       Alert.alert(
         "Телефон",
@@ -297,7 +328,7 @@ export function TelegramAuthScreen() {
 
       const currentStatus = telegramAccountStore.getState().authStatus;
       if (currentStatus === "ready") {
-        if (screenFocusedRef.current) openTelegramChats();
+        if (navigation.canGoBack()) navigation.popToTop();
         return;
       }
       if (currentStatus === "waiting_code") {
@@ -329,9 +360,7 @@ export function TelegramAuthScreen() {
       const probeType = authProbe["@type"];
 
       if (probeType === "authorizationStateReady") {
-        telegramAccountStore.getState().setAuthStatus("ready");
-        await telegramAccountStore.getState().persistSnapshot();
-        if (screenFocusedRef.current) openTelegramChats();
+        await completeAuthSuccess();
         return;
       }
       if (
@@ -546,7 +575,7 @@ export function TelegramAuthScreen() {
     } finally {
       setBusy(false);
     }
-  }, [apiHash, apiId, phone, openTelegramChats]);
+  }, [apiHash, apiId, completeAuthSuccess, navigation, phone]);
 
   const resendAuthCode = useCallback(async () => {
     if (telegramAccountStore.getState().authStatus !== "waiting_code") return;
@@ -603,12 +632,11 @@ export function TelegramAuthScreen() {
     setBusy(true);
     try {
       setBootstrapError(null);
+      authWaitAbortRef.current?.abort();
+      authWaitAbortRef.current = new AbortController();
       const status = await syncAuthorizationFromTdlib();
       if (status === "ready") {
-        requestContactsAndSync().catch(console.error);
-        if (screenFocusedRef.current) {
-          openTelegramChats();
-        }
+        await completeAuthSuccess();
         return;
       }
       if (status === "waiting_password") {
@@ -623,48 +651,85 @@ export function TelegramAuthScreen() {
         return;
       }
       await runTdlibAuthorizationQuery(async () => {
-        if (telegramAccountStore.getState().authStatus !== "waiting_code")
+        const storeStatus = telegramAccountStore.getState().authStatus;
+        if (storeStatus === "ready") {
+          await completeAuthSuccess();
           return;
-        const codeRes = await tdlibClient.send({
-          "@type": "checkAuthenticationCode",
-          code: trimmed,
-        });
-        throwIfTdError(codeRes);
-        const auth = await tdlibClient.send({
-          "@type": "getAuthorizationState",
-        });
-        throwIfTdError(auth);
-        const authType = (auth as { "@type"?: string })["@type"];
-        if (authType === "authorizationStateWaitPassword") {
+        }
+        if (storeStatus === "waiting_password") {
+          void refreshPasswordStepInfo();
+          return;
+        }
+        if (storeStatus !== "waiting_code") {
+          throw new Error(
+            "Шаг входа изменился. Закройте экран и откройте «Telegram» в настройках снова.",
+          );
+        }
+        const nextState = await waitForAuthorizationTransition(
+          {
+            acceptStates: new Set([
+              "authorizationStateWaitPassword",
+              "authorizationStateReady",
+            ]),
+            timeoutMs: 90_000,
+            timeoutMessage:
+              "Telegram не подтвердил код за 90 секунд. Проверьте сеть и попробуйте снова.",
+            slowAfterMs: 12_000,
+            onSlow: () => {
+              if (screenFocusedRef.current) {
+                setBootstrapError(
+                  "Ожидаем ответ Telegram после кода… Если долго висит, закройте экран и попробуйте снова.",
+                );
+              }
+            },
+            abortSignal: authWaitAbortRef.current.signal,
+          },
+          () =>
+            tdlibClient.send({
+              "@type": "checkAuthenticationCode",
+              code: trimmed,
+            }),
+        );
+        setBootstrapError(null);
+        if (nextState === "authorizationStateWaitPassword") {
           telegramAccountStore.getState().setAuthStatus("waiting_password");
           await telegramAccountStore.getState().persistSnapshot();
           void refreshPasswordStepInfo();
           return;
         }
-        if (authType !== "authorizationStateReady") {
-          Alert.alert(
-            "Telegram",
-            `Неожиданное состояние после кода: ${authType ?? "?"}`,
-          );
+        if (nextState === "authorizationStateReady") {
+          await completeAuthSuccess();
           return;
         }
-        telegramAccountStore.getState().setAuthStatus("ready");
-        telegramAccountStore.getState().setTelegramUserId(0);
-        await telegramAccountStore.getState().persistSnapshot();
-        requestContactsAndSync().catch(console.error);
-        if (screenFocusedRef.current) {
-          openTelegramChats();
-        }
+        throw new Error(`Неожиданное состояние после кода: ${nextState ?? "?"}`);
       });
     } catch (e) {
-      Alert.alert("Telegram", e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      if (message !== "AUTH_FLOW_ABORTED") {
+        if (isAuthFlowTimeout(message)) {
+          const reconciled = await syncAuthorizationFromTdlib().catch(() => null);
+          if (reconciled === "waiting_password") {
+            setBootstrapError(null);
+            void refreshPasswordStepInfo();
+            return;
+          }
+          if (reconciled === "ready") {
+            setBootstrapError(null);
+            await completeAuthSuccess();
+            return;
+          }
+        }
+        Alert.alert("Telegram", message);
+      }
     } finally {
+      authWaitAbortRef.current = null;
       setBusy(false);
     }
-  }, [code, openTelegramChats, refreshPasswordStepInfo, syncAuthorizationFromTdlib]);
+  }, [code, completeAuthSuccess, refreshPasswordStepInfo, syncAuthorizationFromTdlib]);
 
   const submitPassword = useCallback(async () => {
-    if (!cloudPassword.trim()) {
+    const password = cloudPassword.trim();
+    if (!password) {
       Alert.alert(
         "Пароль",
         "Введите облачный пароль двухэтапной проверки из настроек Telegram.",
@@ -673,20 +738,22 @@ export function TelegramAuthScreen() {
     }
     setBusy(true);
     try {
-      setBootstrapError(null);
+      setBootstrapError("Проверяем пароль…");
+      authWaitAbortRef.current?.abort();
+      authWaitAbortRef.current = new AbortController();
       const status = await syncAuthorizationFromTdlib();
       if (status === "ready") {
-        requestContactsAndSync().catch(console.error);
-        if (screenFocusedRef.current) {
-          openTelegramChats();
-        }
+        setBootstrapError(null);
+        await completeAuthSuccess();
         return;
       }
       if (status === "waiting_code") {
+        setBootstrapError(null);
         Alert.alert("Telegram", "Сначала введите код подтверждения.");
         return;
       }
       if (status !== "waiting_password") {
+        setBootstrapError(null);
         Alert.alert(
           "Telegram",
           "Сессия сброшена или шаг изменился. Откройте экран заново.",
@@ -694,37 +761,64 @@ export function TelegramAuthScreen() {
         return;
       }
       await runTdlibAuthorizationQuery(async () => {
-        if (telegramAccountStore.getState().authStatus !== "waiting_password")
-          return;
-        const pwRes = await tdlibClient.send({
-          "@type": "checkAuthenticationPassword",
-          password: cloudPassword,
-        });
-        throwIfTdError(pwRes);
-        const auth = await tdlibClient.send({
-          "@type": "getAuthorizationState",
-        });
-        throwIfTdError(auth);
-        const authType = (auth as { "@type"?: string })["@type"];
-        if (authType !== "authorizationStateReady") {
-          Alert.alert("Telegram", `Сессия не готова: ${authType ?? "?"}`);
+        const storeStatus = telegramAccountStore.getState().authStatus;
+        if (storeStatus === "ready") {
+          await completeAuthSuccess();
           return;
         }
-        telegramAccountStore.getState().setAuthStatus("ready");
-        telegramAccountStore.getState().setTelegramUserId(0);
-        await telegramAccountStore.getState().persistSnapshot();
-        requestContactsAndSync().catch(console.error);
-        if (screenFocusedRef.current) {
-          openTelegramChats();
+        if (storeStatus !== "waiting_password") {
+          throw new Error(
+            "Шаг входа изменился. Закройте экран и откройте «Telegram» в настройках снова.",
+          );
         }
+        const nextState = await waitForAuthorizationTransition(
+          {
+            acceptStates: new Set(["authorizationStateReady"]),
+            timeoutMs: 90_000,
+            timeoutMessage:
+              "Telegram не подтвердил пароль за 90 секунд. Проверьте сеть и попробуйте снова.",
+            slowAfterMs: 12_000,
+            onSlow: () => {
+              if (screenFocusedRef.current) {
+                setBootstrapError(
+                  "Ожидаем ответ Telegram после пароля… Если долго висит, попробуйте открыть экран заново.",
+                );
+              }
+            },
+            abortSignal: authWaitAbortRef.current.signal,
+          },
+          () =>
+            tdlibClient.send({
+              "@type": "checkAuthenticationPassword",
+              password,
+            }),
+        );
+        if (nextState === "authorizationStateReady") {
+          setBootstrapError(null);
+          await completeAuthSuccess();
+          return;
+        }
+        throw new Error(`Сессия не готова: ${nextState ?? "?"}`);
       });
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
-      Alert.alert("Telegram", formatTdlibAuthError(raw));
+      if (raw !== "AUTH_FLOW_ABORTED") {
+        if (isAuthFlowTimeout(raw)) {
+          const reconciled = await syncAuthorizationFromTdlib().catch(() => null);
+          if (reconciled === "ready") {
+            setBootstrapError(null);
+            await completeAuthSuccess();
+            return;
+          }
+        }
+        setBootstrapError(null);
+        Alert.alert("Telegram", formatTdlibAuthError(raw));
+      }
     } finally {
+      authWaitAbortRef.current = null;
       setBusy(false);
     }
-  }, [cloudPassword, openTelegramChats, syncAuthorizationFromTdlib]);
+  }, [cloudPassword, completeAuthSuccess, syncAuthorizationFromTdlib]);
 
   const resetTg = useCallback(() => {
     Alert.alert(
@@ -744,17 +838,11 @@ export function TelegramAuthScreen() {
   }, []);
 
   const status = telegramAccountStore((s) => s.authStatus);
+
   const authStep = resolveAuthWizardStep(status);
   const wizardStepIndex = getAuthWizardStepIndex(authStep);
   const stepCopy = STEP_COPY[authStep];
   const insets = useSafeAreaInsets();
-  const animatedKeyboard = useAnimatedKeyboard();
-  const { dockAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(animatedKeyboard);
-  const composerDockPaddingBottom = useChatComposerDockPaddingBottom(
-    insets.bottom,
-  );
-  const passwordInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (authStep !== "password" || status !== "waiting_password") {
@@ -773,14 +861,7 @@ export function TelegramAuthScreen() {
     status === "error" ||
     status === "waiting_parameters";
   const showAuthForm = apiId != null && apiHash && status !== "ready";
-  const scrollBottomPad =
-    authStep === "password" ? 168 + composerDockPaddingBottom : 32;
-
-  useEffect(() => {
-    if (authStep !== "password" || preparing) return;
-    const timer = setTimeout(() => passwordInputRef.current?.focus(), 320);
-    return () => clearTimeout(timer);
-  }, [authStep, preparing]);
+  const scrollBottomPad = authStep === "password" ? 168 + Math.max(insets.bottom, 8) : 32;
 
   return (
     <View style={[styles.flex, { backgroundColor: colors.chatBackground }]}>
@@ -875,49 +956,18 @@ export function TelegramAuthScreen() {
         ) : null}
 
         {showAuthForm && authStep === "phone" ? (
-          <>
-            <AuthWizardTextField
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="+7 900 000-00-00"
-              placeholderTextColor={ui.placeholder}
-              keyboardType="phone-pad"
-              editable={!busy && !preparing}
-              style={inputFieldStyle}
-            />
-            <Pressable
-              onPress={() =>
-                Alert.alert(
-                  "Формат номера",
-                  "Международный формат: +7 и 10 цифр. Можно ввести 8 988… или 988… — подставим +7.",
-                )
-              }
-              hitSlop={8}
-            >
-              <Text style={[styles.linkHint, { color: colors.accent }]}>
-                Как ввести номер?
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void submitPhone()}
-              disabled={!canSendPhone || !phonePrimary}
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                styles.primaryBtnSpaced,
-                {
-                  backgroundColor: colors.accent,
-                  opacity:
-                    !canSendPhone || !phonePrimary ? 0.45 : pressed ? 0.9 : 1,
-                },
-              ]}
-            >
-              {busy && phonePrimary ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Получить код</Text>
-              )}
-            </Pressable>
-          </>
+          <TelegramAuthPhoneFields
+            phoneInitialValue={phone}
+            onCommitPhone={setPhone}
+            onSubmitPhone={(value) => void submitPhone(value)}
+            busy={busy}
+            preparing={preparing}
+            canSendPhone={!!canSendPhone}
+            phonePrimary={phonePrimary}
+            colors={colors}
+            ui={ui}
+            inputFieldStyle={inputFieldStyle}
+          />
         ) : null}
 
         {showAuthForm && authStep === "code" ? (
@@ -1009,60 +1059,19 @@ export function TelegramAuthScreen() {
       </ScrollView>
 
       {showAuthForm && authStep === "password" ? (
-        <Reanimated.View
-          style={[
-            styles.passwordDock,
-            dockAnimatedStyle,
-            {
-              backgroundColor: isLight
-                ? "#FFFFFF"
-                : colors.inputBackgroundSolid,
-              borderTopColor: ui.border,
-              paddingBottom: composerDockPaddingBottom,
-            },
-          ]}
-        >
-          <Text style={[styles.fieldLabel, { color: ui.label }]}>
-            Облачный пароль
-          </Text>
-          <AuthWizardTextField
-            ref={passwordInputRef}
-            value={cloudPassword}
-            onChangeText={setCloudPassword}
-            placeholder="Пароль 2FA"
-            placeholderTextColor={ui.placeholder}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="off"
-            textContentType="password"
-            spellCheck={false}
-            editable={!busy && !preparing}
-            style={[inputFieldStyle, styles.passwordDockInput]}
-          />
-          <Pressable
-            onPress={() => void submitPassword()}
-            disabled={busy || preparing || status !== "waiting_password"}
-            style={({ pressed }) => [
-              styles.primaryBtn,
-              {
-                backgroundColor: colors.accent,
-                opacity:
-                  busy || preparing || status !== "waiting_password"
-                    ? 0.45
-                    : pressed
-                      ? 0.9
-                      : 1,
-              },
-            ]}
-          >
-            {busy && status === "waiting_password" ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryBtnText}>Продолжить</Text>
-            )}
-          </Pressable>
-        </Reanimated.View>
+        <TelegramAuthPasswordDock
+          cloudPassword={cloudPassword}
+          onChangePassword={setCloudPassword}
+          onSubmit={() => void submitPassword()}
+          busy={busy}
+          preparing={preparing}
+          canSubmit={!busy && !preparing && status === "waiting_password"}
+          insetsBottom={insets.bottom}
+          colors={colors}
+          isLight={isLight}
+          ui={ui}
+          inputFieldStyle={inputFieldStyle}
+        />
       ) : null}
     </View>
   );
@@ -1131,14 +1140,4 @@ const styles = StyleSheet.create({
   secondaryBtnText: { fontWeight: "700", fontSize: 15 },
   resetWrap: { marginTop: 28 },
   resetText: { color: "#E53935", fontWeight: "600", fontSize: 15 },
-  passwordDock: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  passwordDockInput: { marginBottom: 10 },
 });

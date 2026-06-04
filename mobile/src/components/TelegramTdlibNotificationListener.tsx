@@ -49,6 +49,15 @@ export function TelegramTdlibNotificationListener() {
       void tryRegisterFcm();
     }
 
+    let persistAuthDebounce: ReturnType<typeof setTimeout> | null = null;
+    const scheduleAuthPersist = () => {
+      if (persistAuthDebounce) clearTimeout(persistAuthDebounce);
+      persistAuthDebounce = setTimeout(() => {
+        persistAuthDebounce = null;
+        void telegramAccountStore.getState().persistSnapshot();
+      }, 400);
+    };
+
     unsubTd = tdlibClient.subscribe((update) => {
       try {
         // Синхронизируем стор при получении push-события об изменении авторизации
@@ -63,7 +72,7 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateReady':
               if (store.authStatus !== 'ready') {
                 store.setAuthStatus('ready');
-                void store.persistSnapshot();
+                scheduleAuthPersist();
               }
               break;
             case 'authorizationStateWaitCode':
@@ -71,26 +80,27 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateWaitOtherDeviceConfirmation':
               if (store.authStatus !== 'waiting_code') {
                 store.setAuthStatus('waiting_code');
-                void store.persistSnapshot();
+                scheduleAuthPersist();
               }
               break;
             case 'authorizationStateWaitPassword':
               if (store.authStatus !== 'waiting_password') {
                 store.setAuthStatus('waiting_password');
-                void store.persistSnapshot();
+                scheduleAuthPersist();
               }
               break;
             case 'authorizationStateWaitPhoneNumber':
             case 'authorizationStateWaitEmailAddress':
             case 'authorizationStateWaitRegistration':
-              // Не перезаписываем состояния дальше по флоу — могла прийти гонка
+              // Во время активного ввода кода/пароля не откатываем шаг назад из-за гонки,
+              // но после завершения/сброса auth-flow позволяем вернуться на телефон.
               if (
                 store.authStatus !== 'waiting_code' &&
                 store.authStatus !== 'waiting_password' &&
                 store.authStatus !== 'ready'
               ) {
                 store.setAuthStatus('waiting_phone');
-                void store.persistSnapshot();
+                scheduleAuthPersist();
               }
               break;
             case 'authorizationStateLoggingOut':
@@ -98,7 +108,7 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateClosed':
               if (store.authStatus !== 'error') {
                 store.setAuthStatus('error');
-                void store.persistSnapshot();
+                scheduleAuthPersist();
               }
               break;
             default:
@@ -131,6 +141,7 @@ export function TelegramTdlibNotificationListener() {
     });
 
     return () => {
+      if (persistAuthDebounce) clearTimeout(persistAuthDebounce);
       unsubTd?.();
       unsubAuth?.();
     };

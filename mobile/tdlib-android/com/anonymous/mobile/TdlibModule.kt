@@ -1,5 +1,6 @@
 package com.anonymous.mobile
 
+import android.text.format.DateFormat
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -216,6 +217,16 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
   }
 
   override fun getName(): String = NAME
+
+  /** System Settings → 24-hour format (used by JS message time labels). */
+  @ReactMethod
+  fun getUses24HourClock(promise: Promise) {
+    try {
+      promise.resolve(DateFormat.is24HourFormat(reactContext))
+    } catch (e: Exception) {
+      promise.reject("E_TIME_FORMAT", e.message, e)
+    }
+  }
 
   @ReactMethod
   fun addListener(eventName: String) {}

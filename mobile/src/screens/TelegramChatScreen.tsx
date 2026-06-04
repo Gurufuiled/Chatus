@@ -2378,6 +2378,7 @@ export function TelegramChatScreen() {
 
       const incomingTextBubbleSolidStyle = [
         styles.bubble,
+        { alignSelf: 'flex-start' as const },
         textBubbleColorStyle,
         isChannel && styles.channelPostTextBubble,
         discussionFooterPaddingReset,

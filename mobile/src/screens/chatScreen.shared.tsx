@@ -62,10 +62,7 @@ export function findPrivateChatWithPeer(
   );
 }
 
-export function formatTime(ts: number): string {
-  const d = new Date(ts);
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-}
+export { formatMessageTime as formatTime } from '../utils/formatMessageTime';
 
 export function formatPlaybackRate(rate: number): string {
   const normalized = Math.abs(rate - Math.round(rate)) < 0.001 ? Math.round(rate).toString() : rate.toFixed(1);

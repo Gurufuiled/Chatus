@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
-
 import { REPLIED_VOICE_BUBBLE_WIDTH } from './chatScreen.shared';
+import { CHAT_BUBBLE_MAX_WIDTH_PCT } from '../presentation/chatBubbleMetrics';
 import type { ThemeColors } from '../theme/palettes';
 import { bubbleRadius, withAlpha } from '../theme/stylePrimitives';
 
@@ -220,7 +220,7 @@ export function buildChatScreenStyles(themeColors: ThemeColors) {
       paddingHorizontal: 10,
       paddingVertical: 7,
       borderRadius: 16,
-      maxWidth: '82%',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
     },
     bubbleMe: { backgroundColor: themeColors.bubbleMe },
     bubbleOther: {
@@ -246,10 +246,10 @@ export function buildChatScreenStyles(themeColors: ThemeColors) {
       borderRadius: 18,
     },
     mediaStack: {
-      maxWidth: '82%',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
     },
     repliedMediaBubble: {
-      maxWidth: '82%',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
       paddingHorizontal: 6,
       paddingTop: 6,
       paddingBottom: 4,
@@ -257,7 +257,7 @@ export function buildChatScreenStyles(themeColors: ThemeColors) {
     },
     repliedVoiceBubble: {
       width: REPLIED_VOICE_BUBBLE_WIDTH,
-      maxWidth: '82%',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
     },
     repliedMediaBubbleMe: {
       backgroundColor: themeColors.bubbleMe,
@@ -274,7 +274,7 @@ export function buildChatScreenStyles(themeColors: ThemeColors) {
       paddingHorizontal: 10,
       paddingVertical: 8,
       borderRadius: 16,
-      maxWidth: '82%',
+      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
     },
     deletedBubbleMe: {
       backgroundColor: '#D8E8F9',

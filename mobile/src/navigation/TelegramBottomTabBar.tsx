@@ -10,7 +10,9 @@ import { TelegramGlyph } from "../icons/telegram";
 import { TELEGRAM_TAB_GLYPHS } from "../icons/telegram/tabPaths";
 import type { MainTabParamList } from "./types";
 
-const TAB_BAR_HEIGHT = 49;
+import { MAIN_TAB_BAR_HEIGHT } from './mainTabMetrics';
+
+const TAB_BAR_HEIGHT = MAIN_TAB_BAR_HEIGHT;
 const HORIZONTAL_INSET = 8;
 
 type TabKey = "contacts" | "chats" | "settings";
@@ -192,7 +194,12 @@ export function TelegramBottomTabBar({
                 target: route.key,
                 canPreventDefault: true,
               });
-              if (!focused && !event.defaultPrevented) {
+              if (event.defaultPrevented) return;
+              if (routeName === "Settings") {
+                navigation.navigate("Settings", { screen: "SettingsMain" });
+                return;
+              }
+              if (!focused) {
                 navigation.navigate(route.name, route.params);
               }
             };

@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatListActionsMenu, ChatListRow, ChatListSkeleton, type ChatListMenuState } from '../components';
 import { TelegramDialogListRow } from '../components/TelegramDialogListRow';
+import { TelegramDialogsLoadingBanner } from '../components/TelegramDialogsLoadingBanner';
 import { resolveAvatarUrl } from '../config';
 import { ChatDao } from '../db/dao/ChatDao';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -540,6 +541,7 @@ export function ChatListScreen() {
           )
         }
       />
+      <TelegramDialogsLoadingBanner />
       <ChatListActionsMenu
         visible={menuState != null}
         menuState={menuState}

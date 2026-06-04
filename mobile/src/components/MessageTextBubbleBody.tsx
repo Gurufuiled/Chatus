@@ -2,45 +2,69 @@ import React from 'react';
 import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 
 type MessageTextBubbleBodyProps = {
-  text: string;
+  text?: string;
+  /** Optional rich text (e.g. search highlights); overrides `text` when set. */
+  children?: React.ReactNode;
   textStyle: StyleProp<TextStyle>;
   rowStyle?: StyleProp<ViewStyle>;
   meta: React.ReactNode;
-  /** Pass true if the meta contains a view count, so we pad with more spaces. */
+  /**
+   * When true (media captions under a full-width image), text uses the parent bubble width.
+   * When false (plain text), the block shrink-wraps like Telegram.
+   */
+  fillWidth?: boolean;
+  /** @deprecated kept for call-site compatibility. */
   hasViews?: boolean;
 };
 
-/** Текст + время/статус (как в Telegram): время position absolute, а в текст добавляются пробелы. */
+/**
+ * Text + time/status laid out like Telegram: a flex-wrap row where the meta sits at the end
+ * of the last line when it fits, otherwise wraps to a new line pinned to the right
+ * (`marginLeft: 'auto'`). Short messages keep the meta inline; long ones never overlap.
+ */
 export function MessageTextBubbleBody({
-  text,
+  text = '',
+  children,
   textStyle,
   rowStyle,
   meta,
-  hasViews = false,
+  fillWidth = false,
 }: MessageTextBubbleBodyProps) {
-  // \u00A0 is a non-breaking space
-  const spacer = hasViews 
-    ? '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0' 
-    : '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0';
+  const body = children ?? text;
 
   return (
-    <View style={[styles.container, rowStyle]}>
-      <Text style={textStyle}>
-        {text || ''}{spacer}
-      </Text>
-      <View style={styles.metaAbsolute}>{meta}</View>
+    <View style={[fillWidth ? styles.containerFill : styles.containerShrink, rowStyle]}>
+      <View style={styles.textMetaRow}>
+        <Text style={[textStyle, styles.messageText]}>{body}</Text>
+        <View style={styles.metaWrap}>{meta}</View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    position: 'relative',
-    alignSelf: 'stretch', // take full width up to maxWidth
+  containerShrink: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
-  metaAbsolute: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
+  containerFill: {
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  textMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+  },
+  messageText: {
+    flexShrink: 1,
+  },
+  metaWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    marginLeft: 'auto',
+    paddingLeft: 8,
+    flexShrink: 0,
   },
 });

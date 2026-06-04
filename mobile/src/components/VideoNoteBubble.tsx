@@ -956,6 +956,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const replySwipeEnabled =
     enableReplySwipe &&
     typeof onReplySwipe === 'function' &&
+    !isExpanded &&
     !isThumbScrubbing &&
     !isThumbScrubPending;
 
@@ -1353,6 +1354,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         accessibilityRole="button"
         accessibilityLabel={isExpanded ? 'Toggle video note playback' : 'Open video note'}
         onPress={handlePress}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         android_ripple={circleAndroidRipple}
         style={styles.pressableCircleHost}
       >

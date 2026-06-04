@@ -629,6 +629,7 @@ export function VideoBubble({
 
               {hasCaption ? (
                 <MessageTextBubbleBody
+                  fillWidth
                   text={caption ?? ''}
                   textStyle={[
                     styles.caption,

@@ -54,6 +54,8 @@ type TelegramAccountState = {
   phoneNumberHint: string | null;
   lastError: string | null;
   dialogs: TelegramDialogRow[];
+  /** `refreshTelegramDialogs` in flight — for chat-list loading banner. */
+  dialogsSyncing: boolean;
 };
 
 type TelegramAccountActions = {
@@ -64,6 +66,7 @@ type TelegramAccountActions = {
   setPhoneHint: (phone: string | null) => void;
   setLastError: (msg: string | null) => void;
   setDialogs: (rows: TelegramDialogRow[]) => void;
+  setDialogsSyncing: (syncing: boolean) => void;
   resetTelegramSession: () => Promise<void>;
 };
 
@@ -73,6 +76,7 @@ const initial: TelegramAccountState = {
   phoneNumberHint: null,
   lastError: null,
   dialogs: [],
+  dialogsSyncing: false,
 };
 
 export const telegramAccountStore = create<TelegramAccountState & TelegramAccountActions>((set, get) => ({
@@ -115,6 +119,7 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
   setPhoneHint: (phoneNumberHint) => set({ phoneNumberHint }),
   setLastError: (lastError) => set({ lastError }),
   setDialogs: (dialogs) => set({ dialogs: normalizeTelegramDialogRows(dialogs) }),
+  setDialogsSyncing: (dialogsSyncing) => set({ dialogsSyncing }),
 
   resetTelegramSession: async () => {
     try {

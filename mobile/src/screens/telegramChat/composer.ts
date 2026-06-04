@@ -51,9 +51,7 @@ export function formattedText(text?: string): Record<string, unknown> {
   };
 }
 
-export function formatTime(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+export { formatMessageTime as formatTime } from '../../utils/formatMessageTime';
 
 export function previewForUnsupported(kind: string | undefined): string {
   switch (kind) {

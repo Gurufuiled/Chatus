@@ -2,8 +2,8 @@ import { StyleSheet } from 'react-native';
 import type { ThemeColors } from '../../theme/palettes';
 import { bubbleRadius, withAlpha } from '../../theme/stylePrimitives';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../../presentation';
+import { TELEGRAM_CHAT_BUBBLE_MAX_WIDTH_PCT } from '../../presentation/chatBubbleMetrics';
 import {
-  CHAT_BUBBLE_MAX_WIDTH_PCT,
   CHAT_MESSAGE_WRAP_HORIZONTAL_PADDING,
   CHAT_MSG_HORIZONTAL_PADDING,
   CHAT_MSG_ROW_MARGIN_ISOLATED,
@@ -116,7 +116,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     },
     /** Медиа-баблы (фото/видео) — без padding `bubble`, как в Chatus `mediaStack`. */
     mediaStack: {
-      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
+      maxWidth: TELEGRAM_CHAT_BUBBLE_MAX_WIDTH_PCT,
     },
     mediaStackChannel: {
       maxWidth: '100%',
@@ -128,7 +128,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       ...bubbleRadius.mine,
     },
     bubble: {
-      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
+      maxWidth: TELEGRAM_CHAT_BUBBLE_MAX_WIDTH_PCT,
       borderRadius: 16,
       paddingHorizontal: 10,
       paddingVertical: 7,
@@ -166,7 +166,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       gap: 6,
     },
     fileBubbleWrap: {
-      maxWidth: CHAT_BUBBLE_MAX_WIDTH_PCT,
+      maxWidth: TELEGRAM_CHAT_BUBBLE_MAX_WIDTH_PCT,
       minWidth: 220,
     },
     empty: {
@@ -229,7 +229,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     /** Группа: бабл по содержимому, не на всю колонку (иначе ломается перенос текста). */
     groupIncomingBubbleMeasure: {
       alignSelf: 'flex-start',
-      maxWidth: '100%',
+      maxWidth: TELEGRAM_CHAT_BUBBLE_MAX_WIDTH_PCT,
       minWidth: 0,
     },
     groupMessageSurface: {

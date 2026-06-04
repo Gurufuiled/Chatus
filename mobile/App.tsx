@@ -21,6 +21,7 @@ import { uiStore } from './src/stores/uiStore';
 import { telegramAccountStore } from './src/stores/telegramAccountStore';
 import { TelegramTdlibNotificationListener } from './src/components/TelegramTdlibNotificationListener';
 import { ensureAndroidPushChannels } from './src/services/pushNotificationsService';
+import { prefetchMessageTimeFormat } from './src/utils/formatMessageTime';
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -34,6 +35,7 @@ export default function App() {
         await uiStore.getState().hydrateChatListFilter();
         await telegramAccountStore.getState().hydrate();
         await ensureAndroidPushChannels();
+        await prefetchMessageTimeFormat();
         return authService.restoreSession();
       })
       .then((session) => {

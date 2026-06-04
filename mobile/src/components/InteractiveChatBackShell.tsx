@@ -12,6 +12,8 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+/** Only touches that start in this band may activate interactive back (avoids bubble/video taps). */
+const BACK_GESTURE_EDGE_PX = 28;
 
 type Props = {
   navigation: NavigationProp<ParamListBase>;
@@ -43,8 +45,17 @@ export function InteractiveChatBackShell({ navigation, gestureEnabled, children 
     () =>
       Gesture.Pan()
         .enabled(gestureEnabled)
-        .activeOffsetX(18)
+        .manualActivation(true)
+        .activeOffsetX(22)
         .failOffsetY([-22, 22])
+        .onTouchesDown((event, stateManager) => {
+          const touch = event.allTouches[0];
+          if (touch && touch.x <= BACK_GESTURE_EDGE_PX) {
+            stateManager.activate();
+          } else {
+            stateManager.fail();
+          }
+        })
         .onUpdate((e) => {
           const x = Math.max(0, e.translationX);
           translateX.value = Math.min(x, SCREEN_WIDTH);

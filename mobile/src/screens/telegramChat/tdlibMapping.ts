@@ -163,6 +163,58 @@ export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
     .catch(() => undefined);
 }
 
+/** Voice notes are small — try a blocking download so incoming bubbles render without waiting for `updateFile`. */
+async function resolveTdVoiceFileUri(
+  file: Record<string, unknown> | null,
+  mediaLocalOnly: boolean,
+): Promise<string | null> {
+  const localUri = getTdFileLocalUri(file);
+  if (localUri) return localUri;
+  if (mediaLocalOnly) return null;
+
+  const fileId = getTdFileId(file);
+  if (fileId == null) return null;
+
+  try {
+    const downloaded = (await tdlibClient.send({
+      '@type': 'downloadFile',
+      file_id: fileId,
+      priority: 32,
+      offset: 0,
+      limit: 0,
+      synchronous: true,
+    })) as Record<string, unknown>;
+    throwIfTdError(downloaded);
+    return getTdlibFileLocalUri(downloaded) ?? getTdlibFileLocalUri(file);
+  } catch {
+    scheduleTdlibFileDownload(fileId);
+    return null;
+  }
+}
+
+function parseTdVoiceWaveform(voiceNote: Record<string, unknown> | null): number[] {
+  if (!voiceNote) return [];
+  const raw = voiceNote.waveform;
+  if (typeof raw === 'string' && raw.length > 0) {
+    try {
+      const binary = atob(raw);
+      const bars: number[] = [];
+      for (let i = 0; i < binary.length; i += 1) {
+        bars.push(binary.charCodeAt(i) / 31);
+      }
+      return bars;
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(raw)) {
+    return raw.map((value) =>
+      typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(1, value / 31)) : 0,
+    );
+  }
+  return [];
+}
+
 /** Largest cached file first; preview + async full download when only mini is available. */
 async function resolvePhotoUri(
   photo: Record<string, unknown> | null,
@@ -459,14 +511,9 @@ export async function mapTdMessage(
   if (kind === 'messageVoiceNote') {
     const voiceNote = getNestedRecord(content.voice_note);
     const voice = getNestedRecord(voiceNote?.voice);
-    const local = getNestedRecord(voice?.local);
-    const localPath = typeof local?.path === 'string' ? local.path.trim() : '';
-    const fileId = typeof voice?.id === 'number' ? voice.id : null;
-    const uri = localPath ? `file://${localPath}` : null;
+    const fileId = getTdFileId(voice);
+    const uri = await resolveTdVoiceFileUri(voice, mediaLocalOnly);
     const duration = typeof voiceNote?.duration === 'number' ? voiceNote.duration * 1000 : 0;
-    if (!uri && fileId != null && !mediaLocalOnly) {
-      scheduleTdlibFileDownload(fileId);
-    }
     return {
       ...base,
       kind: 'voice',
@@ -474,7 +521,7 @@ export async function mapTdMessage(
       voiceUri: uri,
       mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       durationMs: duration,
-      waveform: [],
+      waveform: parseTdVoiceWaveform(voiceNote),
     };
   }
 
@@ -573,6 +620,12 @@ function imageRowNeedsHydrate(row: TelegramMessageRow): boolean {
   return false;
 }
 
+function voiceRowNeedsHydrate(row: TelegramMessageRow): boolean {
+  if (row.kind !== 'voice' || row.messageId <= 0) return false;
+  const uri = row.voiceUri?.trim() ?? '';
+  return !uri || row.mediaFullFileId != null;
+}
+
 function collectMediaHydrateMessageIds(rows: TelegramMessageRow[]): number[] {
   const missingIds = new Set<number>();
   for (const row of rows) {
@@ -585,6 +638,9 @@ function collectMediaHydrateMessageIds(rows: TelegramMessageRow[]): number[] {
       continue;
     }
     if (imageRowNeedsHydrate(row)) {
+      missingIds.add(row.messageId);
+    }
+    if (voiceRowNeedsHydrate(row)) {
       missingIds.add(row.messageId);
     }
   }

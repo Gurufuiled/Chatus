@@ -10,6 +10,9 @@ import { buildChatRowLoadFailure } from './telegramDialogFallback';
 import { buildDialogPreviewFromChat, previewTextFromChat } from './telegramDialogPreview';
 import { scheduleTopTelegramChatsPreload } from './telegramChatPreload';
 
+/** Задержка перед фоновой предзагрузкой истории после первичного синка диалогов. */
+const PRELOAD_AFTER_SYNC_DELAY_MS = 2500;
+
 export function matchesDialogQuery(row: TelegramDialogRow, normalizedQuery: string) {
   const typeLabel =
     row.chatType === 'channel'
@@ -58,26 +61,34 @@ function parseChatType(chat: Record<string, unknown>): {
   return { chatType: 'private' };
 }
 
-function getChatAvatarFileId(chat: Record<string, unknown>): number | null {
+function getChatAvatarSmallFile(chat: Record<string, unknown>): Record<string, unknown> | null {
   const photo = getNestedRecord(chat.photo);
-  const small = getNestedRecord(photo?.small);
-  const id = small?.id;
-  return typeof id === 'number' ? id : null;
+  return getNestedRecord(photo?.small);
 }
 
-async function getLocalFilePath(fileId: number): Promise<string | null> {
-  const downloaded = (await tdlibClient.send({
-    '@type': 'downloadFile',
-    file_id: fileId,
-    priority: 1,
-    offset: 0,
-    limit: 0,
-    synchronous: true,
-  })) as Record<string, unknown>;
-  throwIfTdError(downloaded);
-  const local = getNestedRecord(downloaded.local);
-  const path = typeof local?.path === 'string' ? local.path.trim() : '';
+/** Локальный путь только если файл уже полностью скачан — без сетевого ожидания. */
+function localPathIfDownloaded(file: Record<string, unknown> | null): string | null {
+  const local = getNestedRecord(file?.local);
+  if (local?.is_downloading_completed !== true) return null;
+  const path = typeof local.path === 'string' ? local.path.trim() : '';
   return path ? `file://${path}` : null;
+}
+
+/**
+ * Фоновая (несинхронная) загрузка файла: не блокирует строку диалога.
+ * Результат подтянется при следующем обновлении списка (updateChat* события идут потоком при синке).
+ */
+function requestBackgroundDownload(fileId: number): void {
+  void tdlibClient
+    .send({
+      '@type': 'downloadFile',
+      file_id: fileId,
+      priority: 1,
+      offset: 0,
+      limit: 0,
+      synchronous: false,
+    })
+    .catch(() => undefined);
 }
 
 async function loadMemberCount(
@@ -123,10 +134,16 @@ export async function loadChatRow(
     const last = getNestedRecord(chat.last_message);
     const date = typeof last?.date === 'number' ? last.date * 1000 : null;
     const unreadCount = typeof chat.unread_count === 'number' ? chat.unread_count : 0;
-    const avatarFileId = getChatAvatarFileId(chat);
+    const avatarSmallFile = getChatAvatarSmallFile(chat);
+    // Аватар: используем уже скачанный путь (или прежний из снапшота) и не блокируем строку
+    // сетевой загрузкой — недостающие файлы догружаются в фоне и появятся при следующем рефреше.
+    const avatarUri = localPathIfDownloaded(avatarSmallFile) ?? previous?.avatarUri ?? null;
+    if (!avatarUri) {
+      const avatarFileId = typeof avatarSmallFile?.id === 'number' ? avatarSmallFile.id : null;
+      if (avatarFileId != null) requestBackgroundDownload(avatarFileId);
+    }
     const { chatType, supergroupId, basicGroupId } = parseChatType(chat);
-    const [avatarUri, memberCount, dialogPreview] = await Promise.all([
-      avatarFileId != null ? getLocalFilePath(avatarFileId).catch(() => null) : Promise.resolve(null),
+    const [memberCount, dialogPreview] = await Promise.all([
       loadMemberCount(supergroupId, basicGroupId),
       buildDialogPreviewFromChat(chat, chatId).catch(() => ({
         text: previewTextFromChat(chat),
@@ -154,6 +171,7 @@ export async function loadChatRow(
 }
 
 export async function refreshTelegramDialogs(): Promise<void> {
+  telegramAccountStore.getState().setDialogsSyncing(true);
   try {
     await applyTdlibParameters();
     const { ready, state } = await waitForTdlibAuthorizationReady();
@@ -210,9 +228,13 @@ export async function refreshTelegramDialogs(): Promise<void> {
     telegramAccountStore.getState().setDialogs(rows);
     telegramAccountStore.getState().setLastError(null);
     await telegramAccountStore.getState().persistSnapshot();
-    scheduleTopTelegramChatsPreload(rows);
+    // Предзагрузку истории топ-чатов запускаем с задержкой: сперва даём списку диалогов
+    // отрисоваться и не нагружаем нативный мост сразу после первичного синка.
+    setTimeout(() => scheduleTopTelegramChatsPreload(rows), PRELOAD_AFTER_SYNC_DELAY_MS);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     telegramAccountStore.getState().setLastError(msg);
+  } finally {
+    telegramAccountStore.getState().setDialogsSyncing(false);
   }
 }
