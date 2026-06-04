@@ -1497,7 +1497,7 @@ export function ChannelFeedScreen() {
           )
         ) {
           messageStore.getState().prependMessage(targetChatId, optimisticMessage);
-          const targetChat = chatStore.getState().chats.find((chat) => chat.id === targetChatId);
+          const targetChat = chatStore.getState().getChatById(targetChatId);
           if (targetChat) {
             chatStore.getState().updateChat({
               ...targetChat,

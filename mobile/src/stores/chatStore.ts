@@ -3,6 +3,7 @@ import type { Chat } from './types';
 
 type ChatState = {
   chats: Chat[];
+  chatsMap: Record<string, Chat>;
   selectedChatId: string | null;
   isLoading: boolean;
 };
@@ -18,10 +19,12 @@ type ChatActions = {
   setSelectedChat: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   clearChats: () => void;
+  getChatById: (chatId: string) => Chat | undefined;
 };
 
 const initialState: ChatState = {
   chats: [],
+  chatsMap: {},
   selectedChatId: null,
   isLoading: false,
 };
@@ -42,69 +45,93 @@ export const chatStore = create<ChatState & ChatActions>((set) => ({
   setChats: (chats) =>
     set((state) => {
       const existingMap = new Map(state.chats.map((c) => [c.id, c]));
+      const nextChats = chats.map((chat) =>
+        preserveLocalContactName(chat, existingMap.get(chat.id))
+      );
+      const chatsMap: Record<string, Chat> = {};
+      nextChats.forEach((c) => { chatsMap[c.id] = c; });
       return {
-        chats: chats.map((chat) =>
-          preserveLocalContactName(chat, existingMap.get(chat.id))
-        ),
+        chats: nextChats,
+        chatsMap,
       };
     }),
 
   addChat: (chat) =>
-    set((state) => ({
-      chats: state.chats.some((c) => c.id === chat.id)
-        ? state.chats
-        : [...state.chats, chat],
-    })),
+    set((state) => {
+      if (state.chatsMap[chat.id]) return state;
+      const nextChats = [...state.chats, chat];
+      return {
+        chats: nextChats,
+        chatsMap: { ...state.chatsMap, [chat.id]: chat },
+      };
+    }),
 
   addOrUpdateChat: (chat) =>
     set((state) => {
-      const idx = state.chats.findIndex((c) => c.id === chat.id);
-      if (idx >= 0) {
-        const next = [...state.chats];
-        next[idx] = preserveLocalContactName(chat, state.chats[idx]);
-        return { chats: next };
+      const existing = state.chatsMap[chat.id];
+      if (existing) {
+        const nextChat = preserveLocalContactName(chat, existing);
+        return {
+          chats: state.chats.map((c) => (c.id === chat.id ? nextChat : c)),
+          chatsMap: { ...state.chatsMap, [chat.id]: nextChat },
+        };
       }
-      return { chats: [chat, ...state.chats] };
+      return {
+        chats: [chat, ...state.chats],
+        chatsMap: { ...state.chatsMap, [chat.id]: chat },
+      };
     }),
 
   updateChat: (chat) =>
-    set((state) => ({
-      chats: state.chats.map((c) => (c.id === chat.id ? chat : c)),
-    })),
+    set((state) => {
+      const exists = state.chatsMap[chat.id];
+      if (!exists) return state;
+      return {
+        chats: state.chats.map((c) => (c.id === chat.id ? chat : c)),
+        chatsMap: { ...state.chatsMap, [chat.id]: chat },
+      };
+    }),
 
   incrementUnread: (chatId) =>
-    set((state) => ({
-      chats: state.chats.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              unread_count: (chat.unread_count ?? 0) + 1,
-            }
-          : chat
-      ),
-    })),
+    set((state) => {
+      const existing = state.chatsMap[chatId];
+      if (!existing) return state;
+      const updated = { ...existing, unread_count: (existing.unread_count ?? 0) + 1 };
+      return {
+        chats: state.chats.map((c) => (c.id === chatId ? updated : c)),
+        chatsMap: { ...state.chatsMap, [chatId]: updated },
+      };
+    }),
 
   clearUnread: (chatId) =>
-    set((state) => ({
-      chats: state.chats.map((chat) =>
-        chat.id === chatId && chat.unread_count !== 0
-          ? {
-              ...chat,
-              unread_count: 0,
-            }
-          : chat
-      ),
-    })),
+    set((state) => {
+      const existing = state.chatsMap[chatId];
+      if (!existing || existing.unread_count === 0) return state;
+      const updated = { ...existing, unread_count: 0 };
+      return {
+        chats: state.chats.map((c) => (c.id === chatId ? updated : c)),
+        chatsMap: { ...state.chatsMap, [chatId]: updated },
+      };
+    }),
 
   removeChat: (chatId) =>
-    set((state) => ({
-      chats: state.chats.filter((c) => c.id !== chatId),
-      selectedChatId: state.selectedChatId === chatId ? null : state.selectedChatId,
-    })),
+    set((state) => {
+      const nextChatsMap = { ...state.chatsMap };
+      delete nextChatsMap[chatId];
+      return {
+        chats: state.chats.filter((c) => c.id !== chatId),
+        chatsMap: nextChatsMap,
+        selectedChatId: state.selectedChatId === chatId ? null : state.selectedChatId,
+      };
+    }),
 
   setSelectedChat: (id) => set({ selectedChatId: id }),
 
   setLoading: (loading) => set({ isLoading: loading }),
 
   clearChats: () => set(initialState),
+
+  getChatById: (chatId: string) => {
+    return chatStore.getState().chatsMap[chatId];
+  },
 }));

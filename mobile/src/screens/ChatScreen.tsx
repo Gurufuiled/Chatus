@@ -864,7 +864,7 @@ export function ChatScreen() {
         if (privatePeerSummarySentRef.current === chatId) return;
 
         const uid = authStore.getState().user?.id ?? null;
-        const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+        const chat = chatStore.getState().getChatById(chatId);
         const peerId = getPrivateChatPeerUserId(chat, uid);
         if (!peerId) return;
 
@@ -905,7 +905,7 @@ export function ChatScreen() {
         if (gen !== groupLineSyncGenRef.current) return;
 
         const uid = authStore.getState().user?.id ?? null;
-        const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+        const chat = chatStore.getState().getChatById(chatId);
         const peerId = getGroupLineSyncPeerUserId(chat, uid);
         if (!peerId) return;
 
@@ -1712,7 +1712,7 @@ export function ChatScreen() {
         }, tempId)
       ) {
         messageStore.getState().prependMessage(targetChatId, optimisticMessage);
-        const targetChat = chatStore.getState().chats.find((chat) => chat.id === targetChatId);
+        const targetChat = chatStore.getState().getChatById(targetChatId);
         if (targetChat) {
           chatStore.getState().updateChat({
             ...targetChat,
@@ -1741,7 +1741,7 @@ export function ChatScreen() {
       SyncService.fetchMessagesForChat(targetChatId).catch(() => {});
     }, 250);
 
-    const targetChat = chatStore.getState().chats.find((chat) => chat.id === targetChatId);
+    const targetChat = chatStore.getState().getChatById(targetChatId);
     Alert.alert(
       'Переслано',
       sentCount === 1
@@ -1778,7 +1778,7 @@ export function ChatScreen() {
       return;
     }
 
-    const sourceChat = chatStore.getState().chats.find((c) => c.id === sourceChatId) ?? null;
+    const sourceChat = chatStore.getState().getChatById(sourceChatId) ?? null;
     const sourceChatTitle =
       sourceChat?.peer_display_name?.trim() ||
       sourceChat?.name?.trim() ||
@@ -1837,7 +1837,7 @@ export function ChatScreen() {
         onPress: () => {
           void (async () => {
             for (const message of selectedMessages) {
-              const chatSnapshot = chatStore.getState().chats.find((c) => c.id === chatId) ?? currentChat;
+              const chatSnapshot = chatStore.getState().getChatById(chatId) ?? currentChat;
               const pinId = chatSnapshot?.pinned_message_id ?? null;
               if (message.sender_id === currentUserId) {
                 messageStore.getState().updateMessage(chatId, message.id, {

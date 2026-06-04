@@ -403,7 +403,7 @@ class TransportServiceClass {
   private privateRelayMailboxFields(
     chatId: string,
   ): Record<string, never> | { relay_mailbox: true } {
-    const chat = chatStore.getState().chats.find((c) => c.id === chatId);
+    const chat = chatStore.getState().getChatById(chatId);
     return chat?.chat_type === 'private' ? { relay_mailbox: true as const } : {};
   }
 
@@ -658,7 +658,7 @@ class TransportServiceClass {
 
   private isPrivateChatForRelayMailbox(chatId: string, msgType: string): boolean {
     if (msgType !== 'text') return false;
-    const chat = chatStore.getState().chats.find((item) => item.id === chatId);
+    const chat = chatStore.getState().getChatById(chatId);
     return chat?.chat_type === 'private';
   }
 
@@ -745,7 +745,7 @@ class TransportServiceClass {
       const textRoute = resolvePrivateTextTransportRoute({
         enabled: P2P_FIRST_ENABLED,
         msgType,
-        chat: chatStore.getState().chats.find((item) => item.id === chatId),
+        chat: chatStore.getState().getChatById(chatId),
         currentUserId: authStore.getState().user?.id ?? null,
       });
 
@@ -797,7 +797,7 @@ class TransportServiceClass {
       });
 
       if (P2P_FIRST_ENABLED) {
-        const groupChat = chatStore.getState().chats.find((item) => item.id === chatId);
+        const groupChat = chatStore.getState().getChatById(chatId);
         const uid = authStore.getState().user?.id ?? null;
         if (groupChat?.chat_type === 'group' && uid) {
           const recipients = getOtherGroupMemberUserIds(groupChat, uid);
@@ -843,7 +843,7 @@ class TransportServiceClass {
         const mediaRoute = resolvePrivateMediaTransportRoute({
           enabled: P2P_FIRST_ENABLED,
           msgType: 'voice',
-          chat: chatStore.getState().chats.find((item) => item.id === chatId),
+          chat: chatStore.getState().getChatById(chatId),
           currentUserId: authStore.getState().user?.id ?? null,
         });
 
@@ -1022,7 +1022,7 @@ class TransportServiceClass {
         const mediaRoute = resolvePrivateMediaTransportRoute({
           enabled: P2P_FIRST_ENABLED,
           msgType: 'video_note',
-          chat: chatStore.getState().chats.find((item) => item.id === chatId),
+          chat: chatStore.getState().getChatById(chatId),
           currentUserId: authStore.getState().user?.id ?? null,
         });
 
@@ -1231,7 +1231,7 @@ class TransportServiceClass {
         const mediaRoute = resolvePrivateMediaTransportRoute({
           enabled: P2P_FIRST_ENABLED,
           msgType: 'image',
-          chat: chatStore.getState().chats.find((item) => item.id === chatId),
+          chat: chatStore.getState().getChatById(chatId),
           currentUserId: authStore.getState().user?.id ?? null,
         });
 
@@ -1432,7 +1432,7 @@ class TransportServiceClass {
         const mediaRoute = resolvePrivateMediaTransportRoute({
           enabled: P2P_FIRST_ENABLED,
           msgType: 'video',
-          chat: chatStore.getState().chats.find((item) => item.id === chatId),
+          chat: chatStore.getState().getChatById(chatId),
           currentUserId: authStore.getState().user?.id ?? null,
         });
 
@@ -1636,7 +1636,7 @@ class TransportServiceClass {
         const mediaRoute = resolvePrivateMediaTransportRoute({
           enabled: P2P_FIRST_ENABLED,
           msgType: albumRouteMsgType,
-          chat: chatStore.getState().chats.find((item) => item.id === chatId),
+          chat: chatStore.getState().getChatById(chatId),
           currentUserId: authStore.getState().user?.id ?? null,
         });
 
@@ -1802,7 +1802,7 @@ class TransportServiceClass {
         const mediaRoute = resolvePrivateMediaTransportRoute({
           enabled: P2P_FIRST_ENABLED,
           msgType: 'file',
-          chat: chatStore.getState().chats.find((item) => item.id === chatId),
+          chat: chatStore.getState().getChatById(chatId),
           currentUserId: authStore.getState().user?.id ?? null,
         });
 
