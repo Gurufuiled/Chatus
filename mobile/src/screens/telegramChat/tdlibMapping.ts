@@ -185,7 +185,7 @@ async function resolveTdVoiceFileUri(
       synchronous: true,
     })) as Record<string, unknown>;
     throwIfTdError(downloaded);
-    return getTdlibFileLocalUri(downloaded) ?? getTdlibFileLocalUri(file);
+    return getTdFileLocalUri(downloaded) ?? getTdFileLocalUri(file);
   } catch {
     scheduleTdlibFileDownload(fileId);
     return null;

@@ -360,7 +360,7 @@ export function GroupProfileScreen() {
 
   const chat = chatStore(
     useCallback(
-      (state) => state.chats.find((item) => item.id === chatId) ?? null,
+      (state) => state.getChatById(chatId) ?? null,
       [chatId]
     )
   );
@@ -407,7 +407,7 @@ export function GroupProfileScreen() {
   const members = useMemo(() => chat?.members ?? [], [chat]);
   const memberNameById = useMemo(
     () =>
-      members.reduce<Record<string, string>>((acc, member) => {
+      members.reduce((acc: Record<string, string>, member) => {
         acc[member.user_id] = getDisplayNameFromMember(member);
         return acc;
       }, {}),
