@@ -3,6 +3,7 @@
  */
 
 import { SignalingService } from './SignalingService';
+import { getSecureRandomString } from '../utils/secureRandom';
 
 import {
   dispatchRawPeerDeliverySignal,
@@ -68,7 +69,7 @@ class PeerDeliveryServiceClass {
       return { ok: false, reason: 'not_connected' };
     }
 
-    const ackKey = `${input.tempId}:${input.recipientUserId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+    const ackKey = `${input.tempId}:${input.recipientUserId}:${Date.now()}:${getSecureRandomString(8)}`;
 
     return new Promise<PeerDeliveryResult>((resolve) => {
       const timer = setTimeout(() => {

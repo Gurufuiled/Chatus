@@ -13,6 +13,7 @@ import {
 import { getWebRtcIceServers } from '../config';
 import { SignalingService } from './SignalingService';
 import { recordLineSyncDcEnsureOpen, recordLineSyncDcIncomingOpen } from './LineSyncTelemetry';
+import { getSecureRandomString } from '../utils/secureRandom';
 
 const DATA_CHANNEL_LABEL = 'linesync-blobs';
 const DEFAULT_OPEN_TIMEOUT_MS = 8000;
@@ -58,7 +59,7 @@ type Session = {
 };
 
 function makeSessionId(targetUserId: string): string {
-  return `lsdc-${Date.now()}-${targetUserId}-${Math.random().toString(36).slice(2, 10)}`;
+  return `lsdc-${Date.now()}-${targetUserId}-${getSecureRandomString(8)}`;
 }
 
 function normalizeSessionDescription(
