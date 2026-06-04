@@ -10,11 +10,15 @@ import {
   type MediaAlbumPickResult,
   type MediaPickResult,
 } from './InputBar';
+import type { SendChannelAnchorRect } from './SendChannelSelector';
 
 type ChatInputDockProps = {
   telegramAvailable?: boolean;
   sendChannel?: MessageSource;
   onSendChannelChange?: (channel: MessageSource) => void;
+  onSendChannelMenuOpen?: (anchor: SendChannelAnchorRect) => void;
+  onSendChannelMenuDismiss?: () => void;
+  composerFocusRef?: React.MutableRefObject<(() => void) | null>;
   onLayout: (event: LayoutChangeEvent) => void;
   animatedStyle: StyleProp<ViewStyle>;
   placeholder?: string;
@@ -41,6 +45,9 @@ export function ChatInputDock({
   telegramAvailable,
   sendChannel,
   onSendChannelChange,
+  onSendChannelMenuOpen,
+  onSendChannelMenuDismiss,
+  composerFocusRef,
   onLayout,
   animatedStyle,
   placeholder,
@@ -68,6 +75,9 @@ export function ChatInputDock({
         telegramAvailable={telegramAvailable}
         sendChannel={sendChannel as any}
         onSendChannelChange={onSendChannelChange as any}
+        onSendChannelMenuOpen={onSendChannelMenuOpen}
+        onSendChannelMenuDismiss={onSendChannelMenuDismiss}
+        composerFocusRef={composerFocusRef}
         placeholder={placeholder}
         onSendText={onSendText}
         onSendVoice={onSendVoice}

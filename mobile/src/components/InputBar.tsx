@@ -42,7 +42,7 @@ import { buildReplyPreviewText, getReplyPreviewThumbnailUri } from './ReplyPrevi
 import { usePeerFirstResolvedUri } from './peerFirstMedia';
 import { VideoNoteRecorder } from './VideoNoteRecorder';
 import { StickerPackSheet } from './StickerPackSheet';
-import { SendChannelSelector } from './SendChannelSelector';
+import type { SendChannelAnchorRect } from './SendChannelSelector';
 import { PlatformSourceIcon } from './PlatformSourceIcon';
 import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
 import {
@@ -125,6 +125,12 @@ export interface InputBarProps {
   sendChannel?: import('../stores/types').MessageSource;
   onSendChannelChange?: (channel: import('../stores/types').MessageSource) => void;
   telegramAvailable?: boolean;
+  /** Открыть меню выбора канала (рендер оверлея — на уровне экрана, без Modal). */
+  onSendChannelMenuOpen?: (anchor: SendChannelAnchorRect) => void;
+  /** Закрыть меню (например при blur экрана). */
+  onSendChannelMenuDismiss?: () => void;
+  /** Ref для возврата фокуса в TextInput после закрытия меню. */
+  composerFocusRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 type AttachmentAction = {
@@ -230,6 +236,9 @@ export function InputBar({
   sendChannel = 'chatus',
   onSendChannelChange,
   telegramAvailable = false,
+  onSendChannelMenuOpen,
+  onSendChannelMenuDismiss,
+  composerFocusRef,
 }: InputBarProps) {
   const { width: windowWidth } = useWindowDimensions();
   const narrowComposer = windowWidth < COMPOSER_NARROW_BREAKPOINT;
@@ -240,7 +249,7 @@ export function InputBar({
   const inputRef = useRef<TextInput>(null);
   const [stickerSheetVisible, setStickerSheetVisible] = useState(false);
   const [stickerSheetBootTab, setStickerSheetBootTab] = useState<StickerPanelTopTab | null>(null);
-  const [showChannelSelector, setShowChannelSelector] = useState(false);
+  const sendAnchorRef = useRef<View>(null);
   const [inputText, setInputText] = useState('');
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
@@ -584,9 +593,10 @@ export function InputBar({
       setShowAttachmentSheet(false);
       setShowVideoNoteRecorder(false);
       setStickerSheetVisible(false);
+      onSendChannelMenuDismiss?.();
       Keyboard.dismiss();
     }
-  }, [isScreenFocused]);
+  }, [isScreenFocused, onSendChannelMenuDismiss]);
 
   const beginVoiceRecording = useCallback(async () => {
     if (__DEV__) {
@@ -1030,6 +1040,28 @@ export function InputBar({
     setSelectedGalleryItems([]);
     setGalleryCaption('');
   }, []);
+
+  const focusComposerInput = useCallback(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!composerFocusRef) return;
+    composerFocusRef.current = focusComposerInput;
+    return () => {
+      composerFocusRef.current = null;
+    };
+  }, [composerFocusRef, focusComposerInput]);
+
+  const openSendChannelSelector = useCallback(() => {
+    if (!onSendChannelChange || !onSendChannelMenuOpen) return;
+    sendAnchorRef.current?.measureInWindow((x, y, width, height) => {
+      onSendChannelMenuOpen({ x, y, width, height });
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
+    });
+  }, [onSendChannelChange, onSendChannelMenuOpen]);
 
   const showAttachmentButton = onSendMedia != null || attachmentActions.length > 0;
 
@@ -1671,17 +1703,13 @@ export function InputBar({
               ) : null}
 
               {canSend ? (
-                <View style={{ position: 'relative', zIndex: 100 }}>
+                <View ref={sendAnchorRef} collapsable={false}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Отправить"
                     style={({ pressed }) => [styles.trailingAction, pressed && styles.trailingActionPressed]}
                     onPress={handleSend}
-                    onLongPress={() => {
-                      if (onSendChannelChange) {
-                        setShowChannelSelector(true);
-                      }
-                    }}
+                    onLongPress={openSendChannelSelector}
                   >
                     {onSendChannelChange && sendChannel === 'telegram' ? (
                       <PlatformSourceIcon source="telegram" size={20} />
@@ -1691,15 +1719,6 @@ export function InputBar({
                       <SendIcon />
                     )}
                   </Pressable>
-                  {onSendChannelChange && showChannelSelector && (
-                    <SendChannelSelector
-                      visible={showChannelSelector}
-                      currentChannel={sendChannel}
-                      onSelect={onSendChannelChange}
-                      onDismiss={() => setShowChannelSelector(false)}
-                      telegramAvailable={telegramAvailable}
-                    />
-                  )}
                 </View>
               ) : isChannelAdmin ? (
                 <Pressable
@@ -1773,6 +1792,7 @@ export function InputBar({
             onInitialTopTabSnapshotConsumed={handleStickerBootTabConsumed}
           />
         ) : null}
+
       </View>
 
       <InputAttachmentSheet
@@ -1815,6 +1835,7 @@ function createInputBarStyles(themeColors: ThemeColors) {
   /** Обёртка: подсказка в потоке над полем — иначе absolute уезжает за clip родителей */
   inputBarRoot: {
     width: '100%',
+    position: 'relative',
     overflow: 'visible',
   },
   inputRow: {

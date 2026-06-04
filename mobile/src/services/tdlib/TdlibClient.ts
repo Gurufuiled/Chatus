@@ -1,7 +1,9 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-type TdUpdateListener = (json: string) => void;
+export type TdlibUpdate = Record<string, unknown>;
+
+type TdUpdateListener = (update: TdlibUpdate) => void;
 
 const NATIVE_NAME = 'Tdlib';
 
@@ -24,29 +26,49 @@ function getNativeModule(): {
  * Thin client over native TDLib JSON bridge.
  * Android: {@link com.anonymous.mobile.TdlibModule} + libtdjson (see TDLIB.md).
  * iOS: same module name when Tdlib.swift is linked; until then — in-memory stub.
+ *
+ * Апдейты парсятся один раз и батчатся в rAF, чтобы не блокировать ввод с клавиатуры.
  */
 class TdlibClientImpl {
   private emitter: NativeEventEmitter | null = null;
   private listeners = new Set<TdUpdateListener>();
+  private pendingUpdates: TdlibUpdate[] = [];
+  private flushScheduled = false;
 
   constructor() {
     const mod = getNativeModule();
     if (mod && typeof mod.addListener === 'function') {
       this.emitter = new NativeEventEmitter(mod as never);
       this.emitter.addListener('td_json_update', (payload: { json?: string }) => {
-        if (payload?.json) this.dispatch(payload.json);
+        if (payload?.json) this.enqueue(payload.json);
       });
     }
   }
 
-  private dispatch(json: string) {
-    for (const l of this.listeners) {
-      try {
-        l(json);
-      } catch {
-        /* ignore */
-      }
+  private enqueue(json: string) {
+    let parsed: TdlibUpdate;
+    try {
+      parsed = JSON.parse(json) as TdlibUpdate;
+    } catch {
+      return;
     }
+    this.pendingUpdates.push(parsed);
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    requestAnimationFrame(() => {
+      this.flushScheduled = false;
+      const batch = this.pendingUpdates;
+      this.pendingUpdates = [];
+      for (const update of batch) {
+        for (const listener of this.listeners) {
+          try {
+            listener(update);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    });
   }
 
   subscribe(listener: TdUpdateListener): () => void {

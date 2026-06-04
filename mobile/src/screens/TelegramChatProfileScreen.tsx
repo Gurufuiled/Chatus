@@ -510,9 +510,8 @@ export function TelegramChatProfileScreen() {
     return () => scrollY.removeListener(id);
   }, [isHeroExpanded, scrollY]);
   useEffect(() => {
-    const unsubscribe = tdlibClient.subscribe((json) => {
+    const unsubscribe = tdlibClient.subscribe((update) => {
       try {
-        const update = JSON.parse(json) as Record<string, unknown>;
         const type = update['@type'];
         if (type === 'updateFile') {
           const file = getNestedRecord(update.file);

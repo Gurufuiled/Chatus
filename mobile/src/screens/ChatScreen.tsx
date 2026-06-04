@@ -32,6 +32,7 @@ import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import { messageStore } from '../stores/messageStore';
 import { useUnifiedMessages } from '../hooks/useUnifiedMessages';
+import { usePrivateChatPeerPhone } from '../hooks/usePrivateChatPeerPhone';
 import { MessageSource } from '../stores/types';
 
 import { LineSyncEventDao } from '../db';
@@ -62,6 +63,10 @@ import {
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from '../components';
+import {
+  SendChannelSelector,
+  type SendChannelAnchorRect,
+} from '../components/SendChannelSelector';
 import {
   stopActiveVideoNotePlayback,
   useVideoNotePlayer,
@@ -490,14 +495,70 @@ export function ChatScreen() {
   /** One successful LINE_SUMMARY send to a group peer per focus spell per chatId (C3). */
   const groupPeerSummarySentRef = useRef<string | null>(null);
 
-  const authUser = authStore.getState().user;
-  const initialChat = chatStore.getState().chats.find((c) => c.id === route.params.chatId);
-  const contactPhone = (initialChat as any)?.kind === 'direct' || (initialChat as any)?.kind === 'direct' ? (Object.values(initialChat.members).find((m: any) => m.id !== authUser?.id) as any)?.phoneNumber : undefined;
+  const contactPhone = usePrivateChatPeerPhone(chatId);
 
-  const { unifiedMessages, telegramAvailable, sendTelegramMessage } = useUnifiedMessages(route.params.chatId, contactPhone);
+  const {
+    unifiedMessages,
+    telegramAvailable,
+    telegramSendReady,
+    telegramBridgeResolving,
+    hasPeerPhone,
+    sendTelegramMessage,
+  } = useUnifiedMessages(chatId, contactPhone);
   const messages = unifiedMessages as any;
   const [sendChannel, setSendChannel] = useState<MessageSource>('chatus');
+
+  useEffect(() => {
+    setSendChannel('chatus');
+  }, [chatId]);
+  const [sendChannelMenu, setSendChannelMenu] = useState<{
+    visible: boolean;
+    anchor: SendChannelAnchorRect | null;
+  }>({ visible: false, anchor: null });
+  const composerFocusRef = useRef<(() => void) | null>(null);
   const [showTooltip, setShowTooltip] = useState(false);
+
+  const requestCloseSendChannelMenu = useCallback(() => {
+    setSendChannelMenu((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+  }, []);
+
+  const handleSendChannelMenuClosed = useCallback(() => {
+    setSendChannelMenu({ visible: false, anchor: null });
+    requestAnimationFrame(() => {
+      composerFocusRef.current?.();
+    });
+  }, []);
+
+  const handleSendChannelSelect = useCallback((channel: MessageSource) => {
+    setSendChannel(channel);
+    requestCloseSendChannelMenu();
+  }, [requestCloseSendChannelMenu]);
+
+  const trySendTelegramText = useCallback(
+    (text: string) => {
+      if (!sendTelegramMessage) return;
+      if (!hasPeerPhone) {
+        Alert.alert(
+          'Telegram',
+          'Не удалось определить номер контакта в Chatus. Попросите собеседника указать телефон в профиле или добавьте его номер в телефонную книгу и синхронизируйте контакты.',
+        );
+        return;
+      }
+      if (!telegramSendReady) {
+        Alert.alert(
+          'Telegram',
+          telegramBridgeResolving
+            ? 'Подключаем чат в Telegram… Подождите секунду и отправьте снова.'
+            : 'Не удалось открыть чат в Telegram по этому номеру. Убедитесь, что номер совпадает с Telegram и у контакта разрешён поиск по номеру.',
+        );
+        return;
+      }
+      void sendTelegramMessage(text).catch(() => {
+        Alert.alert('Telegram', 'Не удалось отправить сообщение.');
+      });
+    },
+    [sendTelegramMessage, hasPeerPhone, telegramSendReady, telegramBridgeResolving],
+  );
 
   useEffect(() => {
     // using memory flag for now as requested
@@ -2979,8 +3040,8 @@ export function ChatScreen() {
               { paddingBottom: composerDockPaddingBottom },
             ]}
             onSendText={(text) => {
-              if (sendChannel === 'telegram' && sendTelegramMessage) {
-                sendTelegramMessage(text);
+              if (sendChannel === 'telegram') {
+                trySendTelegramText(text);
               } else {
                 handleSendText(text);
               }
@@ -3030,10 +3091,27 @@ export function ChatScreen() {
             telegramAvailable={telegramAvailable}
             sendChannel={sendChannel}
             onSendChannelChange={setSendChannel}
+            onSendChannelMenuOpen={(anchor) => {
+              setSendChannelMenu({ visible: true, anchor });
+            }}
+            onSendChannelMenuDismiss={requestCloseSendChannelMenu}
+            composerFocusRef={composerFocusRef}
           />
         )}
       </BlurTargetView>
       </InteractiveChatBackShell>
+
+      {sendChannelMenu.anchor ? (
+        <SendChannelSelector
+          visible={sendChannelMenu.visible}
+          anchor={sendChannelMenu.anchor}
+          currentChannel={sendChannel}
+          telegramAvailable={telegramAvailable}
+          onSelect={handleSendChannelSelect}
+          onDismiss={requestCloseSendChannelMenu}
+          onClosed={handleSendChannelMenuClosed}
+        />
+      ) : null}
 
       <ChatContextMenuOverlay
         menuState={menuState}

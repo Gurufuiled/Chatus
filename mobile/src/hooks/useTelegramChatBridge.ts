@@ -1,102 +1,160 @@
 import { useEffect, useState } from 'react';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
-type TdlibMessage = any;
 import { telegramAccountStore } from '../stores/telegramAccountStore';
+import { normalizePhoneForTdlib } from '../utils/telegramPhone';
+
+type TdlibMessage = { '@type'?: string; [key: string]: unknown };
+
+async function resolveTelegramUserIdByPhone(normalizedPhone: string): Promise<number | null> {
+  const search = await tdlibClient.send({
+    '@type': 'searchUserByPhoneNumber',
+    phone_number: normalizedPhone,
+  });
+
+  if (search['@type'] === 'user' && typeof (search as { id?: number }).id === 'number') {
+    return (search as { id: number }).id;
+  }
+
+  if (search['@type'] === 'error') {
+    const message = String((search as { message?: string }).message ?? '');
+    if (__DEV__) {
+      console.warn('[useTelegramChatBridge] searchUserByPhoneNumber:', message);
+    }
+  }
+
+  try {
+    await tdlibClient.send({
+      '@type': 'importContacts',
+      contacts: [
+        {
+          '@type': 'contact',
+          phone_number: normalizedPhone,
+          first_name: 'Chatus',
+          last_name: 'Contact',
+        },
+      ],
+    });
+  } catch (err) {
+    if (__DEV__) {
+      console.warn('[useTelegramChatBridge] importContacts failed', err);
+    }
+  }
+
+  const retry = await tdlibClient.send({
+    '@type': 'searchUserByPhoneNumber',
+    phone_number: normalizedPhone,
+  });
+
+  if (retry['@type'] === 'user' && typeof (retry as { id?: number }).id === 'number') {
+    return (retry as { id: number }).id;
+  }
+
+  return null;
+}
 
 export function useTelegramChatBridge(contactPhoneNumber: string) {
   const [messages, setMessages] = useState<TdlibMessage[]>([]);
   const [chatId, setChatId] = useState<number | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(telegramAccountStore.getState().authStatus === 'ready');
-    useEffect(() => {
-      const unsub = telegramAccountStore.subscribe((state) => {
-         setIsAuthReady(state.authStatus === 'ready');
-      });
-      return unsub;
-    }, []);
 
   useEffect(() => {
-    if (!isAuthReady || !contactPhoneNumber) return;
+    const unsub = telegramAccountStore.subscribe((state) => {
+      setIsAuthReady(state.authStatus === 'ready');
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const normalizedPhone = normalizePhoneForTdlib(contactPhoneNumber);
+    if (!isAuthReady || !normalizedPhone) {
+      setChatId(null);
+      setMessages([]);
+      setIsResolving(false);
+      return;
+    }
 
     let mounted = true;
     let localChatId: number | null = null;
 
     async function init() {
+      setIsResolving(true);
       try {
-        // Find user by phone number
-        const userRes = await tdlibClient.send({
-          '@type': 'searchUserByPhoneNumber',
-          phone_number: contactPhoneNumber
-        });
-
-        if (userRes['@type'] !== 'user' || !(userRes as any).id) {
-            return;
+        const userId = await resolveTelegramUserIdByPhone(normalizedPhone);
+        if (!mounted || userId == null) {
+          return;
         }
 
-        // Get or create private chat
         const chatRes = await tdlibClient.send({
           '@type': 'createPrivateChat',
-          user_id: (userRes as any).id,
-          force: false
+          user_id: userId,
+          force: false,
         });
 
-        if (chatRes['@type'] !== 'chat' || !(chatRes as any).id) {
-            return;
+        if (chatRes['@type'] !== 'chat' || typeof (chatRes as { id?: number }).id !== 'number') {
+          return;
         }
 
-        localChatId = (chatRes as any).id;
+        localChatId = (chatRes as { id: number }).id;
         if (mounted) {
-            setChatId(localChatId);
+          setChatId(localChatId);
         }
 
-        // Open chat to subscribe to updates
         await tdlibClient.send({
-            '@type': 'openChat',
-            chat_id: localChatId
+          '@type': 'openChat',
+          chat_id: localChatId,
         });
 
-        // Load initial history
         const historyRes = await tdlibClient.send({
-            '@type': 'getChatHistory',
-            chat_id: localChatId,
-            from_message_id: 0,
-            offset: 0,
-            limit: 50,
-            only_local: false
+          '@type': 'getChatHistory',
+          chat_id: localChatId,
+          from_message_id: 0,
+          offset: 0,
+          limit: 50,
+          only_local: false,
         });
 
         if (historyRes['@type'] === 'messages' && mounted) {
-            setMessages((historyRes as any).messages || []);
+          setMessages(((historyRes as { messages?: TdlibMessage[] }).messages ?? []) as TdlibMessage[]);
         }
-
       } catch (err) {
         console.error('[useTelegramChatBridge] Initialization error:', err);
+      } finally {
+        if (mounted) {
+          setIsResolving(false);
+        }
       }
     }
 
-    init();
+    void init();
 
-    const unsub = tdlibClient.subscribe((event) => {
-        if (!mounted || !localChatId) return;
+    const unsub = tdlibClient.subscribe((update) => {
+      if (!mounted || !localChatId) return;
 
-        if (event['@type'] === 'updateNewMessage' && (event as any).message?.chat_id === localChatId) {
-            setMessages(prev => [(event as any).message, ...prev]);
-        }
+      if (
+        update['@type'] === 'updateNewMessage' &&
+        (update as { message?: { chat_id?: number } }).message?.chat_id === localChatId
+      ) {
+        setMessages((prev) => [(update as { message: TdlibMessage }).message, ...prev]);
+      }
     });
 
     return () => {
-        mounted = false;
-        unsub();
-        if (localChatId) {
-            tdlibClient.send({
-                '@type': 'closeChat',
-                chat_id: localChatId
-            }).catch(() => {});
-        }
+      mounted = false;
+      unsub();
+      if (localChatId) {
+        tdlibClient.send({
+          '@type': 'closeChat',
+          chat_id: localChatId,
+        }).catch(() => {});
+      }
     };
   }, [contactPhoneNumber, isAuthReady]);
 
   const sendMessage = async (text: string) => {
-    if (!chatId) return;
+    if (!chatId) {
+      throw new Error('Telegram chat is not ready');
+    }
 
     await tdlibClient.send({
       '@type': 'sendMessage',
@@ -105,11 +163,11 @@ export function useTelegramChatBridge(contactPhoneNumber: string) {
         '@type': 'inputMessageText',
         text: {
           '@type': 'formattedText',
-          text: text
-        }
-      }
+          text,
+        },
+      },
     });
   };
 
-  return { messages, chatId, sendMessage };
+  return { messages, chatId, sendMessage, isResolving };
 }

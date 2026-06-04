@@ -123,6 +123,7 @@ interface ApiChat {
       handle: string | null;
       display_name: string | null;
       avatar_url: string | null;
+      phone?: string | null;
       is_online: boolean;
       last_seen: number | null;
     };

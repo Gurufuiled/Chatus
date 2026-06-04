@@ -116,6 +116,7 @@ export type MappedChatMember = {
     handle: string | null;
     display_name: string | null;
     avatar_url: string | null;
+    phone: string | null;
     is_online: boolean;
     last_seen: number | null;
   };
@@ -139,6 +140,7 @@ export function mapChatMember(member: ChatMember & { user?: User | null }): Mapp
             handle: member.user.handle ?? null,
             display_name: member.user.displayName ?? null,
             avatar_url: member.user.avatarUrl ?? null,
+            phone: member.user.phone ?? null,
             is_online: member.user.isOnline,
             last_seen: dateToUnixMs(member.user.lastSeen),
           }

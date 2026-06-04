@@ -22,6 +22,26 @@ import java.util.concurrent.ConcurrentHashMap
  * не крутился — ответ на запрос не доходил до JS и срабатывал таймаут (в т.ч. на
  * `setAuthenticationPhoneNumber`).
  */
+/** Апдейты, которые слушает JS. Остальные (online, typing, stories…) не шлём в RN — иначе лагает ввод. */
+private fun shouldEmitUpdateToJs(updateType: String): Boolean =
+  when (updateType) {
+    "updateAuthorizationState",
+    "updateNewMessage",
+    "updateMessageSendSucceeded",
+    "updateMessageSendFailed",
+    "updateFile",
+    "updateChatPinnedMessage",
+    "updateDeleteMessages",
+    "updateChatReadOutbox",
+    "updateNewChat",
+    "updateChatLastMessage",
+    "updateChatPosition",
+    "updateChatReadInbox",
+    "updateChatTitle",
+    -> true
+    else -> false
+  }
+
 @ReactModule(name = TdlibModule.NAME)
 class TdlibModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -174,6 +194,9 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     if (updateType == "updateAuthorizationState") {
       val innerState = obj.optJSONObject("authorization_state")?.optString("@type", "?") ?: "?"
       Log.d(TAG, "updateAuthorizationState → $innerState")
+    }
+    if (!shouldEmitUpdateToJs(updateType)) {
+      return
     }
     mainHandler.post {
       if (destroyed) return@post

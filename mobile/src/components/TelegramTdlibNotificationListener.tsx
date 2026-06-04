@@ -49,10 +49,8 @@ export function TelegramTdlibNotificationListener() {
       void tryRegisterFcm();
     }
 
-    unsubTd = tdlibClient.subscribe((json) => {
+    unsubTd = tdlibClient.subscribe((update) => {
       try {
-        const update = JSON.parse(json) as Record<string, unknown>;
-
         // Синхронизируем стор при получении push-события об изменении авторизации
         if (update['@type'] === 'updateAuthorizationState') {
           const authState = update['authorization_state'] as Record<string, unknown> | undefined;

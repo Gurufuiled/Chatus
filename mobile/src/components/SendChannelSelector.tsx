@@ -1,159 +1,225 @@
 import * as React from 'react';
-import { useEffect } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Reanimated, {
+  Easing,
+  runOnJS,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSpring,
-  runOnJS,
 } from 'react-native-reanimated';
 import type { MessageSource } from '../stores/types';
 import { PlatformSourceIcon } from './PlatformSourceIcon';
 import { useTheme } from '../contexts/ThemeContext';
 
+export type SendChannelAnchorRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 interface SendChannelSelectorProps {
   visible: boolean;
   currentChannel: MessageSource;
   onSelect: (channel: MessageSource) => void;
+  /** Запрос закрытия (родитель ставит visible=false). */
   onDismiss: () => void;
+  /** После анимации схлопывания в кнопку — очистка anchor и возврат фокуса в поле. */
+  onClosed?: () => void;
   telegramAvailable: boolean;
+  anchor?: SendChannelAnchorRect | null;
 }
+
+const GAP_ABOVE_SEND = 8;
+/** Смещение вниз при схлопывании — в сторону кнопки «Отправить». */
+const COLLAPSE_TRANSLATE_Y = 28;
+const COLLAPSE_SCALE = 0.42;
+const OPEN_DURATION_MS = 180;
+const OPEN_EASING = Easing.out(Easing.cubic);
+const CLOSE_DURATION_MS = 200;
 
 export function SendChannelSelector({
   visible,
   currentChannel,
   onSelect,
   onDismiss,
+  onClosed,
   telegramAvailable,
+  anchor,
 }: SendChannelSelectorProps) {
   const { colors: themeColors } = useTheme();
-  const translateY = useSharedValue(8);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const translateY = useSharedValue(COLLAPSE_TRANSLATE_Y);
   const opacity = useSharedValue(0);
-  const scale = useSharedValue(0.95);
+  const scale = useSharedValue(COLLAPSE_SCALE);
+  const mountTimeRef = React.useRef(0);
+  const [mounted, setMounted] = useState(visible);
+
+  const finishClose = React.useCallback(() => {
+    setMounted(false);
+    onClosed?.();
+  }, [onClosed]);
 
   useEffect(() => {
     if (visible) {
-      translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
-      opacity.value = withTiming(1, { duration: 120 });
-      scale.value = withSpring(1, { damping: 18, stiffness: 280 });
-    } else {
-      translateY.value = withTiming(8, { duration: 120 });
-      opacity.value = withTiming(0, { duration: 120 });
-      scale.value = withTiming(0.95, { duration: 120 });
+      setMounted(true);
+      mountTimeRef.current = Date.now();
+      translateY.value = COLLAPSE_TRANSLATE_Y;
+      opacity.value = 0;
+      scale.value = COLLAPSE_SCALE;
+      translateY.value = withTiming(0, { duration: OPEN_DURATION_MS, easing: OPEN_EASING });
+      opacity.value = withTiming(1, { duration: OPEN_DURATION_MS, easing: OPEN_EASING });
+      scale.value = withTiming(1, { duration: OPEN_DURATION_MS, easing: OPEN_EASING });
+      return;
     }
-  }, [visible, translateY, opacity, scale]);
+    if (!mounted) return;
+    translateY.value = withTiming(COLLAPSE_TRANSLATE_Y, {
+      duration: CLOSE_DURATION_MS,
+      easing: Easing.in(Easing.cubic),
+    });
+    opacity.value = withTiming(0, { duration: CLOSE_DURATION_MS - 20, easing: Easing.in(Easing.quad) });
+    scale.value = withTiming(COLLAPSE_SCALE, { duration: CLOSE_DURATION_MS, easing: Easing.in(Easing.cubic) }, (finished) => {
+      if (finished) {
+        runOnJS(finishClose)();
+      }
+    });
+  }, [visible, mounted, translateY, opacity, scale, finishClose]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ] as any,
+    transform: [{ translateY: translateY.value }, { scale: scale.value }] as ViewStyle['transform'],
     opacity: opacity.value,
   }));
 
-  if (!visible && opacity.value === 0) return null;
+  if (!mounted) return null;
+
+  const tryDismiss = () => {
+    const elapsed = Date.now() - mountTimeRef.current;
+    if (elapsed > 280) {
+      onDismiss();
+    }
+  };
+
+  const panelStyle: StyleProp<ViewStyle> = [
+    styles.popover,
+    {
+      backgroundColor: themeColors.composerSurface,
+      borderColor: themeColors.composerBorder,
+    },
+    animatedStyle,
+  ];
+
+  const anchoredPanelStyle: StyleProp<ViewStyle> = anchor
+    ? {
+        position: 'absolute',
+        right: Math.max(10, windowWidth - anchor.x - anchor.width),
+        bottom: Math.max(12, windowHeight - anchor.y + GAP_ABOVE_SEND),
+      }
+    : styles.anchorFallback;
 
   return (
-    <>
-      {/* Transparent dismiss overlay — covers entire screen via large negative insets */}
+    <View style={styles.overlayRoot} pointerEvents="box-none">
       <Pressable
-        style={styles.dismissOverlay}
-        onPress={onDismiss}
+        style={styles.backdrop}
+        accessibilityRole="button"
+        accessibilityLabel="Закрыть выбор канала"
+        onPress={tryDismiss}
       />
-      {/* Popover container — positioned above the parent wrapper */}
-      <Reanimated.View
-        style={[
-          styles.popover,
-          {
-            backgroundColor: themeColors.composerSurface,
-            borderColor: themeColors.composerBorder,
-          },
-          animatedStyle,
-        ]}
-      >
-        <Text style={[styles.title, { color: themeColors.textPrimary }]}>
-          Отправить через
-        </Text>
-
-        <Pressable
-          style={[
-            styles.option,
-            { backgroundColor: themeColors.inputBackground },
-            currentChannel === 'chatus' && styles.optionSelected,
-          ]}
-          onPress={() => {
-            onSelect('chatus');
-            onDismiss();
-          }}
-        >
-          <PlatformSourceIcon source="chatus" size={24} style={styles.icon} />
-          <Text
-            style={[
-              styles.optionText,
-              { color: themeColors.textPrimary },
-              currentChannel === 'chatus' && styles.optionTextSelected,
-            ]}
-          >
-            Chatus
+      <View style={styles.anchorLayer} pointerEvents="box-none">
+        <Reanimated.View style={[panelStyle, anchoredPanelStyle]}>
+          <Text style={[styles.title, { color: themeColors.textPrimary }]}>
+            Отправить через
           </Text>
-        </Pressable>
 
-        {telegramAvailable && (
           <Pressable
             style={[
               styles.option,
               { backgroundColor: themeColors.inputBackground },
-              currentChannel === 'telegram' && styles.optionSelected,
+              currentChannel === 'chatus' && styles.optionSelected,
             ]}
             onPress={() => {
-              onSelect('telegram');
+              onSelect('chatus');
               onDismiss();
             }}
           >
-            <PlatformSourceIcon source="telegram" size={24} style={styles.icon} />
+            <PlatformSourceIcon source="chatus" size={24} style={styles.icon} />
             <Text
               style={[
                 styles.optionText,
                 { color: themeColors.textPrimary },
-                currentChannel === 'telegram' && styles.optionTextSelected,
+                currentChannel === 'chatus' && styles.optionTextSelected,
               ]}
             >
-              Telegram
+              Chatus
             </Text>
           </Pressable>
-        )}
-      </Reanimated.View>
-    </>
+
+          {telegramAvailable ? (
+            <Pressable
+              style={[
+                styles.option,
+                { backgroundColor: themeColors.inputBackground },
+                currentChannel === 'telegram' && styles.optionSelected,
+              ]}
+              onPress={() => {
+                onSelect('telegram');
+                onDismiss();
+              }}
+            >
+              <PlatformSourceIcon source="telegram" size={24} style={styles.icon} />
+              <Text
+                style={[
+                  styles.optionText,
+                  { color: themeColors.textPrimary },
+                  currentChannel === 'telegram' && styles.optionTextSelected,
+                ]}
+              >
+                Telegram
+              </Text>
+            </Pressable>
+          ) : null}
+        </Reanimated.View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  dismissOverlay: {
+  overlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 200,
+    elevation: 200,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.14)',
+  },
+  anchorLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  anchorFallback: {
     position: 'absolute',
-    top: -9999,
-    left: -9999,
-    right: -9999,
-    bottom: -9999,
-    zIndex: 0,
+    right: 14,
+    bottom: 96,
   },
   popover: {
-    position: 'absolute',
-    bottom: '100%',
-    right: 0,
-    minWidth: 200,
+    minWidth: 220,
     borderRadius: 14,
     padding: 12,
-    marginBottom: 8,
     borderWidth: StyleSheet.hairlineWidth,
-    zIndex: 1,
-    // iOS shadow
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    // Android elevation
-    elevation: 8,
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    elevation: 12,
   },
   title: {
     fontSize: 14,
@@ -170,7 +236,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   optionSelected: {
-    backgroundColor: 'rgba(52, 165, 228, 0.1)',
+    backgroundColor: 'rgba(52, 165, 228, 0.12)',
     borderColor: '#34A5E4',
     borderWidth: 1,
   },

@@ -80,19 +80,19 @@ async function doApplyTdlibParameters(): Promise<void> {
   }
   const { databaseDir, filesDir } = await getTdlibDirectories();
 
-  // Включаем TDLib verbose логи в logcat (уровень 3 = INFO — видим подключение, FLOOD_WAIT, ошибки)
-  try {
-    await tdlibClient.send({
-      '@type': 'setLogVerbosityLevel',
-      new_verbosity_level: 3,
-    });
-    // logStreamDefault → на Android идёт в stderr → logcat (тег "libtdjson" или "DEBUG")
-    await tdlibClient.send({
-      '@type': 'setLogStream',
-      log_stream: { '@type': 'logStreamDefault' },
-    });
-  } catch {
-    // Не критично — логирование опционально
+  if (__DEV__) {
+    try {
+      await tdlibClient.send({
+        '@type': 'setLogVerbosityLevel',
+        new_verbosity_level: 2,
+      });
+      await tdlibClient.send({
+        '@type': 'setLogStream',
+        log_stream: { '@type': 'logStreamDefault' },
+      });
+    } catch {
+      /* optional */
+    }
   }
 
   const setRes = await tdlibClient.send({

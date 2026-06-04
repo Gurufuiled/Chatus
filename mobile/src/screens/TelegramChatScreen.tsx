@@ -1096,9 +1096,8 @@ export function TelegramChatScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadHistory(false);
-      const unsubscribe = tdlibClient.subscribe((json) => {
+      const unsubscribe = tdlibClient.subscribe((update) => {
         try {
-          const update = JSON.parse(json) as Record<string, unknown>;
           const type = update['@type'];
 
           if (type === 'updateFile') {

@@ -50,6 +50,11 @@ import {
   showCodeDeliveryInfo,
   type AuthWizardStep,
 } from "./telegramAuth/telegramAuthPresentation";
+import {
+  formatTdlibAuthError,
+  readWaitPasswordAuthInfo,
+} from "./telegramAuth/tdlibAuthErrors";
+import { AuthWizardTextField } from "./telegramAuth/AuthWizardTextField";
 
 const WIZARD_STEPS: AuthWizardStep[] = ["phone", "code", "password"];
 
@@ -156,6 +161,8 @@ export function TelegramAuthScreen() {
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [cloudPassword, setCloudPassword] = useState("");
+  const [passwordHint, setPasswordHint] = useState<string | null>(null);
+  const [hasPasswordRecoveryEmail, setHasPasswordRecoveryEmail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
@@ -177,6 +184,18 @@ export function TelegramAuthScreen() {
     const secondaryBtnBg = isLight ? "#E8EDF4" : colors.inputBackgroundSolid;
     return { label, hint, placeholder, fieldBg, border, secondaryBtnBg };
   }, [colors, isLight]);
+
+  const inputFieldStyle = useMemo(
+    () => [
+      styles.input,
+      {
+        borderColor: ui.border,
+        backgroundColor: ui.fieldBg,
+        color: colors.textPrimary,
+      },
+    ],
+    [colors.textPrimary, ui.border, ui.fieldBg],
+  );
 
   const openTelegramChats = useCallback(() => {
     navigation
@@ -411,10 +430,9 @@ export function TelegramAuthScreen() {
           }, 30_000);
 
           // Слушаем updateAuthorizationState — если TDLib перешёл в waitCode, сразу успех
-          const unsubTdlib = tdlibClient.subscribe((json) => {
+          const unsubTdlib = tdlibClient.subscribe((update) => {
             if (settled) return;
             try {
-              const update = JSON.parse(json) as Record<string, unknown>;
               if (update["@type"] !== "updateAuthorizationState") return;
               const authState = update["authorization_state"] as
                 | Record<string, unknown>
@@ -561,6 +579,21 @@ export function TelegramAuthScreen() {
     }
   }, []);
 
+  const refreshPasswordStepInfo = useCallback(async () => {
+    try {
+      await applyTdlibParameters();
+      const info = await readWaitPasswordAuthInfo(() =>
+        tdlibClient.send({ "@type": "getAuthorizationState" }),
+      );
+      if (info) {
+        setPasswordHint(info.passwordHint);
+        setHasPasswordRecoveryEmail(info.hasRecoveryEmail);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const submitCode = useCallback(async () => {
     const trimmed = code.trim();
     if (!trimmed) {
@@ -579,6 +612,7 @@ export function TelegramAuthScreen() {
         return;
       }
       if (status === "waiting_password") {
+        void refreshPasswordStepInfo();
         return;
       }
       if (status !== "waiting_code") {
@@ -604,6 +638,7 @@ export function TelegramAuthScreen() {
         if (authType === "authorizationStateWaitPassword") {
           telegramAccountStore.getState().setAuthStatus("waiting_password");
           await telegramAccountStore.getState().persistSnapshot();
+          void refreshPasswordStepInfo();
           return;
         }
         if (authType !== "authorizationStateReady") {
@@ -626,11 +661,10 @@ export function TelegramAuthScreen() {
     } finally {
       setBusy(false);
     }
-  }, [code, openTelegramChats, syncAuthorizationFromTdlib]);
+  }, [code, openTelegramChats, refreshPasswordStepInfo, syncAuthorizationFromTdlib]);
 
   const submitPassword = useCallback(async () => {
-    const trimmed = cloudPassword.trim();
-    if (!trimmed) {
+    if (!cloudPassword.trim()) {
       Alert.alert(
         "Пароль",
         "Введите облачный пароль двухэтапной проверки из настроек Telegram.",
@@ -664,7 +698,7 @@ export function TelegramAuthScreen() {
           return;
         const pwRes = await tdlibClient.send({
           "@type": "checkAuthenticationPassword",
-          password: trimmed,
+          password: cloudPassword,
         });
         throwIfTdError(pwRes);
         const auth = await tdlibClient.send({
@@ -685,7 +719,8 @@ export function TelegramAuthScreen() {
         }
       });
     } catch (e) {
-      Alert.alert("Telegram", e instanceof Error ? e.message : String(e));
+      const raw = e instanceof Error ? e.message : String(e);
+      Alert.alert("Telegram", formatTdlibAuthError(raw));
     } finally {
       setBusy(false);
     }
@@ -720,6 +755,15 @@ export function TelegramAuthScreen() {
     insets.bottom,
   );
   const passwordInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (authStep !== "password" || status !== "waiting_password") {
+      setPasswordHint(null);
+      setHasPasswordRecoveryEmail(false);
+      return;
+    }
+    void refreshPasswordStepInfo();
+  }, [authStep, refreshPasswordStepInfo, status]);
 
   const canSendPhone =
     !preparing && !busy && apiId != null && apiHash && status !== "ready";
@@ -832,21 +876,14 @@ export function TelegramAuthScreen() {
 
         {showAuthForm && authStep === "phone" ? (
           <>
-            <TextInput
+            <AuthWizardTextField
               value={phone}
               onChangeText={setPhone}
               placeholder="+7 900 000-00-00"
               placeholderTextColor={ui.placeholder}
               keyboardType="phone-pad"
               editable={!busy && !preparing}
-              style={[
-                styles.input,
-                {
-                  borderColor: ui.border,
-                  backgroundColor: ui.fieldBg,
-                  color: colors.textPrimary,
-                },
-              ]}
+              style={inputFieldStyle}
             />
             <Pressable
               onPress={() =>
@@ -892,21 +929,14 @@ export function TelegramAuthScreen() {
                 </Text>
               </Pressable>
             </View>
-            <TextInput
+            <AuthWizardTextField
               value={code}
               onChangeText={setCode}
               placeholder="Цифры из Telegram или SMS"
               placeholderTextColor={ui.placeholder}
               keyboardType="number-pad"
               editable={!busy && !preparing}
-              style={[
-                styles.input,
-                {
-                  borderColor: ui.border,
-                  backgroundColor: ui.fieldBg,
-                  color: colors.textPrimary,
-                },
-              ]}
+              style={inputFieldStyle}
             />
             <Pressable
               onPress={() => void resendAuthCode()}
@@ -952,10 +982,23 @@ export function TelegramAuthScreen() {
         ) : null}
 
         {showAuthForm && authStep === "password" ? (
-          <Text style={[styles.hintSmall, { color: ui.hint, marginTop: 4 }]}>
-            Пароль вводится в панели внизу — она поднимается вместе с
-            клавиатурой.
-          </Text>
+          <>
+            <Text style={[styles.hintSmall, { color: ui.hint, marginTop: 4 }]}>
+              Пароль вводится в панели внизу — она поднимается вместе с
+              клавиатурой.
+            </Text>
+            {passwordHint ? (
+              <Text style={[styles.hintSmall, { color: ui.label, marginTop: 8 }]}>
+                Подсказка Telegram: {passwordHint}
+              </Text>
+            ) : null}
+            {hasPasswordRecoveryEmail ? (
+              <Text style={[styles.hintSmall, { color: ui.hint, marginTop: 6 }]}>
+                Если пароль не подходит — восстановите его в официальном Telegram
+                (почта для восстановления уже привязана).
+              </Text>
+            ) : null}
+          </>
         ) : null}
 
         <Pressable onPress={resetTg} style={styles.resetWrap} hitSlop={12}>
@@ -982,7 +1025,7 @@ export function TelegramAuthScreen() {
           <Text style={[styles.fieldLabel, { color: ui.label }]}>
             Облачный пароль
           </Text>
-          <TextInput
+          <AuthWizardTextField
             ref={passwordInputRef}
             value={cloudPassword}
             onChangeText={setCloudPassword}
@@ -990,16 +1033,12 @@ export function TelegramAuthScreen() {
             placeholderTextColor={ui.placeholder}
             secureTextEntry
             autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+            textContentType="password"
+            spellCheck={false}
             editable={!busy && !preparing}
-            style={[
-              styles.input,
-              styles.passwordDockInput,
-              {
-                borderColor: ui.border,
-                backgroundColor: ui.fieldBg,
-                color: colors.textPrimary,
-              },
-            ]}
+            style={[inputFieldStyle, styles.passwordDockInput]}
           />
           <Pressable
             onPress={() => void submitPassword()}

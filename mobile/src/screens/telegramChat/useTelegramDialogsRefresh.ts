@@ -27,10 +27,9 @@ export function useTelegramDialogsRefresh(enabled: boolean) {
     useCallback(() => {
       if (!enabled) return undefined;
       void refresh();
-      const unsub = tdlibClient.subscribe((json) => {
+      const unsub = tdlibClient.subscribe((u) => {
         try {
-          const u = JSON.parse(json) as { '@type'?: string };
-          const t = u['@type'] ?? '';
+          const t = (u['@type'] as string | undefined) ?? '';
           if (
             t === 'updateNewChat' ||
             t === 'updateChatLastMessage' ||
