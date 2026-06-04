@@ -19,8 +19,10 @@ mobile/metro-*.bundle.js
 mobile/metro-*.hbc
 mobile/dist-*/
 
-# Cursor hook: флаг «нужен reviewer» (локально)
-.cursor/hooks/.pending-review
+# Cursor / Obsidian / docs — локально, не в git
+.cursor/
+obsidian-vault/
+docs/
 
 # Specstory: экспорты сессий часто >100 MB (лимит GitHub на один файл)
 .specstory/history/
@@ -44,14 +46,6 @@ target/
 firebase-service-account*.json
 google-services.json
 
-# Local notes / agent context (не в репозитории); содержимое docs кроме планирования в подпапках
-/docs/*
-!/docs/p2p/
-!/docs/p2p/**
-!/docs/tasks/
-!/docs/tasks/**
-!/docs/telegram/
-!/docs/telegram/**
 /steps/
 /Improvements/
 
