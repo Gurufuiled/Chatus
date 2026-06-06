@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Image, Pressable, Text, View, type GestureResponderEvent } from 'react-native';
+import { Pressable, Text, View, type GestureResponderEvent } from 'react-native';
+import { Image } from 'expo-image';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { resolveAvatarUrl } from '../config';
 import { useTheme } from '../contexts/ThemeContext';

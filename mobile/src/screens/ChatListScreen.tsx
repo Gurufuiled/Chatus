@@ -1,9 +1,9 @@
 import React from 'react';
+import { Image } from 'expo-image';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Platform,
   Pressable,
   RefreshControl,
