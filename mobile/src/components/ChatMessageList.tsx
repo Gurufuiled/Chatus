@@ -8,6 +8,7 @@ import {
   Image as RNImage,
   Modal,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -2707,11 +2708,11 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         scrollEventThrottle={48}
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={!activeVideoNoteVisible}
-        initialNumToRender={activeVideoNoteVisible ? 16 : 10}
-        maxToRenderPerBatch={activeVideoNoteVisible ? 14 : 6}
-        updateCellsBatchingPeriod={activeVideoNoteVisible ? 24 : 55}
-        windowSize={activeVideoNoteVisible ? 21 : 7}
+        removeClippedSubviews={Platform.OS === 'android' ? true : !activeVideoNoteVisible}
+        initialNumToRender={activeVideoNoteVisible ? 16 : 12}
+        maxToRenderPerBatch={Platform.OS === 'android' ? 4 : (activeVideoNoteVisible ? 14 : 6)}
+        updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : (activeVideoNoteVisible ? 24 : 55)}
+        windowSize={Platform.OS === 'android' ? 5 : (activeVideoNoteVisible ? 21 : 7)}
         contentContainerStyle={[
           styles.listContent,
           { paddingTop: contentPaddingTop },

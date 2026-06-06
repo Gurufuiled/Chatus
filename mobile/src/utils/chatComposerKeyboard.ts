@@ -35,6 +35,8 @@ export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = Platform.OS !== 'an
 /**
  * Android: абсолютный док не всегда поднимается с `adjustResize` (MIUI / gesture nav).
  * Поднимаем только док по `useAnimatedKeyboard`, без `marginBottom` у списка — иначе двойной зазор.
+ * Восстановлено значение `true`, так как на устройствах Xiaomi (MIUI) и других
+ * с прозрачным статусбаром adjustResize ломается и композер остается под клавиатурой.
  */
 export const CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT = Platform.OS === 'android';
 

@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Platform,
   Pressable,
   RefreshControl,
   Text,
@@ -502,11 +503,11 @@ export function ChatListScreen() {
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         ItemSeparatorComponent={() => <ChatSeparator listStyles={listStyles} />}
-        removeClippedSubviews={!isSearchActive}
-        initialNumToRender={14}
-        maxToRenderPerBatch={8}
-        updateCellsBatchingPeriod={45}
-        windowSize={8}
+        removeClippedSubviews={Platform.OS === 'android' ? true : !isSearchActive}
+        initialNumToRender={12}
+        maxToRenderPerBatch={Platform.OS === 'android' ? 5 : 8}
+        updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : 45}
+        windowSize={Platform.OS === 'android' ? 5 : 8}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           telegramReady ? (

@@ -615,13 +615,8 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
       const g = Gesture.Pan()
         .withRef(gridPanRef)
         .maxPointers(1)
+        .activeOffsetY([-5, 5])
         .failOffsetX([-22, 22]);
-
-      if (isFullyExpanded) {
-        g.activeOffsetY([5, 9999]).failOffsetY([-9999, -15]);
-      } else {
-        g.activeOffsetY([-5, 5]);
-      }
 
       return g
         .onBegin(() => {
