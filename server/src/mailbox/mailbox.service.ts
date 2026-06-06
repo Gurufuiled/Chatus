@@ -42,15 +42,10 @@ export class MailboxService {
 
     if (messages.length === 0) return;
 
-    this.log.log(
-      `Delivering ${messages.length} mailbox messages to userId=${userId}`,
-    );
+    this.log.log(`Delivering ${messages.length} mailbox messages to userId=${userId}`);
 
     for (const msg of messages) {
-      const mapped = mapMessage(msg, {
-        includeMedia: true,
-        includeReactions: true,
-      });
+      const mapped = mapMessage(msg, { includeMedia: true, includeReactions: true });
       this.realtime.sendToUser(
         userId,
         JSON.stringify({
@@ -116,9 +111,7 @@ export class MailboxService {
     }
   }
 
-  private async deleteMailboxUploadFilesForMessage(
-    messageId: string,
-  ): Promise<void> {
+  private async deleteMailboxUploadFilesForMessage(messageId: string): Promise<void> {
     const msg = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: { media: true },

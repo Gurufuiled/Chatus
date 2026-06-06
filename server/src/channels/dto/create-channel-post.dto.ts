@@ -1,11 +1,4 @@
-import {
-  IsArray,
-  IsObject,
-  IsOptional,
-  IsString,
-  MaxLength,
-  ValidateIf,
-} from 'class-validator';
+import { IsArray, IsObject, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export class CreateChannelPostDto {
   @IsOptional()

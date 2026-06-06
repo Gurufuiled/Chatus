@@ -10,10 +10,7 @@ import type { Request, Response } from 'express';
 
 type ReqWithId = Request & { id?: string };
 
-function serializeHttpException(exception: HttpException): {
-  message: string;
-  stack?: string;
-} {
+function serializeHttpException(exception: HttpException): { message: string; stack?: string } {
   const res = exception.getResponse();
   let message: string;
   if (typeof res === 'string') {
@@ -30,10 +27,7 @@ function serializeHttpException(exception: HttpException): {
   return { message, stack: exception.stack };
 }
 
-function serializeException(exception: unknown): {
-  message: string;
-  stack?: string;
-} {
+function serializeException(exception: unknown): { message: string; stack?: string } {
   if (exception instanceof HttpException) {
     return serializeHttpException(exception);
   }
@@ -70,8 +64,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const body =
-      exception instanceof HttpException ? exception.getResponse() : undefined;
+    const body = exception instanceof HttpException ? exception.getResponse() : undefined;
     const messagePayload =
       typeof body === 'string'
         ? { statusCode: status, message: body }

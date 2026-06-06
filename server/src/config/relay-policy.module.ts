@@ -1,8 +1,5 @@
 import { Module } from '@nestjs/common';
-import {
-  loadRelayPolicyFromEnv,
-  RelayPolicyConfig,
-} from './relay-policy.config';
+import { loadRelayPolicyFromEnv, RelayPolicyConfig } from './relay-policy.config';
 
 @Module({
   providers: [

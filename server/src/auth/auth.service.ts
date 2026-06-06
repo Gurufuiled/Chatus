@@ -68,17 +68,11 @@ export class AuthService {
     this.loginusClientSecret = process.env.LOGINUS_CLIENT_SECRET || '';
   }
 
-  getLoginUrl(redirectUriParam?: string): {
-    url: string;
-    redirect_uri: string;
-  } {
+  getLoginUrl(redirectUriParam?: string): { url: string; redirect_uri: string } {
     let redirectUri =
       process.env.LOGINUS_REDIRECT_URI ||
       'http://localhost:4000/api/auth/callback';
-    if (
-      redirectUriParam === 'emulator' &&
-      process.env.LOGINUS_REDIRECT_URI_EMULATOR
-    ) {
+    if (redirectUriParam === 'emulator' && process.env.LOGINUS_REDIRECT_URI_EMULATOR) {
       redirectUri = process.env.LOGINUS_REDIRECT_URI_EMULATOR;
     }
     const params = new URLSearchParams({

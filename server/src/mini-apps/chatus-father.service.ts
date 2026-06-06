@@ -14,12 +14,7 @@ type ChatusFatherState =
   | { kind: 'newapp_title' }
   | { kind: 'newapp_url'; title: string }
   | { kind: 'newapp_description'; title: string; baseUrl: string }
-  | {
-      kind: 'newapp_icon';
-      title: string;
-      baseUrl: string;
-      description?: string;
-    }
+  | { kind: 'newapp_icon'; title: string; baseUrl: string; description?: string }
   | { kind: 'myapps_pick' }
   | { kind: 'myapp_menu'; appId: string }
   | { kind: 'myapp_set_icon'; appId: string }
@@ -44,10 +39,7 @@ export class ChatusFatherService {
    * Returns chat id if the given chatId is a private chat between `userId` and ChatusFather.
    * Otherwise returns null.
    */
-  async getChatIdIfChatusFather(
-    chatId: string,
-    userId: string,
-  ): Promise<string | null> {
+  async getChatIdIfChatusFather(chatId: string, userId: string): Promise<string | null> {
     const chat = await this.prisma.chat.findFirst({
       where: {
         id: chatId,
@@ -100,9 +92,7 @@ export class ChatusFatherService {
   }
 
   /** Список приложений с выбором по номеру строки */
-  private async repliesMyappsPickList(
-    userId: string,
-  ): Promise<ChatusFatherReply[]> {
+  private async repliesMyappsPickList(userId: string): Promise<ChatusFatherReply[]> {
     const apps = await this.miniApps.listOwnedApps(userId);
     if (apps.length === 0) {
       this.setState(userId, { kind: 'idle' });
@@ -123,10 +113,7 @@ export class ChatusFatherService {
   }
 
   /** Карточка приложения с пунктами 1 / 2 / 0 */
-  private async repliesAppMenu(
-    userId: string,
-    appId: string,
-  ): Promise<ChatusFatherReply[]> {
+  private async repliesAppMenu(userId: string, appId: string): Promise<ChatusFatherReply[]> {
     const apps = await this.miniApps.listOwnedApps(userId);
     const app = apps.find((a) => a.id === appId);
     if (!app) {
@@ -167,9 +154,7 @@ export class ChatusFatherService {
       const apps = await this.miniApps.listOwnedApps(userId);
       if (apps.length === 0) {
         this.setState(userId, { kind: 'idle' });
-        return [
-          { text: 'У вас пока нет приложений. Создайте первое: /newapp' },
-        ];
+        return [{ text: 'У вас пока нет приложений. Создайте первое: /newapp' }];
       }
       return this.repliesMyappsPickList(userId);
     }
@@ -188,9 +173,7 @@ export class ChatusFatherService {
           return [{ text: `Не удалось удалить: ${msg}` }];
         }
       }
-      return [
-        { text: 'Отправьте УДАЛИТЬ для подтверждения или 0 для отмены.' },
-      ];
+      return [{ text: 'Отправьте УДАЛИТЬ для подтверждения или 0 для отмены.' }];
     }
 
     if (state.kind === 'myapp_set_icon') {
@@ -201,17 +184,11 @@ export class ChatusFatherService {
         try {
           const url = new URL(text.trim());
           if (url.protocol !== 'https:') {
-            return [
-              { text: 'Иконка только по HTTPS. Пришлите другой URL или «-».' },
-            ];
+            return [{ text: 'Иконка только по HTTPS. Пришлите другой URL или «-».' }];
           }
           iconUrl = text.trim();
         } catch {
-          return [
-            {
-              text: 'Нужна корректная HTTPS-ссылка или «-» чтобы убрать иконку.',
-            },
-          ];
+          return [{ text: 'Нужна корректная HTTPS-ссылка или «-» чтобы убрать иконку.' }];
         }
       }
       try {
@@ -237,7 +214,8 @@ export class ChatusFatherService {
         this.setState(userId, { kind: 'myapp_set_icon', appId: state.appId });
         return [
           {
-            text: 'Пришлите HTTPS-ссылку на новую иконку или «-» чтобы убрать иконку из каталога.',
+            text:
+              'Пришлите HTTPS-ссылку на новую иконку или «-» чтобы убрать иконку из каталога.',
           },
         ];
       }
@@ -252,13 +230,12 @@ export class ChatusFatherService {
         });
         return [
           {
-            text: `Удалить «${title}» безвозвратно из «Сервисов»? Отправьте УДАЛИТЬ или 0 для отмены.`,
+            text:
+              `Удалить «${title}» безвозвратно из «Сервисов»? Отправьте УДАЛИТЬ или 0 для отмены.`,
           },
         ];
       }
-      return [
-        { text: 'Нажмите 1 (иконка), 2 (удалить) или 0 (назад к списку).' },
-      ];
+      return [{ text: 'Нажмите 1 (иконка), 2 (удалить) или 0 (назад к списку).' }];
     }
 
     if (state.kind === 'myapps_pick') {
@@ -309,7 +286,9 @@ export class ChatusFatherService {
 
     if (state.kind === 'idle' && lower === 'согласен') {
       await this.miniApps.acceptAgreement(userId);
-      return [{ text: 'Отлично, оферта подписана. Теперь вы можете /newapp.' }];
+      return [
+        { text: 'Отлично, оферта подписана. Теперь вы можете /newapp.' },
+      ];
     }
 
     if (lower === '/newapp') {
@@ -318,7 +297,8 @@ export class ChatusFatherService {
         return [
           { text: DEVELOPER_AGREEMENT_TEXT },
           {
-            text: 'Чтобы публиковать приложения, отправьте «Согласен» в ответ на правила разработчика.',
+            text:
+              'Чтобы публиковать приложения, отправьте «Согласен» в ответ на правила разработчика.',
           },
         ];
       }
@@ -344,16 +324,13 @@ export class ChatusFatherService {
 
     if (state.kind === 'newapp_title') {
       if (text.length < 2 || text.length > 64) {
-        return [
-          {
-            text: 'Название должно быть от 2 до 64 символов. Попробуйте ещё раз.',
-          },
-        ];
+        return [{ text: 'Название должно быть от 2 до 64 символов. Попробуйте ещё раз.' }];
       }
       this.setState(userId, { kind: 'newapp_url', title: text });
       return [
         {
-          text: 'Отлично! Теперь пришлите HTTPS URL вашей страницы мини-приложения (например, https://example.com/app).',
+          text:
+            'Отлично! Теперь пришлите HTTPS URL вашей страницы мини-приложения (например, https://example.com/app).',
         },
       ];
     }
@@ -363,9 +340,7 @@ export class ChatusFatherService {
       try {
         url = new URL(text);
       } catch {
-        return [
-          { text: 'Это не похоже на URL. Пришлите валидный HTTPS адрес.' },
-        ];
+        return [{ text: 'Это не похоже на URL. Пришлите валидный HTTPS адрес.' }];
       }
       if (url.protocol !== 'https:') {
         return [{ text: 'Разрешены только HTTPS URL. Попробуйте ещё раз.' }];
@@ -377,7 +352,8 @@ export class ChatusFatherService {
       });
       return [
         {
-          text: 'Готово. Добавьте короткое описание (до 200 символов), или отправьте «-» чтобы пропустить.',
+          text:
+            'Готово. Добавьте короткое описание (до 200 символов), или отправьте «-» чтобы пропустить.',
         },
       ];
     }
@@ -406,16 +382,10 @@ export class ChatusFatherService {
         try {
           url = new URL(text.trim());
         } catch {
-          return [
-            {
-              text: 'Нужна корректная HTTPS-ссылка на изображение или «-». Попробуйте ещё раз.',
-            },
-          ];
+          return [{ text: 'Нужна корректная HTTPS-ссылка на изображение или «-». Попробуйте ещё раз.' }];
         }
         if (url.protocol !== 'https:') {
-          return [
-            { text: 'Иконка только по HTTPS. Пришлите другой URL или «-».' },
-          ];
+          return [{ text: 'Иконка только по HTTPS. Пришлите другой URL или «-».' }];
         }
         iconUrl = text.trim();
       }

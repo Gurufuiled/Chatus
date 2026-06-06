@@ -17,9 +17,7 @@ const CHAT_INCLUDE = {
 
 const MEMBER_TAG_COLORS = new Set(['blue', 'green', 'orange', 'red']);
 
-type ChatWithRelations = Prisma.ChatGetPayload<{
-  include: typeof CHAT_INCLUDE;
-}>;
+type ChatWithRelations = Prisma.ChatGetPayload<{ include: typeof CHAT_INCLUDE }>;
 
 @Injectable()
 export class ChatsService {
@@ -219,9 +217,7 @@ export class ChatsService {
       throw new BadRequestException('Group chat requires a name');
     }
 
-    const normalizedMemberIds = [
-      ...new Set(memberIds.filter((id) => id !== currentUser.id)),
-    ];
+    const normalizedMemberIds = [...new Set(memberIds.filter((id) => id !== currentUser.id))];
 
     const chat = await this.prisma.chat.create({
       data: {
@@ -296,15 +292,10 @@ export class ChatsService {
   ): Promise<MappedChat> {
     const chat = await this.getGroupChatForOwnerOrThrow(chatId, currentUser.id);
 
-    const existingUserIds = new Set(
-      chat.members.map((member) => member.userId),
-    );
+    const existingUserIds = new Set(chat.members.map((member) => member.userId));
     const requestedUserIds = [...new Set(memberIds)]
       .map((id) => id.trim())
-      .filter(
-        (id) =>
-          id.length > 0 && id !== currentUser.id && !existingUserIds.has(id),
-      );
+      .filter((id) => id.length > 0 && id !== currentUser.id && !existingUserIds.has(id));
 
     if (requestedUserIds.length === 0) {
       return this.mapChatForUser(chat, currentUser.id);
@@ -403,10 +394,7 @@ export class ChatsService {
       });
     }
 
-    const updatedChat = await this.getGroupChatForUserOrThrow(
-      chatId,
-      currentUser.id,
-    );
+    const updatedChat = await this.getGroupChatForUserOrThrow(chatId, currentUser.id);
     return this.mapChatForUser(updatedChat, currentUser.id);
   }
 
@@ -447,10 +435,7 @@ export class ChatsService {
       },
     });
 
-    const updatedChat = await this.getGroupChatForUserOrThrow(
-      chatId,
-      currentUser.id,
-    );
+    const updatedChat = await this.getGroupChatForUserOrThrow(chatId, currentUser.id);
     return this.mapChatForUser(updatedChat, currentUser.id);
   }
 
@@ -500,10 +485,7 @@ export class ChatsService {
       return { ok: true };
     }
 
-    const groupChat = await this.getGroupChatForOwnerOrThrow(
-      chatId,
-      currentUser.id,
-    );
+    const groupChat = await this.getGroupChatForOwnerOrThrow(chatId, currentUser.id);
     const memberUserIds = groupChat.members.map((m) => m.userId);
     await this.prisma.chat.delete({
       where: { id: chatId },

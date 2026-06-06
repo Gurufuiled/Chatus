@@ -79,9 +79,7 @@ export class MiniAppsController {
       where: { id: CHATUS_FATHER_USER_ID },
     });
     if (!father) {
-      throw new NotFoundException(
-        'ChatusFather user not found. Run migrations.',
-      );
+      throw new NotFoundException('ChatusFather user not found. Run migrations.');
     }
     const chat = await this.chats.createOrFindChat(user, 'private', undefined, [
       CHATUS_FATHER_USER_ID,

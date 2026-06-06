@@ -8,10 +8,7 @@ describe('MailboxService', () => {
       id: 'm1',
       senderId: 'alice',
       mailboxExpiresAt: new Date('2099-01-01'),
-      chat: {
-        chatType: ChatType.private,
-        members: [{ userId: 'bob' }, { userId: 'alice' }],
-      },
+      chat: { chatType: ChatType.private, members: [{ userId: 'bob' }, { userId: 'alice' }] },
     });
     const prisma = { message: { findUnique, update } } as never;
     const realtime = {} as never;
@@ -34,10 +31,7 @@ describe('MailboxService', () => {
       id: 'm1',
       senderId: 'alice',
       mailboxExpiresAt: new Date('2099-01-01'),
-      chat: {
-        chatType: ChatType.group,
-        members: [{ userId: 'bob' }, { userId: 'alice' }],
-      },
+      chat: { chatType: ChatType.group, members: [{ userId: 'bob' }, { userId: 'alice' }] },
     });
     const prisma = { message: { findUnique, update } } as never;
     const svc = new MailboxService(prisma, {} as never, {} as never);
@@ -63,10 +57,7 @@ describe('MailboxService', () => {
     expect(findMany).toHaveBeenCalled();
     expect(deleteMany).toHaveBeenCalledWith({
       where: {
-        mailboxExpiresAt: {
-          not: null,
-          lt: new Date('2026-05-07T12:00:00.000Z'),
-        },
+        mailboxExpiresAt: { not: null, lt: new Date('2026-05-07T12:00:00.000Z') },
         isDeleted: false,
       },
     });
@@ -99,9 +90,7 @@ describe('MailboxService', () => {
       include: { media: true },
     });
     expect(tryDeleteServerStoredUpload).toHaveBeenCalledWith('/uploads/a.bin');
-    expect(tryDeleteServerStoredUpload).toHaveBeenCalledWith(
-      '/uploads/th-a.bin',
-    );
+    expect(tryDeleteServerStoredUpload).toHaveBeenCalledWith('/uploads/th-a.bin');
     expect(deleteMany).toHaveBeenCalled();
 
     jest.useRealTimers();

@@ -75,8 +75,7 @@ export class RustMediaWorkerService {
       return explicit;
     }
 
-    const exeName =
-      process.platform === 'win32' ? 'media-worker.exe' : 'media-worker';
+    const exeName = process.platform === 'win32' ? 'media-worker.exe' : 'media-worker';
     const candidates = [
       join(process.cwd(), '..', 'rust', 'target', 'release', exeName),
       join(process.cwd(), '..', 'rust', 'target', 'debug', exeName),
@@ -146,9 +145,7 @@ export class RustMediaWorkerService {
         }
 
         try {
-          const parsed = JSON.parse(
-            stdout,
-          ) as Partial<RustMediaInspectionResult>;
+          const parsed = JSON.parse(stdout) as Partial<RustMediaInspectionResult>;
           resolve(this.normalizeInspectionResult(parsed, input));
         } catch (err) {
           reject(
@@ -198,8 +195,7 @@ export class RustMediaWorkerService {
         ? parsed.height
         : null;
     const durationMs =
-      typeof parsed.duration_ms === 'number' &&
-      Number.isFinite(parsed.duration_ms)
+      typeof parsed.duration_ms === 'number' && Number.isFinite(parsed.duration_ms)
         ? parsed.duration_ms
         : null;
     const thumbnailPath =
@@ -207,10 +203,7 @@ export class RustMediaWorkerService {
         ? parsed.thumbnail_path.trim()
         : null;
     const waveform = Array.isArray(parsed.waveform)
-      ? parsed.waveform.filter(
-          (value): value is number =>
-            typeof value === 'number' && Number.isFinite(value),
-        )
+      ? parsed.waveform.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
       : [];
 
     return {

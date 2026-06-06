@@ -60,8 +60,7 @@ function messageCreateContentTypeForCache(
   media: CacheableMessage['media'] | undefined,
 ): string {
   const base = msgTypeToContentType(msgType);
-  const usable =
-    media?.filter((m) => m.sha256 && m.remoteUrl && m.fileSize != null) ?? [];
+  const usable = media?.filter((m) => m.sha256 && m.remoteUrl && m.fileSize != null) ?? [];
   if (usable.length < 2) {
     return base;
   }
@@ -76,9 +75,7 @@ function messageEventId(messageId: string): string {
   return `msg:${messageId}`;
 }
 
-function mediaKindFromType(
-  mediaType: string,
-): 'image' | 'voice' | 'video_note' | 'video' | 'file' {
+function mediaKindFromType(mediaType: string): 'image' | 'voice' | 'video_note' | 'video' | 'file' {
   if (
     mediaType === 'image' ||
     mediaType === 'voice' ||
@@ -141,22 +138,14 @@ export class LineSyncCacheService {
       created_at: createdAtMs,
       logical_clock: createdAtMs,
       parent_event_ids: [],
-      content_type: messageCreateContentTypeForCache(
-        message.msgType,
-        message.media,
-      ),
+      content_type: messageCreateContentTypeForCache(message.msgType, message.media),
       signature: `unsigned:${eventId}`,
       ...(message.content != null ? { content: message.content } : {}),
-      ...(message.replyToId
-        ? { reply_to_event_id: messageEventId(message.replyToId) }
-        : {}),
+      ...(message.replyToId ? { reply_to_event_id: messageEventId(message.replyToId) } : {}),
       ...(message.media?.length
         ? {
             blob_refs: message.media
-              .filter(
-                (media) =>
-                  media.sha256 && media.remoteUrl && media.fileSize != null,
-              )
+              .filter((media) => media.sha256 && media.remoteUrl && media.fileSize != null)
               .map((media) => ({
                 blob_id: `sha256:${media.sha256}`,
                 kind: mediaKindFromType(media.mediaType),
@@ -178,15 +167,9 @@ export class LineSyncCacheService {
     });
   }
 
-  async getTail(
-    lineId: string,
-    limit?: number,
-  ): Promise<LineSyncCacheEventDto[]> {
+  async getTail(lineId: string, limit?: number): Promise<LineSyncCacheEventDto[]> {
     const policy = this.relayPolicy.getLineSyncTailPolicy();
-    const take = Math.max(
-      1,
-      Math.min(limit ?? policy.retainLastN, policy.retainLastN),
-    );
+    const take = Math.max(1, Math.min(limit ?? policy.retainLastN, policy.retainLastN));
     const rows = await this.prisma.lineSyncCacheEvent.findMany({
       where: {
         lineId,
@@ -239,10 +222,7 @@ export class LineSyncCacheService {
     return new Date(createdAt.getTime() + ttlSeconds * 1000);
   }
 
-  private async assertLineAccess(
-    lineId: string,
-    userId: string,
-  ): Promise<void> {
+  private async assertLineAccess(lineId: string, userId: string): Promise<void> {
     const member = await this.prisma.chatMember.findUnique({
       where: { chatId_userId: { chatId: lineId, userId } },
       select: { accessStatus: true },

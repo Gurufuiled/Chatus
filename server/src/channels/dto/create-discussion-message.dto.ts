@@ -1,4 +1,9 @@
-import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateDiscussionMessageDto {
   @IsOptional()

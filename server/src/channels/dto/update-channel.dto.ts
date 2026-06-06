@@ -90,8 +90,7 @@ export class UpdateChannelDto {
   @MinLength(5)
   @MaxLength(64)
   @Matches(/^[a-z0-9_]+$/, {
-    message:
-      'slug must contain only latin lowercase letters (a-z), digits (0-9) and underscores',
+    message: 'slug must contain only latin lowercase letters (a-z), digits (0-9) and underscores',
   })
   slug?: string;
 }

@@ -71,18 +71,12 @@ export class UsersController {
   }
 
   @Post('me/phone/request')
-  async requestPhoneChange(
-    @CurrentUser() user: User,
-    @Body() dto: RequestPhoneChangeDto,
-  ) {
+  async requestPhoneChange(@CurrentUser() user: User, @Body() dto: RequestPhoneChangeDto) {
     return this.phoneChangeService.request(user.id, dto.new_phone);
   }
 
   @Post('me/phone/verify')
-  async verifyPhoneChange(
-    @CurrentUser() user: User,
-    @Body() dto: VerifyPhoneChangeDto,
-  ) {
+  async verifyPhoneChange(@CurrentUser() user: User, @Body() dto: VerifyPhoneChangeDto) {
     return this.phoneChangeService.verify(user.id, dto.session_id, dto.code);
   }
 
@@ -108,12 +102,7 @@ export class UsersController {
     @CurrentUser() user: User,
     @Body() dto: RegisterPushTokenDto,
   ) {
-    await this.usersService.registerPushToken(
-      user.id,
-      dto.expo_token,
-      dto.platform,
-      dto.fcm_token,
-    );
+    await this.usersService.registerPushToken(user.id, dto.expo_token, dto.platform, dto.fcm_token);
     return { ok: true };
   }
 

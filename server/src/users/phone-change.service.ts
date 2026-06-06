@@ -80,8 +80,7 @@ export class PhoneChangeService {
     }
 
     const exposeCode =
-      process.env.NODE_ENV !== 'production' ||
-      process.env.PHONE_CHANGE_EXPOSE_CODE === '1';
+      process.env.NODE_ENV !== 'production' || process.env.PHONE_CHANGE_EXPOSE_CODE === '1';
 
     return {
       session_id: row.id,
@@ -107,9 +106,7 @@ export class PhoneChangeService {
       throw new BadRequestException('Session not found');
     }
     if (row.expiresAt.getTime() < Date.now()) {
-      await this.prisma.phoneChangeSession
-        .delete({ where: { id: row.id } })
-        .catch(() => undefined);
+      await this.prisma.phoneChangeSession.delete({ where: { id: row.id } }).catch(() => undefined);
       throw new GoneException('Code expired');
     }
     if (row.code !== digits) {
@@ -126,10 +123,7 @@ export class PhoneChangeService {
       });
       return mapUser(user);
     } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === 'P2002'
-      ) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         throw new ConflictException('Phone number is already in use');
       }
       throw e;
