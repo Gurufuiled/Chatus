@@ -180,7 +180,9 @@ describe('loadRelayPolicyFromEnv', () => {
       RELAY_CHANNEL_MEDIA_MIN_RETENTION_SECONDS: '86400',
     });
 
-    expect(computeEffectiveMessageCachePolicy(snapshot, 'private', 'text')).toMatchObject({
+    expect(
+      computeEffectiveMessageCachePolicy(snapshot, 'private', 'text'),
+    ).toMatchObject({
       metadataCacheSeconds: 3600,
       blobCacheSeconds: null,
       hasMediaBlob: false,
@@ -188,13 +190,17 @@ describe('loadRelayPolicyFromEnv', () => {
       mediaMaxBytes: 1048576,
     });
 
-    expect(computeEffectiveMessageCachePolicy(snapshot, 'private', 'image')).toMatchObject({
+    expect(
+      computeEffectiveMessageCachePolicy(snapshot, 'private', 'image'),
+    ).toMatchObject({
       metadataCacheSeconds: 3600,
       blobCacheSeconds: 7200,
       hasMediaBlob: true,
     });
 
-    expect(computeEffectiveMessageCachePolicy(snapshot, 'channel', 'video')).toMatchObject({
+    expect(
+      computeEffectiveMessageCachePolicy(snapshot, 'channel', 'video'),
+    ).toMatchObject({
       metadataCacheSeconds: 604800,
       blobCacheSeconds: 86400,
       hasMediaBlob: true,

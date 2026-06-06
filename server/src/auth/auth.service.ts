@@ -68,11 +68,17 @@ export class AuthService {
     this.loginusClientSecret = process.env.LOGINUS_CLIENT_SECRET || '';
   }
 
-  getLoginUrl(redirectUriParam?: string): { url: string; redirect_uri: string } {
+  getLoginUrl(redirectUriParam?: string): {
+    url: string;
+    redirect_uri: string;
+  } {
     let redirectUri =
       process.env.LOGINUS_REDIRECT_URI ||
       'http://localhost:4000/api/auth/callback';
-    if (redirectUriParam === 'emulator' && process.env.LOGINUS_REDIRECT_URI_EMULATOR) {
+    if (
+      redirectUriParam === 'emulator' &&
+      process.env.LOGINUS_REDIRECT_URI_EMULATOR
+    ) {
       redirectUri = process.env.LOGINUS_REDIRECT_URI_EMULATOR;
     }
     const params = new URLSearchParams({
@@ -216,6 +222,8 @@ export class AuthService {
         lastName?: string;
         first_name?: string;
         last_name?: string;
+        phone?: string;
+        phone_number?: string;
       }>(idToken);
       if (payload?.sub) {
         userInfo = {
@@ -223,7 +231,7 @@ export class AuthService {
           email: payload.email ?? null,
           firstName: payload.firstName ?? payload.first_name,
           lastName: payload.lastName ?? payload.last_name,
-          phone: null,
+          phone: payload.phone ?? payload.phone_number ?? null,
         };
       } else {
         userInfo = await this.getUserInfo(loginusAccessToken);
@@ -267,6 +275,22 @@ export class AuthService {
         .join(' ')
         .trim() || null;
 
+    let phone: string | null = null;
+    if (userInfo.phone) {
+      const raw = userInfo.phone.replace(/\D/g, '');
+      if (raw.length > 0) {
+        if (raw.length === 11 && raw.startsWith('8')) {
+          phone = `+7${raw.slice(1)}`;
+        } else if (raw.length === 11 && raw.startsWith('7')) {
+          phone = `+${raw}`;
+        } else if (raw.length === 10 && raw.startsWith('9')) {
+          phone = `+7${raw}`;
+        } else {
+          phone = `+${raw}`;
+        }
+      }
+    }
+
     const existing = await this.prisma.user.findUnique({
       where: { loginusId },
     });
@@ -276,6 +300,7 @@ export class AuthService {
         data: {
           username: username ?? existing.username,
           displayName: displayName ?? existing.displayName,
+          ...(phone && !existing.phone ? { phone } : {}),
         },
       });
     }
@@ -285,6 +310,7 @@ export class AuthService {
         loginusId,
         username,
         displayName,
+        phone,
       },
     });
   }

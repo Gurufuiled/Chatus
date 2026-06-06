@@ -46,7 +46,9 @@ describe('MessagesRetentionService', () => {
     });
     const chatUpdate = jest.fn().mockResolvedValue(undefined);
     const count = jest.fn().mockResolvedValue(4);
-    const messageFindMany = jest.fn().mockResolvedValue([{ id: 'm4' }, { id: 'm3' }]);
+    const messageFindMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 'm4' }, { id: 'm3' }]);
 
     const chatFindMany = jest
       .fn()
@@ -69,7 +71,11 @@ describe('MessagesRetentionService', () => {
     await svc.pruneOldMessages();
 
     expect(chatFindMany).toHaveBeenCalledWith({
-      where: { chatType: { in: [ChatType.group, ChatType.channel, ChatType.discussion] } },
+      where: {
+        chatType: {
+          in: [ChatType.group, ChatType.channel, ChatType.discussion],
+        },
+      },
       select: { id: true, pinnedMessageId: true },
     });
     expect(messageFindMany).toHaveBeenCalledWith({
@@ -109,9 +115,13 @@ describe('MessagesRetentionService', () => {
       content: 'newest',
       media: [],
     });
-    const messageFindMany = jest.fn().mockResolvedValue([{ id: 'm5' }, { id: 'm4' }]);
+    const messageFindMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 'm5' }, { id: 'm4' }]);
 
-    const chatFindMany = jest.fn().mockResolvedValue([{ id: 'c1', pinnedMessageId: 'm-pin' }]);
+    const chatFindMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 'c1', pinnedMessageId: 'm-pin' }]);
     const prisma = {
       chat: {
         findMany: chatFindMany,
@@ -141,7 +151,9 @@ describe('MessagesRetentionService', () => {
     const deleteMany = jest.fn();
     const prisma = {
       chat: {
-        findMany: jest.fn().mockResolvedValue([{ id: 'c1', pinnedMessageId: null }]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'c1', pinnedMessageId: null }]),
         update: jest.fn(),
       },
       message: {

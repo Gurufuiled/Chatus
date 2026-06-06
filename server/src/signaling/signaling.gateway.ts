@@ -114,11 +114,16 @@ export class SignalingGateway
     const tempId = payload?.temp_id;
     if (!ackKey || !recipientId || !chatId || !client.userId) return;
 
-    const timeoutMs = typeof payload.timeout_ms === 'number' ? payload.timeout_ms : 2500;
+    const timeoutMs =
+      typeof payload.timeout_ms === 'number' ? payload.timeout_ms : 2500;
     if (typeof content !== 'string') return;
     if (typeof tempId !== 'string' || tempId.trim().length === 0) {
       client.send(
-        JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'invalid_temp_id' }),
+        JSON.stringify({
+          type: 'dm_fallback',
+          ack_key: ackKey,
+          reason: 'invalid_temp_id',
+        }),
       );
       return;
     }
@@ -133,29 +138,52 @@ export class SignalingGateway
       },
     });
     if (!chat) {
-      client.send(JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'invalid_chat' }));
+      client.send(
+        JSON.stringify({
+          type: 'dm_fallback',
+          ack_key: ackKey,
+          reason: 'invalid_chat',
+        }),
+      );
       return;
     }
     const ids = new Set(chat.members.map((m) => m.userId));
     if (!ids.has(client.userId) || !ids.has(recipientId)) {
-      client.send(JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'invalid_chat' }));
+      client.send(
+        JSON.stringify({
+          type: 'dm_fallback',
+          ack_key: ackKey,
+          reason: 'invalid_chat',
+        }),
+      );
       return;
     }
 
     const recipientSockets = this.userSockets.get(recipientId);
     if (!recipientSockets || recipientSockets.size === 0) {
       client.send(
-        JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'recipient_offline' }),
+        JSON.stringify({
+          type: 'dm_fallback',
+          ack_key: ackKey,
+          reason: 'recipient_offline',
+        }),
       );
       return;
     }
 
     const acked = await new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => {
-        this.pendingDms.delete(ackKey);
-        resolve(false);
-      }, Math.min(timeoutMs, 10_000));
-      this.pendingDms.set(ackKey, { resolve, timer, recipientUserId: recipientId });
+      const timer = setTimeout(
+        () => {
+          this.pendingDms.delete(ackKey);
+          resolve(false);
+        },
+        Math.min(timeoutMs, 10_000),
+      );
+      this.pendingDms.set(ackKey, {
+        resolve,
+        timer,
+        recipientUserId: recipientId,
+      });
 
       const deliverPayload = JSON.stringify({
         type: 'dm_deliver',
@@ -173,9 +201,17 @@ export class SignalingGateway
     });
 
     if (acked) {
-      client.send(JSON.stringify({ type: 'dm_sent', ack_key: ackKey, transport: 'p2p' }));
+      client.send(
+        JSON.stringify({ type: 'dm_sent', ack_key: ackKey, transport: 'p2p' }),
+      );
     } else {
-      client.send(JSON.stringify({ type: 'dm_fallback', ack_key: ackKey, reason: 'ack_timeout' }));
+      client.send(
+        JSON.stringify({
+          type: 'dm_fallback',
+          ack_key: ackKey,
+          reason: 'ack_timeout',
+        }),
+      );
     }
   }
 
@@ -305,7 +341,11 @@ export class SignalingGateway
     },
   ) {
     if (!client.userId) return;
-    const { target_user_id: targetUserId, offer, call_type: callType } = payload;
+    const {
+      target_user_id: targetUserId,
+      offer,
+      call_type: callType,
+    } = payload;
     if (!targetUserId || !offer) return;
 
     const data = JSON.stringify({

@@ -42,7 +42,9 @@ const CHANNEL_INCLUDE = {
   },
 } satisfies Prisma.ChatInclude;
 
-type ChannelWithRelations = Prisma.ChatGetPayload<{ include: typeof CHANNEL_INCLUDE }>;
+type ChannelWithRelations = Prisma.ChatGetPayload<{
+  include: typeof CHANNEL_INCLUDE;
+}>;
 type PrismaLike = Prisma.TransactionClient | PrismaService;
 type ChannelPermissions = {
   can_post: boolean;
@@ -148,10 +150,14 @@ export class ChannelsService {
     return `${slug || 'channel'}-${randomUUID().slice(0, 8)}`;
   }
 
-  private parseChannelPermissions(member: ChannelWithRelations['members'][number] | null): ChannelPermissions {
+  private parseChannelPermissions(
+    member: ChannelWithRelations['members'][number] | null,
+  ): ChannelPermissions {
     if (!member) return { ...MEMBER_CHANNEL_PERMISSIONS };
-    if (member.role === ChatMemberRole.owner) return { ...FULL_CHANNEL_PERMISSIONS };
-    if (member.role !== ChatMemberRole.admin) return { ...MEMBER_CHANNEL_PERMISSIONS };
+    if (member.role === ChatMemberRole.owner)
+      return { ...FULL_CHANNEL_PERMISSIONS };
+    if (member.role !== ChatMemberRole.admin)
+      return { ...MEMBER_CHANNEL_PERMISSIONS };
 
     const raw = (member.tag ?? '').trim();
     if (!raw) {
@@ -164,25 +170,28 @@ export class ChannelsService {
         return { ...FULL_CHANNEL_PERMISSIONS };
       }
       const canEditChannelAvatar =
-        parsed.can_edit_channel_avatar ?? (parsed.can_edit_channel !== false);
+        parsed.can_edit_channel_avatar ?? parsed.can_edit_channel !== false;
       const canEditChannelName =
-        parsed.can_edit_channel_name ?? (parsed.can_edit_channel !== false);
+        parsed.can_edit_channel_name ?? parsed.can_edit_channel !== false;
       const canEditChannelDescription =
-        parsed.can_edit_channel_description ?? (parsed.can_edit_channel !== false);
+        parsed.can_edit_channel_description ??
+        parsed.can_edit_channel !== false;
 
       const canAddAdmins =
-        parsed.can_add_admins ?? (parsed.can_manage_admins !== false);
+        parsed.can_add_admins ?? parsed.can_manage_admins !== false;
       const canRemoveAdmins =
-        parsed.can_remove_admins ?? (parsed.can_manage_admins !== false);
+        parsed.can_remove_admins ?? parsed.can_manage_admins !== false;
       const canEditAdminPermissions =
-        parsed.can_edit_admin_permissions ?? (parsed.can_manage_admins !== false);
+        parsed.can_edit_admin_permissions ?? parsed.can_manage_admins !== false;
 
       return {
         can_post: parsed.can_post !== false,
         can_manage_admins:
           !!canAddAdmins && !!canRemoveAdmins && !!canEditAdminPermissions,
         can_edit_channel:
-          !!canEditChannelAvatar && !!canEditChannelName && !!canEditChannelDescription,
+          !!canEditChannelAvatar &&
+          !!canEditChannelName &&
+          !!canEditChannelDescription,
         can_moderate_subscribers: parsed.can_moderate_subscribers !== false,
         can_edit_channel_avatar: !!canEditChannelAvatar,
         can_edit_channel_name: !!canEditChannelName,
@@ -234,7 +243,8 @@ export class ChannelsService {
       can_edit_channel_name:
         dto.can_edit_channel_name ?? current.can_edit_channel_name,
       can_edit_channel_description:
-        dto.can_edit_channel_description ?? current.can_edit_channel_description,
+        dto.can_edit_channel_description ??
+        current.can_edit_channel_description,
       can_add_admins: dto.can_add_admins ?? current.can_add_admins,
       can_remove_admins: dto.can_remove_admins ?? current.can_remove_admins,
       can_edit_admin_permissions:
@@ -265,7 +275,9 @@ export class ChannelsService {
     };
   }
 
-  private async getChannelOrThrow(channelId: string): Promise<ChannelWithRelations> {
+  private async getChannelOrThrow(
+    channelId: string,
+  ): Promise<ChannelWithRelations> {
     const channel = await this.prisma.chat.findUnique({
       where: { id: channelId },
       include: CHANNEL_INCLUDE,
@@ -368,10 +380,12 @@ export class ChannelsService {
   }
 
   private getAccessState(channel: ChannelWithRelations, userId: string) {
-    const member = channel.members.find((item) => item.userId === userId) ?? null;
+    const member =
+      channel.members.find((item) => item.userId === userId) ?? null;
     const permissions = this.parseChannelPermissions(member);
     const isAdminRole =
-      member?.role === ChatMemberRole.owner || member?.role === ChatMemberRole.admin;
+      member?.role === ChatMemberRole.owner ||
+      member?.role === ChatMemberRole.admin;
     const isBanned =
       !!member &&
       member.accessStatus === SubscriptionStatus.canceled &&
@@ -379,21 +393,24 @@ export class ChannelsService {
     const hasActiveAccess =
       !!member &&
       !isBanned &&
-      (isAdminRole ||
-        member.accessStatus === SubscriptionStatus.active);
+      (isAdminRole || member.accessStatus === SubscriptionStatus.active);
     const canPreview =
       !isBanned && (channel.visibility === ChatVisibility.public || !!member);
     const canViewFullFeed = hasActiveAccess;
     const canPost = canViewFullFeed && permissions.can_post;
     const canManageAdmins = !isBanned && permissions.can_manage_admins;
     const canEditChannel = !isBanned && permissions.can_edit_channel;
-    const canModerateSubscribers = !isBanned && permissions.can_moderate_subscribers;
-    const canEditChannelAvatar = !isBanned && permissions.can_edit_channel_avatar;
+    const canModerateSubscribers =
+      !isBanned && permissions.can_moderate_subscribers;
+    const canEditChannelAvatar =
+      !isBanned && permissions.can_edit_channel_avatar;
     const canEditChannelName = !isBanned && permissions.can_edit_channel_name;
-    const canEditChannelDescription = !isBanned && permissions.can_edit_channel_description;
+    const canEditChannelDescription =
+      !isBanned && permissions.can_edit_channel_description;
     const canAddAdmins = !isBanned && permissions.can_add_admins;
     const canRemoveAdmins = !isBanned && permissions.can_remove_admins;
-    const canEditAdminPermissions = !isBanned && permissions.can_edit_admin_permissions;
+    const canEditAdminPermissions =
+      !isBanned && permissions.can_edit_admin_permissions;
 
     return {
       member,
@@ -403,7 +420,9 @@ export class ChannelsService {
       canPreview,
       canViewFullFeed,
       canComment:
-        (canViewFullFeed && channel.allowComments && !channel.disableCommentsAll) ||
+        (canViewFullFeed &&
+          channel.allowComments &&
+          !channel.disableCommentsAll) ||
         (isAdminRole && !isBanned),
       canReact: canViewFullFeed && channel.allowReactions,
       canPost,
@@ -419,7 +438,11 @@ export class ChannelsService {
     };
   }
 
-  private async getPreviewPosts(channelId: string, limit: number, userId: string) {
+  private async getPreviewPosts(
+    channelId: string,
+    limit: number,
+    userId: string,
+  ) {
     const posts = await this.prisma.message.findMany({
       where: {
         chatId: channelId,
@@ -495,12 +518,18 @@ export class ChannelsService {
           return new Set();
         }
       }
-      console.warn('[channels.service] markChannelPostsViewed batch failed:', error);
+      console.warn(
+        '[channels.service] markChannelPostsViewed batch failed:',
+        error,
+      );
       return new Set();
     }
   }
 
-  private async ensureDiscussionMembership(channel: ChannelWithRelations, userId: string) {
+  private async ensureDiscussionMembership(
+    channel: ChannelWithRelations,
+    userId: string,
+  ) {
     const discussionChatId = channel.linkedDiscussionChatId;
     if (!discussionChatId) {
       throw new BadRequestException('Channel discussion is not configured');
@@ -513,9 +542,13 @@ export class ChannelsService {
       return existing;
     }
 
-    const channelMember = channel.members.find((item) => item.userId === userId);
+    const channelMember = channel.members.find(
+      (item) => item.userId === userId,
+    );
     if (!channelMember) {
-      throw new ForbiddenException('Join the channel before opening the discussion');
+      throw new ForbiddenException(
+        'Join the channel before opening the discussion',
+      );
     }
 
     return this.prisma.chatMember.create({
@@ -538,7 +571,11 @@ export class ChannelsService {
     });
   }
 
-  private async resolveBeforeDate(chatId: string, before?: string, threadRootMessageId?: string) {
+  private async resolveBeforeDate(
+    chatId: string,
+    before?: string,
+    threadRootMessageId?: string,
+  ) {
     if (!before) {
       return undefined;
     }
@@ -555,7 +592,10 @@ export class ChannelsService {
     return message?.createdAt;
   }
 
-  private async broadcastChannelPost(channelId: string, post: Awaited<ReturnType<MessagesService['createChannelPost']>>) {
+  private async broadcastChannelPost(
+    channelId: string,
+    post: Awaited<ReturnType<MessagesService['createChannelPost']>>,
+  ) {
     const policy = this.relayPolicy.getChannelPostPolicy();
     if (process.env.NODE_ENV !== 'production') {
       this.logger.debug(
@@ -640,10 +680,7 @@ export class ChannelsService {
             ],
           },
           {
-            OR: [
-              { visibility: 'public' },
-              { members: { some: { userId } } },
-            ],
+            OR: [{ visibility: 'public' }, { members: { some: { userId } } }],
           },
         ],
       },
@@ -686,7 +723,11 @@ export class ChannelsService {
 
     return {
       ...this.mapChannelForUser(channel, userId),
-      preview_posts: await this.getPreviewPosts(channelId, previewLimit, userId),
+      preview_posts: await this.getPreviewPosts(
+        channelId,
+        previewLimit,
+        userId,
+      ),
       can_view_full_feed: access.canViewFullFeed,
       can_comment: access.canComment,
       can_react: access.canReact,
@@ -697,7 +738,12 @@ export class ChannelsService {
     };
   }
 
-  async getFeed(channelId: string, userId: string, limit: number, before?: string) {
+  async getFeed(
+    channelId: string,
+    userId: string,
+    limit: number,
+    before?: string,
+  ) {
     const channel = await this.getChannelOrThrow(channelId);
     const access = this.getAccessState(channel, userId);
 
@@ -764,10 +810,16 @@ export class ChannelsService {
   ): { allowed: boolean; reason?: string } {
     if (isAdminOrOwner) return { allowed: true };
     if (!channel.allowComments) {
-      return { allowed: false, reason: 'Comments are disabled in this channel' };
+      return {
+        allowed: false,
+        reason: 'Comments are disabled in this channel',
+      };
     }
     if (channel.disableCommentsAll) {
-      return { allowed: false, reason: 'Comments are disabled in this channel' };
+      return {
+        allowed: false,
+        reason: 'Comments are disabled in this channel',
+      };
     }
     if (
       channel.disableCommentsNew &&
@@ -793,7 +845,9 @@ export class ChannelsService {
     if (isAdminOrOwner) return;
 
     if (msgType === 'voice' && channel.disableVoiceComments) {
-      throw new ForbiddenException('Voice comments are disabled in this channel');
+      throw new ForbiddenException(
+        'Voice comments are disabled in this channel',
+      );
     }
     const isMedia =
       msgType === 'image' ||
@@ -801,7 +855,9 @@ export class ChannelsService {
       msgType === 'video_note' ||
       msgType === 'file';
     if (isMedia && channel.disableMediaComments) {
-      throw new ForbiddenException('Media comments are disabled in this channel');
+      throw new ForbiddenException(
+        'Media comments are disabled in this channel',
+      );
     }
 
     const cooldown = channel.commentCooldownSec ?? 0;
@@ -817,7 +873,9 @@ export class ChannelsService {
         select: { createdAt: true },
       });
       if (last) {
-        const diffSec = Math.floor((Date.now() - last.createdAt.getTime()) / 1000);
+        const diffSec = Math.floor(
+          (Date.now() - last.createdAt.getTime()) / 1000,
+        );
         if (diffSec < cooldown) {
           throw new ForbiddenException(
             `Please wait ${cooldown - diffSec}s before sending another comment`,
@@ -860,7 +918,11 @@ export class ChannelsService {
     }
 
     const discussionChatId = channel.linkedDiscussionChatId!;
-    const beforeDate = await this.resolveBeforeDate(discussionChatId, before, postId);
+    const beforeDate = await this.resolveBeforeDate(
+      discussionChatId,
+      before,
+      postId,
+    );
     const messages = await this.prisma.message.findMany({
       where: {
         chatId: discussionChatId,
@@ -916,7 +978,9 @@ export class ChannelsService {
     const accessType =
       dto.access_type === 'paid' ? ChatAccessType.paid : ChatAccessType.free;
     const visibility =
-      dto.visibility === 'private' ? ChatVisibility.private : ChatVisibility.public;
+      dto.visibility === 'private'
+        ? ChatVisibility.private
+        : ChatVisibility.public;
 
     const channel = await this.prisma.$transaction(async (tx) => {
       const baseInviteToken = this.buildInviteToken(trimmedName);
@@ -929,9 +993,13 @@ export class ChannelsService {
           visibility,
           accessType,
           subscriptionPriceCents:
-            accessType === ChatAccessType.paid ? dto.subscription_price_cents ?? 499 : null,
+            accessType === ChatAccessType.paid
+              ? (dto.subscription_price_cents ?? 499)
+              : null,
           subscriptionPeriodDays:
-            accessType === ChatAccessType.paid ? dto.subscription_period_days ?? 30 : null,
+            accessType === ChatAccessType.paid
+              ? (dto.subscription_period_days ?? 30)
+              : null,
           previewPostCount: dto.preview_post_count ?? 3,
           allowComments: dto.allow_comments ?? true,
           allowReactions: dto.allow_reactions ?? true,
@@ -984,21 +1052,33 @@ export class ChannelsService {
     return this.mapChannelForUser(channel, userId);
   }
 
-  async updateChannel(channelId: string, userId: string, dto: UpdateChannelDto) {
+  async updateChannel(
+    channelId: string,
+    userId: string,
+    dto: UpdateChannelDto,
+  ) {
     const channel = await this.getChannelOrThrow(channelId);
     const access = this.getAccessState(channel, userId);
 
     if (!access.member) {
-      throw new ForbiddenException('Insufficient permissions to update channel settings');
+      throw new ForbiddenException(
+        'Insufficient permissions to update channel settings',
+      );
     }
     if (dto.avatar_url !== undefined && !access.canEditChannelAvatar) {
-      throw new ForbiddenException('Insufficient permissions to update channel avatar');
+      throw new ForbiddenException(
+        'Insufficient permissions to update channel avatar',
+      );
     }
     if (dto.name !== undefined && !access.canEditChannelName) {
-      throw new ForbiddenException('Insufficient permissions to update channel name');
+      throw new ForbiddenException(
+        'Insufficient permissions to update channel name',
+      );
     }
     if (dto.description !== undefined && !access.canEditChannelDescription) {
-      throw new ForbiddenException('Insufficient permissions to update channel description');
+      throw new ForbiddenException(
+        'Insufficient permissions to update channel description',
+      );
     }
     const hasGeneralSettingsUpdate =
       dto.visibility !== undefined ||
@@ -1016,7 +1096,9 @@ export class ChannelsService {
       dto.slug !== undefined ||
       dto.clear_slug === true;
     if (hasGeneralSettingsUpdate && !access.canEditChannel) {
-      throw new ForbiddenException('Insufficient permissions to update channel settings');
+      throw new ForbiddenException(
+        'Insufficient permissions to update channel settings',
+      );
     }
 
     const data: Prisma.ChatUpdateInput = {};
@@ -1036,7 +1118,9 @@ export class ChannelsService {
     }
     if (dto.visibility !== undefined) {
       data.visibility =
-        dto.visibility === 'private' ? ChatVisibility.private : ChatVisibility.public;
+        dto.visibility === 'private'
+          ? ChatVisibility.private
+          : ChatVisibility.public;
       if (dto.visibility === 'private') {
         data.slug = null;
       }
@@ -1068,7 +1152,9 @@ export class ChannelsService {
       data.disableCommentsNew = dto.disable_comments_new;
       // «Только для новых постов»: фиксируем момент включения, чтобы отличать
       // посты «до» (разрешены) от «после» (запрещены). Выключение — сбрасываем.
-      data.disableCommentsNewSince = dto.disable_comments_new ? new Date() : null;
+      data.disableCommentsNewSince = dto.disable_comments_new
+        ? new Date()
+        : null;
     }
     if (dto.disable_comments_all !== undefined) {
       data.disableCommentsAll = dto.disable_comments_all;
@@ -1080,7 +1166,10 @@ export class ChannelsService {
       data.disableMediaComments = dto.disable_media_comments;
     }
     if (dto.comment_cooldown_sec !== undefined) {
-      data.commentCooldownSec = Math.max(0, Math.min(15, dto.comment_cooldown_sec));
+      data.commentCooldownSec = Math.max(
+        0,
+        Math.min(15, dto.comment_cooldown_sec),
+      );
     }
     const effectivePublic =
       dto.visibility !== undefined
@@ -1116,7 +1205,8 @@ export class ChannelsService {
     dto: SubscribeChannelDto = {},
   ) {
     const channel = await this.getChannelOrThrow(channelId);
-    const existingMember = channel.members.find((item) => item.userId === userId) ?? null;
+    const existingMember =
+      channel.members.find((item) => item.userId === userId) ?? null;
 
     if (channel.accessType === ChatAccessType.paid) {
       throw new ForbiddenException('Paid channels require checkout first');
@@ -1131,13 +1221,12 @@ export class ChannelsService {
         existingMember.role === ChatMemberRole.admin ||
         existingMember.accessStatus === SubscriptionStatus.active);
 
-    if (
-      channel.visibility === ChatVisibility.private &&
-      !hasActiveMembership
-    ) {
+    if (channel.visibility === ChatVisibility.private && !hasActiveMembership) {
       const token = dto.invite_token?.trim();
       if (!token || token !== channel.inviteToken) {
-        throw new ForbiddenException('Valid invite link required to join this channel');
+        throw new ForbiddenException(
+          'Valid invite link required to join this channel',
+        );
       }
     }
 
@@ -1167,12 +1256,15 @@ export class ChannelsService {
    */
   async unsubscribeFromChannel(channelId: string, userId: string) {
     const channel = await this.getChannelOrThrow(channelId);
-    const member = channel.members.find((item) => item.userId === userId) ?? null;
+    const member =
+      channel.members.find((item) => item.userId === userId) ?? null;
     if (!member) {
       throw new NotFoundException('You are not a member of this channel');
     }
     if (member.role === ChatMemberRole.owner) {
-      throw new ForbiddenException('Channel owner cannot leave via unsubscribe');
+      throw new ForbiddenException(
+        'Channel owner cannot leave via unsubscribe',
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -1187,7 +1279,8 @@ export class ChannelsService {
 
   async mockCheckout(channelId: string, userId: string) {
     const channel = await this.getChannelOrThrow(channelId);
-    const existingMember = channel.members.find((item) => item.userId === userId) ?? null;
+    const existingMember =
+      channel.members.find((item) => item.userId === userId) ?? null;
 
     if (existingMember?.accessStatus === SubscriptionStatus.canceled) {
       throw new ForbiddenException('You are banned from this channel');
@@ -1198,7 +1291,9 @@ export class ChannelsService {
     }
 
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + (channel.subscriptionPeriodDays ?? 30));
+    expiresAt.setDate(
+      expiresAt.getDate() + (channel.subscriptionPeriodDays ?? 30),
+    );
 
     await this.prisma.$transaction(async (tx) => {
       await tx.chatMember.upsert({
@@ -1225,7 +1320,11 @@ export class ChannelsService {
     };
   }
 
-  async publishPost(channelId: string, userId: string, dto: CreateChannelPostDto) {
+  async publishPost(
+    channelId: string,
+    userId: string,
+    dto: CreateChannelPostDto,
+  ) {
     const channel = await this.getChannelOrThrow(channelId);
     const access = this.getAccessState(channel, userId);
     if (!access.canPost) {
@@ -1272,13 +1371,25 @@ export class ChannelsService {
       throw new NotFoundException('Channel post not found');
     }
 
-    const perPostComment = this.resolveCommentAccessForPost(channel, post, access.isAdmin);
+    const perPostComment = this.resolveCommentAccessForPost(
+      channel,
+      post,
+      access.isAdmin,
+    );
     if (!perPostComment.allowed) {
-      throw new ForbiddenException(perPostComment.reason ?? 'Comments are disabled');
+      throw new ForbiddenException(
+        perPostComment.reason ?? 'Comments are disabled',
+      );
     }
 
     const msgType = dto.msg_type ?? 'text';
-    await this.enforceDiscussionPolicy(channel, postId, userId, msgType, access.isAdmin);
+    await this.enforceDiscussionPolicy(
+      channel,
+      postId,
+      userId,
+      msgType,
+      access.isAdmin,
+    );
 
     const discussionChatId = channel.linkedDiscussionChatId!;
     const message = await this.messagesService.createMessage(
@@ -1333,7 +1444,9 @@ export class ChannelsService {
         !access.canEditAdminPermissions &&
         !access.canModerateSubscribers)
     ) {
-      throw new ForbiddenException('Insufficient permissions to view channel members');
+      throw new ForbiddenException(
+        'Insufficient permissions to view channel members',
+      );
     }
 
     const take = Math.max(1, Math.min(query.limit ?? 40, 100));
@@ -1384,7 +1497,9 @@ export class ChannelsService {
 
     const hasMore = rows.length > take;
     const items = rows.slice(0, take);
-    const nextCursor = hasMore ? String(items[items.length - 1]?.joinedAt.getTime() ?? '') : null;
+    const nextCursor = hasMore
+      ? String(items[items.length - 1]?.joinedAt.getTime() ?? '')
+      : null;
 
     return {
       items: items.map((item) => {
@@ -1393,7 +1508,8 @@ export class ChannelsService {
           user_id: item.userId,
           role: item.role,
           access_status: item.accessStatus,
-          subscription_expires_at: item.subscriptionExpiresAt?.getTime() ?? null,
+          subscription_expires_at:
+            item.subscriptionExpiresAt?.getTime() ?? null,
           joined_at: item.joinedAt.getTime(),
           permissions,
           is_banned:
@@ -1423,20 +1539,28 @@ export class ChannelsService {
     const channel = await this.getChannelOrThrow(channelId);
     const actorAccess = this.getAccessState(channel, actorUserId);
     if (!actorAccess.member) {
-      throw new ForbiddenException('Insufficient permissions to manage channel admins');
+      throw new ForbiddenException(
+        'Insufficient permissions to manage channel admins',
+      );
     }
     if (actorUserId === targetUserId) {
-      throw new BadRequestException('Нельзя изменять собственные права администратора');
+      throw new BadRequestException(
+        'Нельзя изменять собственные права администратора',
+      );
     }
 
-    const target = channel.members.find((item) => item.userId === targetUserId) ?? null;
+    const target =
+      channel.members.find((item) => item.userId === targetUserId) ?? null;
     if (!target) {
       throw new NotFoundException('Channel member not found');
     }
     if (target.role === ChatMemberRole.owner) {
       throw new ForbiddenException('Channel owner cannot be modified');
     }
-    if (target.role !== ChatMemberRole.member && target.role !== ChatMemberRole.admin) {
+    if (
+      target.role !== ChatMemberRole.member &&
+      target.role !== ChatMemberRole.admin
+    ) {
       throw new ForbiddenException('Unsupported member role');
     }
     if (target.accessStatus === SubscriptionStatus.canceled) {
@@ -1455,23 +1579,36 @@ export class ChannelsService {
       dto.can_remove_admins !== undefined ||
       dto.can_edit_admin_permissions !== undefined;
 
-    const roleToAdmin = dto.role === 'admin' && target.role === ChatMemberRole.member;
-    const roleToMember = dto.role === 'member' && target.role === ChatMemberRole.admin;
+    const roleToAdmin =
+      dto.role === 'admin' && target.role === ChatMemberRole.member;
+    const roleToMember =
+      dto.role === 'member' && target.role === ChatMemberRole.admin;
 
     if (roleToAdmin && !actorAccess.canAddAdmins) {
-      throw new ForbiddenException('Insufficient permissions to add channel admins');
+      throw new ForbiddenException(
+        'Insufficient permissions to add channel admins',
+      );
     }
     if (roleToMember && !actorAccess.canRemoveAdmins) {
-      throw new ForbiddenException('Insufficient permissions to remove channel admins');
+      throw new ForbiddenException(
+        'Insufficient permissions to remove channel admins',
+      );
     }
     if (hasPermissionFieldUpdate && !actorAccess.canEditAdminPermissions) {
-      throw new ForbiddenException('Insufficient permissions to edit admin permissions');
+      throw new ForbiddenException(
+        'Insufficient permissions to edit admin permissions',
+      );
     }
     if (!roleToAdmin && !roleToMember && !hasPermissionFieldUpdate) {
       throw new BadRequestException('No admin changes requested');
     }
 
-    const role = dto.role === 'admin' ? ChatMemberRole.admin : dto.role === 'member' ? ChatMemberRole.member : target.role;
+    const role =
+      dto.role === 'admin'
+        ? ChatMemberRole.admin
+        : dto.role === 'member'
+          ? ChatMemberRole.member
+          : target.role;
     const nextPermissions =
       role === ChatMemberRole.admin
         ? this.resolveNextChannelPermissions(target, dto)
@@ -1481,9 +1618,14 @@ export class ChannelsService {
       where: { chatId_userId: { chatId: channelId, userId: targetUserId } },
       data: {
         role,
-        tag: role === ChatMemberRole.admin ? this.serializeChannelPermissions(nextPermissions) : null,
+        tag:
+          role === ChatMemberRole.admin
+            ? this.serializeChannelPermissions(nextPermissions)
+            : null,
         accessStatus:
-          role === ChatMemberRole.admin ? SubscriptionStatus.active : target.accessStatus,
+          role === ChatMemberRole.admin
+            ? SubscriptionStatus.active
+            : target.accessStatus,
       },
     });
 
@@ -1491,7 +1633,8 @@ export class ChannelsService {
     return {
       channel: {
         ...this.mapChannelForUser(updated, actorUserId),
-        channel_permissions: this.getAccessState(updated, actorUserId).permissions,
+        channel_permissions: this.getAccessState(updated, actorUserId)
+          .permissions,
       },
     };
   }
@@ -1504,18 +1647,26 @@ export class ChannelsService {
     const channel = await this.getChannelOrThrow(channelId);
     const actorAccess = this.getAccessState(channel, actorUserId);
     if (!actorAccess.member || !actorAccess.canModerateSubscribers) {
-      throw new ForbiddenException('Insufficient permissions to remove subscribers');
+      throw new ForbiddenException(
+        'Insufficient permissions to remove subscribers',
+      );
     }
     if (actorUserId === targetUserId) {
       throw new BadRequestException('You cannot remove yourself');
     }
 
-    const target = channel.members.find((item) => item.userId === targetUserId) ?? null;
+    const target =
+      channel.members.find((item) => item.userId === targetUserId) ?? null;
     if (!target) {
       throw new NotFoundException('Channel member not found');
     }
-    if (target.role === ChatMemberRole.owner || target.role === ChatMemberRole.admin) {
-      throw new ForbiddenException('Cannot remove owner or admin via subscriber moderation');
+    if (
+      target.role === ChatMemberRole.owner ||
+      target.role === ChatMemberRole.admin
+    ) {
+      throw new ForbiddenException(
+        'Cannot remove owner or admin via subscriber moderation',
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -1529,7 +1680,8 @@ export class ChannelsService {
     return {
       channel: {
         ...this.mapChannelForUser(updated, actorUserId),
-        channel_permissions: this.getAccessState(updated, actorUserId).permissions,
+        channel_permissions: this.getAccessState(updated, actorUserId)
+          .permissions,
       },
     };
   }
@@ -1542,17 +1694,23 @@ export class ChannelsService {
     const channel = await this.getChannelOrThrow(channelId);
     const actorAccess = this.getAccessState(channel, actorUserId);
     if (!actorAccess.member || !actorAccess.canModerateSubscribers) {
-      throw new ForbiddenException('Insufficient permissions to ban subscribers');
+      throw new ForbiddenException(
+        'Insufficient permissions to ban subscribers',
+      );
     }
     if (actorUserId === targetUserId) {
       throw new BadRequestException('You cannot ban yourself');
     }
 
-    const target = channel.members.find((item) => item.userId === targetUserId) ?? null;
+    const target =
+      channel.members.find((item) => item.userId === targetUserId) ?? null;
     if (!target) {
       throw new NotFoundException('Channel member not found');
     }
-    if (target.role === ChatMemberRole.owner || target.role === ChatMemberRole.admin) {
+    if (
+      target.role === ChatMemberRole.owner ||
+      target.role === ChatMemberRole.admin
+    ) {
       throw new ForbiddenException('Cannot ban owner or admin');
     }
 
@@ -1568,7 +1726,8 @@ export class ChannelsService {
     return {
       channel: {
         ...this.mapChannelForUser(updated, actorUserId),
-        channel_permissions: this.getAccessState(updated, actorUserId).permissions,
+        channel_permissions: this.getAccessState(updated, actorUserId)
+          .permissions,
       },
     };
   }
@@ -1581,14 +1740,20 @@ export class ChannelsService {
     const channel = await this.getChannelOrThrow(channelId);
     const actorAccess = this.getAccessState(channel, actorUserId);
     if (!actorAccess.member || !actorAccess.canModerateSubscribers) {
-      throw new ForbiddenException('Insufficient permissions to unban subscribers');
+      throw new ForbiddenException(
+        'Insufficient permissions to unban subscribers',
+      );
     }
 
-    const target = channel.members.find((item) => item.userId === targetUserId) ?? null;
+    const target =
+      channel.members.find((item) => item.userId === targetUserId) ?? null;
     if (!target) {
       throw new NotFoundException('Channel member not found');
     }
-    if (target.role === ChatMemberRole.owner || target.role === ChatMemberRole.admin) {
+    if (
+      target.role === ChatMemberRole.owner ||
+      target.role === ChatMemberRole.admin
+    ) {
       throw new ForbiddenException('Cannot unban owner or admin');
     }
 
@@ -1603,7 +1768,8 @@ export class ChannelsService {
     return {
       channel: {
         ...this.mapChannelForUser(updated, actorUserId),
-        channel_permissions: this.getAccessState(updated, actorUserId).permissions,
+        channel_permissions: this.getAccessState(updated, actorUserId)
+          .permissions,
       },
     };
   }
@@ -1618,7 +1784,9 @@ export class ChannelsService {
     const access = this.getAccessState(channel, userId);
 
     if (!access.canReact) {
-      throw new ForbiddenException('Reactions are unavailable for this channel');
+      throw new ForbiddenException(
+        'Reactions are unavailable for this channel',
+      );
     }
 
     const post = await this.prisma.message.findFirst({
@@ -1634,6 +1802,11 @@ export class ChannelsService {
       throw new NotFoundException('Channel post not found');
     }
 
-    return this.messagesService.toggleReaction(channelId, postId, userId, emoji);
+    return this.messagesService.toggleReaction(
+      channelId,
+      postId,
+      userId,
+      emoji,
+    );
   }
 }

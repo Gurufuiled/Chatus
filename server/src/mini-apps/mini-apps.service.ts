@@ -1,4 +1,9 @@
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import {
+  createHmac,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from 'node:crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -75,7 +80,10 @@ function b64urlDecode(str: string): Buffer {
 }
 
 /** Merge app URL host + DB allowlist + shared OAuth hosts for WebView navigation policy. */
-function buildMiniAppAllowedHosts(baseUrl: string, dbHosts: string[]): string[] {
+function buildMiniAppAllowedHosts(
+  baseUrl: string,
+  dbHosts: string[],
+): string[] {
   const set = new Set<string>();
   try {
     set.add(new URL(baseUrl).host.toLowerCase());
@@ -136,7 +144,12 @@ export class MiniAppsService {
 
   async createApp(
     ownerId: string,
-    input: { title: string; base_url: string; description?: string; icon_url?: string },
+    input: {
+      title: string;
+      base_url: string;
+      description?: string;
+      icon_url?: string;
+    },
   ): Promise<MiniAppOwnerDto> {
     await this.ensureDeveloper(ownerId);
     this.validateHttpsUrl(input.base_url);
@@ -171,7 +184,13 @@ export class MiniAppsService {
   async updateApp(
     ownerId: string,
     appId: string,
-    patch: Partial<{ title: string; description: string; icon_url: string; base_url: string; is_published: boolean }>,
+    patch: Partial<{
+      title: string;
+      description: string;
+      icon_url: string;
+      base_url: string;
+      is_published: boolean;
+    }>,
   ): Promise<MiniAppOwnerDto> {
     const app = await this.getOwnedAppOrThrow(ownerId, appId);
 
@@ -179,12 +198,16 @@ export class MiniAppsService {
     if (patch.title !== undefined) {
       const t = patch.title.trim();
       if (t.length < 2 || t.length > 64) {
-        throw new BadRequestException('Название должно быть от 2 до 64 символов');
+        throw new BadRequestException(
+          'Название должно быть от 2 до 64 символов',
+        );
       }
       data.title = t;
     }
-    if (patch.description !== undefined) data.description = patch.description.trim() || null;
-    if (patch.icon_url !== undefined) data.iconUrl = patch.icon_url.trim() || null;
+    if (patch.description !== undefined)
+      data.description = patch.description.trim() || null;
+    if (patch.icon_url !== undefined)
+      data.iconUrl = patch.icon_url.trim() || null;
     if (patch.base_url !== undefined) {
       this.validateHttpsUrl(patch.base_url);
       data.baseUrl = patch.base_url;
@@ -228,7 +251,10 @@ export class MiniAppsService {
 
   // --- Init payload / sessions ---
 
-  async createInitBundle(appId: string, userId: string): Promise<SessionBundle> {
+  async createInitBundle(
+    appId: string,
+    userId: string,
+  ): Promise<SessionBundle> {
     const app = await this.findAppByIdOrShortId(appId);
     if (!app.isPublished) {
       throw new NotFoundException('Mini App not found or not published');
@@ -265,7 +291,10 @@ export class MiniAppsService {
     };
   }
 
-  async exchangeInitData(appId: string, initData: string): Promise<SessionTokenBundle> {
+  async exchangeInitData(
+    appId: string,
+    initData: string,
+  ): Promise<SessionTokenBundle> {
     const app = await this.findAppByIdOrShortId(appId);
     const payload = this.verifyInitData(initData, app.secret);
     if (payload.app_id !== app.shortId) {
@@ -321,7 +350,8 @@ export class MiniAppsService {
 
   verifyInitData(initData: string, secret: string): InitPayload {
     const parts = initData.split('.');
-    if (parts.length !== 2) throw new UnauthorizedException('Bad init_data format');
+    if (parts.length !== 2)
+      throw new UnauthorizedException('Bad init_data format');
     const [b64, sig] = parts;
     const expected = createHmac('sha256', secret).update(b64).digest('hex');
     const a = Buffer.from(expected, 'hex');
@@ -357,7 +387,10 @@ export class MiniAppsService {
     return `app_${randomBytes(5).toString('hex')}`;
   }
 
-  private async getOwnedAppOrThrow(ownerId: string, appId: string): Promise<MiniApp> {
+  private async getOwnedAppOrThrow(
+    ownerId: string,
+    appId: string,
+  ): Promise<MiniApp> {
     const app = await this.findAppByIdOrShortId(appId);
     if (app.ownerId !== ownerId) {
       throw new ForbiddenException('Not your app');

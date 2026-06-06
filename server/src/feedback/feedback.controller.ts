@@ -30,10 +30,7 @@ export class FeedbackController {
   }
 
   @Post()
-  async create(
-    @CurrentUser() user: User,
-    @Body() dto: CreateFeedbackDto,
-  ) {
+  async create(@CurrentUser() user: User, @Body() dto: CreateFeedbackDto) {
     return this.feedbackService.create(user.id, dto);
   }
 }

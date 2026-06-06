@@ -120,13 +120,16 @@ export class MessagesService {
     }
   }
 
-  private serializeWaveform(waveform?: number[]): Uint8Array<ArrayBuffer> | null {
+  private serializeWaveform(
+    waveform?: number[],
+  ): Uint8Array<ArrayBuffer> | null {
     if (!Array.isArray(waveform) || waveform.length === 0) {
       return null;
     }
 
     const normalized = waveform.filter(
-      (value): value is number => typeof value === 'number' && Number.isFinite(value),
+      (value): value is number =>
+        typeof value === 'number' && Number.isFinite(value),
     );
     if (normalized.length === 0) {
       return null;
@@ -137,13 +140,10 @@ export class MessagesService {
       encoded.byteOffset,
       encoded.byteOffset + encoded.byteLength,
     );
-    return new Uint8Array(buffer as ArrayBuffer);
+    return new Uint8Array(buffer);
   }
 
-  private async ensureChatMember(
-    chatId: string,
-    userId: string,
-  ) {
+  private async ensureChatMember(chatId: string, userId: string) {
     const member = await this.prisma.chatMember.findUnique({
       where: { chatId_userId: { chatId, userId } },
     });
@@ -153,10 +153,7 @@ export class MessagesService {
     return member;
   }
 
-  private async ensureChannelPublisher(
-    channelId: string,
-    userId: string,
-  ) {
+  private async ensureChannelPublisher(channelId: string, userId: string) {
     const member = await this.prisma.chatMember.findUnique({
       where: { chatId_userId: { chatId: channelId, userId } },
     });
@@ -169,7 +166,10 @@ export class MessagesService {
     ) {
       throw new ForbiddenException('You are banned from this channel');
     }
-    if (member.role !== ChatMemberRole.owner && member.role !== ChatMemberRole.admin) {
+    if (
+      member.role !== ChatMemberRole.owner &&
+      member.role !== ChatMemberRole.admin
+    ) {
       throw new ForbiddenException('Only channel admins can publish posts');
     }
     if (member.role === ChatMemberRole.admin) {
@@ -178,7 +178,9 @@ export class MessagesService {
         try {
           const parsed = JSON.parse(raw) as { can_post?: boolean } | null;
           if (parsed && parsed.can_post === false) {
-            throw new ForbiddenException('Insufficient permissions to publish posts');
+            throw new ForbiddenException(
+              'Insufficient permissions to publish posts',
+            );
           }
         } catch (error) {
           if (error instanceof ForbiddenException) {
@@ -190,9 +192,7 @@ export class MessagesService {
     return member;
   }
 
-  private async getMessageWithRelationsOrThrow(
-    messageId: string,
-  ) {
+  private async getMessageWithRelationsOrThrow(messageId: string) {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: MESSAGE_INCLUDE,
@@ -224,7 +224,11 @@ export class MessagesService {
 
     const oversized = mediaItems.find((item) => {
       const size = item.file_size;
-      return typeof size === 'number' && Number.isFinite(size) && size > policy.mediaMaxBytes!;
+      return (
+        typeof size === 'number' &&
+        Number.isFinite(size) &&
+        size > policy.mediaMaxBytes!
+      );
     });
     if (!oversized) return;
 
@@ -245,11 +249,14 @@ export class MessagesService {
   ): Promise<MappedMessage> {
     await this.ensureChatMember(chatId, senderId);
 
-    const chatTypeStr: MailboxChatType = options?.chatType
-      ?? ((await this.prisma.chat.findUnique({
+    const chatTypeStr: MailboxChatType =
+      options?.chatType ??
+      ((await this.prisma.chat
+        .findUnique({
           where: { id: chatId },
           select: { chatType: true },
-        }).then((r) => r?.chatType ?? 'private')) as MailboxChatType);
+        })
+        .then((r) => r?.chatType ?? 'private')) as MailboxChatType);
 
     const prismaMsgType = this.toMessageType(msgType);
     const mediaItems = this.normalizeMediaItems(media);
@@ -281,7 +288,9 @@ export class MessagesService {
       if (peer && !this.realtimeService.isUserOnline(peer.userId)) {
         if (prismaMsgType === MessageType.text) {
           const ttlSec =
-            overrides.RELAY_TEXT_CACHE_SECONDS ?? mailboxPolicy.metadataCacheSeconds ?? 0;
+            overrides.RELAY_TEXT_CACHE_SECONDS ??
+            mailboxPolicy.metadataCacheSeconds ??
+            0;
           if (ttlSec > 0) {
             mailboxExpiresAt = new Date(Date.now() + ttlSec * 1000);
           }
@@ -316,10 +325,12 @@ export class MessagesService {
           content,
           replyToId: replyToId ?? null,
           threadRootMessageId: options?.threadRootMessageId ?? null,
-          forwardedFromMessageId: forwardedFrom?.forwarded_from_message_id ?? null,
+          forwardedFromMessageId:
+            forwardedFrom?.forwarded_from_message_id ?? null,
           forwardedFromName: forwardedFrom?.forwarded_from_name ?? null,
           forwardedFromChatId: forwardedFrom?.forwarded_from_chat_id ?? null,
-          forwardedFromSenderId: forwardedFrom?.forwarded_from_sender_id ?? null,
+          forwardedFromSenderId:
+            forwardedFrom?.forwarded_from_sender_id ?? null,
           isChannelPost: options?.isChannelPost ?? false,
           status: MessageStatus.sent,
           transport: options?.transport ?? defaultTransport,
@@ -328,25 +339,27 @@ export class MessagesService {
       });
 
       if (mediaItems.length > 0 && prismaMsgType !== MessageType.text) {
-        const mediaData: Prisma.MediaCreateManyInput[] = mediaItems.map((item) => {
-          const waveformBytes = this.serializeWaveform(item.waveform);
-          return {
-            id: randomUUID(),
-            messageId: message.id,
-            mediaType: this.toMediaType(item.media_type, prismaMsgType),
-            remoteUrl: item.url ?? null,
-            fileName: item.file_name ?? null,
-            mimeType: item.mime_type ?? null,
-            fileSize: item.file_size ?? null,
-            sha256: item.sha256 ?? null,
-            width: item.width ?? null,
-            height: item.height ?? null,
-            durationMs: item.duration_ms ?? null,
-            thumbnailUrl: item.thumbnail_url ?? item.thumbnail_path ?? null,
-            waveform: waveformBytes,
-            isRound: item.is_round ?? false,
-          };
-        });
+        const mediaData: Prisma.MediaCreateManyInput[] = mediaItems.map(
+          (item) => {
+            const waveformBytes = this.serializeWaveform(item.waveform);
+            return {
+              id: randomUUID(),
+              messageId: message.id,
+              mediaType: this.toMediaType(item.media_type, prismaMsgType),
+              remoteUrl: item.url ?? null,
+              fileName: item.file_name ?? null,
+              mimeType: item.mime_type ?? null,
+              fileSize: item.file_size ?? null,
+              sha256: item.sha256 ?? null,
+              width: item.width ?? null,
+              height: item.height ?? null,
+              durationMs: item.duration_ms ?? null,
+              thumbnailUrl: item.thumbnail_url ?? item.thumbnail_path ?? null,
+              waveform: waveformBytes,
+              isRound: item.is_round ?? false,
+            };
+          },
+        );
         await tx.media.createMany({ data: mediaData });
       }
 
@@ -387,14 +400,18 @@ export class MessagesService {
       include: MESSAGE_INCLUDE,
     });
     const mapped = this.mapMessageForUser(withMedia!, senderId);
-    await this.lineSyncCacheService.upsertMessageCreateEvent(withMedia!).catch((error) => {
-      this.logger.warn(
-        `Failed to write LineSync cache event for message ${result.id}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
-    void this.pushService.notifyNewMessage(chatId, senderId).catch(() => undefined);
+    await this.lineSyncCacheService
+      .upsertMessageCreateEvent(withMedia!)
+      .catch((error) => {
+        this.logger.warn(
+          `Failed to write LineSync cache event for message ${result.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+    void this.pushService
+      .notifyNewMessage(chatId, senderId)
+      .catch(() => undefined);
     return mapped;
   }
 
@@ -413,14 +430,27 @@ export class MessagesService {
       throw new NotFoundException('Channel not found');
     }
     await this.ensureChannelPublisher(channelId, senderId);
-    return this.createMessage(channelId, senderId, msgType, content, media, null, undefined, {
-      isChannelPost: true,
-      transport: Transport.websocket,
-      chatType: 'channel',
-    });
+    return this.createMessage(
+      channelId,
+      senderId,
+      msgType,
+      content,
+      media,
+      null,
+      undefined,
+      {
+        isChannelPost: true,
+        transport: Transport.websocket,
+        chatType: 'channel',
+      },
+    );
   }
 
-  async deleteMessage(chatId: string, messageId: string, userId: string): Promise<MappedMessage> {
+  async deleteMessage(
+    chatId: string,
+    messageId: string,
+    userId: string,
+  ): Promise<MappedMessage> {
     const existing = await this.prisma.message.findFirst({
       where: { id: messageId, chatId },
       include: MESSAGE_INCLUDE,
@@ -612,7 +642,10 @@ export class MessagesService {
     if (chat?.chatType === ChatType.channel && message.isChannelPost) {
       channelId = chatId;
       postId = messageId;
-    } else if (chat?.chatType === ChatType.discussion && message.threadRootMessageId) {
+    } else if (
+      chat?.chatType === ChatType.discussion &&
+      message.threadRootMessageId
+    ) {
       const parentChannel = await this.prisma.chat.findFirst({
         where: {
           chatType: ChatType.channel,
@@ -629,8 +662,7 @@ export class MessagesService {
     return {
       chat_id: chatId,
       message_id: messageId,
-      reactions:
-        this.mapMessageForUser(updated, userId).reactions ?? [],
+      reactions: this.mapMessageForUser(updated, userId).reactions ?? [],
       ...(channelId ? { channel_id: channelId } : {}),
       ...(postId ? { post_id: postId } : {}),
       ...(discussionChatId ? { discussion_chat_id: discussionChatId } : {}),
@@ -648,14 +680,22 @@ export class MessagesService {
     return MessageType.text;
   }
 
-  private normalizeMediaItems(media?: CreateMessageMediaInput): CreateMessageMedia[] {
+  private normalizeMediaItems(
+    media?: CreateMessageMediaInput,
+  ): CreateMessageMedia[] {
     if (!media) return [];
     return (Array.isArray(media) ? media : [media]).slice(0, 10);
   }
 
-  private toMediaType(mediaType: string | undefined, fallbackMsgType: MessageType): MediaType {
+  private toMediaType(
+    mediaType: string | undefined,
+    fallbackMsgType: MessageType,
+  ): MediaType {
     const normalized = mediaType?.toLowerCase();
-    if (normalized && Object.values(MediaType).includes(normalized as MediaType)) {
+    if (
+      normalized &&
+      Object.values(MediaType).includes(normalized as MediaType)
+    ) {
       return normalized as MediaType;
     }
     return MSG_TYPE_TO_MEDIA_TYPE[fallbackMsgType] ?? MediaType.file;
@@ -673,7 +713,10 @@ export class MessagesService {
         : content.slice(0, maxLen) + '…';
     }
     const mediaCount = Array.isArray(media) ? media.length : media ? 1 : 0;
-    if ((msgType === MessageType.image || msgType === MessageType.video) && mediaCount > 1) {
+    if (
+      (msgType === MessageType.image || msgType === MessageType.video) &&
+      mediaCount > 1
+    ) {
       return `${mediaCount} media`;
     }
     const placeholders: Record<MessageType, string> = {
@@ -683,8 +726,8 @@ export class MessagesService {
       [MessageType.video_note]: 'Video note',
       [MessageType.video]: 'Video',
       [MessageType.file]: Array.isArray(media)
-        ? media[0]?.file_name ?? 'File'
-        : media?.file_name ?? 'File',
+        ? (media[0]?.file_name ?? 'File')
+        : (media?.file_name ?? 'File'),
       [MessageType.system]: '',
     };
     return placeholders[msgType] ?? 'Message';

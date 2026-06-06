@@ -60,7 +60,14 @@ export class UsersService {
           { displayName: { contains: q, mode: 'insensitive' } },
           { handle: { contains: q, mode: 'insensitive' } },
           ...(phoneSearch
-            ? [{ phone: { contains: digitNeedle, mode: 'insensitive' as const } }]
+            ? [
+                {
+                  phone: {
+                    contains: digitNeedle,
+                    mode: 'insensitive' as const,
+                  },
+                },
+              ]
             : []),
         ],
       },
@@ -80,8 +87,18 @@ export class UsersService {
 
     scored.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      const aName = (a.user.displayName ?? a.user.username ?? a.user.handle ?? '').toLowerCase();
-      const bName = (b.user.displayName ?? b.user.username ?? b.user.handle ?? '').toLowerCase();
+      const aName = (
+        a.user.displayName ??
+        a.user.username ??
+        a.user.handle ??
+        ''
+      ).toLowerCase();
+      const bName = (
+        b.user.displayName ??
+        b.user.username ??
+        b.user.handle ??
+        ''
+      ).toLowerCase();
       return aName.localeCompare(bName);
     });
 
@@ -151,7 +168,7 @@ export class UsersService {
     }
     if (data.bio !== undefined) {
       updateData.bio =
-        data.bio === '' || data.bio === null ? null : data.bio ?? null;
+        data.bio === '' || data.bio === null ? null : (data.bio ?? null);
     }
     if (data.birthday !== undefined) {
       if (data.birthday === '' || data.birthday === null) {
@@ -210,10 +227,7 @@ export class UsersService {
     await this.pushService.registerToken(userId, expoToken, platform, fcmToken);
   }
 
-  async unregisterPushToken(
-    userId: string,
-    expoToken: string,
-  ): Promise<void> {
+  async unregisterPushToken(userId: string, expoToken: string): Promise<void> {
     await this.pushService.unregisterToken(userId, expoToken);
   }
 }
