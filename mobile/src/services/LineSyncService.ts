@@ -25,6 +25,7 @@ import {
 import { WebSocketService } from './WebSocketService';
 import { SignalingService } from './SignalingService';
 import { parseLineTailWebSocketPayload } from './lineSyncWebSocketPayload';
+import { getSecureRandomString } from '../utils/secureRandom';
 
 export const LINE_SYNC_MVP_NODE_ID = 'local-mvp-node';
 
@@ -230,7 +231,7 @@ class LineSyncServiceClass {
     if (!trimmedLineId || !WebSocketService.isConnected()) {
       return null;
     }
-    const requestId = `line-tail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const requestId = `line-tail-${Date.now()}-${getSecureRandomString(6)}`;
     WebSocketService.sendEvent('line_tail_request', {
       request_id: requestId,
       line_id: trimmedLineId,
