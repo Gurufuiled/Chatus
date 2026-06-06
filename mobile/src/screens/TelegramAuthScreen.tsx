@@ -38,6 +38,7 @@ import {
   type TelegramAuthStatus,
 } from "../stores/telegramAccountStore";
 import { requestContactsAndSync } from "../services/ContactSyncService";
+import { syncChatusPhoneFromTelegramAuth } from "../services/telegramChatusPhoneSync";
 import {
   getAuthWizardStepIndex,
   resolveAuthWizardStep,
@@ -213,6 +214,7 @@ export function TelegramAuthScreen() {
       telegramAccountStore.getState().setAuthStatus("ready");
       telegramAccountStore.getState().setTelegramUserId(0);
       await telegramAccountStore.getState().persistSnapshot();
+      syncChatusPhoneFromTelegramAuth().catch(console.error);
       requestContactsAndSync().catch(console.error);
 
       if (navigation.canGoBack()) {
@@ -262,6 +264,7 @@ export function TelegramAuthScreen() {
       if (t === "authorizationStateReady") {
         telegramAccountStore.getState().setAuthStatus("ready");
         await telegramAccountStore.getState().persistSnapshot();
+        syncChatusPhoneFromTelegramAuth().catch(console.error);
         requestContactsAndSync().catch(console.error);
         return "ready";
       }

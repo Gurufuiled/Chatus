@@ -10,6 +10,7 @@ import { tdlibMessagePreviewFromContent } from '../services/telegramTdlibNotific
 import { getNestedRecord } from '../screens/telegramChat/tdlibMapping';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
+import { syncChatusPhoneFromTelegramAuth } from '../services/telegramChatusPhoneSync';
 
 /**
  * Глобально: входящие TDLib → превью в шторку (фон), регистрация FCM в Telegram после авторизации.
@@ -43,10 +44,12 @@ export function TelegramTdlibNotificationListener() {
     unsubAuth = telegramAccountStore.subscribe((state, prev) => {
       if (state.authStatus === 'ready' && prev?.authStatus !== 'ready') {
         void tryRegisterFcm();
+        syncChatusPhoneFromTelegramAuth().catch(console.error);
       }
     });
     if (telegramAccountStore.getState().authStatus === 'ready') {
       void tryRegisterFcm();
+      syncChatusPhoneFromTelegramAuth().catch(console.error);
     }
 
     let persistAuthDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -73,6 +76,7 @@ export function TelegramTdlibNotificationListener() {
               if (store.authStatus !== 'ready') {
                 store.setAuthStatus('ready');
                 scheduleAuthPersist();
+                syncChatusPhoneFromTelegramAuth().catch(console.error);
               }
               break;
             case 'authorizationStateWaitCode':

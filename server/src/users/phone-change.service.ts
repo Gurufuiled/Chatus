@@ -129,4 +129,47 @@ export class PhoneChangeService {
       throw e;
     }
   }
+
+  /**
+   * После успешной авторизации Telegram на клиенте: сохранить номер в профиль Chatus,
+   * если телефона ещё нет (для моста Chatus → Telegram по номеру собеседника).
+   */
+  async syncPhoneIfEmpty(
+    userId: string,
+    phoneRaw: string,
+  ): Promise<ReturnType<typeof mapUser>> {
+    const phone = normalizeRuMobileToE164(phoneRaw);
+    if (!phone) {
+      throw new BadRequestException('Invalid phone number');
+    }
+
+    const me = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!me) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (me.phone?.replace(/\D/g, '')) {
+      return mapUser(me);
+    }
+
+    const taken = await this.prisma.user.findFirst({
+      where: { phone, NOT: { id: userId } },
+    });
+    if (taken) {
+      throw new ConflictException('Phone number is already in use');
+    }
+
+    try {
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { phone },
+      });
+      return mapUser(user);
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('Phone number is already in use');
+      }
+      throw e;
+    }
+  }
 }

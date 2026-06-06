@@ -19,6 +19,7 @@ import { CreateAddressBookContactDto } from './dto/create-address-book-contact.d
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { RequestPhoneChangeDto } from './dto/request-phone-change.dto';
 import { VerifyPhoneChangeDto } from './dto/verify-phone-change.dto';
+import { SyncPhoneIfEmptyDto } from './dto/sync-phone-if-empty.dto';
 import { PhoneChangeService } from './phone-change.service';
 import type { User } from '@prisma/client';
 
@@ -78,6 +79,12 @@ export class UsersController {
   @Post('me/phone/verify')
   async verifyPhoneChange(@CurrentUser() user: User, @Body() dto: VerifyPhoneChangeDto) {
     return this.phoneChangeService.verify(user.id, dto.session_id, dto.code);
+  }
+
+  /** Сохранить телефон из Telegram-авторизации, если в профиле Chatus телефона ещё нет. */
+  @Post('me/phone/sync-if-empty')
+  async syncPhoneIfEmpty(@CurrentUser() user: User, @Body() dto: SyncPhoneIfEmptyDto) {
+    return this.phoneChangeService.syncPhoneIfEmpty(user.id, dto.phone);
   }
 
   @Get(':id')
