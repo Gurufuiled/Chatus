@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -9,7 +10,14 @@ import { createChatListRowStyles } from './chatListRow.styles';
 import { DialogListPreview } from './DialogListPreview';
 import { formatMessageTime } from '../utils/formatMessageTime';
 
-const AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
+const AVATAR_COLORS = [
+  '#5B8DEF',
+  '#53B7A8',
+  '#F2994A',
+  '#BB6BD9',
+  '#EB5757',
+  '#2D9CDB',
+];
 
 function getAvatarColor(seed: string) {
   let hash = 0;
@@ -30,15 +38,22 @@ type Props = {
   onLongPress?: (item: TelegramDialogRow, event: any) => void;
 };
 
-export function TelegramDialogListRow({ item, navigation, onLongPress }: Props) {
+export function TelegramDialogListRow({
+  item,
+  navigation,
+  onLongPress,
+}: Props) {
   const { colors } = useTheme();
   const rowStyles = useMemo(() => createChatListRowStyles(colors), [colors]);
   const isChannel = item.chatType === 'channel';
   const isGroup = item.chatType === 'group' || item.chatType === 'supergroup';
   const title = typeof item.title === 'string' ? item.title : 'Чат';
-  const previewText = typeof item.lastMessagePreview === 'string' ? item.lastMessagePreview : '';
+  const previewText =
+    typeof item.lastMessagePreview === 'string' ? item.lastMessagePreview : '';
   const previewThumbs = Array.isArray(item.lastMessageThumbnailUris)
-    ? item.lastMessageThumbnailUris.filter((uri): uri is string => typeof uri === 'string' && uri.length > 0)
+    ? item.lastMessageThumbnailUris.filter(
+        (uri): uri is string => typeof uri === 'string' && uri.length > 0,
+      )
     : [];
 
   const rowNavParams = {
@@ -77,21 +92,36 @@ export function TelegramDialogListRow({ item, navigation, onLongPress }: Props) 
         onPress={() => navigation.navigate('TelegramChat', rowNavParams)}
         onLongPress={(event) => onLongPress?.(item, event)}
         delayLongPress={220}
-        style={({ pressed }) => [rowStyles.content, pressed && rowStyles.rowPressed]}
+        style={({ pressed }) => [
+          rowStyles.content,
+          pressed && rowStyles.rowPressed,
+        ]}
       >
         <View style={rowStyles.topRow}>
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 }}>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              minWidth: 0,
+            }}
+          >
             <Text style={rowStyles.title} numberOfLines={1}>
               {title}
             </Text>
             {isChannel ? (
               <Text style={{ fontSize: 11, color: colors.accent }}>канал</Text>
             ) : isGroup ? (
-              <Text style={{ fontSize: 11, color: colors.textSecondary }}>группа</Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                группа
+              </Text>
             ) : null}
           </View>
           {item.lastMessageAt ? (
-            <Text style={rowStyles.timeLabel}>{formatChatTime(item.lastMessageAt)}</Text>
+            <Text style={rowStyles.timeLabel}>
+              {formatChatTime(item.lastMessageAt)}
+            </Text>
           ) : null}
         </View>
         {previewText || previewThumbs.length > 0 || item.unreadCount > 0 ? (
@@ -106,12 +136,24 @@ export function TelegramDialogListRow({ item, navigation, onLongPress }: Props) 
             ) : (
               <View style={rowStyles.previewPlaceholder} />
             )}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
               {item.isPinned ? (
-                <MaterialCommunityIcons name="pin" size={18} color={colors.iconMuted} style={{ transform: [{ rotate: '45deg' }] }} />
+                <MaterialCommunityIcons
+                  name="pin"
+                  size={18}
+                  color={colors.iconMuted}
+                  style={{ transform: [{ rotate: '45deg' }] }}
+                />
               ) : null}
               {item.unreadCount > 0 ? (
-                <View style={[rowStyles.unreadBadge, item.unreadCount > 99 && rowStyles.unreadBadgeWide]}>
+                <View
+                  style={[
+                    rowStyles.unreadBadge,
+                    item.unreadCount > 99 && rowStyles.unreadBadgeWide,
+                  ]}
+                >
                   <Text style={rowStyles.unreadBadgeText}>
                     {item.unreadCount > 99 ? '99+' : String(item.unreadCount)}
                   </Text>

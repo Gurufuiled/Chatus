@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 
 import type { ThemeColors } from '../theme/palettes';
 
@@ -21,7 +22,8 @@ export function DialogListPreview({
   colors,
   placeholder = '',
 }: DialogListPreviewProps) {
-  const trimmed = (typeof text === 'string' ? text : '').trim() || placeholder.trim();
+  const trimmed =
+    (typeof text === 'string' ? text : '').trim() || placeholder.trim();
   const thumbs = thumbnailUris.filter(Boolean).slice(0, 3);
 
   if (!trimmed && thumbs.length === 0) {
@@ -33,13 +35,20 @@ export function DialogListPreview({
       {thumbs.length > 0 ? (
         <View style={styles.thumbs}>
           {thumbs.map((uri, index) => (
-            <Image key={`${uri}-${index}`} source={{ uri }} style={styles.thumb} />
+            <Image
+              key={`${uri}-${index}`}
+              source={{ uri }}
+              style={styles.thumb}
+            />
           ))}
         </View>
       ) : null}
       {trimmed ? (
         <Text
-          style={[styles.text, { color: accentLabel ? colors.accent : colors.textSecondary }]}
+          style={[
+            styles.text,
+            { color: accentLabel ? colors.accent : colors.textSecondary },
+          ]}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
