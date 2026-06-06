@@ -5,6 +5,7 @@ import {
   Dimensions,
   Image,
   PanResponder,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -245,9 +246,15 @@ export const FloatingVideoNoteOverlay = React.memo(function FloatingVideoNoteOve
             contentFit="cover"
             surfaceType="textureView"
             useExoShutter={false}
+            pointerEvents={Platform.OS === 'android' ? 'none' : 'auto'}
             onFirstFrameRender={() => setHasRenderedFrame(true)}
           />
-          {!isPlaying ? <View style={styles.pausedScrim} /> : null}
+
+          {Platform.OS === 'android' ? (
+            <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' }} />
+          ) : null}
+
+          {!isPlaying ? <View style={styles.pausedScrim} pointerEvents="none" /> : null}
         </Pressable>
       </Animated.View>
     </View>

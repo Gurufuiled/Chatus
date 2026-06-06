@@ -35,8 +35,11 @@ export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = Platform.OS !== 'an
 /**
  * Android: абсолютный док не всегда поднимается с `adjustResize` (MIUI / gesture nav).
  * Поднимаем только док по `useAnimatedKeyboard`, без `marginBottom` у списка — иначе двойной зазор.
+ * Изменение: в новых версиях react-native-safe-area-context и react-native-reanimated
+ * adjustResize отрабатывает корректно у большинства устройств, поэтому искусственное поднятие
+ * может приводить к двойному отступу. Выключаем для Android по умолчанию.
  */
-export const CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT = Platform.OS === 'android';
+export const CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT = false;
 
 /**
  * Стили смещения абсолютного дока и нижнего отступа списка относительно клавиатуры.
