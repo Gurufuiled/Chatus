@@ -460,44 +460,44 @@ export class ChannelsService {
       return new Set();
     }
 
-    const viewedNowIds = new Set<string>();
-    for (const postId of uniquePostIds) {
-      try {
-        await this.prisma.channelPostView.create({
-          data: {
-            messageId: postId,
-            userId,
-          },
-        });
-
-        await this.prisma.message.updateMany({
-          where: {
-            id: postId,
-            chatId: channelId,
-            isChannelPost: true,
-            isDeleted: false,
-          },
-          data: {
-            viewCount: { increment: 1 },
-          },
-        });
-
-        viewedNowIds.add(postId);
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError) {
-          if (error.code === 'P2002') {
-            continue;
-          }
-          if (error.code === 'P2021' || error.code === 'P2022') {
-            return new Set();
-          }
-        }
-        console.warn('[channels.service] markChannelPostsViewed item failed:', postId, error);
-        continue;
+    try {
+      const existing = await this.prisma.channelPostView.findMany({
+        where: { userId, messageId: { in: uniquePostIds } },
+        select: { messageId: true },
+      });
+      const alreadyViewed = new Set(existing.map((view) => view.messageId));
+      const newPostIds = uniquePostIds.filter((id) => !alreadyViewed.has(id));
+      if (newPostIds.length === 0) {
+        return new Set();
       }
-    }
 
-    return viewedNowIds;
+      await this.prisma.channelPostView.createMany({
+        data: newPostIds.map((messageId) => ({ messageId, userId })),
+        skipDuplicates: true,
+      });
+
+      await this.prisma.message.updateMany({
+        where: {
+          id: { in: newPostIds },
+          chatId: channelId,
+          isChannelPost: true,
+          isDeleted: false,
+        },
+        data: {
+          viewCount: { increment: 1 },
+        },
+      });
+
+      return new Set(newPostIds);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2021' || error.code === 'P2022') {
+          return new Set();
+        }
+      }
+      console.warn('[channels.service] markChannelPostsViewed batch failed:', error);
+      return new Set();
+    }
   }
 
   private async ensureDiscussionMembership(channel: ChannelWithRelations, userId: string) {
