@@ -35,7 +35,7 @@ export function buildLineSyncAclContextForBlobRequest(
   const base = { actor_user_id: actorUserId } satisfies Pick<LineSyncAclContext, 'actor_user_id'>;
 
   if (chat.chat_type === 'private') {
-    const ids = [...new Set((chat.members ?? []).map((m) => m.user_id).filter((id) => id.length > 0))];
+    const ids: string[] = Array.from(new Set((chat.members ?? []).map((m) => m.user_id).filter((id) => id.length > 0)));
     if (ids.length !== 2) return null;
     return {
       ...base,

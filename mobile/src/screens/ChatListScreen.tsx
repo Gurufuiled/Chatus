@@ -114,7 +114,7 @@ function ContactResultRow({
       ) : (
         <View style={listStyles.contactAvatarPlaceholder}>
           <Text style={listStyles.contactAvatarText}>
-            {(displayName.trim()[0] || '?').toUpperCase()}
+            {((String(displayName || "?").trim() || "?")[0] || "?").toUpperCase()}
           </Text>
         </View>
       )}
