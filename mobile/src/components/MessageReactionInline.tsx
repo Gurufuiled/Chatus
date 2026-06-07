@@ -1,12 +1,21 @@
-import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Reanimated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
-import { resolveAvatarUrl } from '../config';
-import { withAlpha } from '../theme/colors';
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import Reanimated, {
+  FadeInDown,
+  LinearTransition,
+} from "react-native-reanimated";
+import { resolveAvatarUrl } from "../config";
+import { withAlpha } from "../theme/colors";
 
 /** Появление строки реакций + плавное расширение при новых эмодзи/счётчиках (как в Telegram). */
-const REACTION_ROW_ENTERING = FadeInDown.springify().damping(17).stiffness(255).mass(0.88);
-const REACTION_ROW_LAYOUT = LinearTransition.springify().damping(18).stiffness(235);
+const REACTION_ROW_ENTERING = FadeInDown.springify()
+  .damping(17)
+  .stiffness(255)
+  .mass(0.88);
+const REACTION_ROW_LAYOUT = LinearTransition.springify()
+  .damping(18)
+  .stiffness(235);
 
 export type InlineReactionItem = {
   emoji: string;
@@ -21,7 +30,7 @@ type MessageReactionInlineProps = {
   allowReactions: boolean;
   onToggle: (emoji: string) => void;
   /** Компактные «таблетки» снизу справа (голос / кружок), как в Telegram */
-  variant?: 'default' | 'floatingTail';
+  variant?: "default" | "floatingTail";
   accentColor?: string;
 };
 
@@ -33,12 +42,12 @@ export function MessageReactionInline({
   isMe,
   allowReactions,
   onToggle,
-  variant = 'default',
+  variant = "default",
   accentColor,
 }: MessageReactionInlineProps) {
   if (!reactions.length) return null;
 
-  const isTail = variant === 'floatingTail';
+  const isTail = variant === "floatingTail";
 
   return (
     <Reanimated.View
@@ -60,19 +69,25 @@ export function MessageReactionInline({
               : isMe
                 ? styles.chipPaletteMe
                 : styles.chipPaletteOther,
-            !isTail && r.reacted_by_me && (
-              accentColor
-                ? { backgroundColor: withAlpha(accentColor, isMe ? 0.52 : 0.34) }
-                : (isMe ? styles.chipMineOnMe : styles.chipMineOnOther)
-            ),
-            isTail && r.reacted_by_me && (
-              accentColor
+            !isTail &&
+              r.reacted_by_me &&
+              (accentColor
+                ? {
+                    backgroundColor: withAlpha(accentColor, isMe ? 0.52 : 0.34),
+                  }
+                : isMe
+                  ? styles.chipMineOnMe
+                  : styles.chipMineOnOther),
+            isTail &&
+              r.reacted_by_me &&
+              (accentColor
                 ? {
                     backgroundColor: withAlpha(accentColor, isMe ? 0.88 : 0.42),
                     borderColor: withAlpha(accentColor, 0.22),
                   }
-                : (isMe ? styles.chipMineTailOnMe : styles.chipMineTailOnOther)
-            ),
+                : isMe
+                  ? styles.chipMineTailOnMe
+                  : styles.chipMineTailOnOther),
             pressed && allowReactions && styles.chipPressed,
             !allowReactions && styles.chipDisabled,
           ]}
@@ -95,9 +110,18 @@ export function MessageReactionInline({
                   ]}
                 >
                   {uri ? (
-                    <Image source={{ uri }} style={styles.avatarImg} />
+                    <Image
+                      source={{ uri }}
+                      cachePolicy="disk"
+                      style={styles.avatarImg}
+                    />
                   ) : (
-                    <View style={[styles.avatarFallback, isMe ? styles.avatarFallbackMe : null]} />
+                    <View
+                      style={[
+                        styles.avatarFallback,
+                        isMe ? styles.avatarFallbackMe : null,
+                      ]}
+                    />
                   )}
                 </View>
               );
@@ -126,59 +150,59 @@ export function MessageReactionInline({
 
 const styles = StyleSheet.create({
   row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
     gap: 5,
     marginTop: 5,
     paddingRight: 2,
-    maxWidth: '100%',
+    maxWidth: "100%",
   },
   rowFloatingTail: {
     marginTop: 0,
-    justifyContent: 'flex-end',
-    alignSelf: 'flex-end',
-    maxWidth: '92%',
+    justifyContent: "flex-end",
+    alignSelf: "flex-end",
+    maxWidth: "92%",
   },
   chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 3,
     paddingLeft: 7,
     paddingRight: 8,
     borderRadius: 14,
     gap: 3,
-    maxWidth: '100%',
+    maxWidth: "100%",
   },
   chipPaletteMe: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: "rgba(255,255,255,0.14)",
   },
   chipPaletteOther: {
-    backgroundColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: "rgba(0,0,0,0.06)",
   },
   chipMineOnMe: {
-    backgroundColor: 'rgba(167, 139, 250, 0.52)',
+    backgroundColor: "rgba(167, 139, 250, 0.52)",
   },
   chipMineOnOther: {
-    backgroundColor: 'rgba(139, 92, 246, 0.34)',
+    backgroundColor: "rgba(139, 92, 246, 0.34)",
   },
   chipFloatingTail: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: "rgba(255,255,255,0.94)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(15,23,42,0.08)',
-    shadowColor: '#0F172A',
+    borderColor: "rgba(15,23,42,0.08)",
+    shadowColor: "#0F172A",
     shadowOpacity: 0.14,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   chipMineTailOnMe: {
-    backgroundColor: 'rgba(167, 139, 250, 0.88)',
-    borderColor: 'rgba(91, 33, 182, 0.22)',
+    backgroundColor: "rgba(167, 139, 250, 0.88)",
+    borderColor: "rgba(91, 33, 182, 0.22)",
   },
   chipMineTailOnOther: {
-    backgroundColor: 'rgba(139, 92, 246, 0.42)',
-    borderColor: 'rgba(91, 33, 182, 0.18)',
+    backgroundColor: "rgba(139, 92, 246, 0.42)",
+    borderColor: "rgba(91, 33, 182, 0.18)",
   },
   chipPressed: {
     opacity: 0.82,
@@ -191,29 +215,29 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   avatarStack: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginLeft: 1,
   },
   avatarRing: {
     width: AVATAR + 2,
     height: AVATAR + 2,
     borderRadius: (AVATAR + 2) / 2,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarRingMe: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderColor: "rgba(255,255,255,0.55)",
   },
   avatarRingOther: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(0,0,0,0.12)',
+    borderColor: "rgba(0,0,0,0.12)",
   },
   avatarRingTail: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(15,23,42,0.12)',
+    borderColor: "rgba(15,23,42,0.12)",
   },
   avatarImg: {
     width: AVATAR,
@@ -224,22 +248,22 @@ const styles = StyleSheet.create({
     width: AVATAR,
     height: AVATAR,
     borderRadius: AVATAR / 2,
-    backgroundColor: 'rgba(120,126,138,0.35)',
+    backgroundColor: "rgba(120,126,138,0.35)",
   },
   avatarFallbackMe: {
-    backgroundColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: "rgba(255,255,255,0.35)",
   },
   count: {
     fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(17,24,39,0.58)',
+    fontWeight: "700",
+    color: "rgba(17,24,39,0.58)",
     marginLeft: 2,
     minWidth: 10,
   },
   countMe: {
-    color: 'rgba(255,255,255,0.82)',
+    color: "rgba(255,255,255,0.82)",
   },
   countTail: {
-    color: 'rgba(17,24,39,0.62)',
+    color: "rgba(17,24,39,0.62)",
   },
 });

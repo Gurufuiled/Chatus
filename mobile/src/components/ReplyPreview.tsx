@@ -1,63 +1,78 @@
-import React from 'react';
-import type { GestureResponderEvent } from 'react-native';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
-import type { Message } from '../stores/types';
-import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
-import { getCompositeStickerRefs, getCompositeTextBody, tryParseCompositeMessage } from '../stickers/chatusCompositePayload';
-import { buildSearchHighlightChildren } from '../utils/searchHighlightText';
-import { usePeerFirstResolvedUri } from './peerFirstMedia';
+import React from "react";
+import type { GestureResponderEvent } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import Feather from "@expo/vector-icons/Feather";
+import type { Message } from "../stores/types";
+import { isChatusStickerMessage } from "../stickers/chatusStickerCatalog";
+import {
+  getCompositeStickerRefs,
+  getCompositeTextBody,
+  tryParseCompositeMessage,
+} from "../stickers/chatusCompositePayload";
+import { buildSearchHighlightChildren } from "../utils/searchHighlightText";
+import { usePeerFirstResolvedUri } from "./peerFirstMedia";
 
-export type ReplyPreviewMode = 'composer' | 'bubble';
+export type ReplyPreviewMode = "composer" | "bubble";
 
 function getMediaLabel(message: Message): string {
   switch (message.msg_type) {
-    case 'image':
-      return message.content?.trim() ? `Фото: ${message.content.trim()}` : 'Фото';
-    case 'video':
-      return message.content?.trim() ? `Видео: ${message.content.trim()}` : 'Видео';
-    case 'voice':
-      return 'Голосовое сообщение';
-    case 'video_note':
-      return 'Видеосообщение';
-    case 'file':
-      return message.media?.[0]?.file_name?.trim() || 'Файл';
+    case "image":
+      return message.content?.trim()
+        ? `Фото: ${message.content.trim()}`
+        : "Фото";
+    case "video":
+      return message.content?.trim()
+        ? `Видео: ${message.content.trim()}`
+        : "Видео";
+    case "voice":
+      return "Голосовое сообщение";
+    case "video_note":
+      return "Видеосообщение";
+    case "file":
+      return message.media?.[0]?.file_name?.trim() || "Файл";
     default:
-      return 'Сообщение';
+      return "Сообщение";
   }
 }
 
-export function buildReplyPreviewText(message: Message | null | undefined): string {
-  if (!message) return '';
-  if (message.is_deleted === 1) return 'Сообщение удалено';
+export function buildReplyPreviewText(
+  message: Message | null | undefined,
+): string {
+  if (!message) return "";
+  if (message.is_deleted === 1) return "Сообщение удалено";
 
-  if (message.msg_type === 'text') {
+  if (message.msg_type === "text") {
     const text = message.content?.trim();
     const composite = text ? tryParseCompositeMessage(text) : null;
     if (composite) {
       const t = getCompositeTextBody(composite).trim();
       const stickerCount = getCompositeStickerRefs(composite).length;
       if (t.length) {
-        return stickerCount > 1 ? `${t} · ${stickerCount} стикеров` : `${t} · стикер`;
+        return stickerCount > 1
+          ? `${t} · ${stickerCount} стикеров`
+          : `${t} · стикер`;
       }
-      return stickerCount > 1 ? `${stickerCount} стикеров` : 'Стикер';
+      return stickerCount > 1 ? `${stickerCount} стикеров` : "Стикер";
     }
-    if (text && isChatusStickerMessage(text)) return 'Стикер';
-    return text?.length ? text : 'Пустое сообщение';
+    if (text && isChatusStickerMessage(text)) return "Стикер";
+    return text?.length ? text : "Пустое сообщение";
   }
 
   return getMediaLabel(message);
 }
 
-export function getReplyPreviewThumbnailUri(message: Message | null | undefined): string | null {
+export function getReplyPreviewThumbnailUri(
+  message: Message | null | undefined,
+): string | null {
   if (!message || message.is_deleted === 1) return null;
 
-  if (message.msg_type === 'video_note' || message.msg_type === 'video') {
+  if (message.msg_type === "video_note" || message.msg_type === "video") {
     const videoThumbnail = message.media?.[0]?.thumbnail_url?.trim();
     if (videoThumbnail) return videoThumbnail;
   }
 
-  if (message.msg_type !== 'image') return null;
+  if (message.msg_type !== "image") return null;
 
   const thumbnailUri = message.media?.[0]?.thumbnail_url?.trim();
   if (thumbnailUri) return thumbnailUri;
@@ -88,8 +103,8 @@ type ReplyPreviewProps = {
 export function ReplyPreview({
   author,
   text,
-  mode = 'bubble',
-  accentColor = '#F28C28',
+  mode = "bubble",
+  accentColor = "#F28C28",
   backgroundColor,
   textColor,
   authorColor,
@@ -100,22 +115,31 @@ export function ReplyPreview({
   onPress,
   onClose,
 }: ReplyPreviewProps) {
-  const isComposer = mode === 'composer';
-  const resolvedThumbnailUri = usePeerFirstResolvedUri(peerFirstLineId, thumbnailUri);
+  const isComposer = mode === "composer";
+  const resolvedThumbnailUri = usePeerFirstResolvedUri(
+    peerFirstLineId,
+    thumbnailUri,
+  );
   const hasThumbnail = !!resolvedThumbnailUri?.trim();
-  const q = searchHighlightQuery?.trim() ?? '';
+  const q = searchHighlightQuery?.trim() ?? "";
   const textChildren =
     q.length > 0 ? buildSearchHighlightChildren(text, q.toLowerCase()) : text;
 
-  const handlePress = React.useCallback((event: GestureResponderEvent) => {
-    event.stopPropagation?.();
-    onPress?.();
-  }, [onPress]);
+  const handlePress = React.useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation?.();
+      onPress?.();
+    },
+    [onPress],
+  );
 
-  const handleClose = React.useCallback((event: GestureResponderEvent) => {
-    event.stopPropagation?.();
-    onClose?.();
-  }, [onClose]);
+  const handleClose = React.useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation?.();
+      onClose?.();
+    },
+    [onClose],
+  );
 
   const content = (
     <>
@@ -123,7 +147,11 @@ export function ReplyPreview({
       {hasThumbnail ? (
         <Image
           source={{ uri: resolvedThumbnailUri }}
-          style={[styles.thumbnail, isComposer ? styles.thumbnailComposer : styles.thumbnailBubble]}
+          cachePolicy="disk"
+          style={[
+            styles.thumbnail,
+            isComposer ? styles.thumbnailComposer : styles.thumbnailBubble,
+          ]}
         />
       ) : null}
       <View style={styles.content}>
@@ -197,21 +225,21 @@ export function ReplyPreview({
 
 const styles = StyleSheet.create({
   root: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: 14,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   rootPressed: {
     opacity: 0.9,
   },
   rootComposer: {
-    backgroundColor: '#232528',
+    backgroundColor: "#232528",
     minHeight: 50,
     borderRadius: 18,
   },
   rootBubble: {
-    backgroundColor: '#6FA4FF',
+    backgroundColor: "#6FA4FF",
     marginBottom: 8,
     borderRadius: 12,
     marginHorizontal: -2,
@@ -221,10 +249,10 @@ const styles = StyleSheet.create({
   },
   accent: {
     width: 3,
-    alignSelf: 'stretch',
+    alignSelf: "stretch",
   },
   thumbnail: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: "rgba(255,255,255,0.18)",
     marginLeft: 10,
   },
   thumbnailBubble: {
@@ -246,30 +274,30 @@ const styles = StyleSheet.create({
   author: {
     fontSize: 12,
     lineHeight: 15,
-    fontWeight: '700',
-    color: '#B85E1C',
+    fontWeight: "700",
+    color: "#B85E1C",
   },
   authorComposer: {
     fontSize: 14,
     lineHeight: 17,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   text: {
     marginTop: 1,
     fontSize: 12,
     lineHeight: 15,
-    color: 'rgba(255,255,255,0.86)',
+    color: "rgba(255,255,255,0.86)",
   },
   textComposer: {
     fontSize: 13,
     lineHeight: 17,
-    color: 'rgba(255,255,255,0.88)',
+    color: "rgba(255,255,255,0.88)",
   },
   closeButton: {
     width: 36,
     height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 4,
   },
 });
