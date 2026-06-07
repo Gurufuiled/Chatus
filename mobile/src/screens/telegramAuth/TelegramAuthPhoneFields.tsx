@@ -44,18 +44,22 @@ export const TelegramAuthPhoneFields = memo(function TelegramAuthPhoneFields({
     setPhone(phoneInitialValue);
   }, [phoneInitialValue]);
 
+  const handleChangeText = React.useCallback((value: string) => {
+    dirtyRef.current = true;
+    setPhone(value);
+  }, []);
+
+  const handleBlur = React.useCallback(() => {
+    dirtyRef.current = false;
+    onCommitPhone(phone);
+  }, [phone, onCommitPhone]);
+
   return (
     <>
       <AuthWizardTextField
         value={phone}
-        onChangeText={(value) => {
-          dirtyRef.current = true;
-          setPhone(value);
-        }}
-        onBlur={() => {
-          dirtyRef.current = false;
-          onCommitPhone(phone);
-        }}
+        onChangeText={handleChangeText}
+        onBlur={handleBlur}
         placeholder="+7 900 000-00-00"
         placeholderTextColor={ui.placeholder}
         keyboardType="phone-pad"

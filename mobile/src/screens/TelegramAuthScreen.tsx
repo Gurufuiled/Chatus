@@ -8,6 +8,8 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -868,14 +870,22 @@ export function TelegramAuthScreen() {
 
   return (
     <View style={[styles.flex, { backgroundColor: colors.chatBackground }]}>
-      <ScrollView
+      <KeyboardAvoidingView
         style={styles.flex}
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingBottom: scrollBottomPad },
-        ]}
-        keyboardShouldPersistTaps="handled"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        enabled={Platform.OS !== "ios" || authStep !== "password"}
       >
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: scrollBottomPad },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          overScrollMode="never"
+          removeClippedSubviews={false}
+          showsVerticalScrollIndicator={false}
+        >
         <Text style={[styles.title, { color: colors.textPrimary }]}>
           Telegram
         </Text>
@@ -962,7 +972,7 @@ export function TelegramAuthScreen() {
           <TelegramAuthPhoneFields
             phoneInitialValue={phone}
             onCommitPhone={setPhone}
-            onSubmitPhone={(value) => void submitPhone(value)}
+            onSubmitPhone={submitPhone}
             busy={busy}
             preparing={preparing}
             canSendPhone={!!canSendPhone}
@@ -1054,12 +1064,13 @@ export function TelegramAuthScreen() {
           </>
         ) : null}
 
-        <Pressable onPress={resetTg} style={styles.resetWrap} hitSlop={12}>
-          <Text style={styles.resetText}>
-            Сбросить сессию Telegram на устройстве
-          </Text>
-        </Pressable>
-      </ScrollView>
+          <Pressable onPress={resetTg} style={styles.resetWrap} hitSlop={12}>
+            <Text style={styles.resetText}>
+              Сбросить сессию Telegram на устройстве
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {showAuthForm && authStep === "password" ? (
         <TelegramAuthPasswordDock
