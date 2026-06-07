@@ -12,7 +12,7 @@ export function getTdlibFileId(file: Record<string, unknown> | null): number | n
   return typeof id === 'number' && Number.isFinite(id) ? id : null;
 }
 
-/** Apply TDLib `updateFile` to chat rows (full-size photo / preview / album tile). */
+/** Apply TDLib `updateFile` to media rows (voice/video/photo/web preview/album tile). */
 export function patchMessagesWithTdlibFile(
   rows: TelegramMessageRow[],
   file: Record<string, unknown>,

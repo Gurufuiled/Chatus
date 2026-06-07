@@ -544,6 +544,7 @@ export async function mapTdMessage(
   if (kind === 'messageVideo') {
     const video = getNestedRecord(content.video);
     const file = getNestedRecord(video?.video);
+    const fileId = getTdFileId(file);
     const thumbnail = getNestedRecord(video?.thumbnail);
     const thumbnailFile = getNestedRecord(thumbnail?.file);
     const [uri, thumbnailUri] = await Promise.all([
@@ -553,8 +554,9 @@ export async function mapTdMessage(
     return {
       ...base,
       kind: 'video',
-      text: caption || (uri ? '' : 'Видео'),
+      text: caption,
       mediaUri: uri ?? undefined,
+      mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       thumbnailUri: thumbnailUri ?? undefined,
       width: getNumber(video?.width),
       height: getNumber(video?.height),
@@ -565,6 +567,7 @@ export async function mapTdMessage(
   if (kind === 'messageVideoNote') {
     const videoNote = getNestedRecord(content.video_note);
     const file = getNestedRecord(videoNote?.video);
+    const fileId = getTdFileId(file);
     const thumbnail = getNestedRecord(videoNote?.thumbnail);
     const thumbnailFile = getNestedRecord(thumbnail?.file);
     const mini = getNestedRecord(videoNote?.minithumbnail);
@@ -580,6 +583,7 @@ export async function mapTdMessage(
       kind: 'video_note',
       text: 'Видеосообщение',
       mediaUri: uri ?? undefined,
+      mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       thumbnailUri: thumbnailUri ?? miniUri ?? undefined,
       width: side,
       height: side,
@@ -626,6 +630,12 @@ function voiceRowNeedsHydrate(row: TelegramMessageRow): boolean {
   return !uri || row.mediaFullFileId != null;
 }
 
+function videoRowNeedsHydrate(row: TelegramMessageRow): boolean {
+  if ((row.kind !== 'video' && row.kind !== 'video_note') || row.messageId <= 0) return false;
+  const uri = row.mediaUri?.trim() ?? '';
+  return !uri || row.mediaFullFileId != null;
+}
+
 function collectMediaHydrateMessageIds(rows: TelegramMessageRow[]): number[] {
   const missingIds = new Set<number>();
   for (const row of rows) {
@@ -641,6 +651,9 @@ function collectMediaHydrateMessageIds(rows: TelegramMessageRow[]): number[] {
       missingIds.add(row.messageId);
     }
     if (voiceRowNeedsHydrate(row)) {
+      missingIds.add(row.messageId);
+    }
+    if (videoRowNeedsHydrate(row)) {
       missingIds.add(row.messageId);
     }
   }

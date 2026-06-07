@@ -176,12 +176,16 @@ export function createChatProfileMediaSectionStyles(c: ThemeColors) {
     },
     voiceWaveWrap: {
       flex: 1,
+      minWidth: 0,
+      justifyContent: 'center',
     },
     voiceWaveTrack: {
-      height: 24,
+      height: 28,
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       gap: 2,
+      overflow: 'visible',
     },
     voiceBar: {
       width: 3,

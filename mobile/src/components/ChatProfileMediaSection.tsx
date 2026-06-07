@@ -15,7 +15,7 @@ import {
   useVoicePlayerControls,
 } from '../contexts/VoicePlayerContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { buildUiWaveform } from '../services/waveformUtils';
+import { buildVoiceProfileBarHeights } from '../utils/voiceProfileWaveform';
 import { withAlpha } from '../theme/stylePrimitives';
 import {
   createChatProfileMediaSectionStyles,
@@ -88,14 +88,6 @@ const TAB_LABELS: Record<ProfileTabKey, string> = {
   voice: 'Голосовые',
   links: 'Ссылки',
 };
-
-function buildVoicePreviewBars(waveform: number[]) {
-  const base =
-    waveform.length > 0
-      ? buildUiWaveform(waveform, 28)
-      : buildUiWaveform([0.22, 0.34, 0.58, 0.41, 0.27, 0.49, 0.31], 28);
-  return base.map((value) => 4 + Math.pow(value, 1.15) * 16);
-}
 
 function useVideoPreviewUri(videoUri: string | null | undefined, preferredUri?: string | null) {
   const normalizedVideoUri = videoUri?.trim() ?? '';
@@ -281,7 +273,10 @@ const VoiceRow = React.memo(function VoiceRow({
   const durationLabel = isCurrent && (isPlaying || progress > 0)
     ? formatRemainingPlaybackDuration(remainingMs)
     : formatMediaDuration(item.durationMs);
-  const bars = useMemo(() => buildVoicePreviewBars(item.waveform), [item.waveform]);
+  const bars = useMemo(
+    () => buildVoiceProfileBarHeights(item.waveform, item.uri, item.durationMs),
+    [item.durationMs, item.uri, item.waveform],
+  );
 
   const handlePlayPress = () => {
     if (!item.uri) {

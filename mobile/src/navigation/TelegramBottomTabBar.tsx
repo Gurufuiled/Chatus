@@ -1,5 +1,5 @@
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +10,11 @@ import { TelegramGlyph } from "../icons/telegram";
 import { TELEGRAM_TAB_GLYPHS } from "../icons/telegram/tabPaths";
 import type { MainTabParamList } from "./types";
 
-import { MAIN_TAB_BAR_HEIGHT } from './mainTabMetrics';
+import {
+  getMainTabBarBottomGap,
+  MAIN_TAB_BAR_BOTTOM_LIFT,
+  MAIN_TAB_BAR_HEIGHT,
+} from './mainTabMetrics';
 
 const TAB_BAR_HEIGHT = MAIN_TAB_BAR_HEIGHT;
 const HORIZONTAL_INSET = 8;
@@ -163,7 +167,7 @@ export function TelegramBottomTabBar({
     return null;
   }
 
-  const bottomGap = Math.max(insets.bottom, Platform.OS === "ios" ? 4 : 8);
+  const bottomGap = getMainTabBarBottomGap(insets);
 
   return (
     <View
@@ -233,7 +237,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 0,
+    bottom: MAIN_TAB_BAR_BOTTOM_LIFT,
     alignItems: "center",
     paddingHorizontal: HORIZONTAL_INSET,
   },

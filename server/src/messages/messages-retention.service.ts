@@ -82,14 +82,25 @@ export class MessagesRetentionService {
 
     let totalDeleted = 0;
 
-    for (const chat of chats) {
-      try {
-        const deleted = await this.pruneChat(chat.id, chat.pinnedMessageId, maxPerChat);
-        totalDeleted += deleted;
-      } catch (err) {
-        this.log.warn(
-          `Retention prune failed for chat ${chat.id}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+    // Оптимизация: обрабатываем чаты параллельно чанками по CONCURRENCY вместо строго последовательного цикла.
+    // При 1000 чатах это сокращает время выполнения в ~CONCURRENCY раз.
+    const CONCURRENCY = 8;
+    for (let i = 0; i < chats.length; i += CONCURRENCY) {
+      const chunk = chats.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        chunk.map((chat) => this.pruneChat(chat.id, chat.pinnedMessageId, maxPerChat)),
+      );
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
+        if (result.status === 'fulfilled') {
+          totalDeleted += result.value;
+        } else {
+          this.log.warn(
+            `Retention prune failed for chat ${chunk[j].id}: ${
+              result.reason instanceof Error ? result.reason.message : String(result.reason)
+            }`,
+          );
+        }
       }
     }
 
@@ -120,11 +131,6 @@ export class MessagesRetentionService {
 
     const keepArray = [...keepIds];
     if (keepArray.length === 0) {
-      return 0;
-    }
-
-    const countBefore = await this.prisma.message.count({ where: { chatId } });
-    if (countBefore <= keepArray.length) {
       return 0;
     }
 

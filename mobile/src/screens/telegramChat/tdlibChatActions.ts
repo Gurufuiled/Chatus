@@ -166,3 +166,29 @@ export async function tdlibToggleChatIsPinned(chatId: number, isPinned: boolean)
   })) as Record<string, unknown>;
   throwIfTdError(res);
 }
+
+export async function tdlibSendChatActionTyping(
+  chatId: number,
+  messageThreadId = 0,
+): Promise<void> {
+  const res = (await tdlibClient.send({
+    '@type': 'sendChatAction',
+    chat_id: chatId,
+    message_thread_id: messageThreadId,
+    action: { '@type': 'chatActionTyping' },
+  })) as Record<string, unknown>;
+  throwIfTdError(res);
+}
+
+export async function tdlibSendChatActionCancel(
+  chatId: number,
+  messageThreadId = 0,
+): Promise<void> {
+  const res = (await tdlibClient.send({
+    '@type': 'sendChatAction',
+    chat_id: chatId,
+    message_thread_id: messageThreadId,
+    action: { '@type': 'chatActionCancel' },
+  })) as Record<string, unknown>;
+  throwIfTdError(res);
+}

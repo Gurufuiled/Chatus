@@ -14,7 +14,7 @@ import {
   useVoicePlayerControls,
 } from '../../contexts/VoicePlayerContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { buildUiWaveform } from '../../services/waveformUtils';
+import { buildVoiceProfileBarHeights } from '../../utils/voiceProfileWaveform';
 import type { ThemeColors } from '../../theme/palettes';
 import { withAlpha } from '../../theme/stylePrimitives';
 import {
@@ -39,14 +39,6 @@ type GroupProfileMediaContentProps = {
   onOpenVideoNote: (item: GroupVoiceItem) => void;
   onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 };
-
-function buildVoicePreviewBars(waveform: number[]) {
-  const base =
-    waveform.length > 0
-      ? buildUiWaveform(waveform, 28)
-      : buildUiWaveform([0.22, 0.34, 0.58, 0.41, 0.27, 0.49, 0.31], 28);
-  return base.map((value) => 4 + Math.pow(value, 1.15) * 16);
-}
 
 function useVideoPreviewUri(videoUri: string | null | undefined, preferredUri?: string | null) {
   const normalizedVideoUri = videoUri?.trim() ?? '';
@@ -213,10 +205,12 @@ function createGroupProfileMediaStyles(c: ThemeColors) {
       justifyContent: 'center',
     },
     voiceWaveTrack: {
-      height: 24,
+      height: 28,
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       gap: 2,
+      overflow: 'visible',
     },
     voiceBar: {
       width: 3,
@@ -382,7 +376,10 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
   const durationLabel = isCurrent && (isPlaying || progress > 0)
     ? formatRemainingPlaybackDuration(remainingMs)
     : formatMediaDuration(item.durationMs);
-  const bars = useMemo(() => buildVoicePreviewBars(item.waveform), [item.waveform]);
+  const bars = useMemo(
+    () => buildVoiceProfileBarHeights(item.waveform, item.uri, item.durationMs),
+    [item.durationMs, item.uri, item.waveform],
+  );
   const suppressNextPressRef = useRef(false);
 
   const handlePlayPress = () => {

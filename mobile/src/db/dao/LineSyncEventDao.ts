@@ -135,7 +135,10 @@ export class LineSyncEventDao {
     location: BlobLocationPeer;
   }): Promise<number> {
     const rows = await this.getByLineId(args.lineId);
-    let changed = 0;
+
+    // Оптимизация: сначала собираем все изменения в памяти, затем записываем всё одной транзакцией.
+    // Без транзакции SQLite выполнял fsync() на диск после каждого UPDATE — медленно на телефонах.
+    const updates: Array<{ eventId: string; payload: string }> = [];
 
     for (const row of rows) {
       if (row.event_type !== 'message.create') continue;
@@ -167,16 +170,22 @@ export class LineSyncEventDao {
       });
 
       if (!rowChanged) continue;
-
-      await this.db.runAsync(
-        'UPDATE line_sync_events SET payload_json = ? WHERE event_id = ?',
-        JSON.stringify({ ...event, blob_refs: blobRefs }),
-        row.event_id
-      );
-      changed += 1;
+      updates.push({ eventId: row.event_id, payload: JSON.stringify({ ...event, blob_refs: blobRefs }) });
     }
 
-    return changed;
+    if (updates.length === 0) return 0;
+
+    await this.db.withTransactionAsync(async () => {
+      for (const { eventId, payload } of updates) {
+        await this.db.runAsync(
+          'UPDATE line_sync_events SET payload_json = ? WHERE event_id = ?',
+          payload,
+          eventId,
+        );
+      }
+    });
+
+    return updates.length;
   }
 
   async removeBlobPeerLocation(args: {
@@ -185,7 +194,9 @@ export class LineSyncEventDao {
     nodeId: string;
   }): Promise<number> {
     const rows = await this.getByLineId(args.lineId);
-    let changed = 0;
+
+    // Оптимизация: одна транзакция вместо N отдельных UPDATE.
+    const updates: Array<{ eventId: string; payload: string }> = [];
 
     for (const row of rows) {
       if (row.event_type !== 'message.create') continue;
@@ -210,16 +221,22 @@ export class LineSyncEventDao {
       });
 
       if (!rowChanged) continue;
-
-      await this.db.runAsync(
-        'UPDATE line_sync_events SET payload_json = ? WHERE event_id = ?',
-        JSON.stringify({ ...event, blob_refs: blobRefs }),
-        row.event_id
-      );
-      changed += 1;
+      updates.push({ eventId: row.event_id, payload: JSON.stringify({ ...event, blob_refs: blobRefs }) });
     }
 
-    return changed;
+    if (updates.length === 0) return 0;
+
+    await this.db.withTransactionAsync(async () => {
+      for (const { eventId, payload } of updates) {
+        await this.db.runAsync(
+          'UPDATE line_sync_events SET payload_json = ? WHERE event_id = ?',
+          payload,
+          eventId,
+        );
+      }
+    });
+
+    return updates.length;
   }
 
   async findBlobRef(lineId: string, blobId: string): Promise<BlobRef | null> {

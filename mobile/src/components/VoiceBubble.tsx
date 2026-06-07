@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { Dimensions, type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import {
   useVoicePlaybackForUri,
@@ -22,7 +22,7 @@ const WAVEFORM_RENDER_THROTTLE_MS = 125;
 
 
 export interface VoiceBubbleProps {
-  uri: string;
+  uri: string | null;
   waveform: number[]; 
   durationMs: number;
   isMe: boolean;
@@ -47,6 +47,7 @@ export interface VoiceBubbleProps {
   isForwarded?: boolean;
   forwardAccentColor?: string;
   source?: MessageSource;
+  loading?: boolean;
 }
 
 const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
@@ -147,7 +148,8 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.allowMessageReactions === next.allowMessageReactions &&
     prev.onToggleInlineReaction === next.onToggleInlineReaction &&
     prev.isForwarded === next.isForwarded &&
-    prev.forwardAccentColor === next.forwardAccentColor
+    prev.forwardAccentColor === next.forwardAccentColor &&
+    prev.loading === next.loading
   );
 }
 
@@ -176,6 +178,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   isForwarded = false,
   forwardAccentColor,
   source,
+  loading = false,
 }: VoiceBubbleProps) {
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
@@ -203,7 +206,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     : formatMediaDuration(durationMs);
 
   const bars = useMemo(
-    () => buildTelegramLikeBars(uri, waveform, durationMs, VOICE_BAR_COUNT),
+    () => buildTelegramLikeBars(uri ?? 'voice-loading', waveform, durationMs, VOICE_BAR_COUNT),
     [durationMs, uri, waveform]
   );
   const barHeights = useMemo(
@@ -221,6 +224,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   const hasPlaybackProgress = isCurrent && renderProgress > 0;
 
   const handlePress = () => {
+    if (!uri || loading) return;
     if (isPlaying) {
       void pause();
       return;
@@ -244,7 +248,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   };
 
   const handleWaveformPress = (pressX: number) => {
-    if (waveformWidth <= 0 || durationMs <= 0) return;
+    if (!uri || loading || waveformWidth <= 0 || durationMs <= 0) return;
     const ratio = clamp01(pressX / waveformWidth);
     const targetPositionMs = Math.round(durationMs * ratio);
 
@@ -285,7 +289,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           <View style={styles.mainRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={isPlaying ? 'Pause voice message' : 'Play voice message'}
+              accessibilityLabel={loading ? 'Voice message is loading' : isPlaying ? 'Pause voice message' : 'Play voice message'}
               accessibilityState={{ selected: isPlaying }}
               style={({ pressed }) => [
                 styles.playButton,
@@ -295,11 +299,18 @@ export const VoiceBubble = React.memo(function VoiceBubble({
               onPress={handlePress}
               hitSlop={8}
             >
-              <AnimatedPlayPauseIcon
-                isPlaying={isPlaying}
-                size={18}
-                color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
-              />
+              {loading ? (
+                <ActivityIndicator
+                  size="small"
+                  color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
+                />
+              ) : (
+                <AnimatedPlayPauseIcon
+                  isPlaying={isPlaying}
+                  size={18}
+                  color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
+                />
+              )}
             </Pressable>
 
             <View style={styles.contentColumn}>

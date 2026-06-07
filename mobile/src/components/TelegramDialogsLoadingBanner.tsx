@@ -1,8 +1,8 @@
 import React from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MAIN_TAB_BAR_HEIGHT } from '../navigation/mainTabMetrics';
+import { getMainTabBarTopFromBottom } from '../navigation/mainTabMetrics';
 import { useTheme } from '../contexts/ThemeContext';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { withAlpha } from '../theme/stylePrimitives';
@@ -12,6 +12,7 @@ const BANNER_GAP_ABOVE_TAB = 10;
 export function TelegramDialogsLoadingBanner() {
   const { colors, resolvedScheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
   const telegramReady = telegramAccountStore((s) => s.authStatus === 'ready');
   const dialogsSyncing = telegramAccountStore((s) => s.dialogsSyncing);
 
@@ -19,8 +20,7 @@ export function TelegramDialogsLoadingBanner() {
     return null;
   }
 
-  const bottom =
-    MAIN_TAB_BAR_HEIGHT + Math.max(insets.bottom, Platform.OS === 'ios' ? 4 : 8) + BANNER_GAP_ABOVE_TAB;
+  const bottom = getMainTabBarTopFromBottom(insets, screenHeight) + BANNER_GAP_ABOVE_TAB;
   const isLight = resolvedScheme === 'light';
 
   return (
