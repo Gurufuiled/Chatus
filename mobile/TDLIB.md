@@ -38,11 +38,76 @@ TELEGRAM_API_HASH=your_hash_here
 
 3. Поведение: **`td_receive`** в отдельном потоке `tdlib-receive`; **`td_send`** с потока RN (короткий `synchronized`), как допускает TDLib для `td_create_client_id` — чтобы приём не блокировался очередью отправки. Ответы с `@extra` резолвят Promise в `TdlibClient.send`; остальной JSON — `td_json_update`.
 
-4. **EAS Build:** в `package.json` добавлен хук **`eas-build-pre-install`**, который вызывает `fetchTdlibAndroid.mjs`, чтобы на билд-машине подтянуть `.so` до сборки нативного проекта.
+4. **EAS Build:** в `package.json` добавлен хук **`eas-build-pre-install`**, который на Android вызывает `fetchTdlibAndroid.mjs`, чтобы на билд-машине подтянуть `.so` до сборки нативного проекта.
 
 ## iOS
 
-`ios/mobile/Tdlib.swift` + `TdlibBridge.m` — пока заглушка; для продакшена подключи XCFramework TDLib и тот же JSON-поток, что на Android.
+На iOS используется тот же React Native contract, что на Android:
+
+- `NativeModules.Tdlib.sendClientJson(json)` → Promise с JSON-ответом TDLib.
+- событие `td_json_update` → `{ json: string }`.
+- ответы коррелируются по `@extra`, апдейты фильтруются тем же списком, что и Android/JS.
+
+### Сборка TDLib XCFramework
+
+TDLib для iOS собирается из исходников официальными скриптами `td/example/ios`.
+
+Требования на macOS:
+
+- полный Xcode, выбранный через `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`;
+- Homebrew-зависимости из официального TDLib iOS README (`gperf`, `cmake`, `coreutils` и т.п.);
+- `git`, `cmake`, `bash` в PATH.
+
+Команда из `mobile/`:
+
+```bash
+npm run tdlib:build-ios
+```
+
+Скрипт `scripts/buildTdlibIos.mjs`:
+
+1. клонирует `tdlib/td` с тегом `v1.8.52` в `mobile/tdlib-ios/src/td`;
+2. генерирует исходники TDLib через `cmake -DTD_GENERATE_SOURCE_FILES=ON`;
+3. запускает `example/ios/build-openssl.sh`;
+4. запускает `example/ios/build.sh`;
+5. копирует результат в:
+   - `mobile/tdlib-ios/libtdjson.xcframework`
+   - `mobile/tdlib-ios/include`
+
+Артефакты не коммитятся; в git остаются только:
+
+- `tdlib-ios/TdLib.podspec`
+- `tdlib-ios/native/Tdlib.swift`
+- `tdlib-ios/native/TdlibBridge.m`
+
+### Prebuild / Xcode
+
+Плагин `plugins/withTdlibNative.js` при `expo prebuild --platform ios`:
+
+- копирует Swift/ObjC bridge в `ios/mobile/`;
+- добавляет local pod `TdLib` в `ios/Podfile`;
+- добавляет `#import <td/telegram/td_json_client.h>` в bridging header;
+- добавляет `Tdlib.swift` и `TdlibBridge.m` в Xcode target.
+
+Fresh checkout на Mac перед любым `expo run:ios`, `pod install` или Xcode Archive:
+
+```bash
+npm ci
+npm run tdlib:build-ios
+npx expo prebuild --platform ios --clean
+cd ios
+pod install
+open mobile.xcworkspace
+```
+
+### EAS Build iOS
+
+`eas-build-pre-install` смотрит на `EAS_BUILD_PLATFORM`:
+
+- `android` → `fetchTdlibAndroid.mjs`;
+- `ios` → `buildTdlibIos.mjs`.
+
+Для iOS EAS нужно, чтобы macOS builder имел зависимости TDLib build scripts. Если build из исходников окажется слишком долгим для EAS, следующий шаг — кэшировать/хостить собранный `libtdjson.xcframework` и заменить build-script на fetch-script с checksum.
 
 ## JS
 

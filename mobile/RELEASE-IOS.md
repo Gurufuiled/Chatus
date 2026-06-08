@@ -103,22 +103,26 @@ TELEGRAM_API_HASH=...
 
 ```bash
 cd mobile
+npm ci
+npm run tdlib:build-ios
 export MOBILE_ENV=production
 npx expo prebuild --platform ios --clean
 ```
 
 После этого открой `ios/mobile.xcworkspace` и ещё раз проверь Bundle ID / Version / Build / Signing.
 
-### 3.2 Текущий блокер: Telegram на iOS
+### 3.2 Telegram / TDLib на iOS
 
-Сейчас `mobile/ios/mobile/Tdlib.swift` — заглушка, а `mobile/TDLIB.md` прямо говорит, что для продакшена нужно подключить TDLib XCFramework и настоящий JSON-поток как на Android.
+В проекте добавлен настоящий iOS bridge под TDLib JSON API, но перед TestFlight/App Store на macOS нужно собрать и подключить сам `libtdjson.xcframework`.
 
-Перед App Store/TestFlight нужно выбрать один путь:
+Перед prebuild:
 
-- интегрировать реальный TDLib для iOS и проверить Telegram login на устройстве;
-- или временно скрыть/отключить Telegram-auth и Telegram-чаты на iOS, чтобы приложение не проходило ревью с неработающей функцией.
+```bash
+cd mobile
+npm run tdlib:build-ios
+```
 
-Одних `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` для рабочего Telegram на iOS сейчас недостаточно.
+После этого `expo prebuild --platform ios --clean` подключит local pod `TdLib` и скопирует Swift/ObjC bridge. Одних `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` недостаточно: без собранного XCFramework iOS Telegram не запустится.
 
 ---
 
@@ -244,7 +248,7 @@ Backend после callback перенаправляет пользовател�
 - `https://messenger.startapus.com/api` доступен;
 - WebSocket чата работает;
 - signaling для звонков работает;
-- Telegram на iOS либо реально логинится через TDLib, либо Telegram-функции скрыты/отключены;
+- Telegram на iOS реально логинится через TDLib, список чатов и история загружаются;
 - выбор фото / камера / микрофон запрашивают понятные разрешения;
 - контакты запрашивают понятное разрешение, если экран контактов доступен на iOS;
 - push-уведомления приходят, если iOS push настроен в Apple/Expo.
@@ -257,5 +261,5 @@ Backend после callback перенаправляет пользовател�
 - **Не задан `ios.buildNumber`:** App Store Connect отклонит повторную загрузку с тем же build.
 - **Bundle ID не совпадает:** provisioning profile не подойдёт или приложение попадёт в другой App Store record.
 - **Старый checked-in `ios/`:** EAS соберёт `com.anonymous.mobile` / старую версию, если не сделать prebuild или не поправить Xcode project.
-- **Telegram env есть, но TDLib iOS не интегрирован:** Telegram UI может выглядеть доступным, но не будет работать как на Android.
+- **Telegram env есть, но `npm run tdlib:build-ios` не выполнен:** iOS build не сможет подключить local pod `TdLib`.
 - **Оставили APK update env:** для App Store не нужны ссылки на внешнее скачивание APK.

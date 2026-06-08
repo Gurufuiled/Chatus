@@ -53,3 +53,10 @@ google-services.json
 mobile/android/app/src/main/jniLibs/
 mobile/tdlib-android/jniLibs/
 mobile/.tdlib-fetch-*/
+
+# TDLib iOS build artifacts (`npm run tdlib:build-ios` in mobile/)
+mobile/tdlib-ios/src/
+mobile/tdlib-ios/build/
+mobile/tdlib-ios/include/
+mobile/tdlib-ios/libtdjson.xcframework/
+mobile/tdlib-ios/tdjson/
