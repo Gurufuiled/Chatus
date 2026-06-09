@@ -1,5 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, StyleSheet, Platform, type ViewStyle } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AppState,
+  Modal,
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Platform,
+  type ViewStyle,
+} from 'react-native';
 import * as Linking from 'expo-linking';
 
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,8 +24,15 @@ import {
   fetchClientUpdateManifest,
   getCurrentAndroidVersionCode,
 } from '../services/clientUpdateService';
+import {
+  ApkInstallPermissionRequiredError,
+  downloadAndInstallApk,
+  openApkInstallPermissionSettings,
+  type ApkInstallProgress,
+} from '../services/apkUpdateInstaller';
 
 type GateMode = 'idle' | 'force' | 'soft';
+type InstallState = 'idle' | 'downloading' | 'permission' | 'installing' | 'error';
 
 /**
  * Проверка манифеста обновления при старте (Android). Ошибки сети/JSON не блокируют приложение.
@@ -25,6 +41,10 @@ export function AppUpdateGate() {
   const { colors } = useTheme();
   const [mode, setMode] = useState<GateMode>('idle');
   const [apkUrl, setApkUrl] = useState<string | null>(null);
+  const [installState, setInstallState] = useState<InstallState>('idle');
+  const [progress, setProgress] = useState<ApkInstallProgress | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const [currentVersionCode, setCurrentVersionCode] = useState<number | null>(null);
 
   useEffect(() => {
     if (CLIENT_UPDATE_DISABLED) {
@@ -60,6 +80,7 @@ export function AppUpdateGate() {
       }
       return;
     }
+    setCurrentVersionCode(current);
 
     let cancelled = false;
 
@@ -103,7 +124,18 @@ export function AppUpdateGate() {
     };
   }, []);
 
-  const openDownload = useCallback(async () => {
+  useEffect(() => {
+    if (installState !== 'installing') return;
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') {
+        setInstallState('idle');
+        setErrorText('Если установка не открылась или была отменена, нажмите «Обновить» ещё раз.');
+      }
+    });
+    return () => sub.remove();
+  }, [installState]);
+
+  const openInBrowser = useCallback(async () => {
     if (!apkUrl) return;
     try {
       await Linking.openURL(apkUrl);
@@ -112,10 +144,58 @@ export function AppUpdateGate() {
     }
   }, [apkUrl]);
 
+  const startInstall = useCallback(async () => {
+    if (
+      !apkUrl ||
+      currentVersionCode === null ||
+      installState === 'downloading' ||
+      installState === 'installing'
+    )
+      return;
+    setErrorText(null);
+    setProgress(null);
+    setInstallState('downloading');
+    try {
+      await downloadAndInstallApk(apkUrl, currentVersionCode, (next) => {
+        setProgress(next);
+      });
+      setInstallState('installing');
+    } catch (e) {
+      if (e instanceof ApkInstallPermissionRequiredError) {
+        setInstallState('permission');
+        setErrorText('Разрешите Chatus устанавливать обновления, затем вернитесь и нажмите «Продолжить».');
+        await openApkInstallPermissionSettings().catch(() => undefined);
+        return;
+      }
+      setInstallState('error');
+      setErrorText('Не удалось скачать или открыть обновление. Проверьте интернет и попробуйте ещё раз.');
+    }
+  }, [apkUrl, currentVersionCode, installState]);
+
+  const openPermissionSettings = useCallback(async () => {
+    await openApkInstallPermissionSettings().catch(() => undefined);
+  }, []);
+
   const dismissSoft = useCallback(() => {
+    if (installState === 'downloading' || installState === 'installing') return;
     setMode('idle');
     setApkUrl(null);
-  }, []);
+    setInstallState('idle');
+    setProgress(null);
+    setErrorText(null);
+  }, [installState]);
+
+  const progressPercent = progress?.percent ?? null;
+  const progressLabel = useMemo(() => {
+    if (installState === 'downloading') {
+      if (progressPercent !== null) return `Скачиваем обновление: ${Math.round(progressPercent * 100)}%`;
+      return 'Скачиваем обновление...';
+    }
+    if (installState === 'installing') return 'Открываем установщик...';
+    if (installState === 'permission') return 'Нужно разрешение на установку обновлений';
+    return null;
+  }, [installState, progressPercent]);
+  const isBusy = installState === 'downloading' || installState === 'installing';
 
   if (mode === 'idle') {
     return null;
@@ -141,15 +221,18 @@ export function AppUpdateGate() {
             <Text style={[styles.body, { color: colors.textSecondary }]}>
               Установлена устаревшая версия. Обновите приложение, чтобы продолжить.
             </Text>
-            <Pressable
-              onPress={openDownload}
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                { backgroundColor: colors.accent, opacity: pressed ? 0.88 : 1 },
-              ]}
-            >
-              <Text style={styles.primaryBtnText}>Скачать обновление</Text>
-            </Pressable>
+            <UpdateInstallControls
+              colors={colors}
+              errorText={errorText}
+              installState={installState}
+              isBusy={isBusy}
+              onBrowserFallback={openInBrowser}
+              onOpenPermissionSettings={openPermissionSettings}
+              onStartInstall={startInstall}
+              progressLabel={progressLabel}
+              progressPercent={progressPercent}
+              primaryLabel={installState === 'permission' ? 'Продолжить' : 'Скачать и установить'}
+            />
           </View>
         </View>
       </Modal>
@@ -168,23 +251,29 @@ export function AppUpdateGate() {
             <View style={styles.row}>
               <Pressable
                 onPress={dismissSoft}
+                disabled={isBusy}
                 style={({ pressed }) => [
                   styles.secondaryBtn,
-                  { borderColor: colors.composerBorder, opacity: pressed ? 0.8 : 1 },
+                  {
+                    borderColor: colors.composerBorder,
+                    opacity: isBusy ? 0.45 : pressed ? 0.8 : 1,
+                  },
                 ]}
               >
                 <Text style={[styles.secondaryBtnText, { color: colors.textPrimary }]}>Позже</Text>
               </Pressable>
-              <Pressable
-                onPress={openDownload}
-                style={({ pressed }) => [
-                  styles.primaryBtn,
-                  styles.primaryBtnInline,
-                  { backgroundColor: colors.accent, opacity: pressed ? 0.88 : 1 },
-                ]}
-              >
-                <Text style={styles.primaryBtnText}>Обновить</Text>
-              </Pressable>
+              <UpdateInstallControls
+                colors={colors}
+                errorText={errorText}
+                installState={installState}
+                isBusy={isBusy}
+                onBrowserFallback={openInBrowser}
+                onOpenPermissionSettings={openPermissionSettings}
+                onStartInstall={startInstall}
+                progressLabel={progressLabel}
+                progressPercent={progressPercent}
+                primaryLabel={installState === 'permission' ? 'Продолжить' : 'Обновить'}
+              />
             </View>
           </Pressable>
         </Pressable>
@@ -193,6 +282,75 @@ export function AppUpdateGate() {
   }
 
   return null;
+}
+
+type UpdateInstallControlsProps = {
+  colors: ReturnType<typeof useTheme>['colors'];
+  errorText: string | null;
+  installState: InstallState;
+  isBusy: boolean;
+  onBrowserFallback: () => void;
+  onOpenPermissionSettings: () => void;
+  onStartInstall: () => void;
+  primaryLabel: string;
+  progressLabel: string | null;
+  progressPercent: number | null;
+};
+
+function UpdateInstallControls({
+  colors,
+  errorText,
+  installState,
+  isBusy,
+  onBrowserFallback,
+  onOpenPermissionSettings,
+  onStartInstall,
+  primaryLabel,
+  progressLabel,
+  progressPercent,
+}: UpdateInstallControlsProps) {
+  return (
+    <View style={styles.installControls}>
+      {progressLabel ? (
+        <View style={styles.progressBlock}>
+          <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>{progressLabel}</Text>
+          <View style={[styles.progressTrack, { backgroundColor: colors.composerBorder }]}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  backgroundColor: colors.accent,
+                  width: `${Math.max(4, Math.round((progressPercent ?? 0.08) * 100))}%`,
+                },
+              ]}
+            />
+          </View>
+        </View>
+      ) : null}
+      {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+      <Pressable
+        disabled={isBusy}
+        onPress={onStartInstall}
+        style={({ pressed }) => [
+          styles.primaryBtn,
+          styles.primaryBtnInline,
+          { backgroundColor: colors.accent, opacity: isBusy ? 0.65 : pressed ? 0.88 : 1 },
+        ]}
+      >
+        <Text style={styles.primaryBtnText}>{isBusy ? 'Подождите...' : primaryLabel}</Text>
+      </Pressable>
+      {installState === 'permission' ? (
+        <Pressable onPress={onOpenPermissionSettings} style={styles.linkBtn}>
+          <Text style={[styles.linkBtnText, { color: colors.accent }]}>Открыть разрешение</Text>
+        </Pressable>
+      ) : null}
+      {installState === 'error' ? (
+        <Pressable onPress={onBrowserFallback} style={styles.linkBtn}>
+          <Text style={[styles.linkBtnText, { color: colors.accent }]}>Скачать через браузер</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -230,8 +388,36 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap',
+  },
+  installControls: {
+    alignItems: 'stretch',
+    gap: 10,
+  },
+  progressBlock: {
+    gap: 8,
+    marginBottom: 2,
+    minWidth: 220,
+  },
+  progressLabel: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  progressTrack: {
+    height: 5,
+    overflow: 'hidden',
+    borderRadius: 999,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  errorText: {
+    color: '#E5484D',
+    fontSize: 13,
+    lineHeight: 18,
   },
   primaryBtn: {
     paddingVertical: 12,
@@ -256,5 +442,13 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  linkBtn: {
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  linkBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

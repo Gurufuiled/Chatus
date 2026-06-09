@@ -3,6 +3,7 @@
     "plugins": [
       "./plugins/withAndroidApkBasename",
       "./plugins/withTdlibNative",
+      "./plugins/withAndroidApkInstaller",
       [
         "expo-build-properties",
         {
@@ -55,7 +56,7 @@
     ],
     "name": "Chatus",
     "slug": "chatus",
-    "version": "1.0.10",
+    "version": "1.0.11",
     "orientation": "portrait",
     "icon": "./assets/chatus_icon.png",
     "userInterfaceStyle": "light",
@@ -86,7 +87,7 @@
       }
     },
     "android": {
-      "versionCode": 2064630321,
+      "versionCode": 2064630322,
       "icon": "./assets/chatus_icon.png",
       "intentFilters": [
         {

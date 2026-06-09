@@ -41,7 +41,7 @@ function parseHttpsUrl(x: unknown): string | null {
   if (typeof x !== 'string' || !x.trim()) return null;
   try {
     const u = new URL(x.trim());
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    if (u.protocol !== 'https:') return null;
     return x.trim();
   } catch {
     return null;
