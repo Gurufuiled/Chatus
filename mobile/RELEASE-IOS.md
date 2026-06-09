@@ -262,5 +262,5 @@ Backend после callback перенаправляет пользовател�
 - **Bundle ID не совпадает:** provisioning profile не подойдёт или приложение попадёт в другой App Store record.
 - **Старый checked-in `ios/`:** EAS соберёт `com.anonymous.mobile` / старую версию, если не сделать prebuild или не поправить Xcode project.
 - **Telegram env есть, но `npm run tdlib:build-ios` не выполнен:** iOS build не сможет подключить local pod `TdLib`.
-- **`fatal: Remote branch v1.8.52 not found`:** у `tdlib/td` нет тега `v1.8.52` (только до `v1.8.0`). Обнови репозиторий до последнего `main` и снова `npm run tdlib:build-ios`. Если осталась битая папка после неудачного клона: `rm -rf mobile/tdlib-ios/src/td`, затем повтори сборку. Переопределение: `TDLIB_IOS_REF=<commit>` или `TDLIB_IOS_VERSION=1.8.52`.
+- **`fatal: Remote branch v1.8.52 not found`:** у `tdlib/td` нет тега `v1.8.52` (только до `v1.8.0`). Обнови **проект** до последнего `main` (`git pull`) и снова `npm run tdlib:build-ios`. Если осталась битая папка после неудачного клона: `rm -rf mobile/tdlib-ios/src/td`, затем повтори сборку.
 - **Оставили APK update env:** для App Store не нужны ссылки на внешнее скачивание APK.

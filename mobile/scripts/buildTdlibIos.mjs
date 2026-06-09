@@ -33,12 +33,14 @@ const FORCE = process.argv.includes('--force');
  */
 const TDLIB_VERSION_COMMITS = {
   '1.8.52': 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
+  v1.8.52: 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
 };
 
 const TDLIB_IOS_VERSION = process.env.TDLIB_IOS_VERSION || '1.8.52';
+const legacyTag = process.env.TDLIB_IOS_TAG;
 const TDLIB_IOS_REF =
   process.env.TDLIB_IOS_REF ||
-  process.env.TDLIB_IOS_TAG ||
+  (legacyTag ? TDLIB_VERSION_COMMITS[legacyTag] ?? legacyTag : undefined) ||
   TDLIB_VERSION_COMMITS[TDLIB_IOS_VERSION];
 
 if (!TDLIB_IOS_REF) {
@@ -91,6 +93,8 @@ async function ensureTdlibSourceCheckedOut(ref) {
   }
 
   run('git', ['fetch', 'origin', ref, '--depth', '1'], { cwd: sourceRoot });
+  run('git', ['reset', '--hard'], { cwd: sourceRoot });
+  run('git', ['clean', '-fd'], { cwd: sourceRoot });
   run('git', ['checkout', ref], { cwd: sourceRoot });
 }
 

@@ -66,7 +66,7 @@ npm run tdlib:build-ios
 
 Скрипт `scripts/buildTdlibIos.mjs`:
 
-1. клонирует `tdlib/td` в `mobile/tdlib-ios/src/td` и переключается на коммит **1.8.52** (`b2cf7301…` — в официальном репозитории нет git-тега `v1.8.52`, только `v1.8.0`; версия 1.8.52 совпадает с Android prebuild из `up9cloud/android-libtdjson`);
+1. клонирует `tdlib/td` в `mobile/tdlib-ios/src/td` и переключается на коммит **1.8.52** (`b2cf7301…` — в официальном репозитории нет git-тега `v1.8.52`, только `v1.8.0`; та же линия версии, что у Android prebuild `up9cloud/android-libtdjson` v1.8.52);
 2. генерирует исходники TDLib через `cmake -DTD_GENERATE_SOURCE_FILES=ON`;
 3. запускает `example/ios/build-openssl.sh`;
 4. запускает `example/ios/build.sh`;
