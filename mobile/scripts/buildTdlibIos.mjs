@@ -33,7 +33,7 @@ const FORCE = process.argv.includes('--force');
  */
 const TDLIB_VERSION_COMMITS = {
   '1.8.52': 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
-  v1.8.52: 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
+  'v1.8.52': 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
 };
 
 const TDLIB_IOS_VERSION = process.env.TDLIB_IOS_VERSION || '1.8.52';
