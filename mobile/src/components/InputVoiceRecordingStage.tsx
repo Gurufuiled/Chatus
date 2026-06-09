@@ -63,22 +63,26 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean, bottomInset
       zIndex: 8,
     },
     recordingTopLayer: {
-      minHeight: 152,
-      justifyContent: 'flex-end',
-      alignItems: 'flex-end',
+      position: 'absolute',
+      right: 0,
+      bottom: 0,
+      left: 0,
+      top: 0,
+      justifyContent: 'center',
       overflow: 'visible',
     },
     recordingLockBubble: {
       position: 'absolute',
-      top: 12,
-      right: 16,
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      bottom: 60,
+      right: -8,
+      width: 48,
+      height: 100,
+      borderRadius: 24,
       backgroundColor: lockBubbleBg,
       borderColor: lockBubbleBorder,
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'flex-start',
+      paddingTop: 12,
       borderWidth: 1,
       shadowColor: '#000000',
       shadowOpacity: isDark ? 0.35 : 0.08,
@@ -89,27 +93,22 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean, bottomInset
     },
     recordingLockIcon: {
       position: 'absolute',
+      top: 12,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    recordingChevron: {
+      marginTop: 24,
     },
     recordingBubble: {
       flexDirection: 'row',
       alignItems: 'center',
-      width: '67%',
-      minHeight: 60,
-      borderRadius: 30,
-      borderWidth: 1,
-      backgroundColor: bubbleBg,
-      borderColor: bubbleBorder,
-      paddingLeft: 10,
-      paddingRight: 7,
-      paddingVertical: 6,
-      shadowColor: '#000000',
-      shadowOpacity: isDark ? 0.32 : 0.08,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 4,
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
       zIndex: 2,
+      flex: 1,
+      backgroundColor: 'transparent',
     },
     recordingBubbleCancelTint: {
       ...StyleSheet.absoluteFillObject,
@@ -117,32 +116,32 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean, bottomInset
       backgroundColor: cancelTint,
     },
     recordingLeadingCircle: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: leadingBg,
+      width: 24,
+      height: 24,
       alignItems: 'center',
       justifyContent: 'center',
-      marginRight: 9,
+      marginRight: 4,
     },
     recordingLeadingCircleLocked: {
-      backgroundColor: bubbleBg,
-      borderWidth: 2,
-      borderColor: c.accent,
+      // not used
     },
     recordingBubbleContent: {
       flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
       minHeight: 46,
-      justifyContent: 'center',
       position: 'relative',
     },
     recordingLiveContent: {
-      justifyContent: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
     },
     recordingTimerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 6,
+      marginRight: 8,
     },
     recordingDot: {
       width: 8,
@@ -153,29 +152,29 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean, bottomInset
     },
     recordingTime: {
       fontSize: 15,
-      fontWeight: '700',
+      fontWeight: '500',
       color: c.textSecondary,
     },
     recordingWaveRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 3,
+      flex: 1,
     },
     recordingWaveBar: {
       width: 3,
       borderRadius: 999,
     },
     recordingCancelOverlay: {
-      ...StyleSheet.absoluteFillObject,
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
+      justifyContent: 'flex-end',
+      gap: 4,
     },
     recordingCancelOverlayText: {
       fontSize: 16,
-      fontWeight: '700',
-      color: cancelText,
+      fontWeight: '500',
+      color: c.textSecondary,
     },
     recordingBubbleSendButton: {
       width: 42,
@@ -183,7 +182,7 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean, bottomInset
       borderRadius: 21,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: c.accent,
+      backgroundColor: '#005FFF',
       marginLeft: 6,
       shadowColor: '#000000',
       shadowOpacity: isDark ? 0.4 : 0.22,
@@ -197,24 +196,11 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean, bottomInset
     recordingBubbleSendButtonUnlocked: {
       opacity: 0.96,
     },
-    recordingBottomCancelBar: {
-      minHeight: 52 + Math.max(bottomInset, 12) + 10,
-      paddingBottom: Math.max(bottomInset, 12) + 10,
-      backgroundColor: bottomBarBg,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderColor: bottomBarBorder,
-      marginHorizontal: -10,
-      marginBottom: -(Math.max(bottomInset, 12) + 10),
-      flexDirection: 'row',
+    recordingBubbleDeleteButton: {
+      width: 42,
+      height: 42,
       alignItems: 'center',
-      paddingHorizontal: 16,
-      gap: 6,
-    },
-    recordingBottomCancelText: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: c.textSecondary,
-      letterSpacing: 0.4,
+      justifyContent: 'center',
     },
   });
 }
@@ -343,73 +329,90 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
           <RNAnimated.View style={[styles.recordingLockIcon, recordingLockIconStyle]}>
             <Feather name="lock" size={18} color={lockIconLockColor} />
           </RNAnimated.View>
+          <RNAnimated.View style={[styles.recordingChevron, recordingUnlockIconStyle]}>
+            <Feather name="chevron-up" size={18} color={themeColors.iconMuted} />
+          </RNAnimated.View>
         </RNAnimated.View>
 
-        <RNAnimated.View style={[styles.recordingBubble, recordingBubbleStyle]}>
+        <RNAnimated.View style={[styles.recordingBubble, recordingBubbleStyle, recordingLiveContentStyle]}>
           <RNAnimated.View
             pointerEvents="none"
             style={[styles.recordingBubbleCancelTint, recordingBubbleCancelTintStyle]}
           />
 
-          <View
-            style={[
-              styles.recordingLeadingCircle,
-              isLocked && styles.recordingLeadingCircleLocked,
-            ]}
-          >
-            <Feather name={isLocked ? 'square' : 'mic'} size={isLocked ? 13 : 18} color={themeColors.accent} />
+          {isLocked ? (
+            <Pressable
+              style={styles.recordingBubbleDeleteButton}
+              onPress={onCancel}
+              accessibilityRole="button"
+              accessibilityLabel="Delete recording"
+            >
+              <Feather name="trash-2" size={24} color={themeColors.iconMuted} />
+            </Pressable>
+          ) : (
+            <View style={styles.recordingLiveContent}>
+              <View
+                style={[
+                  styles.recordingLeadingCircle,
+                  isLocked && styles.recordingLeadingCircleLocked,
+                ]}
+              >
+                <Feather name={'mic'} size={24} color={'#FF5353'} />
+              </View>
+
+              <View style={styles.recordingTimerRow}>
+                <Text style={styles.recordingTime}>{voiceElapsedLabel}</Text>
+              </View>
+            </View>
+          )}
+
+          {isLocked && (
+            <View style={styles.recordingTimerRow}>
+              <Text style={styles.recordingTime}>{voiceElapsedLabel}</Text>
+            </View>
+          )}
+
+          <View style={styles.recordingWaveRow}>
+            {liveBarHeights.map((height, index) => (
+              <View
+                key={`recording-bar-${index}`}
+                style={[
+                  styles.recordingWaveBar,
+                  {
+                    height,
+                    opacity: 0.48 + (index / Math.max(liveBarHeights.length - 1, 1)) * 0.52,
+                    backgroundColor: height >= 14 ? waveColors.peak : waveColors.quiet,
+                  },
+                ]}
+              />
+            ))}
           </View>
 
           <View style={styles.recordingBubbleContent}>
-            <RNAnimated.View style={[styles.recordingLiveContent, recordingLiveContentStyle]}>
-              <View style={styles.recordingTimerRow}>
-                <RNAnimated.View style={[styles.recordingDot, { opacity: recordingPulse }]} />
-                <Text style={styles.recordingTime}>{voiceElapsedLabel}</Text>
-              </View>
-
-              <View style={styles.recordingWaveRow}>
-                {liveBarHeights.map((height, index) => (
-                  <View
-                    key={`recording-bar-${index}`}
-                    style={[
-                      styles.recordingWaveBar,
-                      {
-                        height,
-                        opacity: 0.48 + (index / Math.max(liveBarHeights.length - 1, 1)) * 0.52,
-                        backgroundColor: height >= 14 ? waveColors.peak : waveColors.quiet,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-            </RNAnimated.View>
 
             <RNAnimated.View
               pointerEvents="none"
               style={[styles.recordingCancelOverlay, recordingCancelContentStyle]}
             >
-              <Feather name="x" size={18} color={cancelAccentColor} />
-              <Text style={styles.recordingCancelOverlayText}>ОТМЕНА</Text>
+              <Text style={styles.recordingCancelOverlayText}>Отменить</Text>
+              <Feather name="chevron-left" size={18} color={themeColors.iconMuted} />
             </RNAnimated.View>
           </View>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.recordingBubbleSendButton,
-              !isLocked && styles.recordingBubbleSendButtonUnlocked,
-              pressed && styles.recordingBubbleSendButtonPressed,
-            ]}
-            onPress={onSend}
-          >
-            <VoiceSendIcon />
-          </Pressable>
+          {isLocked && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.recordingBubbleSendButton,
+                pressed && styles.recordingBubbleSendButtonPressed,
+              ]}
+              onPress={onSend}
+            >
+              <VoiceSendIcon />
+            </Pressable>
+          )}
+
         </RNAnimated.View>
       </View>
-
-      <Pressable style={styles.recordingBottomCancelBar} onPress={onCancel}>
-        <Feather name="chevron-left" size={18} color={themeColors.iconMuted} />
-        <Text style={styles.recordingBottomCancelText}>ОТМЕНА</Text>
-      </Pressable>
     </View>
   );
 });

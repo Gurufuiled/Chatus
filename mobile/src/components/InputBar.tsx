@@ -1302,11 +1302,10 @@ export function InputBar({
   const recordingBubbleStyle = useMemo(
     () => ({
       transform: [
-        { translateX: RNAnimated.multiply(voiceDragXAnimated, 0.66) },
-        { translateY: RNAnimated.multiply(voiceDragYAnimated, 0.42) },
+        { translateX: voiceDragXAnimated },
       ] as ViewStyle['transform'],
     }),
-    [voiceDragXAnimated, voiceDragYAnimated]
+    [voiceDragXAnimated]
   );
 
   const recordingBubbleCancelTintStyle = useMemo(
@@ -1552,30 +1551,8 @@ export function InputBar({
           </View>
         ) : null}
 
-        {isVoiceRecording ? (
-          <InputVoiceRecordingStage
-            key={voiceRecordingStartedAtMs || 'voice-recording-stage'}
-            recordingStartedAtMs={voiceRecordingStartedAtMs}
-            isLocked={isVoiceLocked}
-            voiceTouchTracking={voiceTouchTracking}
-            panHandlers={voicePanResponder.panHandlers}
-            recordingBubbleStyle={recordingBubbleStyle}
-            recordingBubbleCancelTintStyle={recordingBubbleCancelTintStyle}
-            recordingLiveContentStyle={recordingLiveContentStyle}
-            recordingCancelContentStyle={recordingCancelContentStyle}
-            recordingLockStyle={recordingLockStyle}
-            recordingUnlockIconStyle={recordingUnlockIconStyle}
-            recordingLockIconStyle={recordingLockIconStyle}
-            onCancel={() => {
-              void cancelVoiceRecording();
-            }}
-            onSend={() => {
-              void finishVoiceRecording();
-            }}
-          />
-        ) : (
-          <View style={[styles.composerDock, replyToMessage && styles.composerDockReply]}>
-            {replyToMessage ? (
+        <View style={[styles.composerDock, replyToMessage && styles.composerDockReply]}>
+          {replyToMessage ? (
               <View style={styles.replyComposerWrap}>
                 <View style={styles.replyComposerInline}>
                   <View style={styles.replyComposerAccent} />
@@ -1606,7 +1583,7 @@ export function InputBar({
               </View>
             ) : null}
 
-            <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}>
+            <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached, isVoiceRecording && { opacity: 0 }]}>
               {showAttachmentButton ? (
                 stickerInLeadingCluster && chatusStickersComposer ? (
                   <View style={styles.leadingCluster} accessibilityRole="toolbar">
@@ -1755,7 +1732,6 @@ export function InputBar({
               )}
             </View>
           </View>
-          )}
 
         {!canSend && !isChannelAdmin ? (
           voiceRestriction ? (
@@ -1776,6 +1752,29 @@ export function InputBar({
             />
           )
         ) : null}
+
+          {isVoiceRecording && (
+            <InputVoiceRecordingStage
+              key={voiceRecordingStartedAtMs || 'voice-recording-stage'}
+              recordingStartedAtMs={voiceRecordingStartedAtMs}
+              isLocked={isVoiceLocked}
+              voiceTouchTracking={voiceTouchTracking}
+              panHandlers={voicePanResponder.panHandlers}
+              recordingBubbleStyle={recordingBubbleStyle}
+              recordingBubbleCancelTintStyle={recordingBubbleCancelTintStyle}
+              recordingLiveContentStyle={recordingLiveContentStyle}
+              recordingCancelContentStyle={recordingCancelContentStyle}
+              recordingLockStyle={recordingLockStyle}
+              recordingUnlockIconStyle={recordingUnlockIconStyle}
+              recordingLockIconStyle={recordingLockIconStyle}
+              onCancel={() => {
+                void cancelVoiceRecording();
+              }}
+              onSend={() => {
+                void finishVoiceRecording();
+              }}
+            />
+          )}
         </View>
 
         {chatusStickersComposer ? (
