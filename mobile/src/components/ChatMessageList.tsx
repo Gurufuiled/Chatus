@@ -68,6 +68,14 @@ import {
   shouldUseDarkDefaultOutgoingBubbleGradient,
 } from './OutgoingBubbleViewportGradient';
 import { CHAT_MSG_GROUP_TIME_GAP_MS } from '../presentation/telegramChatUi';
+import { ChatDaySeparator } from './ChatDaySeparator';
+import { ChatScrollToBottomButton } from './ChatScrollToBottomButton';
+import { useInvertedChatScrollFab } from '../hooks/useInvertedChatScrollFab';
+import {
+  formatChatDayLabel,
+  getChatDayKey,
+  isValidChatTimestamp,
+} from '../utils/formatChatDayLabel';
 import {
   buildStickerGroupedChatRows,
   type ChatListRow,
@@ -129,7 +137,16 @@ type ChatMessageListProps = {
   repliedVoiceBubbleWidth: number;
   chatTheme: ChatTheme;
   activeVideoNoteVisible: boolean;
+  scrollFabBottomOffset: number;
+  enableScrollFab?: boolean;
 };
+
+function getChatListRowDateMs(row: ChatListRow): number {
+  if ('kind' in row && row.kind === 'sticker_group') {
+    return row.messages[0]!.created_at;
+  }
+  return (row as Message).created_at;
+}
 
 type VisualMediaItem = NonNullable<Message['media']>[number];
 type AlbumViewerState = {
@@ -567,7 +584,23 @@ type MessageRowProps = {
   groupOlderAdjacent: Message | undefined;
   /** Сосед с меньшим индексом (новее) — для цепочки в группе. */
   groupNewerAdjacent: Message | undefined;
+  showDaySeparator: boolean;
+  dayLabel: string;
 };
+
+function wrapChatRowWithDaySeparator(
+  row: React.ReactElement,
+  showDaySeparator: boolean,
+  dayLabel: string,
+): React.ReactElement {
+  if (!showDaySeparator) return row;
+  return (
+    <>
+      <ChatDaySeparator label={dayLabel} />
+      {row}
+    </>
+  );
+}
 
 const AUTHOR_TAG_STYLES: Record<
   string,
@@ -707,6 +740,8 @@ type StickerGroupMessageRowProps = {
   searchHighlightQuery: string;
   groupOlderAdjacent: Message | undefined;
   groupNewerAdjacent: Message | undefined;
+  showDaySeparator: boolean;
+  dayLabel: string;
 };
 
 const StickerGroupMessageRow = React.memo(function StickerGroupMessageRow({
@@ -736,6 +771,8 @@ const StickerGroupMessageRow = React.memo(function StickerGroupMessageRow({
   searchHighlightQuery,
   groupOlderAdjacent,
   groupNewerAdjacent,
+  showDaySeparator,
+  dayLabel,
 }: StickerGroupMessageRowProps) {
   const head = stickerGroupMessages[0]!;
   const lastTapAtRef = useRef(0);
@@ -1035,12 +1072,12 @@ const StickerGroupMessageRow = React.memo(function StickerGroupMessageRow({
   );
 
   if (!shouldUseOuterReplySwipe) {
-    return card;
+    return wrapChatRowWithDaySeparator(card, showDaySeparator, dayLabel);
   }
-  return (
-    <ReplySwipeWrapper enabled onReply={onReply}>
-      {card}
-    </ReplySwipeWrapper>
+  return wrapChatRowWithDaySeparator(
+    <ReplySwipeWrapper enabled onReply={onReply}>{card}</ReplySwipeWrapper>,
+    showDaySeparator,
+    dayLabel,
   );
 });
 
@@ -1088,6 +1125,8 @@ const MessageRow = React.memo(function MessageRow({
   searchHighlightQuery,
   groupOlderAdjacent,
   groupNewerAdjacent,
+  showDaySeparator,
+  dayLabel,
 }: MessageRowProps) {
   const lastTapAtRef = useRef(0);
   const { colors: themeColors } = useTheme();
@@ -2447,13 +2486,13 @@ const MessageRow = React.memo(function MessageRow({
   );
 
   if (!shouldUseOuterReplySwipe) {
-    return card;
+    return wrapChatRowWithDaySeparator(card, showDaySeparator, dayLabel);
   }
 
-  return (
-    <ReplySwipeWrapper enabled onReply={onReply}>
-      {card}
-    </ReplySwipeWrapper>
+  return wrapChatRowWithDaySeparator(
+    <ReplySwipeWrapper enabled onReply={onReply}>{card}</ReplySwipeWrapper>,
+    showDaySeparator,
+    dayLabel,
   );
 }, (prev, next) => {
   const scrollOk =
@@ -2462,6 +2501,8 @@ const MessageRow = React.memo(function MessageRow({
       !messageRowUsesDarkDefaultOutgoingGradient(next));
   return (
     scrollOk &&
+    prev.showDaySeparator === next.showDaySeparator &&
+    prev.dayLabel === next.dayLabel &&
     prev.item === next.item &&
     prev.repliedMessage === next.repliedMessage &&
     prev.isGroupChat === next.isGroupChat &&
@@ -2514,6 +2555,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   repliedVoiceBubbleWidth,
   chatTheme,
   activeVideoNoteVisible,
+  scrollFabBottomOffset,
+  enableScrollFab = true,
 }: ChatMessageListProps) {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
   const { resolvedScheme } = useTheme();
@@ -2528,6 +2571,27 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   const bumpScrollTickImmediate = React.useCallback(() => {
     setScrollTick((t) => (t + 1) & 0xffff);
   }, []);
+  const {
+    showScrollToBottom,
+    handleScroll: handleChatScroll,
+    handleScrollEnd: handleChatScrollEnd,
+    recheckFabVisibility,
+    scrollToBottom,
+  } = useInvertedChatScrollFab(listRef, chatId);
+  const handleListScroll = React.useCallback(
+    (event: Parameters<typeof handleChatScroll>[0]) => {
+      handleChatScroll(event);
+      bumpScrollTickThrottled();
+    },
+    [bumpScrollTickThrottled, handleChatScroll],
+  );
+  const handleListScrollEnd = React.useCallback(
+    (event: Parameters<typeof handleChatScrollEnd>[0]) => {
+      handleChatScrollEnd(event);
+      bumpScrollTickImmediate();
+    },
+    [bumpScrollTickImmediate, handleChatScrollEnd],
+  );
 
   const messageByIdInternal = React.useMemo(() => {
     const m = new Map<string, Message>();
@@ -2565,6 +2629,21 @@ export const ChatMessageList = React.memo(function ChatMessageList({
 
   const renderChatRow = React.useCallback(
     ({ item, index }: { item: ChatListRow; index: number }) => {
+      const itemDateMs = getChatListRowDateMs(item);
+      let olderComparableDateMs: number | null = null;
+      for (let j = index + 1; j < listRows.length; j += 1) {
+        const candidateMs = getChatListRowDateMs(listRows[j]!);
+        if (isValidChatTimestamp(candidateMs)) {
+          olderComparableDateMs = candidateMs;
+          break;
+        }
+      }
+      const showDaySeparator =
+        isValidChatTimestamp(itemDateMs) &&
+        (olderComparableDateMs == null ||
+          getChatDayKey(itemDateMs) !== getChatDayKey(olderComparableDateMs));
+      const dayLabel = formatChatDayLabel(itemDateMs);
+
       if ('kind' in item && item.kind === 'sticker_group') {
         const head = item.messages[0]!;
         const runIds = new Set(item.messages.map((x) => x.id));
@@ -2607,6 +2686,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
             searchHighlightQuery={searchHighlightQuery}
             groupOlderAdjacent={groupOlder}
             groupNewerAdjacent={groupNewer}
+            showDaySeparator={showDaySeparator}
+            dayLabel={dayLabel}
           />
         );
       }
@@ -2652,6 +2733,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
           searchHighlightQuery={searchHighlightQuery}
           groupOlderAdjacent={groupOlder}
           groupNewerAdjacent={groupNewer}
+          showDaySeparator={showDaySeparator}
+          dayLabel={dayLabel}
         />
       );
     },
@@ -2667,6 +2750,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       getMessageAuthorName,
       handleOpenAlbumMedia,
       highlightedMessageId,
+      listRows,
       messageIndexById,
       searchHighlightQuery,
       isGroupChat,
@@ -2702,9 +2786,10 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         data={listRows}
         keyExtractor={keyExtractor}
         inverted
-        onScroll={bumpScrollTickThrottled}
-        onMomentumScrollEnd={bumpScrollTickImmediate}
-        onScrollEndDrag={bumpScrollTickImmediate}
+        onScroll={handleListScroll}
+        onMomentumScrollEnd={handleListScrollEnd}
+        onScrollEndDrag={handleListScrollEnd}
+        onContentSizeChange={recheckFabVisibility}
         scrollEventThrottle={48}
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
@@ -2718,6 +2803,11 @@ export const ChatMessageList = React.memo(function ChatMessageList({
           { paddingTop: contentPaddingTop },
         ]}
         renderItem={renderChatRow}
+      />
+      <ChatScrollToBottomButton
+        visible={enableScrollFab && showScrollToBottom}
+        bottom={scrollFabBottomOffset}
+        onPress={scrollToBottom}
       />
       <AlbumMediaViewerModal state={albumViewerState} onClose={handleCloseAlbumViewer} />
     </Reanimated.View>
@@ -2749,7 +2839,9 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     prev.getDeletedPlaceholder === next.getDeletedPlaceholder &&
     prev.repliedVoiceBubbleWidth === next.repliedVoiceBubbleWidth &&
     prev.chatTheme === next.chatTheme &&
-    prev.activeVideoNoteVisible === next.activeVideoNoteVisible
+    prev.activeVideoNoteVisible === next.activeVideoNoteVisible &&
+    prev.scrollFabBottomOffset === next.scrollFabBottomOffset &&
+    prev.enableScrollFab === next.enableScrollFab
   );
 });
 

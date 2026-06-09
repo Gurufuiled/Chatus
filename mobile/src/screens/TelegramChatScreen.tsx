@@ -28,6 +28,8 @@ import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
 import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
 import type { MediaTile } from '../components/ChatProfileMediaSection';
+import { ChatDaySeparator } from '../components/ChatDaySeparator';
+import { ChatScrollToBottomButton } from '../components/ChatScrollToBottomButton';
 import { ChatTopBanners } from '../components/ChatTopBanners';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
 import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
@@ -62,6 +64,16 @@ import { uiStore } from '../stores/uiStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
 import { bubbleRadius } from '../theme/colors';
 import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
+import { useInvertedChatScrollFab } from '../hooks/useInvertedChatScrollFab';
+import {
+  formatChatDayLabel,
+  getChatDayKey,
+  isValidChatTimestamp,
+} from '../utils/formatChatDayLabel';
+import {
+  isSquareVideoDimensions,
+  probeLocalVideoDimensionsWithRetry,
+} from '../utils/probeLocalVideoDimensions';
 import { ChatBackgroundPattern } from './chatScreen.shared';
 import {
   CHAT_MSG_ROW_MARGIN_GROUPED,
@@ -133,8 +145,6 @@ import { useTelegramChatMenu } from './telegramChat/useTelegramChatMenu';
 import { renderTextWithSearchHighlight } from '../utils/searchHighlightText';
 
 const TELEGRAM_PEER_AVATAR_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
-/** TDLib `inputMessageVideoNote.length` — квадрат, ≤640, как у записи кружка в Chatus. */
-const TELEGRAM_VIDEO_NOTE_SIDE_PX = 384;
 
 function telegramPeerAvatarColor(seed: string): string {
   let hash = 0;
@@ -237,6 +247,27 @@ export function TelegramChatScreen() {
   const bumpScrollTickImmediate = useCallback(() => {
     setScrollTick((t) => (t + 1) & 0xffff);
   }, []);
+  const {
+    showScrollToBottom,
+    handleScroll: handleChatScroll,
+    handleScrollEnd: handleChatScrollEnd,
+    recheckFabVisibility,
+    scrollToBottom,
+  } = useInvertedChatScrollFab(listRef, chatId);
+  const handleMessagesListScroll = useCallback(
+    (event: Parameters<typeof handleChatScroll>[0]) => {
+      handleChatScroll(event);
+      bumpScrollTickThrottled();
+    },
+    [bumpScrollTickThrottled, handleChatScroll],
+  );
+  const handleMessagesListScrollEnd = useCallback(
+    (event: Parameters<typeof handleChatScrollEnd>[0]) => {
+      handleChatScrollEnd(event);
+      bumpScrollTickImmediate();
+    },
+    [bumpScrollTickImmediate, handleChatScrollEnd],
+  );
 
   const openTelegramAlbumViewer = useCallback(
     (albumMedia: TelegramAlbumMediaItem[], tappedMessageId: number, caption?: string) => {
@@ -1381,6 +1412,25 @@ export function TelegramChatScreen() {
   const sendVideoNote = useCallback(
     async (result: VideoNoteRecordingResult) => {
       if (!Number.isFinite(chatId)) return;
+      const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
+      if (!probed) {
+        Alert.alert(
+          'Не удалось отправить видеосообщение',
+          'Не удалось определить размер видео. Запишите ещё раз через свайп вверх по микрофону.',
+        );
+        return;
+      }
+      if (!isSquareVideoDimensions(probed)) {
+        Alert.alert(
+          'Не удалось отправить видеосообщение',
+          'Запись не квадратная — Telegram принимает только кружки. Запишите ещё раз через свайп вверх по микрофону.',
+        );
+        return;
+      }
+      const lengthPx = Math.min(
+        640,
+        Math.max(240, Math.round(Math.min(probed.width, probed.height))),
+      );
       const tempId = -Date.now();
       const activeReplyToMessageId = replyToMessageId;
       const optimistic: TelegramMessageRow = {
@@ -1395,6 +1445,8 @@ export function TelegramChatScreen() {
         mediaUri: result.uri,
         thumbnailUri: result.thumbnailUri,
         durationMs: result.durationMs,
+        width: lengthPx,
+        height: lengthPx,
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
@@ -1404,7 +1456,7 @@ export function TelegramChatScreen() {
           videoUri: result.uri,
           thumbnailUri: result.thumbnailUri,
           durationMs: result.durationMs,
-          lengthPx: TELEGRAM_VIDEO_NOTE_SIDE_PX,
+          lengthPx,
         });
         const response = (await tdlibClient.send({
           '@type': 'sendMessage',
@@ -1635,7 +1687,7 @@ export function TelegramChatScreen() {
     [sendInputMessageContent],
   );
 
-  const renderItem = useCallback(
+  const renderMessageRow = useCallback(
     ({ item, index }: { item: TelegramMessageRow; index: number }) => {
       const isMe = item.outgoing;
       const useViewportOutgoingGradient =
@@ -2646,7 +2698,29 @@ export function TelegramChatScreen() {
               ref={listRef}
               data={messages}
               keyExtractor={(item) => item.id}
-              renderItem={renderItem}
+              renderItem={(info) => {
+                const rows = messagesRef.current;
+                let olderComparableDateMs: number | null = null;
+                for (let j = info.index + 1; j < rows.length; j += 1) {
+                  const candidateMs = rows[j]!.dateMs;
+                  if (isValidChatTimestamp(candidateMs)) {
+                    olderComparableDateMs = candidateMs;
+                    break;
+                  }
+                }
+                const showDaySeparator =
+                  isValidChatTimestamp(info.item.dateMs) &&
+                  (olderComparableDateMs == null ||
+                    getChatDayKey(info.item.dateMs) !== getChatDayKey(olderComparableDateMs));
+                return (
+                  <View>
+                    {showDaySeparator ? (
+                      <ChatDaySeparator label={formatChatDayLabel(info.item.dateMs)} />
+                    ) : null}
+                    {renderMessageRow(info)}
+                  </View>
+                );
+              }}
               inverted
               style={styles.messagesList}
               contentContainerStyle={[
@@ -2658,9 +2732,11 @@ export function TelegramChatScreen() {
               onRefresh={() => void loadHistory(false)}
               onEndReached={() => void loadHistory(true)}
               onEndReachedThreshold={0.3}
-              onScroll={bumpScrollTickThrottled}
-              onMomentumScrollEnd={bumpScrollTickImmediate}
-              onScrollEndDrag={bumpScrollTickImmediate}
+              onScroll={handleMessagesListScroll}
+              scrollEventThrottle={48}
+              onMomentumScrollEnd={handleMessagesListScrollEnd}
+              onScrollEndDrag={handleMessagesListScrollEnd}
+              onContentSizeChange={recheckFabVisibility}
               onScrollToIndexFailed={(info) => {
                 setTimeout(() => {
                   listRef.current?.scrollToIndex({
@@ -2678,6 +2754,13 @@ export function TelegramChatScreen() {
                 </View>
               }
             />
+            {!isSearchMode && !telegramSelectionMode ? (
+              <ChatScrollToBottomButton
+                visible={showScrollToBottom}
+                bottom={inputBarHeight + composerDockPaddingBottom + 12}
+                onPress={scrollToBottom}
+              />
+            ) : null}
           </Reanimated.View>
           <Reanimated.View style={[styles.composerDockAbsolute, inputDockAnimatedStyle]}>
             <View

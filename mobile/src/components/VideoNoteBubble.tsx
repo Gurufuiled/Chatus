@@ -588,6 +588,31 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     });
   }, [animateProgress, clearCollapseTimer, normalizedUri, noteId, player, stopVoicePlayback]);
 
+  const syncPlaybackProgressFromCurrentPosition = React.useCallback(() => {
+    const dur = effectiveDurationRef.current;
+    if (dur <= 0) return;
+
+    let clamped = reportedPositionMsRef.current;
+    try {
+      const raw = Math.round((player.currentTime ?? 0) * 1000);
+      clamped = Math.min(Math.max(raw, 0), dur);
+    } catch {
+      clamped = Math.min(Math.max(reportedPositionMsRef.current, 0), dur);
+    }
+
+    reportedPositionMsRef.current = clamped;
+    syncReportedMs.value = clamped;
+    syncWallClockMs.value = Date.now();
+    cancelAnimation(playbackProgress);
+    playbackProgress.value = clampUnit(clamped / dur);
+  }, [playbackProgress, player, syncReportedMs, syncWallClockMs]);
+
+  const freezePlaybackProgressAtCurrentPosition = React.useCallback(() => {
+    syncPlaybackProgressFromCurrentPosition();
+    isPlayingUI.value = false;
+    isScrubbingUI.value = false;
+  }, [isPlayingUI, isScrubbingUI, syncPlaybackProgressFromCurrentPosition]);
+
   const handlePress = React.useCallback(() => {
     if (!normalizedUri) return;
     if (Date.now() < suppressPressUntilRef.current) return;
@@ -600,6 +625,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     try {
       if (!showPausedPlayOverlay) {
         setScrubProgressValue(null);
+        freezePlaybackProgressAtCurrentPosition();
         // Pause first so OEM players (e.g. some Realme builds) get the stop signal before UI state flips.
         try {
           player.pause();
@@ -622,6 +648,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         setShowPausedPlayOverlay(false);
         setScrubProgressValue(null);
         badgeOpacity.value = 0;
+        syncPlaybackProgressFromCurrentPosition();
         try {
           player.play();
         } catch {
@@ -634,11 +661,13 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   }, [
     badgeOpacity,
     expandInline,
+    freezePlaybackProgressAtCurrentPosition,
     isExpanded,
     normalizedUri,
     player,
     setScrubProgressValue,
     showPausedPlayOverlay,
+    syncPlaybackProgressFromCurrentPosition,
   ]);
 
   useEventListener(player, 'playToEnd', () => {
@@ -769,11 +798,17 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     setHasRenderedFrame(false);
     setShowPausedPlayOverlay(!snapshot.isPlaying);
     progress.value = 1;
-    setScrubProgressValue(
-      snapshot.durationMs > 0
-        ? clampUnit(snapshot.positionMs / snapshot.durationMs)
-        : snapshot.progress
-    );
+    if (!snapshot.isPlaying) {
+      setScrubProgressValue(
+        snapshot.durationMs > 0
+          ? clampUnit(snapshot.positionMs / snapshot.durationMs)
+          : snapshot.progress
+      );
+    } else {
+      setScrubProgressValue(null);
+      syncReportedMs.value = Math.max(snapshot.positionMs, 0);
+      syncWallClockMs.value = Date.now();
+    }
 
     requestAnimationFrame(() => {
       try {
@@ -792,7 +827,16 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         // Ignore restore races while the player source is preparing.
       }
     });
-  }, [noteId, normalizedUri, player, progress, registerPlaybackState, setScrubProgressValue]);
+  }, [
+    noteId,
+    normalizedUri,
+    player,
+    progress,
+    registerPlaybackState,
+    setScrubProgressValue,
+    syncReportedMs,
+    syncWallClockMs,
+  ]);
 
   React.useEffect(() => {
     if (!registerPlaybackState) {
@@ -1091,8 +1135,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   }, [isExpanded, isExpandedUI]);
 
   React.useEffect(() => {
-    isPlayingUI.value = isPlaying && scrubProgress == null;
-  }, [isPlaying, scrubProgress, isPlayingUI]);
+    isPlayingUI.value = isPlaying && !showPausedPlayOverlay && scrubProgress == null;
+  }, [isPlaying, scrubProgress, showPausedPlayOverlay, isPlayingUI]);
 
   React.useEffect(() => {
     totalDurationMsUI.value = effectiveDurationMs;
@@ -1114,14 +1158,22 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       return;
     }
     isScrubbingUI.value = false;
-    if (!isPlaying) {
+    if (!isPlaying || showPausedPlayOverlay) {
       cancelAnimation(playbackProgress);
       playbackProgress.value = withTiming(effectiveProgress, {
         duration: PLAYBACK_PROGRESS_SNAP_MS,
         easing: Easing.out(Easing.cubic),
       });
     }
-  }, [effectiveProgress, isExpanded, isPlaying, playbackProgress, scrubProgress, isScrubbingUI]);
+  }, [
+    effectiveProgress,
+    isExpanded,
+    isPlaying,
+    playbackProgress,
+    scrubProgress,
+    isScrubbingUI,
+    showPausedPlayOverlay,
+  ]);
 
   const progressArcAnimatedProps = useAnimatedProps(() => ({
     strokeDashoffset: scrubRingCircumference * (1 - clampUnit(playbackProgress.value)),

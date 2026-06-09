@@ -5,7 +5,6 @@ import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   Modal,
   Pressable,
   StyleSheet,
@@ -22,8 +21,9 @@ import {
   VideoNoteRecorderService,
 } from '../services/VideoNoteRecorderService';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const CIRCLE_SIZE = Math.min(SCREEN_WIDTH - 44, 320);
+import { VIDEO_NOTE_CAMERA_SIDE_PX } from '../constants/videoNote';
+
+const CIRCLE_SIZE = VIDEO_NOTE_CAMERA_SIDE_PX;
 const CIRCLE_RADIUS = CIRCLE_SIZE / 2;
 const MAX_DURATION_MS = MAX_DURATION_SECONDS * 1000;
 const VIDEO_NOTE_BITRATE = 850_000;

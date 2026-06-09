@@ -551,6 +551,35 @@ export async function mapTdMessage(
       resolveTdFileUri(file, mediaLocalOnly),
       resolveTdFileUri(thumbnailFile, mediaLocalOnly),
     ]);
+    const width = getNumber(video?.width);
+    const height = getNumber(video?.height);
+    const durationSec = getNumber(video?.duration) ?? 0;
+    const maxSide =
+      width != null && height != null ? Math.max(width, height) : null;
+    const isSquareShortVideo =
+      width != null &&
+      height != null &&
+      width > 0 &&
+      height > 0 &&
+      Math.abs(width - height) <= 4 &&
+      maxSide != null &&
+      maxSide <= 640 &&
+      durationSec > 0 &&
+      durationSec <= 60 &&
+      !caption.trim();
+    if (isSquareShortVideo) {
+      return {
+        ...base,
+        kind: 'video_note',
+        text: 'Видеосообщение',
+        mediaUri: uri ?? undefined,
+        mediaFullFileId: uri ? undefined : (fileId ?? undefined),
+        thumbnailUri: thumbnailUri ?? undefined,
+        width,
+        height,
+        durationMs: durationSec * 1000,
+      };
+    }
     return {
       ...base,
       kind: 'video',
@@ -558,9 +587,9 @@ export async function mapTdMessage(
       mediaUri: uri ?? undefined,
       mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       thumbnailUri: thumbnailUri ?? undefined,
-      width: getNumber(video?.width),
-      height: getNumber(video?.height),
-      durationMs: (getNumber(video?.duration) ?? 0) * 1000,
+      width,
+      height,
+      durationMs: durationSec * 1000,
     };
   }
 

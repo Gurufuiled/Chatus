@@ -112,6 +112,10 @@ import {
   type ChatThemeId,
 } from '../theme/chatThemes';
 import { makeOptimisticTempMessageId } from '../utils/optimisticTempMessageId';
+import {
+  isSquareVideoDimensions,
+  probeLocalVideoDimensionsWithRetry,
+} from '../utils/probeLocalVideoDimensions';
 import { getGroupLineSyncPeerUserId } from '../utils/groupLineSyncPeer';
 import {
   ChatBackgroundPattern,
@@ -1371,6 +1375,21 @@ export function ChatScreen() {
   const handleSendVideoNote = useCallback(
     async (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
       if (!currentUserId) return;
+      const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
+      if (!probed) {
+        Alert.alert(
+          'Не удалось отправить видеосообщение',
+          'Не удалось определить размер видео. Запишите ещё раз.',
+        );
+        return;
+      }
+      if (!isSquareVideoDimensions(probed)) {
+        Alert.alert(
+          'Не удалось отправить видеосообщение',
+          'Запись не квадратная. Запишите видеосообщение ещё раз.',
+        );
+        return;
+      }
       const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
@@ -2927,6 +2946,12 @@ export function ChatScreen() {
           repliedVoiceBubbleWidth={REPLIED_VOICE_BUBBLE_WIDTH}
           chatTheme={chatTheme}
           activeVideoNoteVisible={activeVideoNoteVisible}
+          scrollFabBottomOffset={
+            (selectionMode ? selectionActionBarHeight : inputBarHeight) +
+            composerDockPaddingBottom +
+            12
+          }
+          enableScrollFab={!selectionMode && !isSearchMode}
         />
 
         {isSearchMode && normalizedSearchQuery.length > 0 && matchedMessageIds.length > 0 ? (
