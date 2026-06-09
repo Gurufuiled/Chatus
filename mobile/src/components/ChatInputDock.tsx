@@ -39,6 +39,7 @@ type ChatInputDockProps = {
   onCommentCooldownClear?: () => void;
   replyPeerFirstLineId?: string | null;
   chatusStickersComposer?: boolean;
+  onVoiceActiveChange?: (isActive: boolean) => void;
 };
 
 export function ChatInputDock({
@@ -68,35 +69,39 @@ export function ChatInputDock({
   onCommentCooldownClear,
   replyPeerFirstLineId = null,
   chatusStickersComposer,
+  onVoiceActiveChange,
 }: ChatInputDockProps) {
   return (
-    <Reanimated.View onLayout={onLayout} style={[animatedStyle, { overflow: 'visible' }]}>
-      <InputBar
-        telegramAvailable={telegramAvailable}
-        sendChannel={sendChannel as any}
-        onSendChannelChange={onSendChannelChange as any}
-        onSendChannelMenuOpen={onSendChannelMenuOpen}
-        onSendChannelMenuDismiss={onSendChannelMenuDismiss}
-        composerFocusRef={composerFocusRef}
-        placeholder={placeholder}
-        onSendText={onSendText}
-        onSendVoice={onSendVoice}
-        onSendVideoNote={onSendVideoNote}
-        onSendMedia={onSendMedia}
-        onSendMediaAlbum={onSendMediaAlbum}
-        onSendFile={onSendFile}
-        blurTargetRef={blurTargetRef}
-        replyToMessage={replyToMessage}
-        replyAuthorName={replyAuthorName}
-        onCancelReply={onCancelReply}
-        isScreenFocused={isScreenFocused}
-        voiceRestriction={voiceRestriction}
-        mediaRestriction={mediaRestriction}
-        commentCooldownEndsAt={commentCooldownEndsAt}
-        onCommentCooldownClear={onCommentCooldownClear}
-        replyPeerFirstLineId={replyPeerFirstLineId}
-        chatusStickersComposer={chatusStickersComposer}
-      />
+    <Reanimated.View style={[animatedStyle, { overflow: 'visible', height: 220, justifyContent: 'flex-end' }]}>
+      <Reanimated.View onLayout={onLayout} style={{ width: '100%', overflow: 'visible' }}>
+        <InputBar
+          telegramAvailable={telegramAvailable}
+          sendChannel={sendChannel as any}
+          onSendChannelChange={onSendChannelChange as any}
+          onSendChannelMenuOpen={onSendChannelMenuOpen}
+          onSendChannelMenuDismiss={onSendChannelMenuDismiss}
+          composerFocusRef={composerFocusRef}
+          placeholder={placeholder}
+          onSendText={onSendText}
+          onSendVoice={onSendVoice}
+          onSendVideoNote={onSendVideoNote}
+          onSendMedia={onSendMedia}
+          onSendMediaAlbum={onSendMediaAlbum}
+          onSendFile={onSendFile}
+          blurTargetRef={blurTargetRef}
+          replyToMessage={replyToMessage}
+          replyAuthorName={replyAuthorName}
+          onCancelReply={onCancelReply}
+          isScreenFocused={isScreenFocused}
+          voiceRestriction={voiceRestriction}
+          mediaRestriction={mediaRestriction}
+          commentCooldownEndsAt={commentCooldownEndsAt}
+          onCommentCooldownClear={onCommentCooldownClear}
+          replyPeerFirstLineId={replyPeerFirstLineId}
+          chatusStickersComposer={chatusStickersComposer}
+          onVoiceActiveChange={onVoiceActiveChange}
+        />
+      </Reanimated.View>
     </Reanimated.View>
   );
 }

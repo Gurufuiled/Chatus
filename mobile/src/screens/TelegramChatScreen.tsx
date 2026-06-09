@@ -171,6 +171,7 @@ export function TelegramChatScreen() {
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
   const isVoiceRecordingShared = useSharedValue(false);
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const { dockAnimatedStyle: inputDockAnimatedStyle, listWrapAnimatedStyle: listKeyboardAnimatedStyle } =
     useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), isVoiceRecordingShared);
   const blurTargetRef = useRef<View>(null);
@@ -2754,7 +2755,7 @@ export function TelegramChatScreen() {
                 </View>
               }
             />
-            {!isSearchMode && !telegramSelectionMode ? (
+            {!isSearchMode && !telegramSelectionMode && !isVoiceRecording ? (
               <ChatScrollToBottomButton
                 visible={showScrollToBottom}
                 bottom={inputBarHeight + composerDockPaddingBottom + 12}
@@ -2861,6 +2862,7 @@ export function TelegramChatScreen() {
                   onCancelReply={() => setReplyToMessageId(null)}
                   onVoiceActiveChange={(active) => {
                     isVoiceRecordingShared.value = active;
+                    setIsVoiceRecording(active);
                   }}
                   isScreenFocused={isFocused}
                   placeholder="Сообщение"

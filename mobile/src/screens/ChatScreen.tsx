@@ -472,6 +472,7 @@ export function ChatScreen() {
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
     useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
   const [inputBarHeight, setInputBarHeight] = useState(82);
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [selectionActionBarHeight, setSelectionActionBarHeight] = useState(104);
   const [replyToMessageId, setReplyToMessageId] = useState<string | null>(null);
   const [menuState, setMenuState] = useState<MenuState>(null);
@@ -2951,7 +2952,7 @@ export function ChatScreen() {
             composerDockPaddingBottom +
             12
           }
-          enableScrollFab={!selectionMode && !isSearchMode}
+          enableScrollFab={!selectionMode && !isSearchMode && !isVoiceRecording}
         />
 
         {isSearchMode && normalizedSearchQuery.length > 0 && matchedMessageIds.length > 0 ? (
@@ -3132,6 +3133,7 @@ export function ChatScreen() {
             isScreenFocused={isFocused}
             replyPeerFirstLineId={replyToMessage?.chat_id ?? chatId}
             chatusStickersComposer
+            onVoiceActiveChange={setIsVoiceRecording}
             telegramAvailable={telegramAvailable}
             sendChannel={sendChannel}
             onSendChannelChange={setSendChannel}

@@ -244,8 +244,9 @@ export function InputBar({
   const narrowComposer = windowWidth < COMPOSER_NARROW_BREAKPOINT;
   const stickerInLeadingCluster = narrowComposer && chatusStickersComposer;
 
-  const { colors: themeColors } = useTheme();
-  const styles = useMemo(() => createInputBarStyles(themeColors), [themeColors]);
+  const { colors: themeColors, resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
+  const styles = useMemo(() => createInputBarStyles(themeColors, isDark), [themeColors, isDark]);
   const inputRef = useRef<TextInput>(null);
   const [stickerSheetVisible, setStickerSheetVisible] = useState(false);
   const [stickerSheetBootTab, setStickerSheetBootTab] = useState<StickerPanelTopTab | null>(null);
@@ -1361,32 +1362,24 @@ export function InputBar({
 
   const recordingLockStyle = useMemo(
     () => ({
+      opacity: voiceLockProgressAnimated.interpolate({
+        inputRange: [0, 0.72, 1],
+        outputRange: [1, 1, 0],
+      }),
       transform: [
         {
           translateY: RNAnimated.add(
-            RNAnimated.multiply(voiceDragYAnimated, 0.12),
+            RNAnimated.multiply(voiceDragYAnimated, 0.22),
             voiceLockProgressAnimated.interpolate({
               inputRange: [0, 1],
-              outputRange: [2, 8],
+              outputRange: [0, 12],
             })
           ),
         },
         {
-          translateX: voiceLockProgressAnimated.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 2],
-          }),
-        },
-        {
-          scaleY: voiceLockProgressAnimated.interpolate({
-            inputRange: [0, 1],
-            outputRange: [1.58, 1],
-          }),
-        },
-        {
-          scaleX: voiceLockProgressAnimated.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0.94, 1],
+          scale: voiceLockProgressAnimated.interpolate({
+            inputRange: [0, 0.72, 1],
+            outputRange: [1, 1.06, 0.88],
           }),
         },
       ] as ViewStyle['transform'],
@@ -1496,9 +1489,27 @@ export function InputBar({
     [entryModeProgressAnimated]
   );
 
+  const lockIconUnlockColor = isDark ? themeColors.link : '#5A9BFF';
+  const lockIconLockColor = themeColors.accent;
+
   return (
     <>
       <View style={styles.inputBarRoot}>
+        {isVoiceRecording ? (
+          <>
+            <RNAnimated.View style={[styles.recordingLockBubble, recordingLockStyle]}>
+              <RNAnimated.View style={[styles.recordingLockIcon, recordingUnlockIconStyle]}>
+                <Feather name="unlock" size={18} color={lockIconUnlockColor} />
+              </RNAnimated.View>
+              <RNAnimated.View style={[styles.recordingLockIcon, recordingLockIconStyle]}>
+                <Feather name="lock" size={18} color={lockIconLockColor} />
+              </RNAnimated.View>
+            </RNAnimated.View>
+            <RNAnimated.View style={[styles.recordingChevron, recordingUnlockIconStyle]}>
+              <Feather name="chevron-up" size={18} color={themeColors.iconMuted} />
+            </RNAnimated.View>
+          </>
+        ) : null}
         {commentCooldownRemainSec > 0 ? (
           <View
             style={styles.restrictionHint}
@@ -1551,7 +1562,13 @@ export function InputBar({
           </View>
         ) : null}
 
-        <View style={[styles.composerDock, replyToMessage && styles.composerDockReply]}>
+        <View
+          style={[
+            styles.composerDock,
+            replyToMessage && styles.composerDockReply,
+            isVoiceRecording && styles.composerDockRecording,
+          ]}
+        >
           {replyToMessage ? (
               <View style={styles.replyComposerWrap}>
                 <View style={styles.replyComposerInline}>
@@ -1583,7 +1600,26 @@ export function InputBar({
               </View>
             ) : null}
 
-            <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached, isVoiceRecording && { opacity: 0 }]}>
+            {isVoiceRecording ? (
+              <InputVoiceRecordingStage
+                recordingStartedAtMs={voiceRecordingStartedAtMs}
+                attachedToReply={!!replyToMessage}
+                isLocked={isVoiceLocked}
+                voiceTouchTracking={voiceTouchTracking}
+                panHandlers={voicePanResponder.panHandlers}
+                recordingBubbleStyle={recordingBubbleStyle}
+                recordingBubbleCancelTintStyle={recordingBubbleCancelTintStyle}
+                recordingLiveContentStyle={recordingLiveContentStyle}
+                recordingCancelContentStyle={recordingCancelContentStyle}
+                onCancel={() => {
+                  void cancelVoiceRecording();
+                }}
+                onSend={() => {
+                  void finishVoiceRecording();
+                }}
+              />
+            ) : (
+            <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}>
               {showAttachmentButton ? (
                 stickerInLeadingCluster && chatusStickersComposer ? (
                   <View style={styles.leadingCluster} accessibilityRole="toolbar">
@@ -1731,6 +1767,7 @@ export function InputBar({
                 </RNAnimated.View>
               )}
             </View>
+            )}
           </View>
 
         {!canSend && !isChannelAdmin ? (
@@ -1752,29 +1789,6 @@ export function InputBar({
             />
           )
         ) : null}
-
-          {isVoiceRecording && (
-            <InputVoiceRecordingStage
-              key={voiceRecordingStartedAtMs || 'voice-recording-stage'}
-              recordingStartedAtMs={voiceRecordingStartedAtMs}
-              isLocked={isVoiceLocked}
-              voiceTouchTracking={voiceTouchTracking}
-              panHandlers={voicePanResponder.panHandlers}
-              recordingBubbleStyle={recordingBubbleStyle}
-              recordingBubbleCancelTintStyle={recordingBubbleCancelTintStyle}
-              recordingLiveContentStyle={recordingLiveContentStyle}
-              recordingCancelContentStyle={recordingCancelContentStyle}
-              recordingLockStyle={recordingLockStyle}
-              recordingUnlockIconStyle={recordingUnlockIconStyle}
-              recordingLockIconStyle={recordingLockIconStyle}
-              onCancel={() => {
-                void cancelVoiceRecording();
-              }}
-              onSend={() => {
-                void finishVoiceRecording();
-              }}
-            />
-          )}
         </View>
 
         {chatusStickersComposer ? (
@@ -1829,7 +1843,10 @@ export function InputBar({
   );
 }
 
-function createInputBarStyles(themeColors: ThemeColors) {
+function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
+  const lockBubbleBg = isDark ? 'rgba(32,43,54,0.96)' : 'rgba(255,255,255,0.96)';
+  const lockBubbleBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(51,144,236,0.18)';
+
   return StyleSheet.create({
   /** Обёртка: подсказка в потоке над полем — иначе absolute уезжает за clip родителей */
   inputBarRoot: {
@@ -1837,12 +1854,51 @@ function createInputBarStyles(themeColors: ThemeColors) {
     position: 'relative',
     overflow: 'visible',
   },
+  recordingLockBubble: {
+    position: 'absolute',
+    bottom: 76,
+    right: 20,
+    width: 42,
+    height: 74,
+    borderRadius: 23,
+    backgroundColor: lockBubbleBg,
+    borderColor: lockBubbleBorder,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    borderWidth: 1,
+    shadowColor: '#000000',
+    shadowOpacity: isDark ? 0.38 : 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+    zIndex: 20,
+  },
+  recordingLockIcon: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    top: 7,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingChevron: {
+    position: 'absolute',
+    bottom: 62,
+    right: 21,
+    width: 36,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
   inputRow: {
     position: 'relative',
     paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 10,
     backgroundColor: 'transparent',
+    overflow: 'visible',
   },
   previewCard: {
     flexDirection: 'row',
@@ -1962,6 +2018,7 @@ function createInputBarStyles(themeColors: ThemeColors) {
   },
   composerDock: {
     gap: 0,
+    overflow: 'visible',
   },
   composerDockReply: {
     backgroundColor: themeColors.composerSurface,
@@ -1969,6 +2026,9 @@ function createInputBarStyles(themeColors: ThemeColors) {
     borderColor: themeColors.composerBorder,
     borderRadius: 24,
     overflow: 'hidden',
+  },
+  composerDockRecording: {
+    overflow: 'visible',
   },
   composerShell: {
     flexDirection: 'row',

@@ -73,6 +73,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
     },
     bottomChrome: {
       backgroundColor: 'transparent',
+      overflow: 'visible',
     },
     /** Абсолютный док композера у нижнего края — совместно с `useAnimatedKeyboard` как в `ChatScreen`. */
     composerDockAbsolute: {
@@ -80,6 +81,8 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       left: 0,
       right: 0,
       bottom: 0,
+      height: 220,
+      justifyContent: 'flex-end',
       zIndex: 30,
       overflow: 'visible',
     },
