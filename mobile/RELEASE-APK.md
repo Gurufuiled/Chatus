@@ -33,17 +33,47 @@ cp .env.production.example .env.production
 
 На сервере должен открываться `GET /privacy-policy` (см. `server/public/privacy-policy.html`).
 
-### 1.1.1 OTA: манифест и APK с публичного GitHub (Gurufuiled/Chatus)
+### 1.1.1 OTA: манифест и APK с messenger.startapus.com (рекомендуется)
 
-Релизы APK и JSON манифеста живут в **публичном** репозитории, без VPS и без приватного org:
+APK и манифест раздаются **с того же VPS**, что и API — без GitHub Releases и без Google Drive:
+
+| URL | Назначение |
+|-----|------------|
+| `https://messenger.startapus.com/` | Лендинг «Скачать для Android» |
+| `https://messenger.startapus.com/downloads/chatus-release.apk` | Прямая ссылка на APK |
+| `https://messenger.startapus.com/client-update-manifest.json` | Манифест OTA-обновлений |
 
 - **`EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL`** (в `.env.production`) =  
-  `https://raw.githubusercontent.com/Gurufuiled/Chatus/main/config/client-update-manifest.json`  
-  (после `git push` обновление видно клиентам; деплой API для этого не нужен.)
-- В **`config/client-update-manifest.json`** поле **`apkUrl`** указывает на  
-  `https://github.com/Gurufuiled/Chatus/releases/latest/download/chatus-release.apk` — загружай туда **`chatus-release.apk`** как артефакт релиза.
+  `https://messenger.startapus.com/client-update-manifest.json`
+- В **`config/client-update-manifest.json`** поле **`apkUrl`** =  
+  `https://messenger.startapus.com/downloads/chatus-release.apk`
 
-Перед выкладкой нового APK подними **`releaseTag`** в том же JSON и совмести с **`EXPO_PUBLIC_CLIENT_RELEASE_TAG`** при сборке (см. комментарии в примере `.env.production`).
+Перед выкладкой нового APK подними **`releaseTag`** / **`latestVersionCode`** в том же JSON и совмести с **`EXPO_PUBLIC_CLIENT_RELEASE_TAG`** при сборке.
+
+#### Загрузка APK на VPS
+
+1. Собери release: `cd mobile && npm run android:release:prod`
+2. Скопируй APK локально и (опционально) на сервер:
+
+```bash
+# из корня репозитория
+node scripts/deploy-apk-prod.mjs
+node scripts/deploy-apk-prod.mjs --scp root@<VPS>:/root/chatus/server/public/downloads/
+```
+
+3. На VPS убедись, что файл лежит в `server/public/downloads/chatus-release.apk`.  
+   **Docker:** смонтируй каталог, чтобы не пересобирать образ при каждом релизе — в `docker-compose.yml` у сервиса `api`:
+
+   ```yaml
+   volumes:
+     - ./public/downloads:/app/public/downloads:ro
+   ```
+
+4. После `git pull` с обновлённым `config/client-update-manifest.json` перезапусти API (`docker compose up -d --build`) — манифест подхватится из образа.
+
+5. Проверка: открой `https://messenger.startapus.com/` и скачай APK; в приложении должна появиться кнопка обновления при более новом `latestVersionCode`.
+
+**Запасные варианты:** GitHub Releases (`scripts/upload-apk-github.mjs`) или Google Drive (см. §1.1.2) — если self-hosted временно недоступен.
 
 ### 1.1.2 APK с Google Drive (если с GitHub releases «скачка» глючит)
 
@@ -194,7 +224,9 @@ Postgres в `docker-compose.yml` проброшен на `127.0.0.1` — сна�
 2. Сборка с `MOBILE_ENV=production`  
 3. На VPS `server/.env` → Loginus redirect = тот же хост, что видит телефон  
 4. `docker compose up -d` после `git pull` с корпоративного remote  
-5. С телефона: `https://messenger.startapus.com/api`, WSS на `:4001` и `:4002`
+5. С телефона: `https://messenger.startapus.com/api`, WSS на `:4001` и `:4002`  
+6. `https://messenger.startapus.com/downloads/chatus-release.apk` отдаёт APK (не 404)  
+7. `config/client-update-manifest.json` на сервере → актуальные `releaseTag` и `latestVersionCode`
 
 ---
 

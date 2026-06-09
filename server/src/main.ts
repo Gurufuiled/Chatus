@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
@@ -35,7 +35,59 @@ async function bootstrap() {
   app.useWebSocketAdapter(new WsAdapter(app));
 
   const expressApp = app.getHttpAdapter().getInstance();
-  const privacyPolicyPath = join(process.cwd(), 'public', 'privacy-policy.html');
+  const publicDir = join(process.cwd(), 'public');
+  const indexPath = join(publicDir, 'index.html');
+  const apkPath = join(publicDir, 'downloads', 'chatus-release.apk');
+  const apkNotFoundPath = join(publicDir, 'downloads', 'apk-not-found.html');
+  const privacyPolicyPath = join(publicDir, 'privacy-policy.html');
+
+  expressApp.get('/', (_req, res) => {
+    if (!existsSync(indexPath)) {
+      res.status(404).type('text/plain').send('index.html not found');
+      return;
+    }
+    try {
+      const body = readFileSync(indexPath, 'utf8');
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.send(body);
+    } catch {
+      res.status(500).type('text/plain').send('Error reading landing page');
+    }
+  });
+
+  expressApp.get('/download', (_req, res) => {
+    res.redirect(302, '/downloads/chatus-release.apk');
+  });
+
+  expressApp.get('/downloads/chatus-release.apk', (_req, res) => {
+    if (!existsSync(apkPath)) {
+      if (existsSync(apkNotFoundPath)) {
+        try {
+          const body = readFileSync(apkNotFoundPath, 'utf8');
+          res.status(404);
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.send(body);
+          return;
+        } catch {
+          /* fall through */
+        }
+      }
+      res.status(404);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.send('<p>APK not deployed yet. <a href="/">Home</a></p>');
+      return;
+    }
+    const apkStat = statSync(apkPath);
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="chatus-release.apk"');
+    res.setHeader('Last-Modified', apkStat.mtime.toUTCString());
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.sendFile(apkPath);
+  });
+
   expressApp.get('/privacy-policy', (_req, res) => {
     if (!existsSync(privacyPolicyPath)) {
       res.status(404).type('text/plain').send('privacy-policy.html not found');

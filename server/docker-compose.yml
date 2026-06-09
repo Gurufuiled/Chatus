@@ -52,6 +52,8 @@ services:
         condition: service_healthy
     volumes:
       - chatus_uploads:/app/uploads
+      # APK на лендинге /downloads/chatus-release.apk — заливай через scripts/deploy-apk-prod.mjs без пересборки образа
+      - ./public/downloads:/app/public/downloads:ro
       # read-only: ключ не в образе и не в git
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     labels:

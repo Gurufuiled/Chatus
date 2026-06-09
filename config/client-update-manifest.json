@@ -1,10 +1,10 @@
 {
-  "_readme": "Схема v1. Папка со сборками (удобно хранить версии): https://drive.google.com/drive/folders/1wZpsToMkPvc0CHscSF4GAe007jChzxaO . Скачивание: либо android.apkUrl (любой https), либо android.driveApkFileId — ID именно ФАЙЛА apk из ссылки вида https://drive.google.com/file/d/FILE_ID/view (НЕ id папки из /folders/…). Если задан driveApkFileId, он заменяет apkUrl для кнопки «Обновить». releaseTag / versionCode — см. RELEASE-APK.md.",
+  "_readme": "Схема v1. Прод: apkUrl на messenger.startapus.com/downloads/chatus-release.apk (см. RELEASE-APK.md, scripts/deploy-apk-prod.mjs). Запасно: android.driveApkFileId или любой https apkUrl. releaseTag / latestVersionCode — см. RELEASE-APK.md.",
   "schemaVersion": 1,
   "android": {
     "minVersionCode": 1,
     "latestVersionCode": 11,
     "releaseTag": "1.0.10",
-    "apkUrl": "https://github.com/Gurufuiled/Chatus/releases/latest/download/chatus-release.apk"
+    "apkUrl": "https://messenger.startapus.com/downloads/chatus-release.apk"
   }
 }

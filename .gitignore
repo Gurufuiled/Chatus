@@ -60,3 +60,6 @@ mobile/tdlib-ios/build/
 mobile/tdlib-ios/include/
 mobile/tdlib-ios/libtdjson.xcframework/
 mobile/tdlib-ios/tdjson/
+
+# Self-hosted APK (deployed to VPS, not in git)
+server/public/downloads/*.apk

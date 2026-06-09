@@ -24,7 +24,7 @@
         "EXPO_PUBLIC_P2P_FIRST_ENABLED": "true",
         "EXPO_PUBLIC_P2P_PEER_ATTEMPT_TIMEOUT_MS": "2500",
         "EXPO_PUBLIC_WEBRTC_ICE_SERVERS_JSON": "[{\"urls\":\"stun:stun.l.google.com:19302\"}]",
-        "EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL": "https://raw.githubusercontent.com/Gurufuiled/Chatus/main/config/client-update-manifest.json",
+        "EXPO_PUBLIC_CLIENT_UPDATE_MANIFEST_URL": "https://messenger.startapus.com/client-update-manifest.json",
         "EXPO_PUBLIC_CLIENT_RELEASE_TAG": "1.0.10",
         "EXPO_PUBLIC_CLIENT_UPDATE_DISABLED": "true",
         "EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://messenger.startapus.com/privacy-policy",

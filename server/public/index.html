@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chatus — скачать для Android</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.5;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px 48px;
+      color: #1e293b;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+      background: #fff;
+      border-radius: 20px;
+      padding: 40px 28px 32px;
+      box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+    }
+    .logo {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 20px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #0a84ff 0%, #5e5ce6 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      color: #fff;
+      font-weight: 700;
+    }
+    h1 { font-size: 1.75rem; margin: 0 0 8px; font-weight: 700; }
+    .tagline { color: #64748b; font-size: 0.95rem; margin: 0 0 28px; }
+    .version {
+      display: inline-block;
+      font-size: 0.8rem;
+      color: #64748b;
+      background: #f1f5f9;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 24px;
+    }
+    .version:empty { display: none; }
+    .cta {
+      display: inline-block;
+      width: 100%;
+      max-width: 280px;
+      padding: 14px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: #0a84ff;
+      border: none;
+      border-radius: 12px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .cta:hover, .cta:focus { background: #0066cc; }
+    .cta-secondary {
+      display: inline-block;
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: #0a84ff;
+      text-decoration: none;
+    }
+    .cta-secondary:hover { text-decoration: underline; }
+    .note {
+      margin-top: 28px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    footer {
+      margin-top: 32px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+    footer a { color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo" aria-hidden="true">C</div>
+    <h1>Chatus</h1>
+    <p class="tagline">Быстрый и безопасный мессенджер</p>
+    <p class="version" id="version" aria-live="polite"></p>
+    <a class="cta" href="/downloads/chatus-release.apk" id="download-btn">Скачать для Android</a>
+    <br />
+    <a class="cta-secondary" href="/privacy-policy">Политика конфиденциальности</a>
+    <p class="note">Версия для iOS пока недоступна.</p>
+  </div>
+  <footer>
+    <a href="https://messenger.startapus.com">messenger.startapus.com</a>
+  </footer>
+  <script>
+    (function () {
+      fetch('/client-update-manifest.json')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          var android = data && data.android;
+          if (!android) return;
+          var el = document.getElementById('version');
+          var parts = [];
+          if (android.releaseTag) parts.push('v' + android.releaseTag);
+          if (android.latestVersionCode) parts.push('build ' + android.latestVersionCode);
+          if (parts.length) el.textContent = parts.join(' · ');
+        })
+        .catch(function () {});
+    })();
+  </script>
+</body>
+</html>
