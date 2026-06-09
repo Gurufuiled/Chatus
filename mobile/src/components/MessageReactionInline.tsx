@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Reanimated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
 import { resolveAvatarUrl } from '../config';
 import { withAlpha } from '../theme/colors';
@@ -95,7 +96,12 @@ export function MessageReactionInline({
                   ]}
                 >
                   {uri ? (
-                    <Image source={{ uri }} style={styles.avatarImg} />
+                    <Image
+                      source={{ uri }}
+                      style={styles.avatarImg}
+                      contentFit="cover"
+                      cachePolicy="disk"
+                    />
                   ) : (
                     <View style={[styles.avatarFallback, isMe ? styles.avatarFallbackMe : null]} />
                   )}

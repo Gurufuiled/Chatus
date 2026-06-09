@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { resolveAvatarUrl } from '../../config';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme/palettes';
@@ -117,7 +118,12 @@ export const GroupParticipantsSection = React.memo(function GroupParticipantsSec
             style={({ pressed }) => [styles.memberRow, pressed && styles.memberRowPressed]}
           >
             {memberAvatar ? (
-              <Image source={{ uri: memberAvatar }} style={styles.memberAvatar} />
+              <Image
+                source={{ uri: memberAvatar }}
+                style={styles.memberAvatar}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
             ) : (
               <View style={styles.memberAvatarFallback}>
                 <Text style={styles.memberAvatarFallbackText}>

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -461,7 +462,12 @@ export function ChannelAdminPermissionsScreen() {
       <View style={styles.memberCard}>
         <View style={styles.memberCardHeader}>
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.memberAvatar} />
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.memberAvatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : (
             <View style={styles.memberAvatarFallback}>
               <Text style={styles.memberAvatarText}>{displayInitial}</Text>
