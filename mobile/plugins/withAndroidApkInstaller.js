@@ -100,10 +100,9 @@ function withAndroidApkInstaller(config) {
   });
 
   config = withMainApplication(config, (mod) => {
-    if (mod.modResults.language !== 'kotlin') {
-      throw new Error(
-        `withAndroidApkInstaller: unsupported MainApplication language "${mod.modResults.language}"`,
-      );
+    const lang = mod.modResults.language;
+    if (lang !== 'kotlin' && lang !== 'kt') {
+      throw new Error(`withAndroidApkInstaller: unsupported MainApplication language "${lang}"`);
     }
     let src = mod.modResults.contents;
     if (src.includes('add(ApkInstallerPackage())')) {

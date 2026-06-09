@@ -4,6 +4,9 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV CI=1
+
 RUN apt-get update -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -11,7 +14,8 @@ RUN apt-get update -y \
 COPY server/package.json server/package-lock.json ./
 COPY server/prisma ./prisma/
 
-RUN npm ci
+RUN npm ci \
+  && rm -rf /root/.cache/ms-playwright /root/.cache/playwright
 
 COPY server/tsconfig.json server/tsconfig.build.json server/nest-cli.json ./
 COPY server/src ./src/
