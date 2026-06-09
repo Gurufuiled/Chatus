@@ -1,1 +1,5 @@
 ## 2026-06-06 - expo-image for list performance\n**Learning:** Standard React Native Image lacks disk caching and memory-efficient decoding, causing performance bottlenecks and re-renders when used extensively in lists.\n**Action:** Use `expo-image` for images in lists to achieve automatic caching and smoother scrolling.
+
+## 2024-05-18 - [Voice Recording UI Overhaul]
+**Learning:** Replicating Telegram-style sliding UI interactions in React Native using PanResponders requires strict isolation between the gesture tracker (often hooked to a trailing icon) and the animated layout containers. In this layout, overlaying the active component via absolute positioning on top of an opacity=0 base container prevents jarring keyboard shift/focus-loss issues during the interaction transition.
+**Action:** When redesigning input bar components, maintain base container structures and control visibility with opacity toggles, rather than fully unmounting conditional roots, to prevent `adjustResize` or `KeyboardAvoidingView` layout thrashing.
