@@ -33,7 +33,7 @@ import Reanimated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
 import { withAlpha } from '../theme/stylePrimitives';
@@ -356,7 +356,8 @@ const GalleryCell = React.memo(function GalleryCell({
         onPress={() => (onPreview ? onPreview(item) : onToggle(item))}
       >
         {previewUri ? (
-          <Image source={{ uri: previewUri }} style={styles.galleryImage} resizeMode="cover" />
+          /* ⚡ Bolt: Using expo-image with disk caching drastically reduces memory consumption and prevents UI stutters when scrolling large lists of media items compared to the standard React Native Image component. */
+          <Image source={{ uri: previewUri }} style={styles.galleryImage} contentFit="cover" cachePolicy="disk" />
         ) : (
           <View style={styles.galleryVideoFallback}>
             <MaterialCommunityIcons name="movie-open-play-outline" size={28} color={iconMuted} />
