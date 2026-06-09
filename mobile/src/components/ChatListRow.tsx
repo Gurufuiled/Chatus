@@ -6,6 +6,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { useShallow } from 'zustand/react/shallow';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { resolveAvatarUrl } from '../config';
 import { useTheme } from '../contexts/ThemeContext';
@@ -66,58 +67,38 @@ export const ChatListRow = React.memo(
       () => createChatListRowStyles(themeColors),
       [themeColors],
     );
-    const lastMessageSnapshotKey = messageStore(
-      React.useCallback(
-        (state) => {
-          const chatMessages = state.messagesByChatId[chat.id] ?? [];
-          const lastMessage = chat.last_message_id
-            ? chatMessages.find(
-                (message) => message.id === chat.last_message_id,
-              )
-            : null;
-          const preview = buildChatusDialogPreviewForChat(
-            chat,
-            lastMessage ?? null,
-          );
-          return JSON.stringify({
-            s: lastMessage?.sender_id ?? null,
-            t: lastMessage?.status ?? '',
-            p: preview.text,
-            th: preview.thumbnailUris,
-            a: preview.accentLabel ? 1 : 0,
-          });
-        },
-        [chat, chat.id, chat.last_message_id],
-      ),
+    const {
+      lastMessageSenderId,
+      lastMessageStatus,
+      dialogPreviewText,
+      dialogPreviewThumbsKey,
+      dialogPreviewAccentLabel,
+    } = messageStore(
+      useShallow((state) => {
+        const chatMessages = state.messagesByChatId[chat.id] ?? [];
+        const lastMessage = chat.last_message_id
+          ? chatMessages.find((message) => message.id === chat.last_message_id)
+          : null;
+        const preview = buildChatusDialogPreviewForChat(chat, lastMessage ?? null);
+        return {
+          lastMessageSenderId: lastMessage?.sender_id ?? null,
+          lastMessageStatus: lastMessage?.status ?? '',
+          dialogPreviewText: preview.text,
+          dialogPreviewThumbsKey: preview.thumbnailUris.join('\0'),
+          dialogPreviewAccentLabel: preview.accentLabel,
+        };
+      }),
     );
-
-    const { lastMessageSenderId, lastMessageStatus, dialogPreview } =
-      React.useMemo(() => {
-        try {
-          const parsed = JSON.parse(lastMessageSnapshotKey) as {
-            s: string | null;
-            t: string;
-            p: string;
-            th: string[];
-            a: number;
-          };
-          return {
-            lastMessageSenderId: parsed.s,
-            lastMessageStatus: parsed.t,
-            dialogPreview: {
-              text: parsed.p ?? '',
-              thumbnailUris: Array.isArray(parsed.th) ? parsed.th : [],
-              accentLabel: parsed.a === 1,
-            },
-          };
-        } catch {
-          return {
-            lastMessageSenderId: null as string | null,
-            lastMessageStatus: '',
-            dialogPreview: buildChatusDialogPreviewForChat(chat, null),
-          };
-        }
-      }, [chat, lastMessageSnapshotKey]);
+    const dialogPreview = useMemo(
+      () => ({
+        text: dialogPreviewText,
+        thumbnailUris: dialogPreviewThumbsKey
+          ? dialogPreviewThumbsKey.split('\0')
+          : [],
+        accentLabel: dialogPreviewAccentLabel,
+      }),
+      [dialogPreviewText, dialogPreviewThumbsKey, dialogPreviewAccentLabel],
+    );
 
     const title = getChatListTitle(chat);
     const avatarUrl = resolveAvatarUrl(chat.avatar_url);

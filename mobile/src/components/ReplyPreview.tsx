@@ -1,6 +1,7 @@
 import React from 'react';
 import type { GestureResponderEvent } from 'react-native';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import type { Message } from '../stores/types';
 import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
@@ -123,6 +124,8 @@ export function ReplyPreview({
       {hasThumbnail ? (
         <Image
           source={{ uri: resolvedThumbnailUri }}
+          cachePolicy="disk"
+          contentFit="cover"
           style={[styles.thumbnail, isComposer ? styles.thumbnailComposer : styles.thumbnailBubble]}
         />
       ) : null}
