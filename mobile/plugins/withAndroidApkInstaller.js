@@ -105,7 +105,22 @@ function withAndroidApkInstaller(config) {
       throw new Error(`withAndroidApkInstaller: unsupported MainApplication language "${lang}"`);
     }
     let src = mod.modResults.contents;
+    const importLine = 'import com.anonymous.mobile.ApkInstallerPackage';
+    if (!src.includes(importLine)) {
+      if (src.includes('import com.anonymous.mobile.TdlibPackage')) {
+        src = src.replace(
+          'import com.anonymous.mobile.TdlibPackage',
+          'import com.anonymous.mobile.ApkInstallerPackage\nimport com.anonymous.mobile.TdlibPackage',
+        );
+      } else {
+        src = src.replace(
+          'import com.facebook.react.PackageList',
+          `${importLine}\n\nimport com.facebook.react.PackageList`,
+        );
+      }
+    }
     if (src.includes('add(ApkInstallerPackage())')) {
+      mod.modResults.contents = src;
       return mod;
     }
     const needle = `PackageList(this).packages.apply {
