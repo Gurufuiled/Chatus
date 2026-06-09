@@ -23,9 +23,29 @@ const nativeBuildRoot = path.join(sourceRoot, 'native-build');
 const outputFramework = path.join(tdlibIosRoot, 'libtdjson.xcframework');
 const outputInclude = path.join(tdlibIosRoot, 'include');
 
-const TDLIB_IOS_TAG = process.env.TDLIB_IOS_TAG || 'v1.8.52';
 const TDLIB_REPO = process.env.TDLIB_REPO || 'https://github.com/tdlib/td.git';
 const FORCE = process.argv.includes('--force');
+
+/**
+ * Official tdlib/td does not tag patch releases (only up to v1.8.0).
+ * Patch versions are bumps in CMakeLists.txt on master — pin by commit hash.
+ * @see https://github.com/tdlib/td/issues/1627
+ */
+const TDLIB_VERSION_COMMITS = {
+  '1.8.52': 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
+};
+
+const TDLIB_IOS_VERSION = process.env.TDLIB_IOS_VERSION || '1.8.52';
+const TDLIB_IOS_REF =
+  process.env.TDLIB_IOS_REF ||
+  process.env.TDLIB_IOS_TAG ||
+  TDLIB_VERSION_COMMITS[TDLIB_IOS_VERSION];
+
+if (!TDLIB_IOS_REF) {
+  throw new Error(
+    `Unknown TDLib version "${TDLIB_IOS_VERSION}". Set TDLIB_IOS_REF to a git commit, branch, or tag.`,
+  );
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -54,6 +74,26 @@ async function copyDir(from, to) {
   await fs.promises.cp(from, to, { recursive: true });
 }
 
+async function ensureTdlibSourceCheckedOut(ref) {
+  const gitDir = path.join(sourceRoot, '.git');
+  if (!await pathExists(gitDir)) {
+    if (await pathExists(sourceRoot)) {
+      throw new Error(
+        `Incomplete TDLib checkout at ${sourceRoot}. Remove it and retry:\n` +
+          `  rm -rf "${sourceRoot}"`,
+      );
+    }
+    console.log(`Cloning ${TDLIB_REPO} (TDLib ${TDLIB_IOS_VERSION} @ ${ref})…`);
+    run('git', ['clone', '--depth', '1', TDLIB_REPO, sourceRoot]);
+    run('git', ['fetch', 'origin', ref, '--depth', '1'], { cwd: sourceRoot });
+    run('git', ['checkout', ref], { cwd: sourceRoot });
+    return;
+  }
+
+  run('git', ['fetch', 'origin', ref, '--depth', '1'], { cwd: sourceRoot });
+  run('git', ['checkout', ref], { cwd: sourceRoot });
+}
+
 async function main() {
   if (process.platform !== 'darwin') {
     throw new Error('TDLib iOS can be built only on macOS with full Xcode installed.');
@@ -74,12 +114,7 @@ async function main() {
 
   await fs.promises.mkdir(path.join(tdlibIosRoot, 'src'), { recursive: true });
 
-  if (!await pathExists(path.join(sourceRoot, '.git'))) {
-    run('git', ['clone', '--depth', '1', '--branch', TDLIB_IOS_TAG, TDLIB_REPO, sourceRoot]);
-  } else {
-    run('git', ['fetch', '--tags', '--depth', '1', 'origin', TDLIB_IOS_TAG], { cwd: sourceRoot });
-    run('git', ['checkout', TDLIB_IOS_TAG], { cwd: sourceRoot });
-  }
+  await ensureTdlibSourceCheckedOut(TDLIB_IOS_REF);
 
   await fs.promises.mkdir(nativeBuildRoot, { recursive: true });
   run('cmake', ['-DTD_GENERATE_SOURCE_FILES=ON', '..'], { cwd: nativeBuildRoot });
@@ -102,7 +137,7 @@ async function main() {
   await copyDir(builtFramework, outputFramework);
   await copyDir(builtInclude, outputInclude);
 
-  console.log(`TDLib iOS ${TDLIB_IOS_TAG} ready:`);
+  console.log(`TDLib iOS ${TDLIB_IOS_VERSION} (${TDLIB_IOS_REF}) ready:`);
   console.log(`  ${outputFramework}`);
   console.log(`  ${outputInclude}`);
 }
