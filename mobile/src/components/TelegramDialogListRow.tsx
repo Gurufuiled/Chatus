@@ -38,7 +38,14 @@ type Props = {
   onLongPress?: (item: TelegramDialogRow, event: any) => void;
 };
 
-export function TelegramDialogListRow({
+/**
+ * ⚡ Bolt Performance Optimization:
+ * Wrapped TelegramDialogListRow in React.memo() to prevent unnecessary re-renders
+ * during rapid list state updates or when unrelated rows change in the parent FlatList.
+ * Expected Impact: Reduces CPU overhead and frame drops when scrolling through
+ * long lists of Telegram dialogs.
+ */
+export const TelegramDialogListRow = React.memo(function TelegramDialogListRow({
   item,
   navigation,
   onLongPress,
@@ -165,4 +172,4 @@ export function TelegramDialogListRow({
       </Pressable>
     </View>
   );
-}
+});
