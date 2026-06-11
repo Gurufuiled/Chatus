@@ -1,9 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Animated,
   Dimensions,
   FlatList,
-  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -13,20 +18,21 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-} from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+} from "react-native";
+import Feather from "@expo/vector-icons/Feather";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Reanimated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
-} from 'react-native-reanimated';
-import { useTheme } from '../contexts/ThemeContext';
-import type { GalleryItem } from './InputAttachmentSheet';
-import { CropOverlay } from './CropOverlay';
+} from "react-native-reanimated";
+import { Image } from "expo-image";
+import { useTheme } from "../contexts/ThemeContext";
+import type { GalleryItem } from "./InputAttachmentSheet";
+import { CropOverlay } from "./CropOverlay";
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const SCREEN_HEIGHT = Dimensions.get('window').height;
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
 const CLOSE_SWIPE_DISTANCE = 100;
 const EMPTY_EDITED_URIS = new Map<string, string>();
 
@@ -58,7 +64,13 @@ const PreviewSlide = React.memo(function PreviewSlide({
   const uri = editedUri || item.localUri || item.uri;
   return (
     <View style={styles.slide}>
-      <Image source={{ uri }} style={styles.media} resizeMode="contain" />
+      {/* ⚡ Bolt: Using expo-image with disk cache and contentFit for smoother rendering */}
+      <Image
+        source={{ uri }}
+        style={styles.media}
+        contentFit="contain"
+        cachePolicy="disk"
+      />
     </View>
   );
 });
@@ -108,7 +120,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
       translateY.interpolate({
         inputRange: [-200, 0, 200],
         outputRange: [0.3, 1, 0.3],
-        extrapolate: 'clamp',
+        extrapolate: "clamp",
       }),
     [translateY],
   );
@@ -140,9 +152,13 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
         onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: () => false,
         onMoveShouldSetPanResponderCapture: (_, g) =>
-          !cropMode && Math.abs(g.dy) > 8 && Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
+          !cropMode &&
+          Math.abs(g.dy) > 8 &&
+          Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
         onMoveShouldSetPanResponder: (_, g) =>
-          !cropMode && Math.abs(g.dy) > 8 && Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
+          !cropMode &&
+          Math.abs(g.dy) > 8 &&
+          Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
         onPanResponderMove: (_, g) => {
           translateY.setValue(g.dy);
         },
@@ -175,7 +191,9 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
   );
 
   const currentItem = items[currentIndex];
-  const selectionOrder = currentItem ? selectedById.get(currentItem.id) ?? null : null;
+  const selectionOrder = currentItem
+    ? (selectedById.get(currentItem.id) ?? null)
+    : null;
   const isSelected = selectionOrder != null;
   const totalSelected = selectedById.size;
   const hasSelection = totalSelected > 0;
@@ -231,120 +249,139 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
 
         {/* ─── top bar: counter + selection circle ─── */}
         {!cropMode ? (
-        <View style={[styles.topBar, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-          {/* counter */}
-          <Text style={styles.counter}>
-            {currentIndex + 1} / {items.length}
-          </Text>
-
-          {/* selection circle (top-right) */}
-          <Pressable
-            style={[styles.selectCircle, isSelected && styles.selectCircleActive]}
-            onPress={() => currentItem && onToggleSelect(currentItem)}
-            hitSlop={10}
+          <View
+            style={[styles.topBar, { paddingTop: insets.top + 8 }]}
+            pointerEvents="box-none"
           >
-            {isSelected ? (
-              <Text style={styles.selectCircleText}>{selectionOrder}</Text>
-            ) : null}
-          </Pressable>
-        </View>
+            {/* counter */}
+            <Text style={styles.counter}>
+              {currentIndex + 1} / {items.length}
+            </Text>
+
+            {/* selection circle (top-right) */}
+            <Pressable
+              style={[
+                styles.selectCircle,
+                isSelected && styles.selectCircleActive,
+              ]}
+              onPress={() => currentItem && onToggleSelect(currentItem)}
+              hitSlop={10}
+            >
+              {isSelected ? (
+                <Text style={styles.selectCircleText}>{selectionOrder}</Text>
+              ) : null}
+            </Pressable>
+          </View>
         ) : null}
 
         {/* ─── bottom area: caption bar + toolbar (keyboard-aware) ─── */}
         {!cropMode ? (
-        <Reanimated.View
-          style={[
-            styles.bottomArea,
-            { paddingBottom: Math.max(insets.bottom, 8) + 6 },
-            bottomLiftStyle,
-          ]}
-          pointerEvents="box-none"
-        >
-          {/* caption input bar — only when something is selected */}
-          {hasSelection ? (
-            <View style={styles.captionRow}>
-              <View style={styles.captionInputWrap}>
-                <TextInput
-                  value={captionValue}
-                  onChangeText={onCaptionChange}
-                  placeholder="Добавить подпись..."
-                  placeholderTextColor="rgba(255,255,255,0.45)"
-                  style={styles.captionInput}
-                  multiline
-                  maxLength={1024}
-                />
+          <Reanimated.View
+            style={[
+              styles.bottomArea,
+              { paddingBottom: Math.max(insets.bottom, 8) + 6 },
+              bottomLiftStyle,
+            ]}
+            pointerEvents="box-none"
+          >
+            {/* caption input bar — only when something is selected */}
+            {hasSelection ? (
+              <View style={styles.captionRow}>
+                <View style={styles.captionInputWrap}>
+                  <TextInput
+                    value={captionValue}
+                    onChangeText={onCaptionChange}
+                    placeholder="Добавить подпись..."
+                    placeholderTextColor="rgba(255,255,255,0.45)"
+                    style={styles.captionInput}
+                    multiline
+                    maxLength={1024}
+                  />
+                </View>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.captionSendBtn,
+                    { backgroundColor: colors.accent },
+                    pressed && styles.captionSendBtnPressed,
+                  ]}
+                  onPress={onSend}
+                >
+                  <Feather name="arrow-up" size={22} color="#FFFFFF" />
+                </Pressable>
               </View>
+            ) : null}
+
+            {/* toolbar row */}
+            <View style={styles.toolbarRow}>
+              {/* back button */}
               <Pressable
                 style={({ pressed }) => [
-                  styles.captionSendBtn,
-                  { backgroundColor: colors.accent },
-                  pressed && styles.captionSendBtnPressed,
+                  styles.toolBtn,
+                  pressed && styles.toolBtnPressed,
                 ]}
-                onPress={onSend}
+                onPress={onClose}
+                hitSlop={6}
               >
-                <Feather name="arrow-up" size={22} color="#FFFFFF" />
+                <Feather name="chevron-left" size={28} color="#FFFFFF" />
               </Pressable>
-            </View>
-          ) : null}
 
-          {/* toolbar row */}
-          <View style={styles.toolbarRow}>
-            {/* back button */}
-            <Pressable
-              style={({ pressed }) => [styles.toolBtn, pressed && styles.toolBtnPressed]}
-              onPress={onClose}
-              hitSlop={6}
-            >
-              <Feather name="chevron-left" size={28} color="#FFFFFF" />
-            </Pressable>
-
-            {/* crop */}
-            <Pressable
-              style={({ pressed }) => [styles.toolBtn, pressed && styles.toolBtnPressed]}
-              onPress={() => setCropMode(true)}
-              hitSlop={6}
-            >
-              <MaterialCommunityIcons name="crop" size={24} color="#FFFFFF" />
-            </Pressable>
-
-            {/* draw */}
-            <Pressable
-              style={({ pressed }) => [styles.toolBtn, pressed && styles.toolBtnPressed]}
-              onPress={() => {
-                /* TODO: open draw */
-              }}
-              hitSlop={6}
-            >
-              <MaterialCommunityIcons name="draw" size={24} color="#FFFFFF" />
-            </Pressable>
-
-            {/* spacer */}
-            <View style={styles.toolSpacer} />
-
-            {/* send / select-and-send button (only if no caption bar visible) */}
-            {!hasSelection ? (
+              {/* crop */}
               <Pressable
                 style={({ pressed }) => [
-                  styles.sendBtn,
-                  { backgroundColor: colors.accent },
-                  pressed && styles.sendBtnPressed,
+                  styles.toolBtn,
+                  pressed && styles.toolBtnPressed,
+                ]}
+                onPress={() => setCropMode(true)}
+                hitSlop={6}
+              >
+                <MaterialCommunityIcons name="crop" size={24} color="#FFFFFF" />
+              </Pressable>
+
+              {/* draw */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.toolBtn,
+                  pressed && styles.toolBtnPressed,
                 ]}
                 onPress={() => {
-                  if (currentItem && !isSelected) onToggleSelect(currentItem);
-                  onSend();
+                  /* TODO: open draw */
                 }}
+                hitSlop={6}
               >
-                <Feather name="arrow-up" size={22} color="#FFFFFF" />
+                <MaterialCommunityIcons name="draw" size={24} color="#FFFFFF" />
               </Pressable>
-            ) : null}
-          </View>
-        </Reanimated.View>
+
+              {/* spacer */}
+              <View style={styles.toolSpacer} />
+
+              {/* send / select-and-send button (only if no caption bar visible) */}
+              {!hasSelection ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.sendBtn,
+                    { backgroundColor: colors.accent },
+                    pressed && styles.sendBtnPressed,
+                  ]}
+                  onPress={() => {
+                    if (currentItem && !isSelected) onToggleSelect(currentItem);
+                    onSend();
+                  }}
+                >
+                  <Feather name="arrow-up" size={22} color="#FFFFFF" />
+                </Pressable>
+              ) : null}
+            </View>
+          </Reanimated.View>
         ) : null}
 
         {/* ─── Crop overlay ─── */}
         {cropMode && currentItem ? (
           <CropOverlay
-            uri={editedUriMap.get(currentItem.id) || currentItem.localUri || currentItem.uri}
+            uri={
+              editedUriMap.get(currentItem.id) ||
+              currentItem.localUri ||
+              currentItem.uri
+            }
             onConfirm={(croppedUri) => {
               onEditedUriChange?.(currentItem.id, croppedUri);
               setCropMode(false);
@@ -361,7 +398,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: "#000000",
   },
   viewerRoot: {
     width: SCREEN_WIDTH,
@@ -370,8 +407,8 @@ const styles = StyleSheet.create({
   slide: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   media: {
     width: SCREEN_WIDTH,
@@ -380,13 +417,13 @@ const styles = StyleSheet.create({
 
   /* top bar */
   topBar: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     zIndex: 50,
   },
@@ -394,35 +431,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    color: '#FFFFFF',
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   selectCircle: {
     width: 28,
     height: 28,
     borderRadius: 14,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.85)',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(255,255,255,0.85)",
+    backgroundColor: "rgba(0,0,0,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   selectCircleActive: {
-    borderColor: '#3390EC',
-    backgroundColor: '#3390EC',
+    borderColor: "#3390EC",
+    backgroundColor: "#3390EC",
   },
   selectCircleText: {
     fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
+    fontWeight: "800",
+    color: "#FFFFFF",
   },
 
   /* bottom area (keyboard-aware container) */
   bottomArea: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
@@ -431,8 +468,8 @@ const styles = StyleSheet.create({
 
   /* caption input row */
   captionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     marginHorizontal: 10,
     marginBottom: 8,
     gap: 8,
@@ -442,17 +479,17 @@ const styles = StyleSheet.create({
     minHeight: 44,
     maxHeight: 110,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: "rgba(255,255,255,0.18)",
     paddingHorizontal: 16,
     paddingVertical: 4,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   captionInput: {
     fontSize: 16,
     lineHeight: 20,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     maxHeight: 100,
     paddingTop: 10,
     paddingBottom: 10,
@@ -461,8 +498,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   captionSendBtnPressed: {
     opacity: 0.82,
@@ -470,8 +507,8 @@ const styles = StyleSheet.create({
 
   /* toolbar row */
   toolbarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 10,
     gap: 12,
   },
@@ -479,8 +516,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   toolBtnPressed: {
     opacity: 0.6,
@@ -492,8 +529,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   sendBtnPressed: {
     opacity: 0.82,
