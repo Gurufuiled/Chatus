@@ -38,11 +38,12 @@ type Props = {
   onLongPress?: (item: TelegramDialogRow, event: any) => void;
 };
 
-export function TelegramDialogListRow({
-  item,
-  navigation,
-  onLongPress,
-}: Props) {
+export const TelegramDialogListRow = React.memo(
+  function TelegramDialogListRow({
+    item,
+    navigation,
+    onLongPress,
+  }: Props) {
   const { colors } = useTheme();
   const rowStyles = useMemo(() => createChatListRowStyles(colors), [colors]);
   const isChannel = item.chatType === 'channel';
@@ -165,4 +166,12 @@ export function TelegramDialogListRow({
       </Pressable>
     </View>
   );
-}
+  },
+  (prev, next) => {
+    return (
+      prev.item === next.item &&
+      prev.navigation === next.navigation &&
+      prev.onLongPress === next.onLongPress
+    );
+  },
+);
