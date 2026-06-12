@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } fro
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from '@expo/vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -116,7 +116,12 @@ export function FeedbackListScreen({ navigation, route }: Props) {
           ) : null}
           {imgUri ? (
             <View style={[styles.cardImageWrap, { height: imageBoxHeight }]}>
-              <Image source={{ uri: imgUri }} style={styles.cardImage} resizeMode="contain" />
+              <Image
+                source={{ uri: imgUri }}
+                style={styles.cardImage}
+                contentFit="contain"
+                cachePolicy="disk"
+              />
             </View>
           ) : null}
           <Text style={styles.cardBody} numberOfLines={8}>

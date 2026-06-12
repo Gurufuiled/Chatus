@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Switch,
@@ -11,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -247,7 +247,14 @@ function UserAvatar({
 }) {
   const resolvedAvatar = resolveAvatarUrl(avatarUrl ?? null);
   if (resolvedAvatar) {
-    return <Image source={{ uri: resolvedAvatar }} style={st.memberAvatarImage} />;
+    return (
+      <Image
+        source={{ uri: resolvedAvatar }}
+        style={st.memberAvatarImage}
+        contentFit="cover"
+        cachePolicy="disk"
+      />
+    );
   }
   return (
     <View style={st.memberAvatar}>

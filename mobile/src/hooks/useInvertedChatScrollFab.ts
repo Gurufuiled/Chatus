@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Keyboard, Platform } from 'react-native';
 import type { FlatList, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 
 const SHOW_THRESHOLD_PX = 140;
@@ -48,6 +49,18 @@ export function useInvertedChatScrollFab<T>(
       applyVisibility(0);
     });
   }, [applyVisibility, listRef]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const sub = Keyboard.addListener(showEvent, () => {
+      setTimeout(() => {
+        scrollToBottom();
+      }, 80);
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [scrollToBottom]);
 
   return {
     showScrollToBottom,

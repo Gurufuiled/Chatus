@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import {
   Alert,
   FlatList,
-  Image,
   InteractionManager,
   Keyboard,
   Pressable,
@@ -14,6 +13,7 @@ import {
   type ViewStyle,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { BlurTargetView } from 'expo-blur';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -71,7 +71,6 @@ import {
   isValidChatTimestamp,
 } from '../utils/formatChatDayLabel';
 import {
-  isSquareVideoDimensions,
   probeLocalVideoDimensionsWithRetry,
 } from '../utils/probeLocalVideoDimensions';
 import { ChatBackgroundPattern } from './chatScreen.shared';
@@ -255,6 +254,17 @@ export function TelegramChatScreen() {
     recheckFabVisibility,
     scrollToBottom,
   } = useInvertedChatScrollFab(listRef, chatId);
+
+  const lastMessagesLengthRef = useRef(messages.length);
+  useEffect(() => {
+    if (messages.length > lastMessagesLengthRef.current) {
+      const latest = messages[0];
+      if (latest && latest.outgoing) {
+        scrollToBottom();
+      }
+    }
+    lastMessagesLengthRef.current = messages.length;
+  }, [messages, scrollToBottom]);
   const handleMessagesListScroll = useCallback(
     (event: Parameters<typeof handleChatScroll>[0]) => {
       handleChatScroll(event);
@@ -727,7 +737,12 @@ export function TelegramChatScreen() {
           ]}
         >
           {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={headerChromeStyles.avatar} />
+            <Image
+              source={{ uri: avatarUri }}
+              style={headerChromeStyles.avatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : (
             <View style={headerChromeStyles.avatarPlaceholder}>
               <Text style={headerChromeStyles.avatarPlaceholderLetter}>{initialChar}</Text>
@@ -1421,13 +1436,6 @@ export function TelegramChatScreen() {
         );
         return;
       }
-      if (!isSquareVideoDimensions(probed)) {
-        Alert.alert(
-          'Не удалось отправить видеосообщение',
-          'Запись не квадратная — Telegram принимает только кружки. Запишите ещё раз через свайп вверх по микрофону.',
-        );
-        return;
-      }
       const lengthPx = Math.min(
         640,
         Math.max(240, Math.round(Math.min(probed.width, probed.height))),
@@ -1754,10 +1762,38 @@ export function TelegramChatScreen() {
           </Text>
         ) : null;
 
+      const forwardHeaderNode = item.forwardInfo ? (
+        <View style={styles.forwardHeaderContainer}>
+          <Text style={[styles.forwardPrefixText, { color: isMe ? chatTheme.replyAccentMe : colors.accent }]}>
+            Переслано от
+          </Text>
+          <View style={styles.forwardAuthorRow}>
+            {item.forwardInfo.avatarUri ? (
+              <Image
+                source={{ uri: item.forwardInfo.avatarUri }}
+                style={styles.forwardAvatar}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
+            ) : (
+              <View style={[styles.forwardAvatarFallback, { backgroundColor: isMe ? chatTheme.replyAccentMe : colors.accent }]}>
+                <Text style={styles.forwardAvatarInitial}>
+                  {(item.forwardInfo.senderName?.[0] || '?').toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <Text style={[styles.forwardAuthorText, { color: isMe ? chatTheme.replyAccentMe : colors.accent }]} numberOfLines={1}>
+              {item.forwardInfo.senderName}
+            </Text>
+          </View>
+        </View>
+      ) : null;
+
       const bubbleHeader =
-        senderNameNode || replySnippet ? (
+        senderNameNode || replySnippet || forwardHeaderNode ? (
           <>
             {senderNameNode}
+            {forwardHeaderNode}
             {replySnippet}
           </>
         ) : null;
@@ -1835,7 +1871,12 @@ export function TelegramChatScreen() {
             >
               {showAvatar ? (
                 item.senderAvatarUri ? (
-                  <Image source={{ uri: item.senderAvatarUri }} style={styles.groupAvatarImage} />
+                  <Image
+                    source={{ uri: item.senderAvatarUri }}
+                    style={styles.groupAvatarImage}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                  />
                 ) : (
                   <View style={[styles.groupAvatarFallback, { backgroundColor: telegramPeerAvatarColor(seed) }]}>
                     <Text style={styles.groupAvatarInitial}>{avatarInitial}</Text>

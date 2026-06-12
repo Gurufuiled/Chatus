@@ -316,6 +316,14 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
         // Column may already exist
       }
     }
+    // v16->v17: clear cached telegram messages so they are re-fetched and re-mapped with forwardInfo
+    if (currentVersion >= 16 && currentVersion < 17) {
+      try {
+        await db.execAsync('DELETE FROM telegram_messages;');
+      } catch (e) {
+        console.warn('Migration v16->v17 failed:', e);
+      }
+    }
     await db.execAsync(SCHEMA_SQL);
     await normalizeLegacyMessageTransport(db);
     await db.runAsync('PRAGMA user_version = ' + DB_VERSION);

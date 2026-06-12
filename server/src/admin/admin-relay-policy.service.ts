@@ -41,17 +41,20 @@ export class AdminRelayPolicyService {
 
   async setOverrides(patch: RelayPolicyOverrides): Promise<RelayPolicyOverrides> {
     const entries = Object.entries(patch) as [RelayPolicyKey, number | undefined][];
-    for (const [key, value] of entries) {
-      if (!RELAY_POLICY_KEYS.includes(key)) continue;
-      if (value === undefined || value === null) {
-        await this.prisma.systemConfig.deleteMany({ where: { key } });
-      } else {
-        await this.prisma.systemConfig.upsert({
+    const ops = entries
+      .filter(([key]) => RELAY_POLICY_KEYS.includes(key))
+      .map(([key, value]) => {
+        if (value === undefined || value === null) {
+          return this.prisma.systemConfig.deleteMany({ where: { key } });
+        }
+        return this.prisma.systemConfig.upsert({
           where: { key },
           create: { key, value: String(value) },
           update: { value: String(value) },
         });
-      }
+      });
+    if (ops.length > 0) {
+      await this.prisma.$transaction(ops);
     }
     return this.getOverrides();
   }

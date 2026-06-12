@@ -12,6 +12,7 @@ import {
   Platform,
   type LayoutChangeEvent,
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as Clipboard from 'expo-clipboard';
 import Feather from '@expo/vector-icons/Feather';
 import { BlurTargetView } from 'expo-blur';
@@ -1219,7 +1220,12 @@ export function ChannelDiscussionScreen() {
         <View style={[styles.row, isMe ? styles.rowMe : styles.rowOther]}>
           {!isMe ? (
             avatarUri ? (
-              <Reanimated.Image source={{ uri: avatarUri }} style={styles.avatar} />
+              <Image
+                source={{ uri: avatarUri }}
+                style={styles.avatar}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
             ) : (
               <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: hashColor(item.sender_id, c.accent) }]}>
                 <Text style={styles.avatarInitial}>{getInitial(avatarLabel)}</Text>

@@ -66,6 +66,8 @@ export class ChatusFatherService {
   ): Promise<Awaited<ReturnType<MessagesService['createMessage']>>[]> {
     const replies = await this.computeReplies(userId, text);
     const created: Awaited<ReturnType<MessagesService['createMessage']>>[] = [];
+    // Sequential on purpose: each createMessage updates chat.lastMessageAt; parallel
+    // inserts would scramble createdAt order in chat history (usually 1–3 replies).
     for (const reply of replies) {
       try {
         const msg = await this.messages.createMessage(

@@ -6,7 +6,6 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   Dimensions,
-  Image as RNImage,
   type ImageStyle,
   Platform,
   Pressable as RNPressable,

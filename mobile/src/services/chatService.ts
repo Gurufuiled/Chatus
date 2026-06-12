@@ -5,6 +5,7 @@
 
 import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 import type { Chat } from '../stores/types';
+import { normalizeTimestamp, normalizeTimestampRequired } from '../utils/timestamp';
 
 /** API chat response (snake_case from server). */
 interface ApiChat {
@@ -70,7 +71,14 @@ function normalizeApiMember(
     (loose.tag_color as string | null | undefined) ??
     (loose.tagColor as string | null | undefined) ??
     null;
-  return { ...member, tag, tag_color };
+  const joined_at = member.joined_at != null ? normalizeTimestampRequired(member.joined_at) : undefined;
+  const user = member.user
+    ? {
+        ...member.user,
+        last_seen: normalizeTimestamp(member.user.last_seen),
+      }
+    : undefined;
+  return { ...member, tag, tag_color, joined_at, user };
 }
 
 function mapApiChatToChat(api: ApiChat): Chat {
@@ -92,22 +100,22 @@ function mapApiChatToChat(api: ApiChat): Chat {
     subscriber_count: api.subscriber_count ?? 0,
     active_subscriber_count: api.active_subscriber_count ?? 0,
     access_status: api.access_status ?? 'active',
-    subscription_expires_at: api.subscription_expires_at ?? null,
+    subscription_expires_at: normalizeTimestamp(api.subscription_expires_at),
     pending_earnings_cents: api.pending_earnings_cents ?? 0,
     available_payout_cents: api.available_payout_cents ?? 0,
     paid_out_cents: api.paid_out_cents ?? 0,
     created_by: api.created_by_id ?? null,
     last_message_id: api.last_message_id,
     pinned_message_id: api.pinned_message_id ?? null,
-    last_message_at: api.last_message_at,
+    last_message_at: normalizeTimestamp(api.last_message_at),
     last_message_preview: api.last_message_preview,
     unread_count: api.unread_count,
     is_muted: api.is_muted ? 1 : 0,
     is_pinned: api.is_pinned ? 1 : 0,
     is_archived: api.is_archived ? 1 : 0,
     draft: api.draft,
-    created_at: api.created_at,
-    updated_at: api.updated_at,
+    created_at: normalizeTimestampRequired(api.created_at),
+    updated_at: normalizeTimestampRequired(api.updated_at),
     members: api.members?.map(normalizeApiMember),
     peer_display_name: api.peer_display_name ?? null,
   };

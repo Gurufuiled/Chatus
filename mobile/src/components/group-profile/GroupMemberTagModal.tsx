@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { resolveAvatarUrl } from '../../config';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme/palettes';
@@ -67,7 +67,12 @@ export function GroupMemberTagModal({
             <View style={styles.tagPreviewCard}>
               <View style={[styles.tagPreviewAccent, { backgroundColor: previewOption.bubble }]} />
               {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={styles.tagPreviewAvatar} />
+                <Image
+                  source={{ uri: avatarUri }}
+                  style={styles.tagPreviewAvatar}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                />
               ) : (
                 <View style={styles.tagPreviewAvatarFallback}>
                   <Text style={styles.tagPreviewAvatarText}>

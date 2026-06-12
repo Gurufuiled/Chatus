@@ -3,13 +3,13 @@ import { useEvent } from 'expo';
 import {
   Animated,
   Dimensions,
-  Image,
   PanResponder,
   Platform,
   Pressable,
   StyleSheet,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { VoiceItem } from './ChatProfileMediaSection';
@@ -237,7 +237,12 @@ export const FloatingVideoNoteOverlay = React.memo(function FloatingVideoNoteOve
       >
         <Pressable onPress={handlePress} style={styles.pressable}>
           {posterUri && !hasRenderedFrame ? (
-            <Image source={{ uri: posterUri }} style={styles.poster} resizeMode="cover" />
+            <Image
+              source={{ uri: posterUri }}
+              style={styles.poster}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : null}
           <VideoView
             player={player}

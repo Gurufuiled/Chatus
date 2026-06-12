@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } fro
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -225,7 +225,8 @@ export function FeedbackComposeScreen({ navigation, route }: Props) {
             <Image
               source={{ uri: attachmentPreviewUri }}
               style={styles.inlinePreviewImg}
-              resizeMode="contain"
+              contentFit="contain"
+              cachePolicy="disk"
             />
             <Pressable
               accessibilityLabel="Убрать фото"

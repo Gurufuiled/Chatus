@@ -3,7 +3,7 @@
  * Uses PRAGMA user_version for migration tracking.
  */
 
-export const DB_VERSION = 16;
+export const DB_VERSION = 17;
 
 export const SCHEMA_SQL = `
 -- users

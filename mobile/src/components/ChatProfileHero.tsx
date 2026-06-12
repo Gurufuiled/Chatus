@@ -4,11 +4,11 @@ import {
   ActivityIndicator,
   Animated as RNAnimated,
   Easing,
-  Image,
   Pressable,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, {
@@ -284,7 +284,12 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
               ]}
             >
               {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarMedia} />
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={styles.avatarMedia}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                />
               ) : (
                 <View style={styles.avatarFallback}>
                   <Text style={styles.avatarFallbackText}>{initial}</Text>

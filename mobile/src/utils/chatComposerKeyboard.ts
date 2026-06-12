@@ -29,8 +29,8 @@ export type ChatComposerAnimatedKeyboard = {
  * контент сдвигается), для Android этот флаг нужно будет снова включать или определять режим
  * динамически — иначе композер окажется под клавиатурой. Сейчас явно ориентируемся на resize.
  */
-/** iOS / adjustPan: смещаем и док, и список. */
-export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = Platform.OS !== 'android';
+/** iOS / Android: смещаем и док, и список. */
+export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = true;
 
 /**
  * Android: абсолютный док не всегда поднимается с `adjustResize` (MIUI / gesture nav).

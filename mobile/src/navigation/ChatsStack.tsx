@@ -1,6 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator, type NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ChannelAddAdminScreen,
@@ -106,7 +107,12 @@ export function ChatHeaderTitle({
   return (
     <View style={stackStyles.headerRow}>
       {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={stackStyles.headerRowAvatar} />
+        <Image
+          source={{ uri: avatarUrl }}
+          style={stackStyles.headerRowAvatar}
+          contentFit="cover"
+          cachePolicy="disk"
+        />
       ) : (
         <View style={stackStyles.headerRowAvatarPlaceholder}>
           <Text style={stackStyles.headerAvatarPlaceholderText}>{initial}</Text>
@@ -203,7 +209,12 @@ export function GroupChatHeaderMembers({
             ]}
           >
             {uri ? (
-              <Image source={{ uri }} style={[stackStyles.groupHeaderMemberAvatar, { borderColor: headerBorderColor }]} />
+              <Image
+                source={{ uri }}
+                style={[stackStyles.groupHeaderMemberAvatar, { borderColor: headerBorderColor }]}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
             ) : (
               <View
                 style={[

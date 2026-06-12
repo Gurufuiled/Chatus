@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -9,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 
 import { useTheme } from '../contexts/ThemeContext';
 import type { TelegramDialogRow } from '../stores/telegramAccountStore';
@@ -77,7 +77,12 @@ export function TelegramForwardSheet({
                   accessibilityLabel={`Переслать в ${dialog.title}`}
                 >
                   {dialog.avatarUri ? (
-                    <Image source={{ uri: dialog.avatarUri }} style={styles.avatarImage} />
+                    <Image
+                      source={{ uri: dialog.avatarUri }}
+                      style={styles.avatarImage}
+                      contentFit="cover"
+                      cachePolicy="disk"
+                    />
                   ) : (
                     <View style={styles.avatarPlaceholder}>
                       <Text style={styles.avatarText}>{initial}</Text>

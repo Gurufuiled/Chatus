@@ -4,13 +4,13 @@ import type { ImageSourcePropType } from 'react-native';
 import {
   Animated,
   Dimensions,
-  Image,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ResolvedColorScheme, ThemeColors } from '../theme/palettes';
 import { withAlpha } from '../theme/stylePrimitives';
@@ -278,7 +278,7 @@ function AnchoredPopoverMenuContent({
                   <Image
                     source={item.iconImage}
                     style={{ width: 20, height: 20, tintColor: item.color ?? colors.textPrimary }}
-                    resizeMode="contain"
+                    contentFit="contain"
                   />
                 ) : item.icon ? (
                   <Feather name={item.icon as never} size={18} color={item.color ?? colors.textPrimary} />

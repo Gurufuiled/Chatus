@@ -4,6 +4,7 @@ import type { Chat, Message } from '../stores/types';
 import { decodeServerWaveform } from './waveformTransport';
 import { normalizeMessageFlag } from '../utils/messageFlags';
 import { normalizeMessageTransport } from '../utils/messageTransport';
+import { normalizeTimestamp, normalizeTimestampRequired } from '../utils/timestamp';
 import type { ChannelDetail } from '../stores/channelStore';
 
 export type ChannelPermissions = {
@@ -236,22 +237,22 @@ export function mapApiChatToChat(api: ApiChat): Chat {
     subscriber_count: api.subscriber_count ?? 0,
     active_subscriber_count: api.active_subscriber_count ?? 0,
     access_status: api.access_status ?? 'none',
-    subscription_expires_at: api.subscription_expires_at ?? null,
+    subscription_expires_at: normalizeTimestamp(api.subscription_expires_at),
     pending_earnings_cents: api.pending_earnings_cents ?? 0,
     available_payout_cents: api.available_payout_cents ?? 0,
     paid_out_cents: api.paid_out_cents ?? 0,
     created_by: api.created_by_id ?? null,
     last_message_id: api.last_message_id ?? null,
     pinned_message_id: api.pinned_message_id ?? null,
-    last_message_at: api.last_message_at ?? null,
+    last_message_at: normalizeTimestamp(api.last_message_at),
     last_message_preview: api.last_message_preview ?? null,
     unread_count: api.unread_count ?? 0,
     is_muted: api.is_muted ? 1 : 0,
     is_pinned: api.is_pinned ? 1 : 0,
     is_archived: api.is_archived ? 1 : 0,
     draft: api.draft ?? null,
-    created_at: api.created_at,
-    updated_at: api.updated_at,
+    created_at: normalizeTimestampRequired(api.created_at),
+    updated_at: normalizeTimestampRequired(api.updated_at),
     peer_display_name: api.peer_display_name ?? null,
     channel_permissions: api.channel_permissions
       ? {
@@ -295,8 +296,8 @@ export function mapApiMessageToMessage(api: ApiMessage): Message {
     status: api.status,
     transport: normalizeMessageTransport(api.transport),
     server_id: null,
-    created_at: api.created_at,
-    updated_at: api.updated_at,
+    created_at: normalizeTimestampRequired(api.created_at),
+    updated_at: normalizeTimestampRequired(api.updated_at),
     media:
       api.media?.map((item, index) => ({
         id: `media-${api.id}-${index}`,

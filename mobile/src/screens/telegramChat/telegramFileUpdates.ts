@@ -3,6 +3,7 @@ import { getNestedRecord } from './tdlibMapping';
 
 export function getTdlibFileLocalUri(file: Record<string, unknown> | null): string | null {
   const local = getNestedRecord(file?.local);
+  if (local?.is_downloading_completed !== true) return null;
   const path = typeof local?.path === 'string' ? local.path.trim() : '';
   return path ? `file://${path}` : null;
 }
@@ -48,6 +49,19 @@ export function patchMessagesWithTdlibFile(
       };
     }
 
+    const forward = row.forwardInfo;
+    if (forward?.avatarFileId === fileId) {
+      changed = true;
+      updated = {
+        ...updated,
+        forwardInfo: {
+          ...forward,
+          avatarUri: uri,
+          avatarFileId: undefined,
+        },
+      };
+    }
+
     if (row.kind === 'album' && row.albumMedia?.length) {
       let albumChanged = false;
       const albumMedia = row.albumMedia.map((item) => {
@@ -72,6 +86,7 @@ export function collectPendingTdlibFileIds(rows: TelegramMessageRow[]): number[]
   for (const row of rows) {
     if (row.mediaFullFileId != null) ids.add(row.mediaFullFileId);
     if (row.webPagePreview?.photoFileId != null) ids.add(row.webPagePreview.photoFileId);
+    if (row.forwardInfo?.avatarFileId != null) ids.add(row.forwardInfo.avatarFileId);
     if (row.kind === 'album') {
       for (const item of row.albumMedia ?? []) {
         if (item.mediaFullFileId != null) ids.add(item.mediaFullFileId);

@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -130,7 +130,12 @@ export function MyProfileScreen() {
       contentContainerStyle={styles.scroll}
     >
       {avatarUrl ? (
-        <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+        <Image
+          source={{ uri: avatarUrl }}
+          style={styles.avatar}
+          contentFit="cover"
+          cachePolicy="disk"
+        />
       ) : (
         <View style={[styles.avatarPh, { backgroundColor: colors.accent }]}>
           <Text style={styles.avatarPhText}>{initial}</Text>

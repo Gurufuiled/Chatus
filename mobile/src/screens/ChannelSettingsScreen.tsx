@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -312,7 +312,12 @@ export function ChannelSettingsScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.channelCard}>
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatarImage}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : (
             <View style={styles.avatarCircle}>
               <Text style={styles.avatarText}>{initial}</Text>

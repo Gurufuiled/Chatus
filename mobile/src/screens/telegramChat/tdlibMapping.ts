@@ -83,6 +83,7 @@ function getFormattedText(value: unknown): string {
 
 function getTdFileLocalUri(file: Record<string, unknown> | null): string | null {
   const local = getNestedRecord(file?.local);
+  if (local?.is_downloading_completed !== true) return null;
   const path = typeof local?.path === 'string' ? local.path.trim() : '';
   return path ? `file://${path}` : null;
 }
@@ -361,6 +362,104 @@ async function resolveIncomingUserSender(
   }
 }
 
+function getChatAvatarSmallFile(chat: Record<string, unknown>): Record<string, unknown> | null {
+  const photo = getNestedRecord(chat.photo);
+  return getNestedRecord(photo?.small);
+}
+
+type ResolvedForwardOrigin = {
+  senderName: string;
+  avatarUri: string | null;
+  avatarFileId?: number;
+};
+
+async function resolveForwardOrigin(
+  forwardInfoRaw: Record<string, unknown> | null | undefined,
+): Promise<ResolvedForwardOrigin | null> {
+  if (!forwardInfoRaw) return null;
+  const origin = getNestedRecord(forwardInfoRaw.origin);
+  if (!origin) return null;
+
+  const type = origin['@type'];
+  try {
+    if (type === 'messageForwardOriginUser') {
+      const userId = typeof origin.sender_user_id === 'number' ? origin.sender_user_id : null;
+      if (userId == null) return null;
+      const cachedName = getCachedUserName(userId);
+      const cachedAvatar = getCachedUserAvatarUri(userId);
+      if (cachedName && cachedAvatar !== undefined) {
+        return { senderName: cachedName, avatarUri: cachedAvatar };
+      }
+      const user = (await tdlibClient.send({
+        '@type': 'getUser',
+        user_id: userId,
+      })) as Record<string, unknown>;
+      throwIfTdError(user);
+      const firstName = typeof user.first_name === 'string' ? user.first_name.trim() : '';
+      const lastName = typeof user.last_name === 'string' ? user.last_name.trim() : '';
+      const name = [firstName, lastName].filter(Boolean).join(' ') || `User ${userId}`;
+      setCachedUserName(userId, name);
+      
+      const photo = getNestedRecord(user.profile_photo);
+      const small = getNestedRecord(photo?.small);
+      const fileId = typeof small?.id === 'number' ? small.id : null;
+      const localUri = getTdFileLocalUri(small);
+      if (localUri) {
+        setCachedUserAvatarUri(userId, localUri);
+        return { senderName: name, avatarUri: localUri };
+      }
+      if (fileId != null) {
+        scheduleTdlibFileDownload(fileId);
+        return { senderName: name, avatarUri: null, avatarFileId: fileId };
+      }
+      return { senderName: name, avatarUri: null };
+    }
+    
+    if (type === 'messageForwardOriginChat' || type === 'messageForwardOriginChannel') {
+      const chatId = typeof origin.sender_chat_id === 'number' 
+        ? origin.sender_chat_id 
+        : typeof origin.chat_id === 'number' 
+          ? origin.chat_id 
+          : null;
+      if (chatId == null) return null;
+
+      const chat = (await tdlibClient.send({
+        '@type': 'getChat',
+        chat_id: chatId,
+      })) as Record<string, unknown>;
+      throwIfTdError(chat);
+      const name = typeof chat.title === 'string' ? chat.title.trim() : `Chat ${chatId}`;
+      const avatarSmallFile = getChatAvatarSmallFile(chat);
+      const localUri = getTdFileLocalUri(avatarSmallFile);
+      if (localUri) {
+        return { senderName: name, avatarUri: localUri };
+      }
+      const fileId = typeof avatarSmallFile?.id === 'number' ? avatarSmallFile.id : null;
+      if (fileId != null) {
+        scheduleTdlibFileDownload(fileId);
+        return { senderName: name, avatarUri: null, avatarFileId: fileId };
+      }
+      return { senderName: name, avatarUri: null };
+    }
+
+    if (type === 'messageForwardOriginMessageImport') {
+      const name = typeof origin.sender_name === 'string' ? origin.sender_name.trim() : 'Imported';
+      return { senderName: name, avatarUri: null };
+    }
+
+    if (type === 'messageForwardOriginHiddenUser') {
+      const name = typeof origin.sender_name === 'string' ? origin.sender_name.trim() : 'Hidden User';
+      return { senderName: name, avatarUri: null };
+    }
+  } catch (e) {
+    if (__DEV__) {
+      console.warn('[tdlibMapping] resolveForwardOrigin failed:', e);
+    }
+  }
+  return null;
+}
+
+
 function getTdViewCount(raw: Record<string, unknown>): number | undefined {
   const info = getNestedRecord(raw.interaction_info);
   const count = info?.view_count;
@@ -480,6 +579,8 @@ export async function mapTdMessage(
   const viewCount = getTdViewCount(raw);
   const { discussionReplyCount, discussionChatId, messageThreadId } = getTdDiscussionFields(raw);
   const mediaAlbumId = getTdMediaAlbumId(raw);
+  const forwardInfoRaw = getNestedRecord(raw.forward_info);
+  const forwardInfo = forwardInfoRaw ? await resolveForwardOrigin(forwardInfoRaw) : null;
   const base = {
     id: String(id),
     messageId: id,
@@ -495,6 +596,7 @@ export async function mapTdMessage(
     discussionChatId,
     messageThreadId,
     mediaAlbumId,
+    forwardInfo,
   };
 
   if (kind === 'messageText') {

@@ -3,13 +3,12 @@ import Feather from '@expo/vector-icons/Feather';
 import {
   Alert,
   GestureResponderEvent,
-  Image,
   Pressable,
   ScrollView,
   Text,
   View,
 } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import { Image } from 'expo-image';
 import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
@@ -242,7 +241,7 @@ export const MediaTilePreview = React.memo(function MediaTilePreview({
   }
 
   return (
-    <ExpoImage
+    <Image
       key={previewUri}
       source={{ uri: previewUri }}
       style={styles.mediaImage}
@@ -380,7 +379,7 @@ const VideoNoteVoiceRow = React.memo(function VideoNoteVoiceRow({
     >
       <View style={styles.videoNoteThumbWrap}>
         {previewUri ? (
-          <ExpoImage
+          <Image
             key={previewUri}
             source={{ uri: previewUri }}
             style={styles.videoNoteThumb}

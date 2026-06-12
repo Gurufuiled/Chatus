@@ -3,12 +3,12 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Pressable,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -210,7 +210,12 @@ export function ContactsScreen() {
         disabled={isCreating}
       >
         {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.avatar}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
         ) : (
           <View style={styles.avatarPlaceholder}>
             <Text style={styles.avatarPlaceholderText}>
@@ -254,7 +259,12 @@ export function ContactsScreen() {
         onPress={() => openChat(chat.id, title)}
       >
         {resolvedAvatar ? (
-          <Image source={{ uri: resolvedAvatar }} style={styles.avatar} />
+          <Image
+            source={{ uri: resolvedAvatar }}
+            style={styles.avatar}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
         ) : (
           <View style={styles.avatarPlaceholder}>
             <Text style={styles.avatarPlaceholderText}>{(title || '?')[0].toUpperCase()}</Text>
@@ -286,7 +296,12 @@ export function ContactsScreen() {
           disabled={!item.chatusUserId}
         >
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            <Image
+            source={{ uri: avatarUrl }}
+            style={styles.avatar}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
           ) : (
             <View style={styles.avatarPlaceholder}>
               <Text style={styles.avatarPlaceholderText}>

@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -178,7 +178,12 @@ export function ChannelEditScreen() {
 
         <Pressable onPress={() => openAvatarPicker()} style={styles.avatarButton}>
           {resolvedAvatar ? (
-            <Image source={{ uri: resolvedAvatar }} style={styles.avatarImage} />
+            <Image
+              source={{ uri: resolvedAvatar }}
+              style={styles.avatarImage}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : (
             <View style={styles.avatarCircle}>
               {uploading ? (

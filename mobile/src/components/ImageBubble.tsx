@@ -3,7 +3,6 @@ import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Dimensions,
-  Image as RNImage,
   Modal,
   Pressable,
   StyleSheet,
@@ -174,7 +173,7 @@ export function ImageBubble({
       return;
     }
 
-    // Вместо блокирующего RNImage.getSize ждем onLoad от expo-image
+    // Wait for expo-image onLoad instead of blocking getSize.
     setDisplaySize({
       width: Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width),
       height: Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height),
@@ -184,9 +183,6 @@ export function ImageBubble({
   const isDataPreviewUri = normalizedUri.startsWith('data:');
   const isLocalFileUri = normalizedUri.startsWith('file://');
   const hasUri = normalizedUri.length > 0;
-  /** expo-image often misses onLoad on full-width channel tiles; RN Image matches menu preview. */
-  const useNativeChannelImage = incomingChannelPost && hasUri;
-
   useEffect(() => {
     if (!isDataPreviewUri || incomingChannelPost || loadingFullQuality) return;
     const t = setTimeout(() => setImageLoaded(true), 80);
@@ -296,55 +292,31 @@ export function ImageBubble({
                   </View>
                 ) : null}
                 {hasUri ? (
-                  useNativeChannelImage ? (
-                    <RNImage
-                      key={normalizedUri}
-                      source={{ uri: normalizedUri }}
-                      resizeMode="cover"
-                      onError={() => {
-                        setLoadError(true);
-                        setImageLoaded(true);
-                      }}
-                      onLoad={(e) => {
-                        loadedImageUris.add(normalizedUri);
-                        const src = e.nativeEvent.source;
-                        if ((!propWidth || !propHeight) && src?.width && src?.height) {
-                          setDisplaySize(computeDisplaySize(src.width, src.height, maxW, maxH));
-                        }
-                        setLoadError(false);
-                        setImageLoaded(true);
-                      }}
-                      style={[
-                        incomingChannelPost ? styles.imageChannel : styles.image,
-                        incomingChannelPost
-                          ? { width: '100%', height: channelImageH }
-                          : { width: w, height: h },
-                      ]}
-                    />
-                  ) : (
-                    <Image
-                      source={{ uri: normalizedUri }}
-                      transition={150}
-                      cachePolicy="memory-disk"
-                      onError={() => {
-                        setLoadError(true);
-                        setImageLoaded(true);
-                      }}
-                      onLoad={(e) => {
-                        loadedImageUris.add(normalizedUri);
-                        if (!propWidth || !propHeight) {
-                          setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
-                        }
-                        setLoadError(false);
-                        setImageLoaded(true);
-                      }}
-                      style={[
-                        styles.image,
-                        { width: w, height: h },
-                      ]}
-                      contentFit={contentFit}
-                    />
-                  )
+                  <Image
+                    key={normalizedUri}
+                    source={{ uri: normalizedUri }}
+                    transition={incomingChannelPost ? undefined : 150}
+                    cachePolicy="memory-disk"
+                    onError={() => {
+                      setLoadError(true);
+                      setImageLoaded(true);
+                    }}
+                    onLoad={(e) => {
+                      loadedImageUris.add(normalizedUri);
+                      if (!propWidth || !propHeight) {
+                        setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
+                      }
+                      setLoadError(false);
+                      setImageLoaded(true);
+                    }}
+                    style={[
+                      incomingChannelPost ? styles.imageChannel : styles.image,
+                      incomingChannelPost
+                        ? { width: '100%', height: channelImageH }
+                        : { width: w, height: h },
+                    ]}
+                    contentFit={incomingChannelPost ? 'cover' : contentFit}
+                  />
                 ) : null}
 
                 {!hasCaption && (time || viewCount != null) ? (

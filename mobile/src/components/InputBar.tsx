@@ -4,7 +4,6 @@ import {
   Animated as RNAnimated,
   AppState,
   Easing,
-  Image,
   InteractionManager,
   Keyboard,
   PanResponder,
@@ -16,6 +15,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { Image } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Feather from '@expo/vector-icons/Feather';
@@ -1541,6 +1541,8 @@ export function InputBar({
               <Image
                 source={{ uri: pendingMedia.previewUri ?? pendingMedia.uri }}
                 style={styles.previewImage}
+                contentFit="cover"
+                cachePolicy="disk"
               />
               {pendingMedia.kind === 'video' ? (
                 <View style={styles.previewPlayBadge}>
@@ -1577,6 +1579,8 @@ export function InputBar({
                     <Image
                       source={{ uri: resolvedReplyThumbnailUri }}
                       style={styles.replyComposerThumbnail}
+                      contentFit="cover"
+                      cachePolicy="disk"
                     />
                   ) : null}
                   <View style={styles.replyComposerCopy}>

@@ -4,13 +4,13 @@ import {
   Alert,
   type AlertButton,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -286,6 +286,8 @@ export function ChannelMembersScreen() {
                   <Image
                     source={{ uri: avatarUri }}
                     style={styles.avatarImage}
+                    contentFit="cover"
+                    cachePolicy="disk"
                   />
                 ) : (
                   <View style={styles.avatar}>

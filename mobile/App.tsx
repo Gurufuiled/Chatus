@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { appLinking } from './src/navigation/linking';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
@@ -57,7 +58,7 @@ export default function App() {
           accessibilityIgnoresInvertColors
           source={require('./assets/chatus_icon.png')}
           style={styles.bootLogo}
-          resizeMode="contain"
+          contentFit="contain"
         />
         <ActivityIndicator size="large" color={colors.accent} style={styles.bootSpinner} />
         <StatusBar style="auto" />

@@ -3,13 +3,12 @@ import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { BlurView } from 'expo-blur';
-import { Image as ExpoImage } from 'expo-image';
+import { Image } from 'expo-image';
 import {
   ActivityIndicator,
   Animated,
   Dimensions,
   FlatList,
-  Image,
   Modal,
   PanResponder,
   Platform,
@@ -107,7 +106,7 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
         </View>
       ) : (
         <View style={styles.mediaContainer}>
-          <ExpoImage
+          <Image
             key={targetUri}
             source={{ uri: targetUri }}
             style={styles.media}
@@ -193,7 +192,7 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
   return (
     <Pressable onPress={handlePress} style={styles.slide} {...panHandlers}>
       {previewUri && (!isPlayerMounted || !hasRenderedFrame) ? (
-        <ExpoImage
+        <Image
           key={previewUri}
           source={{ uri: previewUri }}
           style={styles.media}

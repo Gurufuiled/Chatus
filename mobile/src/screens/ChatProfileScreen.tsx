@@ -6,7 +6,6 @@ import {
   Dimensions,
   Easing,
   GestureResponderEvent,
-  Image,
   InteractionManager,
   KeyboardAvoidingView,
   LayoutAnimation,
@@ -20,6 +19,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1080,7 +1080,12 @@ export function ChatProfileScreen() {
           <View style={styles.editAvatarWrap}>
             <View style={[styles.editAvatarFrame, !avatarUrl ? { backgroundColor: avatarColor } : null]}>
               {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.editAvatarImage} />
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={styles.editAvatarImage}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                />
               ) : (
                 <Text style={styles.editAvatarInitial}>{initial}</Text>
               )}

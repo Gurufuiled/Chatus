@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   FlatList,
-  Image,
   Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation } from '@react-navigation/native';
@@ -80,7 +80,12 @@ export function ShareLinkToChatSheet({ visible, linkText, onClose }: Props) {
                 onPress={() => handlePickChat(item.id, title)}
               >
                 {avatar ? (
-                  <Image source={{ uri: avatar }} style={styles.avatarImage} />
+                  <Image
+                    source={{ uri: avatar }}
+                    style={styles.avatarImage}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                  />
                 ) : (
                   <View style={styles.avatarCircle}>
                     <Text style={styles.avatarLetter}>{initial}</Text>

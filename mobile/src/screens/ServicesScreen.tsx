@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   RefreshControl,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CommonActions } from '@react-navigation/native';
 import {
@@ -135,6 +135,8 @@ export function ServicesScreen({ navigation }: Props) {
               <Image
                 source={{ uri: resolveAvatarUrl(item.icon_url) ?? item.icon_url }}
                 style={styles.iconImage}
+                contentFit="cover"
+                cachePolicy="disk"
               />
             ) : (
               <Text style={styles.iconPlaceholder}>

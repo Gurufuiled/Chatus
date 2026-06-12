@@ -77,6 +77,12 @@ export type TelegramMessageRow = {
   discussionReplyCount?: number;
   /** Rich web page preview parsed from messageText */
   webPagePreview?: TelegramWebPagePreview | null;
+  /** Info about the forwarded origin if the message was forwarded. */
+  forwardInfo?: {
+    senderName: string;
+    avatarUri: string | null;
+    avatarFileId?: number;
+  } | null;
 };
 
 /** Same layout contract as `ChatScreen` context menu — drives `ChatContextMenuOverlay`. */

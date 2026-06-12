@@ -8,7 +8,6 @@ import {
   Animated,
   AppState,
   FlatList,
-  Image as RNImage,
   InteractionManager,
   Keyboard,
   LayoutChangeEvent,
@@ -19,6 +18,7 @@ import {
   View,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect, useIsFocused, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -113,7 +113,6 @@ import {
 } from '../theme/chatThemes';
 import { makeOptimisticTempMessageId } from '../utils/optimisticTempMessageId';
 import {
-  isSquareVideoDimensions,
   probeLocalVideoDimensionsWithRetry,
 } from '../utils/probeLocalVideoDimensions';
 import { getGroupLineSyncPeerUserId } from '../utils/groupLineSyncPeer';
@@ -1384,13 +1383,6 @@ export function ChatScreen() {
         );
         return;
       }
-      if (!isSquareVideoDimensions(probed)) {
-        Alert.alert(
-          'Не удалось отправить видеосообщение',
-          'Запись не квадратная. Запишите видеосообщение ещё раз.',
-        );
-        return;
-      }
       const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
       const now = Date.now();
@@ -2100,11 +2092,12 @@ export function ChatScreen() {
                 </Text>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginLeft: 6 }}>
                   {stickerRefs.map((ref, idx) => (
-                    <RNImage
+                    <Image
                       key={`${ref.packId}:${ref.stickerId}:${idx}`}
                       source={resolveStickerImageOrPlaceholder(ref)}
                       style={{ width: thumbPx, height: thumbPx }}
-                      resizeMode="contain"
+                      contentFit="contain"
+                      cachePolicy="memory-disk"
                       accessibilityIgnoresInvertColors
                     />
                   ))}

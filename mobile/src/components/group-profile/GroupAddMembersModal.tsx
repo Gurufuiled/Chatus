@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
-  Image,
   Keyboard,
   Modal,
   Platform,
@@ -13,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { resolveAvatarUrl } from '../../config';
 import type { ApiUser } from '../../services/AuthService';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -161,7 +161,12 @@ export function GroupAddMembersModal({
                     ]}
                   >
                     {avatar ? (
-                      <Image source={{ uri: avatar }} style={styles.searchResultAvatar} />
+                      <Image
+                        source={{ uri: avatar }}
+                        style={styles.searchResultAvatar}
+                        contentFit="cover"
+                        cachePolicy="disk"
+                      />
                     ) : (
                       <View style={styles.searchResultAvatarFallback}>
                         <Text style={styles.searchResultAvatarText}>

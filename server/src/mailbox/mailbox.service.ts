@@ -97,9 +97,9 @@ export class MailboxService {
       },
       select: { id: true },
     });
-    for (const row of expired) {
-      await this.deleteMailboxUploadFilesForMessage(row.id);
-    }
+    await Promise.all(
+      expired.map((row) => this.deleteMailboxUploadFilesForMessage(row.id)),
+    );
     const result = await this.prisma.message.deleteMany({
       where: {
         mailboxExpiresAt: { not: null, lt: now },
@@ -117,9 +117,11 @@ export class MailboxService {
       include: { media: true },
     });
     if (!msg?.media?.length) return;
-    for (const m of msg.media) {
-      await this.uploadService.tryDeleteServerStoredUpload(m.remoteUrl);
-      await this.uploadService.tryDeleteServerStoredUpload(m.thumbnailUrl);
-    }
+    await Promise.all(
+      msg.media.flatMap((m) => [
+        this.uploadService.tryDeleteServerStoredUpload(m.remoteUrl),
+        this.uploadService.tryDeleteServerStoredUpload(m.thumbnailUrl),
+      ]),
+    );
   }
 }

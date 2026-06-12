@@ -5,7 +5,6 @@ import {
   Dimensions,
   FlatList,
   FlatListProps,
-  Image as RNImage,
   Modal,
   PanResponder,
   Platform,
@@ -2578,6 +2577,17 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     recheckFabVisibility,
     scrollToBottom,
   } = useInvertedChatScrollFab(listRef, chatId);
+
+  const lastMessagesLengthRef = React.useRef(messages.length);
+  React.useEffect(() => {
+    if (messages.length > lastMessagesLengthRef.current) {
+      const latest = messages[0];
+      if (latest && latest.sender_id === currentUserId) {
+        scrollToBottom();
+      }
+    }
+    lastMessagesLengthRef.current = messages.length;
+  }, [messages, currentUserId, scrollToBottom]);
   const handleListScroll = React.useCallback(
     (event: Parameters<typeof handleChatScroll>[0]) => {
       handleChatScroll(event);

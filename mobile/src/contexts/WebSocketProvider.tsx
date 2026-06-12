@@ -25,6 +25,7 @@ import { resolveMediaUrl } from '../config';
 import { decodeServerWaveform } from '../services/waveformTransport';
 import { normalizeMessageFlag } from '../utils/messageFlags';
 import { normalizeMessageTransport } from '../utils/messageTransport';
+import { normalizeTimestampRequired } from '../utils/timestamp';
 import { buildMessageListPreviewText } from '../utils/messageListPreview';
 import { buildPendingLineSyncRowForText, shouldLinkLineSyncOptimisticEchoToServer } from '../services/lineSyncEventBuilder';
 import { getChatListTitle } from '../presentation';
@@ -128,10 +129,7 @@ function mergeMediaOnOptimisticAck(sending: Message, mapped: Message): Message['
 }
 
 function mapServerMessageToMessage(payload: ServerMessagePayload): Message {
-  const createdAt =
-    typeof payload.created_at === 'string'
-      ? new Date(payload.created_at).getTime()
-      : payload.created_at;
+  const createdAt = normalizeTimestampRequired(payload.created_at);
 
   const msg: Message = {
     id: payload.id,
@@ -405,7 +403,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   useEffect(() => {
     const unsub = PeerDeliveryService.onDmDeliver((payload) => {
       void (async () => {
-        const ts = typeof payload.sent_at === 'number' ? payload.sent_at : Date.now();
+        const ts = normalizeTimestampRequired(payload.sent_at);
         const mapped: Message = {
           id: payload.temp_id,
           chat_id: payload.chat_id,

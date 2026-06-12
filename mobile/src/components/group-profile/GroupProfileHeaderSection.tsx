@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Animated as RNAnimated,
-  Image,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   interpolate,
@@ -168,7 +168,12 @@ export function GroupProfileHeaderSection({
           >
             <Reanimated.View style={[styles.avatarFrame, avatarFrameStyle]}>
               {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarMedia} />
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={styles.avatarMedia}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                />
               ) : (
                 <View style={styles.avatarFallback}>
                   <Text style={styles.avatarFallbackText}>

@@ -51,17 +51,32 @@ export function usePeerFirstResolvedUri(
       };
     }
 
-    void resolvePeerFirstMediaUri({
-      lineId: effectiveLineId,
-      serverUri: rawKey,
-    }).then((result) => {
-      if (!cancelled && result.uri) {
-        setResolvedUri(result.uri);
-      }
-    });
+    let attempts = 0;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+
+    const check = () => {
+      resolvePeerFirstMediaUri({
+        lineId: effectiveLineId,
+        serverUri: rawKey,
+      }).then((result) => {
+        if (!cancelled && result.uri) {
+          setResolvedUri(result.uri);
+          if (result.uri.startsWith('file://')) {
+            return; // Successfully resolved to local cached file, stop polling!
+          }
+        }
+        attempts += 1;
+        if (!cancelled && attempts < 15) {
+          timerId = setTimeout(check, 2500);
+        }
+      });
+    };
+
+    timerId = setTimeout(check, 100);
 
     return () => {
       cancelled = true;
+      if (timerId) clearTimeout(timerId);
     };
   }, [fallbackUri, effectiveLineId, rawKey]);
 

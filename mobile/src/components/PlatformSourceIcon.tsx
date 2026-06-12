@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, Image, StyleSheet, type ViewStyle } from 'react-native';
+import { View, StyleSheet, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import Svg, { Path, Circle } from 'react-native-svg';
 import type { MessageSource } from '../stores/types';
 
@@ -17,7 +18,8 @@ export function PlatformSourceIcon({ source, size = 12, style }: PlatformSourceI
       <View style={[styles.container, style]}>
         <Image
           source={require('../../assets/chatus_icon.png')}
-          style={{ width: size, height: size, resizeMode: 'contain' }}
+          style={{ width: size, height: size }}
+          contentFit="contain"
         />
       </View>
     );

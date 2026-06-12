@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
-  Image,
   Modal,
   PanResponder,
   Pressable,
@@ -18,6 +17,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { Image } from 'expo-image';
 import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
@@ -105,7 +105,8 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
         <Image
           source={{ uri: resolved ?? item.uri }}
           style={[styles.media, { width: viewportWidth, height: viewportHeight }]}
-          resizeMode="contain"
+          contentFit="contain"
+          cachePolicy="disk"
         />
       )}
     </Pressable>
@@ -192,7 +193,8 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
         <Image
           source={{ uri: previewUri }}
           style={[styles.media, { width: viewportWidth, height: viewportHeight }]}
-          resizeMode="contain"
+          contentFit="contain"
+          cachePolicy="disk"
         />
       ) : null}
       {isPlayerMounted ? (

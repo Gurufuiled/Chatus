@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Image as RNImage,
   Pressable,
   StyleSheet,
   Text,

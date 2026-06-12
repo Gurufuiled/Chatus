@@ -6,8 +6,8 @@ import {
   StyleSheet,
   Text,
   View,
-  Image,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import { uiStore } from '../stores/uiStore';
@@ -135,7 +135,12 @@ export function InAppPushNotification() {
     >
       <Pressable onPress={handlePress} style={styles.card}>
         {activeNotification.avatarUrl ? (
-          <Image source={{ uri: activeNotification.avatarUrl }} style={styles.avatar} />
+          <Image
+            source={{ uri: activeNotification.avatarUrl }}
+            style={styles.avatar}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
         ) : (
           <View style={styles.avatarPlaceholder}>
             <Text style={styles.avatarInitial}>

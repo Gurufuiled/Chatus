@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } fro
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useAuth } from '../contexts/AuthContext';
 import { authStore } from '../stores/authStore';
 import { authService, apiUserToUserRow } from '../services/AuthService';
@@ -198,7 +198,12 @@ export function SettingsScreen() {
         >
           <View style={styles.profileHeroAvatarWrap}>
             {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.profileHeroAvatar} />
+              <Image
+                source={{ uri: avatarUrl }}
+                style={styles.profileHeroAvatar}
+                contentFit="cover"
+                cachePolicy="disk"
+              />
             ) : (
               <View style={styles.profileHeroAvatarPlaceholder}>
                 <Text style={styles.profileHeroAvatarText}>

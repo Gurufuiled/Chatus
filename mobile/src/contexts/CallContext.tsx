@@ -20,7 +20,6 @@ import {
 } from 'react-native-webrtc';
 import {
   Alert,
-  Image,
   Modal,
   Platform,
   Pressable,
@@ -30,6 +29,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, { clamp, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -614,7 +614,12 @@ const CallOverlay = React.memo(function CallOverlay({
               <View style={[styles.centerStage, showVideoStage && styles.centerStageVideo]}>
                 {!showVideoStage ? (
                   callState?.avatarUrl ? (
-                    <Image source={{ uri: callState.avatarUrl }} style={styles.avatar} />
+                    <Image
+                      source={{ uri: callState.avatarUrl }}
+                      style={styles.avatar}
+                      contentFit="cover"
+                      cachePolicy="disk"
+                    />
                   ) : (
                     <View style={styles.avatarFallback}>
                       <Text style={styles.avatarFallbackText}>{initial}</Text>

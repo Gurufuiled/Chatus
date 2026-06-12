@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   interpolate,
@@ -611,7 +611,8 @@ export function ChannelProfileScreen() {
                     <Image
                       source={{ uri: channelHeroAvatarUrl }}
                       style={styles.avatarMedia}
-                      resizeMode="cover"
+                      contentFit="cover"
+                      cachePolicy="disk"
                     />
                   ) : (
                     <View style={styles.avatarLetterWrap}>
