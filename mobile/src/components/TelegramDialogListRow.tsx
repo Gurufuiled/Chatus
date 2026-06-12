@@ -39,8 +39,8 @@ type Props = {
 };
 
 /**
- * Wrapped in React.memo with a custom equality check so FlatList rows skip
- * re-renders when unrelated list state or inline parent callbacks change.
+ * Memoized list row: skips re-render only when item, navigation, and onLongPress
+ * are referentially equal (stable onLongPress from the parent is required).
  */
 export const TelegramDialogListRow = React.memo(
   function TelegramDialogListRow({
