@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -461,7 +462,14 @@ export function ChannelAdminPermissionsScreen() {
       <View style={styles.memberCard}>
         <View style={styles.memberCardHeader}>
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.memberAvatar} />
+            // Optimized: Using expo-image with disk caching instead of standard RN Image
+            // for better memory efficiency and smoother scrolling performance in lists.
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.memberAvatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : (
             <View style={styles.memberAvatarFallback}>
               <Text style={styles.memberAvatarText}>{displayInitial}</Text>
