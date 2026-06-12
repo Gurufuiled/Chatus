@@ -38,6 +38,10 @@ type Props = {
   onLongPress?: (item: TelegramDialogRow, event: any) => void;
 };
 
+/**
+ * Wrapped in React.memo with a custom equality check so FlatList rows skip
+ * re-renders when unrelated list state or inline parent callbacks change.
+ */
 export const TelegramDialogListRow = React.memo(
   function TelegramDialogListRow({
     item,
