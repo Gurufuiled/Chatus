@@ -3,8 +3,8 @@
   "schemaVersion": 1,
   "android": {
     "minVersionCode": 1,
-    "latestVersionCode": 2064630322,
-    "releaseTag": "1.0.11",
+    "latestVersionCode": 2064630323,
+    "releaseTag": "1.0.12",
     "apkUrl": "https://messenger.startapus.com/downloads/chatus-release.apk"
   }
 }
