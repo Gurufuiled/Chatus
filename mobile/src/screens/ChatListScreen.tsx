@@ -28,6 +28,7 @@ import { searchUsers } from '../services/profileService';
 import { authStore } from '../stores/authStore';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
+import type { TelegramDialogRow } from '../stores/telegramAccountStore';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { uiStore } from '../stores/uiStore';
 import { messageStore } from '../stores/messageStore';
@@ -282,7 +283,10 @@ export function ChatListScreen() {
   }, [telegramReady]);
 
   const handleOpenChat = React.useCallback(
-    (chat: Chat, chatTitle: string) => {
+    (chatId: string, chatTitle: string) => {
+      const chat = chatStore.getState().chatsMap[chatId] || channelStore.getState().catalog.find(c => c.id === chatId);
+      if (!chat) return;
+
       if (chat.chat_type === 'channel') {
         channelStore.getState().upsertChannel(chat);
         navigation.navigate(isChannelPreviewRequired(chat, currentUserId) ? 'ChannelPreview' : 'ChannelFeed', {
@@ -364,6 +368,16 @@ export function ChatListScreen() {
       left,
     });
   }, []);
+
+  const handleTelegramLongPress = React.useCallback((row: TelegramDialogRow, event: GestureResponderEvent) => {
+    handleOpenMenu(row.id, event);
+  }, [handleOpenMenu]);
+
+  const handleChatLongPress = React.useCallback((chat: Chat, event: GestureResponderEvent) => {
+    handleOpenMenu(chat.id, event);
+  }, [handleOpenMenu]);
+
+  const noop = React.useCallback(() => undefined, []);
 
   const handleToggleMute = React.useCallback(async () => {
     if (!activeMenuListItem) return;
@@ -453,7 +467,7 @@ export function ChatListScreen() {
           <TelegramDialogListRow
             item={item.row}
             navigation={navigation}
-            onLongPress={(row, event) => handleOpenMenu(row.id, event as any)}
+            onLongPress={handleTelegramLongPress}
           />
         );
       }
@@ -477,8 +491,8 @@ export function ChatListScreen() {
         <ChatListRow
           chat={chat}
           currentUserId={currentUserId}
-          onPress={(_, chatTitle) => handleOpenChat(chat, chatTitle)}
-          onLongPress={item.type === 'chat' ? (c, event) => handleOpenMenu(c.id, event as any) : () => undefined}
+          onPress={handleOpenChat}
+          onLongPress={item.type === 'chat' ? handleChatLongPress : noop}
         />
       );
     },
@@ -486,10 +500,12 @@ export function ChatListScreen() {
       creatingChatUserIds,
       currentUserId,
       handleOpenChat,
-      handleOpenMenu,
+      handleChatLongPress,
+      handleTelegramLongPress,
       handleStartChat,
       listStyles,
       navigation,
+      noop,
       themeColors.accent,
     ]
   );
