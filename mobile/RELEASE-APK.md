@@ -61,7 +61,7 @@ node scripts/deploy-apk-prod.mjs
 scp server/public/downloads/chatus-release.apk chatus-prod:/root/chatus/server/public/downloads/chatus-release.apk
 ```
 
-Алиас **`chatus-prod`** — в `~/.ssh/config` (ключ `id_ed25519_startupus_chatus`). Подробнее: [docs/DEPLOY_VPS.md](../docs/DEPLOY_VPS.md).
+Алиас **`chatus-prod`** — в `~/.ssh/config` (ключ `id_ed25519_startupus_chatus`). Подробнее: [server/DEPLOY_VPS.md](../server/DEPLOY_VPS.md).
 
 3. На VPS убедись, что файл лежит в `server/public/downloads/chatus-release.apk`.  
    **Docker:** смонтируй каталог, чтобы не пересобирать образ при каждом релизе — в `docker-compose.yml` у сервиса `api`:
@@ -178,7 +178,7 @@ git pull corporate master
 ssh chatus-prod "cd /root/chatus && git pull origin main && cd server && docker compose build api && docker compose up -d api"
 ```
 
-См. [docs/DEPLOY_VPS.md](../docs/DEPLOY_VPS.md).
+См. [server/DEPLOY_VPS.md](../server/DEPLOY_VPS.md).
 
 Если remote называется иначе:
 
