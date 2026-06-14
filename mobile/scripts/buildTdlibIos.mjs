@@ -32,8 +32,8 @@ const FORCE = process.argv.includes('--force');
  * @see https://github.com/tdlib/td/issues/1627
  */
 const TDLIB_VERSION_COMMITS = {
-  '1.8.52': 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
-  'v1.8.52': 'b2cf7301b49d80efde1758407dec8b8bc294cac4',
+  '1.8.52': '4269f54e16b9cf564efc2db5bcd29743a2eec6ee',
+  'v1.8.52': '4269f54e16b9cf564efc2db5bcd29743a2eec6ee',
 };
 
 const TDLIB_IOS_VERSION = process.env.TDLIB_IOS_VERSION || '1.8.52';

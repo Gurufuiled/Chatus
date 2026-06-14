@@ -48,15 +48,34 @@ TELEGRAM_API_HASH=your_hash_here
 - событие `td_json_update` → `{ json: string }`.
 - ответы коррелируются по `@extra`, апдейты фильтруются тем же списком, что и Android/JS.
 
-### Сборка TDLib XCFramework
+### Предсобранный XCFramework (рекомендуется)
 
-TDLib для iOS собирается из исходников официальными скриптами `td/example/ios`.
+Как на Android, TDLib для iOS можно **скачать готовым** — без cmake, OpenSSL и клонирования `tdlib/td` (~10 GB на диске при сборке из исходников).
+
+Команда из `mobile/`:
+
+```bash
+npm run tdlib:fetch-ios
+```
+
+Скрипт `scripts/fetchTdlibIos.mjs`:
+
+1. скачивает `libtdjson.xcframework.tar.gz` (~40 MB) из [up9cloud/ios-libtdjson](https://github.com/up9cloud/ios-libtdjson), тег **v1.8.52** (тот же поставщик prebuilt, что Android `up9cloud/android-libtdjson`; не официальный релиз Telegram);
+2. кладёт результат в `mobile/tdlib-ios/libtdjson.xcframework`;
+3. подтягивает заголовок `td_json_client.h` и stub `tdjson_export.h` в `mobile/tdlib-ios/include`.
+
+Перезапись: `npm run tdlib:fetch-ios -- --force`.
+
+### Сборка TDLib XCFramework из исходников (fallback)
+
+Если нужен свой коммит TDLib или статическая линковка — только на macOS, через официальные скрипты `td/example/ios`.
 
 Требования на macOS:
 
 - полный Xcode, выбранный через `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`;
 - Homebrew-зависимости из официального TDLib iOS README (`gperf`, `cmake`, `coreutils` и т.п.);
-- `git`, `cmake`, `bash` в PATH.
+- `git`, `cmake`, `bash` в PATH;
+- **~10+ GB свободного места** на диске (клон td + OpenSSL + артефакты сборки).
 
 Команда из `mobile/`:
 
@@ -66,7 +85,7 @@ npm run tdlib:build-ios
 
 Скрипт `scripts/buildTdlibIos.mjs`:
 
-1. клонирует `tdlib/td` в `mobile/tdlib-ios/src/td` и переключается на коммит **1.8.52** (`b2cf7301…` — в официальном репозитории нет git-тега `v1.8.52`, только `v1.8.0`; та же линия версии, что у Android prebuild `up9cloud/android-libtdjson` v1.8.52);
+1. клонирует `tdlib/td` в `mobile/tdlib-ios/src/td` и переключается на коммит **1.8.52** (`4269f54e…` — тот же коммит, что up9cloud/ios-libtdjson v1.8.52; в официальном репозитории нет git-тега `v1.8.52`, только `v1.8.0`);
 2. генерирует исходники TDLib через `cmake -DTD_GENERATE_SOURCE_FILES=ON`;
 3. запускает `example/ios/build-openssl.sh`;
 4. запускает `example/ios/build.sh`;
@@ -93,7 +112,7 @@ Fresh checkout на Mac перед любым `expo run:ios`, `pod install` ил
 
 ```bash
 npm ci
-npm run tdlib:build-ios
+npm run tdlib:fetch-ios
 npx expo prebuild --platform ios --clean
 cd ios
 pod install
@@ -105,9 +124,9 @@ open mobile.xcworkspace
 `eas-build-pre-install` смотрит на `EAS_BUILD_PLATFORM`:
 
 - `android` → `fetchTdlibAndroid.mjs`;
-- `ios` → `buildTdlibIos.mjs`.
+- `ios` → `fetchTdlibIos.mjs` (по умолчанию; `TDLIB_IOS_FROM_SOURCE=1` → `buildTdlibIos.mjs`).
 
-Для iOS EAS нужно, чтобы macOS builder имел зависимости TDLib build scripts. Если build из исходников окажется слишком долгим для EAS, следующий шаг — кэшировать/хостить собранный `libtdjson.xcframework` и заменить build-script на fetch-script с checksum.
+Сборка из исходников на EAS не нужна: prebuilt ~40 MB скачивается за минуту.
 
 ## JS
 

@@ -2,7 +2,7 @@ Pod::Spec.new do |s|
   s.name = 'TdLib'
   s.version = '1.8.52'
   s.summary = 'TDLib JSON client for Chatus iOS'
-  s.description = 'Local TDLib XCFramework built from source for the React Native TDLib bridge.'
+  s.description = 'Local TDLib XCFramework (prebuilt via npm run tdlib:fetch-ios).'
   s.homepage = 'https://core.telegram.org/tdlib'
   s.license = { :type => 'BSL-1.0' }
   s.author = { 'Telegram' => 'support@telegram.org' }

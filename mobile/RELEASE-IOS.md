@@ -104,7 +104,7 @@ TELEGRAM_API_HASH=...
 ```bash
 cd mobile
 npm ci
-npm run tdlib:build-ios
+npm run tdlib:fetch-ios
 export MOBILE_ENV=production
 npx expo prebuild --platform ios --clean
 ```
@@ -113,16 +113,18 @@ npx expo prebuild --platform ios --clean
 
 ### 3.2 Telegram / TDLib на iOS
 
-В проекте добавлен настоящий iOS bridge под TDLib JSON API, но перед TestFlight/App Store на macOS нужно собрать и подключить сам `libtdjson.xcframework`.
+В проекте добавлен настоящий iOS bridge под TDLib JSON API. Перед TestFlight/App Store на macOS нужно **скачать** (не собирать!) `libtdjson.xcframework`:
 
 Перед prebuild:
 
 ```bash
 cd mobile
-npm run tdlib:build-ios
+npm run tdlib:fetch-ios
 ```
 
-После этого `expo prebuild --platform ios --clean` подключит local pod `TdLib` и скопирует Swift/ObjC bridge. Одних `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` недостаточно: без собранного XCFramework iOS Telegram не запустится.
+Сборка из исходников (`npm run tdlib:build-ios`) — только если prebuilt не подходит; жрёт ~10 GB и требует gperf/cmake/OpenSSL.
+
+После fetch `expo prebuild --platform ios --clean` подключит local pod `TdLib` и скопирует Swift/ObjC bridge. Одних `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` недостаточно: без XCFramework iOS Telegram не запустится.
 
 ---
 
@@ -182,6 +184,7 @@ npx eas-cli submit --platform ios --profile production
 ```bash
 cd mobile
 npm ci
+npm run tdlib:fetch-ios
 export MOBILE_ENV=production
 npx expo prebuild --platform ios --clean
 cd ios
@@ -261,6 +264,6 @@ Backend после callback перенаправляет пользовател�
 - **Не задан `ios.buildNumber`:** App Store Connect отклонит повторную загрузку с тем же build.
 - **Bundle ID не совпадает:** provisioning profile не подойдёт или приложение попадёт в другой App Store record.
 - **Старый checked-in `ios/`:** EAS соберёт `com.anonymous.mobile` / старую версию, если не сделать prebuild или не поправить Xcode project.
-- **Telegram env есть, но `npm run tdlib:build-ios` не выполнен:** iOS build не сможет подключить local pod `TdLib`.
-- **`fatal: Remote branch v1.8.52 not found`:** у `tdlib/td` нет тега `v1.8.52` (только до `v1.8.0`). Обнови **проект** до последнего `main` (`git pull`) и снова `npm run tdlib:build-ios`. Если осталась битая папка после неудачного клона: `rm -rf mobile/tdlib-ios/src/td`, затем повтори сборку.
+- **Telegram env есть, но `npm run tdlib:fetch-ios` не выполнен:** iOS build не сможет подключить local pod `TdLib`.
+- **`fatal: Remote branch v1.8.52 not found`:** только при `tdlib:build-ios` из исходников. Используй `npm run tdlib:fetch-ios` вместо сборки. Если всё же нужен build из исходников — обнови проект (`git pull`); битый клон: `rm -rf mobile/tdlib-ios/src/td`.
 - **Оставили APK update env:** для App Store не нужны ссылки на внешнее скачивание APK.

@@ -24,6 +24,7 @@
     "android:assembleRelease:prod": "cross-env MOBILE_ENV=production node ./scripts/assembleRelease.mjs",
     "wallpapers:regenerate": "python ./scripts/regenerate_chat_wallpapers.py",
     "tdlib:fetch-android": "node ./scripts/fetchTdlibAndroid.mjs",
+    "tdlib:fetch-ios": "node ./scripts/fetchTdlibIos.mjs",
     "tdlib:build-ios": "node ./scripts/buildTdlibIos.mjs",
     "notification:icon": "node ./scripts/generate-notification-icon-small.mjs",
     "eas-build-pre-install": "node ./scripts/easBuildPreinstall.mjs",

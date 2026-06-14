@@ -5,7 +5,7 @@
  *
  * Бинарники:
  * - Android: `npm run tdlib:fetch-android`
- * - iOS: `npm run tdlib:build-ios`
+ * - iOS: `npm run tdlib:fetch-ios` (или `tdlib:build-ios` из исходников)
  * См. mobile/TDLIB.md.
  */
 const fs = require('fs');

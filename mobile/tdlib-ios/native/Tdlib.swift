@@ -92,7 +92,7 @@ final class Tdlib: RCTEventEmitter {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     guard let client = activeClient() else {
-      reject("E_TD_JSON", "TDLib iOS framework is not loaded. Run npm run tdlib:build-ios and pod install.", nil)
+      reject("E_TD_JSON", "TDLib iOS framework is not loaded. Run npm run tdlib:fetch-ios and pod install.", nil)
       return
     }
 
