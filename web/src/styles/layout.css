@@ -1,0 +1,94 @@
+.messenger-layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.ui-preview-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  padding: 6px 12px;
+  font-size: 12px;
+  text-align: center;
+  background: #fff3cd;
+  color: #664d03;
+  border-bottom: 1px solid #ffc107;
+}
+
+.ws-degraded-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 6px 12px;
+  font-size: 12px;
+  text-align: center;
+  background: #fde8e8;
+  color: #9b1c1c;
+  border-bottom: 1px solid #f5c2c2;
+}
+
+.messenger-layout__chat-list {
+  width: var(--chat-list-width);
+  min-width: min(280px, 100%);
+  max-width: 40%;
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-surface);
+}
+
+.messenger-layout__conversation {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+}
+
+@media (max-width: 720px) {
+  .messenger-layout__chat-list {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .messenger-layout--chat-open .messenger-layout__chat-list {
+    display: none;
+  }
+
+  .messenger-layout--chat-open .messenger-layout__conversation {
+    width: 100%;
+  }
+}
+
+/* Narrow iframe (~360px) inside Loginus mobile web */
+@media (max-width: 400px) {
+  :root {
+    --chat-list-width: 100%;
+    --header-height: 48px;
+    --composer-height: 48px;
+  }
+
+  .icon-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .message-composer__panel {
+    padding: 4px 6px;
+  }
+
+  .conversation-pane__header-wrap {
+    padding: 0 8px 0 2px;
+  }
+}

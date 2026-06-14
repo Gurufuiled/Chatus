@@ -1,0 +1,342 @@
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--color-bg);
+}
+
+.profile-page__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: var(--header-height);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.profile-page__title {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.profile-page__scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.profile-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px 20px;
+  text-align: center;
+}
+
+.profile-hero__name {
+  margin: 12px 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.profile-hero__status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.profile-info-list {
+  padding: 0 0 16px;
+}
+
+.profile-info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.profile-info-row__label {
+  font-size: 13px;
+  color: var(--color-accent);
+}
+
+.profile-info-row__value {
+  font-size: 15px;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.profile-info-row__value--muted {
+  color: var(--color-text-muted);
+}
+
+.profile-edit-hero {
+  display: flex;
+  justify-content: center;
+  padding: 20px 16px 8px;
+}
+
+.profile-edit-avatar {
+  position: relative;
+  display: inline-flex;
+}
+
+.profile-edit-avatar__input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.profile-edit-avatar__btn {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-edit-avatar__btn:hover {
+  background: var(--color-accent-hover);
+}
+
+.profile-form {
+  padding: 8px 16px 24px;
+}
+
+.profile-form__field {
+  margin-bottom: 12px;
+}
+
+.profile-form__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.profile-form__input,
+.profile-form__textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.profile-form__input:focus,
+.profile-form__textarea:focus {
+  outline: 2px solid var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.profile-form__textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.profile-form__textarea-wrap {
+  position: relative;
+}
+
+.profile-form__char-count {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.profile-form__hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.profile-form__username-prefix {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.profile-form__username-prefix span {
+  padding: 12px 0 12px 14px;
+  border: 1px solid var(--color-border);
+  border-right: none;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
+.profile-form__username-prefix input {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.profile-form__birthday-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.profile-form__birthday-row input {
+  flex: 1;
+  border: none;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--color-text);
+}
+
+.profile-form__birthday-row input:focus {
+  outline: none;
+}
+
+.profile-form__birthday-label {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.profile-form__birthday-clear {
+  font-size: 13px;
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.profile-form__birthday-clear:hover {
+  color: var(--color-accent-hover);
+}
+
+.profile-form__error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #fef2f2;
+  color: var(--color-danger);
+  font-size: 13px;
+}
+
+.profile-form__section-title {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.settings-drawer__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: transparent;
+}
+
+.hamburger-menu {
+  position: fixed;
+  z-index: 950;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  padding: 8px 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+  border: 1px solid var(--color-border);
+}
+
+.hamburger-menu__profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  color: inherit;
+}
+
+.hamburger-menu__profile-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hamburger-menu__profile-name {
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hamburger-menu__profile-subtitle {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hamburger-menu__profile:hover {
+  background: var(--color-bg-hover);
+}
+
+.hamburger-menu__divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-border);
+}
+
+.hamburger-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  color: var(--color-text);
+  font-size: 15px;
+}
+
+.hamburger-menu__item:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.hamburger-menu__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.hamburger-menu__item-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.hamburger-menu__item-chevron {
+  margin-left: auto;
+  color: var(--color-text-muted);
+}

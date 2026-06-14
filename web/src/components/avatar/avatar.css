@@ -1,0 +1,20 @@
+.avatar {
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.avatar--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #7eb7e8, #2aabee);
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.avatar--image {
+  display: block;
+  background: var(--color-bg-secondary);
+}
