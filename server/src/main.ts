@@ -6,18 +6,8 @@ import { Logger } from 'nestjs-pino';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { join } from 'path';
-import express = require('express');
-import type { Response } from 'express';
 import { AppModule } from './app.module';
 import { SnakeCaseInterceptor } from './common';
-
-/** CSP for ChatUs embed iframe — must match web/EMBED.md §10 */
-const EMBED_FRAME_ANCESTORS_CSP =
-  'frame-ancestors https://id.startapus.com https://loginus.startapus.com https://*.startapus.com';
-
-function setEmbedSecurityHeaders(res: Response) {
-  res.setHeader('Content-Security-Policy', EMBED_FRAME_ANCESTORS_CSP);
-}
 
 /** Публичный JSON для мобильного клиента (обновления APK). Обходит 404 на raw GitHub для приватных репозиториев. */
 function resolveClientUpdateManifestPath(): string | null {
@@ -128,39 +118,6 @@ async function bootstrap() {
       res.status(500).type('text/plain').send('Error reading manifest');
     }
   });
-
-  const embedDir = join(publicDir, 'embed');
-  const embedIndexPath = join(embedDir, 'index.html');
-
-  expressApp.use('/embed', (_req, res, next) => {
-    setEmbedSecurityHeaders(res);
-    next();
-  });
-
-  expressApp.use(
-    '/embed',
-    express.static(embedDir, {
-      index: false,
-      maxAge: '1h',
-    }),
-  );
-
-  const sendEmbedIndex = (_req: express.Request, res: express.Response) => {
-    if (!existsSync(embedIndexPath)) {
-      res
-        .status(404)
-        .type('text/plain')
-        .send('Embed app not deployed. Build web/ and copy dist to public/embed/');
-      return;
-    }
-    setEmbedSecurityHeaders(res);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.sendFile(embedIndexPath);
-  };
-
-  expressApp.get('/embed', sendEmbedIndex);
-  expressApp.get('/embed/*path', sendEmbedIndex);
 
   app.setGlobalPrefix('api');
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
