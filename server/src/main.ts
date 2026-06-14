@@ -6,7 +6,7 @@ import { Logger } from 'nestjs-pino';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { join } from 'path';
-import express from 'express';
+import express = require('express');
 import type { Response } from 'express';
 import { AppModule } from './app.module';
 import { SnakeCaseInterceptor } from './common';
