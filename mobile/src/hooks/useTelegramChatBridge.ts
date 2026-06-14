@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
+import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { normalizePhoneForTdlib } from '../utils/telegramPhone';
+import { buildInputMessageVideoNoteContent } from '../screens/telegramChat/composer';
+import { probeLocalVideoDimensionsWithRetry } from '../utils/probeLocalVideoDimensions';
 
 type TdlibMessage = { '@type'?: string; [key: string]: unknown };
 
@@ -169,5 +172,40 @@ export function useTelegramChatBridge(contactPhoneNumber: string) {
     });
   };
 
-  return { messages, chatId, sendMessage, isResolving };
+  const sendVideoNote = async (result: {
+    uri: string;
+    durationMs: number;
+    thumbnailUri?: string;
+  }) => {
+    if (!chatId) {
+      throw new Error('Telegram chat is not ready');
+    }
+
+    const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
+    if (!probed) {
+      throw new Error(
+        'Не удалось определить размер видео. Запишите ещё раз через свайп вверх по микрофону.',
+      );
+    }
+    const lengthPx = Math.min(
+      640,
+      Math.max(240, Math.round(Math.min(probed.width, probed.height))),
+    );
+
+    const inputMessageContent = buildInputMessageVideoNoteContent({
+      videoUri: result.uri,
+      thumbnailUri: result.thumbnailUri,
+      durationMs: result.durationMs,
+      lengthPx,
+    });
+
+    const response = await tdlibClient.send({
+      '@type': 'sendMessage',
+      chat_id: chatId,
+      input_message_content: inputMessageContent,
+    });
+    throwIfTdError(response);
+  };
+
+  return { messages, chatId, sendMessage, sendVideoNote, isResolving };
 }

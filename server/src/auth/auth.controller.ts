@@ -13,6 +13,7 @@ import {
 import * as Express from 'express';
 import { AuthService } from './auth.service';
 import { LoginusDto } from './dto/loginus.dto';
+import { LoginusExchangeDto } from './dto/loginus-exchange.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -81,6 +82,19 @@ export class AuthController {
 })();
 </script></body></html>`;
     res.type('text/html').send(html);
+  }
+
+  @Post('loginus/exchange')
+  @HttpCode(HttpStatus.OK)
+  async loginusExchange(@Body() dto: LoginusExchangeDto) {
+    console.log('[Auth] POST /loginus/exchange ← embed initData', {
+      hasInitData: !!dto?.init_data,
+    });
+    const result = await this.authService.loginWithInitData(dto.init_data);
+    console.log('[Auth] POST /loginus/exchange → success', {
+      userId: result.user?.id,
+    });
+    return result;
   }
 
   @Post('loginus')

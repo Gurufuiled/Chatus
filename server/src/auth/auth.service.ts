@@ -190,6 +190,87 @@ export class AuthService {
     }
   }
 
+  async loginWithInitData(initData: string): Promise<AuthResponse> {
+    const embeddedSecret = process.env.LOGINUS_EMBEDDED_SECRET;
+    if (!embeddedSecret) {
+      throw new BadRequestException('LOGINUS_EMBEDDED_SECRET must be configured');
+    }
+
+    let payload: {
+      sub?: string;
+      userId?: string;
+      email?: string;
+      firstName?: string;
+      lastName?: string;
+      first_name?: string;
+      last_name?: string;
+      avatarUrl?: string;
+      avatar_url?: string;
+      phone?: string;
+      phone_number?: string;
+      aud?: string;
+      time?: number;
+    };
+
+    try {
+      payload = this.jwtService.verify(initData, {
+        secret: embeddedSecret,
+        algorithms: ['HS256'],
+      }) as typeof payload;
+    } catch {
+      throw new UnauthorizedException('Invalid or expired initData');
+    }
+
+    if (payload.aud !== 'embedded_app') {
+      throw new UnauthorizedException('Invalid initData audience');
+    }
+
+    if (typeof payload.time === 'number') {
+      const ageSec = Math.floor(Date.now() / 1000) - payload.time;
+      if (ageSec > 300 || ageSec < -60) {
+        throw new UnauthorizedException('initData expired or invalid time');
+      }
+    }
+
+    const loginusId = payload.sub ?? payload.userId;
+    if (!loginusId) {
+      throw new BadRequestException('initData missing sub');
+    }
+
+    const userInfo: LoginusUserInfo = {
+      id: loginusId,
+      email: payload.email ?? null,
+      firstName: payload.firstName ?? payload.first_name,
+      lastName: payload.lastName ?? payload.last_name,
+      phone: payload.phone ?? payload.phone_number ?? null,
+    };
+
+    const user = await this.findOrCreateUser(userInfo);
+
+    const avatarUrl = payload.avatarUrl ?? payload.avatar_url;
+    if (avatarUrl && avatarUrl !== user.avatarUrl) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { avatarUrl },
+      });
+    }
+
+    const refreshedUser =
+      avatarUrl && avatarUrl !== user.avatarUrl
+        ? await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } })
+        : user;
+
+    const { access_token, expires_at, refresh_token } =
+      await this.issueTokens(refreshedUser, randomUUID());
+
+    return {
+      access_token,
+      refresh_token,
+      expires_at,
+      user: mapUser(refreshedUser),
+    };
+  }
+
   async loginWithCode(
     code: string,
     redirectUri: string,

@@ -511,6 +511,7 @@ export function ChatScreen() {
     telegramBridgeResolving,
     hasPeerPhone,
     sendTelegramMessage,
+    sendTelegramVideoNote,
   } = useUnifiedMessages(chatId, contactPhone);
   const messages = unifiedMessages as any;
   const [sendChannel, setSendChannel] = useState<MessageSource>('chatus');
@@ -566,6 +567,33 @@ export function ChatScreen() {
       });
     },
     [sendTelegramMessage, hasPeerPhone, telegramSendReady, telegramBridgeResolving],
+  );
+
+  const trySendTelegramVideoNote = useCallback(
+    (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
+      if (!sendTelegramVideoNote) return;
+      if (!hasPeerPhone) {
+        Alert.alert(
+          'Telegram',
+          'Не удалось определить номер контакта в Chatus. Попросите собеседника указать телефон в профиле или добавьте его номер в телефонную книгу и синхронизируйте контакты.',
+        );
+        return;
+      }
+      if (!telegramSendReady) {
+        Alert.alert(
+          'Telegram',
+          telegramBridgeResolving
+            ? 'Подключаем чат в Telegram… Подождите секунду и отправьте снова.'
+            : 'Не удалось открыть чат в Telegram по этому номеру. Убедитесь, что номер совпадает с Telegram и у контакта разрешён поиск по номеру.',
+        );
+        return;
+      }
+      void sendTelegramVideoNote(result).catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        Alert.alert('Не удалось отправить видеосообщение в Telegram', message);
+      });
+    },
+    [sendTelegramVideoNote, hasPeerPhone, telegramSendReady, telegramBridgeResolving],
   );
 
   useEffect(() => {
@@ -3093,7 +3121,7 @@ export function ChatScreen() {
             }}
             onSendVideoNote={(res) => {
               if (sendChannel === 'telegram') {
-                Alert.alert("Telegram", "Отправка видео в Telegram пока в разработке.");
+                trySendTelegramVideoNote(res);
               } else {
                 handleSendVideoNote(res);
               }

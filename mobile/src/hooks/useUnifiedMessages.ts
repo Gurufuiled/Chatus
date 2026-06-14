@@ -50,6 +50,7 @@ export function useUnifiedMessages(
   const {
     messages: telegramMessages,
     sendMessage: sendTelegramMessage,
+    sendVideoNote: sendTelegramVideoNote,
     chatId: telegramChatId,
     isResolving: telegramBridgeResolving,
   } = useTelegramChatBridge(normalizedPeerPhone);
@@ -74,5 +75,6 @@ export function useUnifiedMessages(
     telegramBridgeResolving: hasPeerPhone && telegramBridgeResolving,
     hasPeerPhone,
     sendTelegramMessage,
+    sendTelegramVideoNote,
   };
 }
