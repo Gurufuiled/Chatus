@@ -145,7 +145,7 @@ async function bootstrap() {
     }),
   );
 
-  expressApp.get(['/embed', '/embed/*'], (_req, res) => {
+  const sendEmbedIndex = (_req: express.Request, res: express.Response) => {
     if (!existsSync(embedIndexPath)) {
       res
         .status(404)
@@ -157,7 +157,10 @@ async function bootstrap() {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.sendFile(embedIndexPath);
-  });
+  };
+
+  expressApp.get('/embed', sendEmbedIndex);
+  expressApp.get('/embed/*path', sendEmbedIndex);
 
   app.setGlobalPrefix('api');
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
