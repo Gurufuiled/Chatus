@@ -45,7 +45,7 @@ export function ChatPillHeaderTitle({
     >
       <BlurView
         pointerEvents="none"
-        intensity={isLight ? 44 : 36}
+        intensity={isLight ? 54 : 46}
         tint={isLight ? 'light' : 'dark'}
         blurMethod="dimezisBlurView"
         {...blurProps}

@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatPillHeaderTitle } from './ChatPillHeaderTitle';
+import type { ThemeColors } from '../theme/palettes';
+import { withAlpha } from '../theme/stylePrimitives';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 
@@ -42,6 +44,7 @@ export function CustomAndroidChatHeader({
 }: CustomAndroidChatHeaderProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const openProfile = () => {
     if (isGroupChat) {
@@ -70,7 +73,9 @@ export function CustomAndroidChatHeader({
           onPress={() => navigation.canGoBack() && navigation.goBack()}
           hitSlop={12}
         >
-          <Feather name="arrow-left" size={24} color={colors.textPrimary} />
+          <View style={styles.backButtonPill}>
+            <Feather name="arrow-left" size={24} color={colors.textPrimary} />
+          </View>
         </Pressable>
 
         <View pointerEvents="box-none" style={styles.pillTitleRoot}>
@@ -93,42 +98,59 @@ export function CustomAndroidChatHeader({
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    width: '100%',
-    zIndex: 10,
-    elevation: 0,
-  },
-  rootFloating: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    elevation: 10,
-    backgroundColor: 'transparent',
-  },
-  toolbar: {
-    height: ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: 16,
-  },
-  backButton: {
-    width: 56,
-    height: 56,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backButtonPressed: {
-    opacity: 0.5,
-  },
-  pillTitleRoot: {
-    position: 'absolute',
-    left: 56,
-    right: 56,
-    top: 5,
-    bottom: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    root: {
+      width: '100%',
+      zIndex: 10,
+      elevation: 0,
+    },
+    rootFloating: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      elevation: 10,
+      backgroundColor: 'transparent',
+    },
+    toolbar: {
+      height: ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingRight: 16,
+    },
+    backButton: {
+      width: 56,
+      height: 56,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    backButtonPill: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: withAlpha(colors.inputBackgroundSolid, 0.72),
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: withAlpha(colors.separator, 0.78),
+      shadowColor: '#000000',
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+    },
+    backButtonPressed: {
+      opacity: 0.65,
+    },
+    pillTitleRoot: {
+      position: 'absolute',
+      left: 56,
+      right: 56,
+      top: 5,
+      bottom: 5,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });
+}
