@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { mapUser, type MappedUser } from '../common/mappers';
 import type { User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
 
@@ -377,24 +378,63 @@ export class AuthService {
       where: { loginusId },
     });
     if (existing) {
+      let phoneUpdate: string | undefined;
+      if (phone && !existing.phone) {
+        const phoneOwner = await this.prisma.user.findUnique({
+          where: { phone },
+          select: { id: true },
+        });
+        if (!phoneOwner || phoneOwner.id === existing.id) {
+          phoneUpdate = phone;
+        }
+      }
       return this.prisma.user.update({
         where: { id: existing.id },
         data: {
           username: username ?? existing.username,
           displayName: displayName ?? existing.displayName,
-          ...(phone && !existing.phone ? { phone } : {}),
+          ...(phoneUpdate ? { phone: phoneUpdate } : {}),
         },
       });
     }
 
-    return this.prisma.user.create({
-      data: {
-        loginusId,
-        username,
-        displayName,
-        phone,
-      },
-    });
+    let createPhone = phone;
+    if (createPhone) {
+      const phoneOwner = await this.prisma.user.findUnique({
+        where: { phone: createPhone },
+        select: { id: true },
+      });
+      if (phoneOwner) {
+        createPhone = null;
+      }
+    }
+
+    try {
+      return await this.prisma.user.create({
+        data: {
+          loginusId,
+          username,
+          displayName,
+          phone: createPhone,
+        },
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        createPhone
+      ) {
+        return this.prisma.user.create({
+          data: {
+            loginusId,
+            username,
+            displayName,
+            phone: null,
+          },
+        });
+      }
+      throw err;
+    }
   }
 
   private async issueTokens(
