@@ -419,19 +419,26 @@ export class AuthService {
         },
       });
     } catch (err) {
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2002' &&
-        createPhone
-      ) {
-        return this.prisma.user.create({
-          data: {
-            loginusId,
-            username,
-            displayName,
-            phone: null,
-          },
-        });
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const raced = await this.prisma.user.findUnique({ where: { loginusId } });
+        if (raced) return raced;
+
+        const target = Array.isArray(err.meta?.target)
+          ? (err.meta.target as string[])
+          : [];
+        const isPhoneConflict =
+          target.length === 0 ||
+          target.some((f) => f === 'phone' || f === 'users_phone_key');
+        if (isPhoneConflict && createPhone) {
+          return this.prisma.user.create({
+            data: {
+              loginusId,
+              username,
+              displayName,
+              phone: null,
+            },
+          });
+        }
       }
       throw err;
     }
