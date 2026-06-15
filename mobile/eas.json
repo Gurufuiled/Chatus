@@ -18,7 +18,7 @@
       "env": {
         "MOBILE_ENV": "production",
         "EXPO_PUBLIC_API_URL": "https://messenger.startapus.com/api",
-        "EXPO_PUBLIC_LOGINUS_CLIENT_ID": "36bd25a329898885fd4b60c9f7b4f475",
+        "EXPO_PUBLIC_LOGINUS_CLIENT_ID": "95e69bdfc1331bb2f9d88ab41e8abc67",
         "EXPO_PUBLIC_USE_MOCKS": "false",
         "EXPO_PUBLIC_USE_EMULATOR": "false",
         "EXPO_PUBLIC_P2P_FIRST_ENABLED": "true",

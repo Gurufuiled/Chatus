@@ -62,7 +62,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {
     this.loginusBaseUrl = (
-      process.env.LOGINUS_BASE_URL || 'https://loginus.startapus.com'
+      process.env.LOGINUS_BASE_URL || 'https://id.startapus.com'
     ).replace(/\/$/, '');
     this.loginusClientId = process.env.LOGINUS_CLIENT_ID || '';
     this.loginusClientSecret = process.env.LOGINUS_CLIENT_SECRET || '';

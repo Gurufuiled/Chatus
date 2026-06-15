@@ -93,7 +93,7 @@ export function MiniAppScreen({ route, navigation }: Props) {
         if (t) s.add(t);
       }
     }
-    s.add('loginus.startapus.com');
+    s.add('id.startapus.com');
     return s;
   }, [session]);
 
