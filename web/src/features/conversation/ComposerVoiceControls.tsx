@@ -29,8 +29,10 @@ export function ComposerVoiceControls({
   disabled = false,
   fullWidth = false,
 }: ComposerVoiceControlsProps) {
-  const recordingState = useComposerStore((s) => s.voiceRecordingState);
-  const setRecordingState = useComposerStore((s) => s.setVoiceRecordingState);
+  const recordingState = useComposerStore((s) =>
+    s.voiceRecordingChatId === chatId ? s.voiceRecordingState : 'idle',
+  );
+  const setRecordingState = useComposerStore((s) => s.setVoiceRecording);
   const setError = useComposerStore((s) => s.setComposerError);
   const replyToMessageId = useComposerStore((s) =>
     s.replyChatId === chatId ? s.replyToMessageId : null,
@@ -52,6 +54,17 @@ export function ComposerVoiceControls({
   }, []);
 
   useEffect(() => () => cleanupStream(), [cleanupStream]);
+
+  useEffect(() => {
+    return () => {
+      const { voiceRecordingChatId, voiceRecordingState, setVoiceRecording } =
+        useComposerStore.getState();
+      if (voiceRecordingChatId === chatId && voiceRecordingState !== 'idle') {
+        cleanupStream();
+        setVoiceRecording('idle');
+      }
+    };
+  }, [chatId, cleanupStream]);
 
   useEffect(() => {
     if (recordingState !== 'recording') return;
@@ -145,7 +158,7 @@ export function ComposerVoiceControls({
       recorder.start(100);
       startedAtRef.current = Date.now();
       setElapsedMs(0);
-      setRecordingState('recording');
+      setRecordingState('recording', chatId);
     } catch (err) {
       cleanupStream();
       setRecordingState('idle');

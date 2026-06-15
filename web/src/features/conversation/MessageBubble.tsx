@@ -69,7 +69,11 @@ export function MessageBubble({ message, isOutgoing, onContextMenu }: MessageBub
             mimeType={media?.mime_type ?? null}
           />
         ) : (message.msg_type === 'video' || message.msg_type === 'video_note') && mediaUrl ? (
-          <VideoMessageContent url={mediaUrl} poster={media?.thumbnail_url} />
+          <VideoMessageContent
+            url={mediaUrl}
+            poster={media?.thumbnail_url}
+            round={message.msg_type === 'video_note' || Boolean(media?.is_round)}
+          />
         ) : message.msg_type === 'text' ? (
           isChatusStickerMessage(message.content) ? (
             <p className="message-bubble__text message-bubble__text--placeholder">Sticker</p>

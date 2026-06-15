@@ -107,9 +107,10 @@ export function inferMsgTypeFromUpload(
   return 'file';
 }
 
+/** API payload — keep `/uploads/...` paths; resolve only when rendering. */
 export function buildMediaPayload(upload: UploadResult) {
   return {
-    url: resolveMediaUrl(upload.url),
+    url: upload.url,
     mime_type: upload.mime_type,
     file_name: upload.file_name,
     file_size: upload.file_size,
@@ -117,9 +118,7 @@ export function buildMediaPayload(upload: UploadResult) {
     width: upload.width ?? undefined,
     height: upload.height ?? undefined,
     duration_ms: upload.duration_ms ?? undefined,
-    thumbnail_url: upload.thumbnail_path
-      ? resolveMediaUrl(upload.thumbnail_path)
-      : undefined,
+    thumbnail_url: upload.thumbnail_path ?? undefined,
     waveform: upload.waveform?.length ? upload.waveform : undefined,
   };
 }

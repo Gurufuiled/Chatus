@@ -19,7 +19,7 @@ function pickRecorderMime(): string | undefined {
 
 export function VoiceRecorderButton({ chatId, disabled = false }: VoiceRecorderButtonProps) {
   const recordingState = useComposerStore((s) => s.voiceRecordingState);
-  const setRecordingState = useComposerStore((s) => s.setVoiceRecordingState);
+  const setRecordingState = useComposerStore((s) => s.setVoiceRecording);
   const setError = useComposerStore((s) => s.setComposerError);
   const replyToMessageId = useComposerStore((s) =>
     s.replyChatId === chatId ? s.replyToMessageId : null,

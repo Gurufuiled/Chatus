@@ -27,6 +27,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const setStickerPickerOpen = useComposerStore((s) => s.setStickerPickerOpen);
   const setAttachmentPickerOpen = useComposerStore((s) => s.setAttachmentPickerOpen);
   const voiceRecordingState = useComposerStore((s) => s.voiceRecordingState);
+  const voiceRecordingChatId = useComposerStore((s) => s.voiceRecordingChatId);
   const requestComposerFocus = useComposerStore((s) => s.requestComposerFocus);
   const composerFocusNonce = useComposerStore((s) => s.composerFocusNonce);
   const sendMutation = useSendMessageMutation();
@@ -96,7 +97,8 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   };
 
   const isRecording =
-    voiceRecordingState === 'recording' || voiceRecordingState === 'processing';
+    voiceRecordingChatId === chatId &&
+    (voiceRecordingState === 'recording' || voiceRecordingState === 'processing');
   const isDisabled = disabled || sendMutation.isPending || !me?.id || isRecording;
   const hasText = draft.trim().length > 0;
 

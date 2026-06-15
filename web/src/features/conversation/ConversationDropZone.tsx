@@ -23,6 +23,7 @@ export function ConversationDropZone({
   const incrementDragDepth = useComposerStore((s) => s.incrementDragDepth);
   const decrementDragDepth = useComposerStore((s) => s.decrementDragDepth);
   const resetDragDepth = useComposerStore((s) => s.resetDragDepth);
+  const setComposerError = useComposerStore((s) => s.setComposerError);
   const replyToMessageId = useComposerStore((s) =>
     s.replyChatId === chatId ? s.replyToMessageId : null,
   );
@@ -41,6 +42,7 @@ export function ConversationDropZone({
   const handleDragLeave = useCallback(
     (e: React.DragEvent) => {
       if (!hasFileDrag(e)) return;
+      if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) return;
       e.preventDefault();
       decrementDragDepth();
       setHoverMode(null);
@@ -97,6 +99,9 @@ export function ConversationDropZone({
         e.preventDefault();
         resetDragDepth();
         setHoverMode(null);
+        if (hasFileDrag(e) && !disabled && e.dataTransfer.files.length > 0) {
+          setComposerError(chatId, 'Перетащите файл в одну из зон для отправки');
+        }
       }}
     >
       {children}

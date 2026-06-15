@@ -76,6 +76,7 @@ function createOptimisticMessage(
   tempId: string,
   fields: Pick<MappedMessage, 'msg_type' | 'content'> & {
     replyToId?: string | null;
+    media?: MappedMessage['media'];
   },
 ): MappedMessage {
   return {
@@ -90,6 +91,7 @@ function createOptimisticMessage(
     status: 'sending',
     created_at: Date.now(),
     updated_at: Date.now(),
+    media: fields.media,
   };
 }
 
@@ -105,7 +107,10 @@ function useOptimisticSendMutation<TInput extends { chatId: string; clientTempId
     input: TInput,
     me: AuthUser | undefined,
     tempId: string,
-  ) => Pick<MappedMessage, 'msg_type' | 'content'> & { replyToId?: string | null },
+  ) => Pick<MappedMessage, 'msg_type' | 'content'> & {
+    replyToId?: string | null;
+    media?: MappedMessage['media'];
+  },
 ) {
   const queryClient = useQueryClient();
   const setError = useComposerStore((s) => s.setComposerError);
@@ -164,20 +169,46 @@ export function useSendStickerMessageMutation() {
 }
 
 export function useSendMediaMessageMutation() {
-  return useOptimisticSendMutation<SendMediaMessageInput>(sendMediaMessage, (input) => ({
-    msg_type: input.msgType,
-    content:
+  return useOptimisticSendMutation<SendMediaMessageInput>(sendMediaMessage, (input, _me, tempId) => {
+    const content =
       input.msgType === 'file'
         ? (input.media.file_name ?? 'File')
         : input.msgType === 'image'
           ? 'Photo'
           : input.msgType === 'voice'
             ? 'Voice message'
-            : input.msgType === 'video'
+            : input.msgType === 'video' || input.msgType === 'video_note'
               ? 'Video'
-              : 'Message',
-    replyToId: input.replyToId,
-  }));
+              : 'Message';
+
+    const media = input.media.url
+      ? [
+          {
+            id: `temp-media-${tempId}`,
+            message_id: `temp-${tempId}`,
+            media_type: input.msgType,
+            file_name: input.media.file_name ?? null,
+            mime_type: input.media.mime_type ?? null,
+            file_size: input.media.file_size ?? null,
+            width: input.media.width ?? null,
+            height: input.media.height ?? null,
+            duration_ms: input.media.duration_ms ?? null,
+            remote_url: input.media.url,
+            thumbnail_url: input.media.thumbnail_url ?? null,
+            waveform: null,
+            is_round: input.msgType === 'video_note',
+            created_at: Date.now(),
+          },
+        ]
+      : undefined;
+
+    return {
+      msg_type: input.msgType,
+      content,
+      replyToId: input.replyToId,
+      media,
+    };
+  });
 }
 
 export function useMarkChatReadMutation() {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { formatFileSize } from '@/utils/formatFileSize';
 
@@ -57,6 +57,20 @@ export function ImageMessageContent({ url, alt = 'Photo' }: ImageMessageContentP
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const src = resolveMediaUrl(url);
 
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [lightboxOpen]);
+
   return (
     <>
       <button
@@ -93,15 +107,16 @@ export function ImageMessageContent({ url, alt = 'Photo' }: ImageMessageContentP
 interface VideoMessageContentProps {
   url: string;
   poster?: string | null;
+  round?: boolean;
 }
 
-export function VideoMessageContent({ url, poster }: VideoMessageContentProps) {
+export function VideoMessageContent({ url, poster, round = false }: VideoMessageContentProps) {
   const src = resolveMediaUrl(url);
   const posterSrc = poster ? resolveMediaUrl(poster) : undefined;
 
   return (
     <video
-      className="video-message"
+      className={`video-message${round ? ' video-message--round' : ''}`}
       src={src}
       poster={posterSrc}
       controls

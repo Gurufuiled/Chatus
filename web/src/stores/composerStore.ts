@@ -10,6 +10,7 @@ interface ComposerState {
   isStickerPickerOpen: boolean;
   isAttachmentPickerOpen: boolean;
   voiceRecordingState: VoiceRecordingState;
+  voiceRecordingChatId: string | null;
   dragDepth: number;
   composerErrors: Record<string, string>;
   setDraft: (chatId: string, text: string) => void;
@@ -18,7 +19,7 @@ interface ComposerState {
   clearReply: () => void;
   setStickerPickerOpen: (open: boolean) => void;
   setAttachmentPickerOpen: (open: boolean) => void;
-  setVoiceRecordingState: (state: VoiceRecordingState) => void;
+  setVoiceRecording: (state: VoiceRecordingState, chatId?: string | null) => void;
   incrementDragDepth: () => void;
   decrementDragDepth: () => void;
   resetDragDepth: () => void;
@@ -36,6 +37,7 @@ export const useComposerStore = create<ComposerState>((set, get) => ({
   isStickerPickerOpen: false,
   isAttachmentPickerOpen: false,
   voiceRecordingState: 'idle',
+  voiceRecordingChatId: null,
   dragDepth: 0,
   composerErrors: {},
   setDraft: (chatId, text) =>
@@ -52,7 +54,12 @@ export const useComposerStore = create<ComposerState>((set, get) => ({
   clearReply: () => set({ replyChatId: null, replyToMessageId: null }),
   setStickerPickerOpen: (isStickerPickerOpen) => set({ isStickerPickerOpen }),
   setAttachmentPickerOpen: (isAttachmentPickerOpen) => set({ isAttachmentPickerOpen }),
-  setVoiceRecordingState: (voiceRecordingState) => set({ voiceRecordingState }),
+  setVoiceRecording: (voiceRecordingState, chatId) =>
+    set({
+      voiceRecordingState,
+      voiceRecordingChatId:
+        voiceRecordingState === 'idle' ? null : (chatId ?? get().voiceRecordingChatId),
+    }),
   incrementDragDepth: () => set((s) => ({ dragDepth: s.dragDepth + 1 })),
   decrementDragDepth: () =>
     set((s) => ({ dragDepth: Math.max(0, s.dragDepth - 1) })),

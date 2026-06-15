@@ -99,28 +99,41 @@ export function VoiceMessagePlayer({
     void audio.play().then(() => setIsPlaying(true)).catch(() => cleanup());
   };
 
+  const seekToRatio = useCallback(
+    (audio: HTMLAudioElement, ratio: number, autoplay: boolean) => {
+      const apply = () => {
+        if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+        audio.currentTime = audio.duration * ratio;
+        setProgress(ratio);
+        setRemainingMs(Math.max(0, (audio.duration - audio.currentTime) * 1000));
+        if (autoplay) {
+          stopActivePlayback();
+          activeAudio = audio;
+          activeStop = cleanup;
+          void audio.play().then(() => setIsPlaying(true)).catch(() => cleanup());
+        }
+      };
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        apply();
+      } else {
+        audio.addEventListener('loadedmetadata', apply, { once: true });
+      }
+    },
+    [cleanup],
+  );
+
   const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const audio = audioRef.current;
+    let audio = audioRef.current;
     if (!audio) {
       handleToggle();
-      if (audioRef.current && Number.isFinite(audioRef.current.duration)) {
-        audioRef.current.currentTime = audioRef.current.duration * ratio;
-      }
+      audio = audioRef.current;
+      if (!audio) return;
+      seekToRatio(audio, ratio, true);
       return;
     }
-    if (Number.isFinite(audio.duration) && audio.duration > 0) {
-      audio.currentTime = audio.duration * ratio;
-      setProgress(ratio);
-      setRemainingMs(Math.max(0, (audio.duration - audio.currentTime) * 1000));
-      if (!isPlaying) {
-        stopActivePlayback();
-        activeAudio = audio;
-        activeStop = cleanup;
-        void audio.play().then(() => setIsPlaying(true)).catch(() => cleanup());
-      }
-    }
+    seekToRatio(audio, ratio, !isPlaying);
   };
 
   const filledCount = Math.round(progress * BAR_COUNT);
