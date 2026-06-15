@@ -16,6 +16,8 @@ const EMBED_FRAME_ANCESTORS_CSP = 'frame-ancestors https://id.startapus.com';
 
 function setEmbedSecurityHeaders(res: Response) {
   res.setHeader('Content-Security-Policy', EMBED_FRAME_ANCESTORS_CSP);
+  // Parent iframe must also set allow="microphone"; this enables getUserMedia in /embed.
+  res.setHeader('Permissions-Policy', 'microphone=(self)');
 }
 
 /** Публичный JSON для мобильного клиента (обновления APK). Обходит 404 на raw GitHub для приватных репозиториев. */

@@ -12,6 +12,14 @@ export type LoginusErrorMessage = {
   message: string;
 };
 
-export type LoginusOutboundMessage = LoginusReadyMessage | LoginusErrorMessage;
+export type LoginusFeatureRequiredMessage = {
+  type: 'loginus:featureRequired';
+  feature: 'microphone';
+};
+
+export type LoginusOutboundMessage =
+  | LoginusReadyMessage
+  | LoginusErrorMessage
+  | LoginusFeatureRequiredMessage;
 
 export type LoginusInboundMessage = LoginusInitMessage;

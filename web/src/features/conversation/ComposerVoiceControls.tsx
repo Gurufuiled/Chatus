@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUploadVoiceMutation } from '@/queries/media.queries';
 import { useComposerStore } from '@/stores/composerStore';
+import { formatMicrophoneAccessError, notifyParentMicrophoneRequired } from '@/utils/microphoneAccess';
 import { formatRecordingTimer } from '@/utils/formatFileSize';
 import { IconButton } from '@/components/buttons/IconButton';
 
@@ -164,12 +165,9 @@ export function ComposerVoiceControls({
       setRecordingState('idle');
       const name = err instanceof DOMException ? err.name : '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setError(chatId, 'Microphone access denied');
-      } else if (name === 'NotFoundError') {
-        setError(chatId, 'No microphone found');
-      } else {
-        setError(chatId, err instanceof Error ? err.message : 'Cannot access microphone');
+        notifyParentMicrophoneRequired();
       }
+      setError(chatId, formatMicrophoneAccessError(err));
     }
   }, [
     chatId,

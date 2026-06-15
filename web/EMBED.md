@@ -343,6 +343,7 @@ testik/
 | Verify initData | Backend, `LOGINUS_EMBEDDED_SECRET` |
 | `secretKey` только на server | Никогда во frontend |
 | CSP | `frame-ancestors https://id.startapus.com https://*.startapus.com` |
+| iframe `allow` | `clipboard-read; clipboard-write; microphone` (микрофон обязателен для голосовых) |
 | Не ставить | `X-Frame-Options: DENY` / `SAMEORIGIN` |
 | Rate limit | На `/auth/loginus/exchange` (рекомендуется) |
 
