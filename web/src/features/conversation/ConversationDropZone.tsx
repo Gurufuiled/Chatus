@@ -1,5 +1,8 @@
 import { useCallback, useState } from 'react';
-import { useUploadAttachmentMutation } from '@/queries/media.queries';
+import {
+  isStageableAlbumMedia,
+  useUploadAttachmentMutation,
+} from '@/queries/media.queries';
 import { useComposerStore } from '@/stores/composerStore';
 
 interface ConversationDropZoneProps {
@@ -24,6 +27,7 @@ export function ConversationDropZone({
   const decrementDragDepth = useComposerStore((s) => s.decrementDragDepth);
   const resetDragDepth = useComposerStore((s) => s.resetDragDepth);
   const setComposerError = useComposerStore((s) => s.setComposerError);
+  const addPendingAttachment = useComposerStore((s) => s.addPendingAttachment);
   const replyToMessageId = useComposerStore((s) =>
     s.replyChatId === chatId ? s.replyToMessageId : null,
   );
@@ -70,7 +74,12 @@ export function ConversationDropZone({
       if (disabled) return;
       const files = Array.from(e.dataTransfer.files);
       if (!files.length) return;
+
       for (const file of files) {
+        if (isStageableAlbumMedia(file)) {
+          addPendingAttachment(chatId, file, mode === 'file');
+          continue;
+        }
         try {
           await upload.mutateAsync({
             chatId,
@@ -84,7 +93,7 @@ export function ConversationDropZone({
         }
       }
     },
-    [chatId, disabled, replyToMessageId, resetDragDepth, upload],
+    [addPendingAttachment, chatId, disabled, replyToMessageId, resetDragDepth, upload],
   );
 
   const showOverlay = dragDepth > 0 && !disabled;

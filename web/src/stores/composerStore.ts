@@ -2,8 +2,16 @@ import { create } from 'zustand';
 
 export type VoiceRecordingState = 'idle' | 'recording' | 'processing';
 
+export interface PendingAttachment {
+  id: string;
+  file: File;
+  previewUrl: string;
+  sendAsFile: boolean;
+}
+
 interface ComposerState {
   drafts: Record<string, string>;
+  pendingAttachments: Record<string, PendingAttachment[]>;
   replyToMessageId: string | null;
   replyChatId: string | null;
   composerFocusNonce: number;
@@ -15,6 +23,9 @@ interface ComposerState {
   composerErrors: Record<string, string>;
   setDraft: (chatId: string, text: string) => void;
   clearDraft: (chatId: string) => void;
+  addPendingAttachment: (chatId: string, file: File, sendAsFile?: boolean) => void;
+  removePendingAttachment: (chatId: string, id: string) => void;
+  clearPendingAttachments: (chatId: string) => void;
   setReply: (chatId: string, messageId: string | null) => void;
   clearReply: () => void;
   setStickerPickerOpen: (open: boolean) => void;
@@ -29,8 +40,15 @@ interface ComposerState {
 
 const errorClearTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
+function revokePreviewUrl(url: string) {
+  if (url.startsWith('blob:')) {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export const useComposerStore = create<ComposerState>((set, get) => ({
   drafts: {},
+  pendingAttachments: {},
   replyToMessageId: null,
   replyChatId: null,
   composerFocusNonce: 0,
@@ -48,6 +66,42 @@ export const useComposerStore = create<ComposerState>((set, get) => ({
     set((state) => {
       const { [chatId]: _removed, ...rest } = state.drafts;
       return { drafts: rest };
+    }),
+  addPendingAttachment: (chatId, file, sendAsFile = false) =>
+    set((state) => {
+      const previewUrl = URL.createObjectURL(file);
+      const item: PendingAttachment = {
+        id: crypto.randomUUID(),
+        file,
+        previewUrl,
+        sendAsFile,
+      };
+      const existing = state.pendingAttachments[chatId] ?? [];
+      return {
+        pendingAttachments: {
+          ...state.pendingAttachments,
+          [chatId]: [...existing, item].slice(0, 10),
+        },
+      };
+    }),
+  removePendingAttachment: (chatId, id) =>
+    set((state) => {
+      const list = state.pendingAttachments[chatId] ?? [];
+      const removed = list.find((item) => item.id === id);
+      if (removed) revokePreviewUrl(removed.previewUrl);
+      const next = list.filter((item) => item.id !== id);
+      const pendingAttachments = { ...state.pendingAttachments };
+      if (next.length) pendingAttachments[chatId] = next;
+      else delete pendingAttachments[chatId];
+      return { pendingAttachments };
+    }),
+  clearPendingAttachments: (chatId) =>
+    set((state) => {
+      const list = state.pendingAttachments[chatId] ?? [];
+      for (const item of list) revokePreviewUrl(item.previewUrl);
+      const pendingAttachments = { ...state.pendingAttachments };
+      delete pendingAttachments[chatId];
+      return { pendingAttachments };
     }),
   setReply: (chatId, messageId) =>
     set({ replyChatId: chatId, replyToMessageId: messageId }),

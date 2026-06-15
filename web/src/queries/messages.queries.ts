@@ -170,36 +170,38 @@ export function useSendStickerMessageMutation() {
 
 export function useSendMediaMessageMutation() {
   return useOptimisticSendMutation<SendMediaMessageInput>(sendMediaMessage, (input, _me, tempId) => {
+    const mediaItems = Array.isArray(input.media) ? input.media : [input.media];
     const content =
-      input.msgType === 'file'
-        ? (input.media.file_name ?? 'File')
+      input.content?.trim() ||
+      (input.msgType === 'file'
+        ? (mediaItems[0]?.file_name ?? 'File')
         : input.msgType === 'image'
-          ? 'Photo'
+          ? mediaItems.length > 1
+            ? `${mediaItems.length} media`
+            : 'Photo'
           : input.msgType === 'voice'
             ? 'Voice message'
             : input.msgType === 'video' || input.msgType === 'video_note'
               ? 'Video'
-              : 'Message';
+              : 'Message');
 
-    const media = input.media.url
-      ? [
-          {
-            id: `temp-media-${tempId}`,
-            message_id: `temp-${tempId}`,
-            media_type: input.msgType,
-            file_name: input.media.file_name ?? null,
-            mime_type: input.media.mime_type ?? null,
-            file_size: input.media.file_size ?? null,
-            width: input.media.width ?? null,
-            height: input.media.height ?? null,
-            duration_ms: input.media.duration_ms ?? null,
-            remote_url: input.media.url,
-            thumbnail_url: input.media.thumbnail_url ?? null,
-            waveform: null,
-            is_round: input.msgType === 'video_note',
-            created_at: Date.now(),
-          },
-        ]
+    const media = mediaItems[0]?.url
+      ? mediaItems.map((item, index) => ({
+          id: `temp-media-${tempId}-${index}`,
+          message_id: `temp-${tempId}`,
+          media_type: item.mime_type?.startsWith('video/') ? 'video' : input.msgType,
+          file_name: item.file_name ?? null,
+          mime_type: item.mime_type ?? null,
+          file_size: item.file_size ?? null,
+          width: item.width ?? null,
+          height: item.height ?? null,
+          duration_ms: item.duration_ms ?? null,
+          remote_url: item.url ?? null,
+          thumbnail_url: item.thumbnail_url ?? null,
+          waveform: null,
+          is_round: input.msgType === 'video_note',
+          created_at: Date.now(),
+        }))
       : undefined;
 
     return {
@@ -208,6 +210,79 @@ export function useSendMediaMessageMutation() {
       replyToId: input.replyToId,
       media,
     };
+  });
+}
+
+export function useToggleReactionMutation() {
+  const queryClient = useQueryClient();
+  const setError = useComposerStore((s) => s.setComposerError);
+
+  return useMutation({
+    mutationFn: async ({
+      chatId,
+      messageId,
+      emoji,
+    }: {
+      chatId: string;
+      messageId: string;
+      emoji: string;
+    }) => {
+      const sent = wsClient.toggleReaction(chatId, messageId, emoji);
+      if (!sent) {
+        throw new Error('WebSocket не подключён (реакции требуют WS)');
+      }
+      return { chatId, messageId, emoji };
+    },
+    onMutate: async ({ chatId, messageId, emoji }) => {
+      await queryClient.cancelQueries({ queryKey: messagesQueryKey(chatId) });
+      const previous = queryClient.getQueryData<MappedMessage[]>(messagesQueryKey(chatId));
+
+      queryClient.setQueryData<MappedMessage[]>(messagesQueryKey(chatId), (old) =>
+        old?.map((message) => {
+          if (message.id !== messageId) return message;
+          const reactions = [...(message.reactions ?? [])];
+          const existingIdx = reactions.findIndex((r) => r.emoji === emoji);
+          const mineIdx = reactions.findIndex((r) => r.reacted_by_me);
+
+          if (existingIdx >= 0 && reactions[existingIdx].reacted_by_me) {
+            const next = reactions[existingIdx];
+            if (next.count <= 1) reactions.splice(existingIdx, 1);
+            else reactions[existingIdx] = { ...next, count: next.count - 1, reacted_by_me: false };
+          } else if (mineIdx >= 0 && mineIdx !== existingIdx) {
+            const prev = reactions[mineIdx];
+            if (prev.count <= 1) reactions.splice(mineIdx, 1);
+            else reactions[mineIdx] = { ...prev, count: prev.count - 1, reacted_by_me: false };
+            if (existingIdx >= 0) {
+              reactions[existingIdx] = {
+                ...reactions[existingIdx],
+                count: reactions[existingIdx].count + 1,
+                reacted_by_me: true,
+              };
+            } else {
+              reactions.push({ emoji, count: 1, reacted_by_me: true });
+            }
+          } else if (existingIdx >= 0) {
+            reactions[existingIdx] = {
+              ...reactions[existingIdx],
+              count: reactions[existingIdx].count + 1,
+              reacted_by_me: true,
+            };
+          } else {
+            reactions.push({ emoji, count: 1, reacted_by_me: true });
+          }
+
+          return { ...message, reactions };
+        }),
+      );
+
+      return { previous, chatId };
+    },
+    onError: (err, { chatId }, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(messagesQueryKey(chatId), context.previous);
+      }
+      setError(chatId, err instanceof Error ? err.message : 'Не удалось поставить реакцию');
+    },
   });
 }
 

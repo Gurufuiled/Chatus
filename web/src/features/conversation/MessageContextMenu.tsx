@@ -4,7 +4,7 @@ import { useMessageContextStore } from '@/stores/messageContextStore';
 import { useComposerStore } from '@/stores/composerStore';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useChatsQuery } from '@/queries/chats.queries';
-import { usePinMessageMutation, useDeleteMessageMutation, useMessagesQuery } from '@/queries/messages.queries';
+import { usePinMessageMutation, useDeleteMessageMutation, useMessagesQuery, useToggleReactionMutation } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
@@ -123,6 +123,7 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
   const { data: me } = useMeQuery();
   const pinMutation = usePinMessageMutation();
   const deleteMutation = useDeleteMessageMutation();
+  const toggleReaction = useToggleReactionMutation();
 
   const open = menuChatId === chatId && !!messageId && !!position;
   const message = messages?.find((m) => m.id === messageId);
@@ -207,6 +208,14 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
     closeMessageMenu();
   };
 
+  const handleReaction = (emoji: string) => {
+    if (toggleReaction.isPending) return;
+    toggleReaction.mutate(
+      { chatId, messageId: message.id, emoji },
+      { onSettled: () => closeMessageMenu() },
+    );
+  };
+
   const actionItems = [
     {
       id: 'reply',
@@ -280,14 +289,15 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
     >
       {mode === 'actions' ? (
         <>
-          <div className="message-context-menu__reactions" role="toolbar" aria-label="Reactions">
+          <div className="message-context-menu__reactions" role="toolbar" aria-label="Реакции">
             {REACTIONS.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
                 className="message-context-menu__reaction"
-                title="Reactions API not wired yet"
-                onClick={closeMessageMenu}
+                aria-label={`Реакция ${emoji}`}
+                disabled={toggleReaction.isPending}
+                onClick={() => handleReaction(emoji)}
               >
                 {emoji}
               </button>
@@ -295,9 +305,9 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
             <button
               type="button"
               className="message-context-menu__reaction message-context-menu__reaction--more"
-              aria-label="More reactions"
-              title="Reactions API not wired yet"
-              onClick={closeMessageMenu}
+              aria-label="Больше реакций"
+              disabled
+              title="Скоро"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden>
                 <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

@@ -213,6 +213,22 @@ export function useWsLifecycle(activeChatId?: string) {
           return bumpUnreadForIncoming(withLast, message.chat_id, message, meId, openChatId);
         });
       },
+      onMessageReactionsUpdated: (payload) => {
+        const chatId = payload.chat_id;
+        const messageId = payload.message_id;
+        const reactions = payload.reactions;
+        if (typeof chatId !== 'string' || typeof messageId !== 'string' || !Array.isArray(reactions)) {
+          return;
+        }
+
+        queryClient.setQueryData<MappedMessage[]>(messagesQueryKey(chatId), (old) =>
+          old?.map((message) =>
+            message.id === messageId
+              ? { ...message, reactions: reactions as MappedMessage['reactions'] }
+              : message,
+          ),
+        );
+      },
     });
 
     useWsUiStore.getState().setConnecting();

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef } from 'react';
 import { IconButton } from '@/components/buttons/IconButton';
 import { useComposerStore } from '@/stores/composerStore';
 import { useSendMessageMutation } from '@/queries/messages.queries';
+import { useSendPendingAttachmentsMutation } from '@/queries/media.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { StickerPicker } from './StickerPicker';
 import { AttachmentPicker } from './AttachmentPicker';
 import { ComposerVoiceControls } from './ComposerVoiceControls';
 import { ComposerReplyPreview } from './ComposerReplyPreview';
 import { ComposerErrorBanner } from './ComposerErrorBanner';
+import { ComposerAttachmentPreview } from './ComposerAttachmentPreview';
 
 interface MessageComposerProps {
   chatId: string;
@@ -17,6 +19,7 @@ interface MessageComposerProps {
 export function MessageComposer({ chatId, disabled = false }: MessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draft = useComposerStore((s) => s.drafts[chatId] ?? '');
+  const attachments = useComposerStore((s) => s.pendingAttachments[chatId] ?? []);
   const setDraft = useComposerStore((s) => s.setDraft);
   const clearDraft = useComposerStore((s) => s.clearDraft);
   const clearReply = useComposerStore((s) => s.clearReply);
@@ -31,6 +34,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const requestComposerFocus = useComposerStore((s) => s.requestComposerFocus);
   const composerFocusNonce = useComposerStore((s) => s.composerFocusNonce);
   const sendMutation = useSendMessageMutation();
+  const sendPendingMutation = useSendPendingAttachmentsMutation();
   const { data: me } = useMeQuery();
 
   const resetTextareaHeight = () => {
@@ -50,8 +54,33 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   }, [composerFocusNonce]);
 
   const send = useCallback(() => {
+    if (sendMutation.isPending || sendPendingMutation.isPending || disabled || !me?.id) return;
+
     const text = draft.trim();
-    if (!text || sendMutation.isPending || disabled || !me?.id) return;
+    const hasAttachments = attachments.length > 0;
+
+    if (hasAttachments) {
+      sendPendingMutation.mutate(
+        {
+          chatId,
+          attachments,
+          caption: text || undefined,
+          replyToId: replyToMessageId,
+          clientTempId: crypto.randomUUID(),
+        },
+        {
+          onSuccess: () => {
+            clearDraft(chatId);
+            clearReply();
+            resetTextareaHeight();
+            requestComposerFocus();
+          },
+        },
+      );
+      return;
+    }
+
+    if (!text) return;
 
     const clientTempId = crypto.randomUUID();
     sendMutation.mutate(
@@ -71,6 +100,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
       },
     );
   }, [
+    attachments,
     chatId,
     clearDraft,
     clearReply,
@@ -80,6 +110,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
     replyToMessageId,
     requestComposerFocus,
     sendMutation,
+    sendPendingMutation,
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -99,8 +130,11 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const isRecording =
     voiceRecordingChatId === chatId &&
     (voiceRecordingState === 'recording' || voiceRecordingState === 'processing');
-  const isDisabled = disabled || sendMutation.isPending || !me?.id || isRecording;
+  const isSending = sendMutation.isPending || sendPendingMutation.isPending;
+  const isDisabled = disabled || isSending || !me?.id || isRecording;
   const hasText = draft.trim().length > 0;
+  const hasAttachments = attachments.length > 0;
+  const canSend = hasText || hasAttachments;
 
   return (
     <div className="message-composer-wrap">
@@ -115,18 +149,19 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
             <ComposerReplyPreview chatId={chatId} />
             <ComposerVoiceControls
               chatId={chatId}
-              hasText={hasText}
+              hasText={canSend}
               onSendText={send}
-              disabled={disabled || sendMutation.isPending || !me?.id}
+              disabled={disabled || isSending || !me?.id}
               fullWidth
             />
           </div>
         ) : (
           <>
             <div
-              className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}`}
+              className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}${hasAttachments ? ' message-composer__panel--with-attachments' : ''}`}
             >
               <ComposerReplyPreview chatId={chatId} />
+              <ComposerAttachmentPreview chatId={chatId} />
               <div className="message-composer__row">
                 <IconButton
                   label="Стикеры"
@@ -148,8 +183,8 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
                 <textarea
                   ref={textareaRef}
                   className="message-composer__input"
-                  placeholder="Сообщение"
-                  aria-label="Сообщение"
+                  placeholder={hasAttachments ? 'Подпись' : 'Сообщение'}
+                  aria-label={hasAttachments ? 'Подпись к медиа' : 'Сообщение'}
                   rows={1}
                   value={draft}
                   disabled={isDisabled}
@@ -176,9 +211,9 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
             </div>
             <ComposerVoiceControls
               chatId={chatId}
-              hasText={hasText}
+              hasText={canSend}
               onSendText={send}
-              disabled={disabled || sendMutation.isPending || !me?.id}
+              disabled={disabled || isSending || !me?.id}
             />
           </>
         )}

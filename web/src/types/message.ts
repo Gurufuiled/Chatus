@@ -11,6 +11,13 @@ export type MessageType =
   | 'system'
   | string;
 
+export interface MappedMessageReaction {
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
+  reactors?: { user_id: string; avatar_url: string | null }[];
+}
+
 export interface MappedMedia {
   id: string;
   message_id: string;
@@ -42,6 +49,7 @@ export interface MappedMessage {
   created_at: number;
   updated_at: number;
   media?: MappedMedia[];
+  reactions?: MappedMessageReaction[];
   forwarded_from_message_id?: string | null;
   forwarded_from_name?: string | null;
   forwarded_from_chat_id?: string | null;

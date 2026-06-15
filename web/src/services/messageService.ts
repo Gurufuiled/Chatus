@@ -9,6 +9,7 @@ import {
 
 export interface MessageMediaInput {
   url?: string;
+  media_type?: string;
   mime_type?: string;
   file_name?: string;
   file_size?: number;
@@ -88,7 +89,7 @@ export async function sendStickerMessage({
 
 export interface SendMediaMessageInput extends SendMessageBase {
   msgType: MessageType;
-  media: MessageMediaInput;
+  media: MessageMediaInput | MessageMediaInput[];
   content?: string | null;
 }
 

@@ -8,6 +8,7 @@ type WsHandlers = {
   onChatPinnedMessageUpdated?: WsEventHandler;
   onNewMessage?: WsEventHandler;
   onMessageAck?: WsEventHandler;
+  onMessageReactionsUpdated?: WsEventHandler;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onConnecting?: () => void;
@@ -132,6 +133,14 @@ class WsClient {
     });
   }
 
+  toggleReaction(chatId: string, messageId: string, emoji: string) {
+    return this.sendEvent('toggle_reaction', {
+      chat_id: chatId,
+      message_id: messageId,
+      emoji,
+    });
+  }
+
   private getWsUrl(token: string) {
     const configured = import.meta.env.VITE_WS_URL as string | undefined;
     const base =
@@ -197,6 +206,9 @@ class WsClient {
         break;
       case 'chat_pinned_message_updated':
         this.handlers.onChatPinnedMessageUpdated?.(msg);
+        break;
+      case 'message_reactions_updated':
+        this.handlers.onMessageReactionsUpdated?.(msg);
         break;
       default:
         break;

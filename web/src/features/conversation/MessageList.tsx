@@ -102,6 +102,7 @@ export function MessageList({ chatId }: MessageListProps) {
                 </span>
               ) : null}
               <MessageBubble
+                chatId={chatId}
                 message={message}
                 isOutgoing={isOutgoing}
                 onContextMenu={(e) => handleContextMenu(message.id, e)}

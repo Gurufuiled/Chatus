@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { useUploadAttachmentMutation } from '@/queries/media.queries';
+import {
+  isStageableAlbumMedia,
+  useUploadAttachmentMutation,
+} from '@/queries/media.queries';
 import { useComposerStore } from '@/stores/composerStore';
 
 interface AttachmentPickerProps {
@@ -13,6 +16,7 @@ const ACCEPT =
 export function AttachmentPicker({ chatId, disabled = false }: AttachmentPickerProps) {
   const open = useComposerStore((s) => s.isAttachmentPickerOpen);
   const setOpen = useComposerStore((s) => s.setAttachmentPickerOpen);
+  const addPendingAttachment = useComposerStore((s) => s.addPendingAttachment);
   const replyToMessageId = useComposerStore((s) =>
     s.replyChatId === chatId ? s.replyToMessageId : null,
   );
@@ -36,6 +40,10 @@ export function AttachmentPicker({ chatId, disabled = false }: AttachmentPickerP
 
   const processQueue = async (files: File[]) => {
     for (const file of files) {
+      if (isStageableAlbumMedia(file)) {
+        addPendingAttachment(chatId, file, false);
+        continue;
+      }
       try {
         await upload.mutateAsync({
           chatId,
