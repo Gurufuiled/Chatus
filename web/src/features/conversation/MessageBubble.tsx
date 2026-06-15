@@ -3,6 +3,12 @@ import { getStickerImageUrl } from '@/data/stickerCatalog';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { formatMessageTime } from './messageFormatters';
 import { isChatusStickerMessage, tryDecodeStickerPayload } from '@/utils/stickerPayload';
+import { VoiceMessagePlayer } from './VoiceMessagePlayer';
+import {
+  FileMessageContent,
+  ImageMessageContent,
+  VideoMessageContent,
+} from './MediaMessageContent';
 import type { MappedMessage } from '@/types/message';
 
 interface MessageBubbleProps {
@@ -31,29 +37,39 @@ export function MessageBubble({ message, isOutgoing, onContextMenu }: MessageBub
   const stickerUrl = stickerRef ? getStickerImageUrl(stickerRef) : null;
   const media = message.media?.[0];
   const mediaUrl = media?.remote_url ? resolveMediaUrl(media.remote_url) : null;
+  const isMediaBubble =
+    message.msg_type === 'image' ||
+    message.msg_type === 'voice' ||
+    message.msg_type === 'file' ||
+    message.msg_type === 'video' ||
+    message.msg_type === 'video_note';
 
   return (
     <div
-      className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}`}
+      className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}`}
       onContextMenu={onContextMenu}
     >
       <div className="message-bubble__content">
         {stickerUrl ? (
           <img src={stickerUrl} alt="Sticker" className="message-bubble__sticker" />
         ) : message.msg_type === 'image' && mediaUrl ? (
-          <img src={mediaUrl} alt="" className="message-bubble__image" />
-        ) : message.msg_type === 'voice' ? (
-          <div className="message-bubble__voice">
-            <span className="message-bubble__voice-icon" aria-hidden>
-              🎤
-            </span>
-            <span className="message-bubble__voice-label">Voice message</span>
-            {media?.duration_ms ? (
-              <span className="message-bubble__voice-duration">
-                {Math.max(1, Math.round(media.duration_ms / 1000))}s
-              </span>
-            ) : null}
-          </div>
+          <ImageMessageContent url={mediaUrl} />
+        ) : message.msg_type === 'voice' && mediaUrl ? (
+          <VoiceMessagePlayer
+            src={mediaUrl}
+            durationMs={media?.duration_ms ?? 1000}
+            waveformBase64={media?.waveform}
+            isOutgoing={isOutgoing}
+          />
+        ) : message.msg_type === 'file' && mediaUrl ? (
+          <FileMessageContent
+            url={mediaUrl}
+            fileName={media?.file_name ?? null}
+            fileSize={media?.file_size ?? null}
+            mimeType={media?.mime_type ?? null}
+          />
+        ) : (message.msg_type === 'video' || message.msg_type === 'video_note') && mediaUrl ? (
+          <VideoMessageContent url={mediaUrl} poster={media?.thumbnail_url} />
         ) : message.msg_type === 'text' ? (
           isChatusStickerMessage(message.content) ? (
             <p className="message-bubble__text message-bubble__text--placeholder">Sticker</p>

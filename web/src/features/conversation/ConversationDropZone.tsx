@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useUploadAttachmentMutation } from '@/queries/media.queries';
 import { useComposerStore } from '@/stores/composerStore';
 
@@ -7,6 +7,8 @@ interface ConversationDropZoneProps {
   disabled?: boolean;
   children: React.ReactNode;
 }
+
+type DropMode = 'file' | 'quick';
 
 function hasFileDrag(e: React.DragEvent): boolean {
   return Array.from(e.dataTransfer.types).includes('Files');
@@ -25,6 +27,7 @@ export function ConversationDropZone({
     s.replyChatId === chatId ? s.replyToMessageId : null,
   );
   const upload = useUploadAttachmentMutation();
+  const [hoverMode, setHoverMode] = useState<DropMode | null>(null);
 
   const handleDragEnter = useCallback(
     (e: React.DragEvent) => {
@@ -40,6 +43,7 @@ export function ConversationDropZone({
       if (!hasFileDrag(e)) return;
       e.preventDefault();
       decrementDragDepth();
+      setHoverMode(null);
     },
     [decrementDragDepth],
   );
@@ -50,11 +54,17 @@ export function ConversationDropZone({
     e.dataTransfer.dropEffect = 'copy';
   }, []);
 
+  const handleZoneDragOver = useCallback((mode: DropMode) => {
+    setHoverMode(mode);
+  }, []);
+
   const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
+    async (e: React.DragEvent, mode: DropMode) => {
       if (!hasFileDrag(e)) return;
       e.preventDefault();
+      e.stopPropagation();
       resetDragDepth();
+      setHoverMode(null);
       if (disabled) return;
       const files = Array.from(e.dataTransfer.files);
       if (!files.length) return;
@@ -64,6 +74,8 @@ export function ConversationDropZone({
             chatId,
             file,
             replyToId: replyToMessageId,
+            compressImages: mode === 'quick',
+            sendAsFile: mode === 'file',
           });
         } catch {
           /* error surfaced via composer store */
@@ -81,14 +93,37 @@ export function ConversationDropZone({
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
-      onDrop={handleDrop}
+      onDrop={(e) => {
+        e.preventDefault();
+        resetDragDepth();
+        setHoverMode(null);
+      }}
     >
       {children}
       {showOverlay ? (
         <div className="conversation-drop-zone__overlay" aria-live="polite">
-          <p className="conversation-drop-zone__text">
-            Отпустите файлы для отправки
-          </p>
+          <div
+            className={`conversation-drop-zone__zone conversation-drop-zone__zone--file${hoverMode === 'file' ? ' conversation-drop-zone__zone--active' : ''}`}
+            onDragOver={(e) => {
+              handleDragOver(e);
+              handleZoneDragOver('file');
+            }}
+            onDrop={(e) => void handleDrop(e, 'file')}
+          >
+            <p className="conversation-drop-zone__title">Перетащите файлы сюда</p>
+            <p className="conversation-drop-zone__hint">для отправки без сжатия</p>
+          </div>
+          <div
+            className={`conversation-drop-zone__zone conversation-drop-zone__zone--quick${hoverMode === 'quick' ? ' conversation-drop-zone__zone--active' : ''}`}
+            onDragOver={(e) => {
+              handleDragOver(e);
+              handleZoneDragOver('quick');
+            }}
+            onDrop={(e) => void handleDrop(e, 'quick')}
+          >
+            <p className="conversation-drop-zone__title">Перетащите файлы сюда</p>
+            <p className="conversation-drop-zone__hint">для быстрой отправки</p>
+          </div>
         </div>
       ) : null}
     </div>

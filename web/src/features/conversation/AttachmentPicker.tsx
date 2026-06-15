@@ -41,6 +41,7 @@ export function AttachmentPicker({ chatId, disabled = false }: AttachmentPickerP
           chatId,
           file,
           replyToId: replyToMessageId,
+          compressImages: true,
         });
       } catch {
         /* surfaced via composer error banner */

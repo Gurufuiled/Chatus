@@ -5,7 +5,7 @@ import { useSendMessageMutation } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { StickerPicker } from './StickerPicker';
 import { AttachmentPicker } from './AttachmentPicker';
-import { VoiceRecorderButton } from './VoiceRecorderButton';
+import { ComposerVoiceControls } from './ComposerVoiceControls';
 import { ComposerReplyPreview } from './ComposerReplyPreview';
 import { ComposerErrorBanner } from './ComposerErrorBanner';
 
@@ -95,67 +95,91 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   };
 
-  const isRecording = voiceRecordingState === 'recording' || voiceRecordingState === 'processing';
+  const isRecording =
+    voiceRecordingState === 'recording' || voiceRecordingState === 'processing';
   const isDisabled = disabled || sendMutation.isPending || !me?.id || isRecording;
+  const hasText = draft.trim().length > 0;
 
   return (
     <div className="message-composer-wrap">
       <ComposerErrorBanner chatId={chatId} />
       <StickerPicker chatId={chatId} disabled={isDisabled} />
       <AttachmentPicker chatId={chatId} disabled={isDisabled} />
-      <footer className="message-composer">
-        <div
-          className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}`}
-        >
-          <ComposerReplyPreview chatId={chatId} />
-          <div className="message-composer__row">
-            <IconButton
-              label="Стикеры"
-              className={`message-composer__icon${isStickerPickerOpen ? ' message-composer__icon--active' : ''}`}
-              disabled={isDisabled}
-              onClick={() => setStickerPickerOpen(!isStickerPickerOpen)}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden>
-                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5" />
-                <path
-                  d="M8.5 9.5h.01M15.5 9.5h.01M8.5 14.5c1.2 1.4 2.4 2 3.5 2s2.3-.6 3.5-2"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </IconButton>
-            <textarea
-              ref={textareaRef}
-              className="message-composer__input"
-              placeholder="Сообщение"
-              aria-label="Сообщение"
-              rows={1}
-              value={draft}
-              disabled={isDisabled}
-              onChange={handleInput}
-              onKeyDown={handleKeyDown}
+      <footer className={`message-composer${isRecording ? ' message-composer--recording' : ''}`}>
+        {isRecording ? (
+          <div
+            className={`message-composer__panel message-composer__panel--recording${replyToMessageId ? ' message-composer__panel--with-reply' : ''}`}
+          >
+            <ComposerReplyPreview chatId={chatId} />
+            <ComposerVoiceControls
+              chatId={chatId}
+              hasText={hasText}
+              onSendText={send}
+              disabled={disabled || sendMutation.isPending || !me?.id}
+              fullWidth
             />
-            <IconButton
-              label="Прикрепить файл"
-              className="message-composer__icon"
-              disabled={isDisabled}
-              onClick={() => setAttachmentPickerOpen(true)}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
-                <path
-                  d="M8 12.5l7.2-7.2a3 3 0 014.2 4.2l-8.4 8.4a4.5 4.5 0 01-6.4-6.4l9-9"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </IconButton>
           </div>
-        </div>
-        <VoiceRecorderButton chatId={chatId} disabled={disabled || sendMutation.isPending || !me?.id} />
+        ) : (
+          <>
+            <div
+              className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}`}
+            >
+              <ComposerReplyPreview chatId={chatId} />
+              <div className="message-composer__row">
+                <IconButton
+                  label="Стикеры"
+                  className={`message-composer__icon${isStickerPickerOpen ? ' message-composer__icon--active' : ''}`}
+                  disabled={isDisabled}
+                  onClick={() => setStickerPickerOpen(!isStickerPickerOpen)}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden>
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                    <path
+                      d="M8.5 9.5h.01M15.5 9.5h.01M8.5 14.5c1.2 1.4 2.4 2 3.5 2s2.3-.6 3.5-2"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </IconButton>
+                <textarea
+                  ref={textareaRef}
+                  className="message-composer__input"
+                  placeholder="Сообщение"
+                  aria-label="Сообщение"
+                  rows={1}
+                  value={draft}
+                  disabled={isDisabled}
+                  onChange={handleInput}
+                  onKeyDown={handleKeyDown}
+                />
+                <IconButton
+                  label="Прикрепить файл"
+                  className="message-composer__icon"
+                  disabled={isDisabled}
+                  onClick={() => setAttachmentPickerOpen(true)}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+                    <path
+                      d="M8 12.5l7.2-7.2a3 3 0 014.2 4.2l-8.4 8.4a4.5 4.5 0 01-6.4-6.4l9-9"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </IconButton>
+              </div>
+            </div>
+            <ComposerVoiceControls
+              chatId={chatId}
+              hasText={hasText}
+              onSendText={send}
+              disabled={disabled || sendMutation.isPending || !me?.id}
+            />
+          </>
+        )}
       </footer>
     </div>
   );
