@@ -18,7 +18,20 @@ export function createTelegramStackHeaderPresentationStyles(colors: ThemeColors)
     pressableRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      flex: 1,
+      alignSelf: 'center',
+      maxWidth: 248,
+      minHeight: 46,
+      paddingLeft: 6,
+      paddingRight: 12,
+      paddingVertical: 5,
+      borderRadius: 23,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.separator,
+      backgroundColor: withAlpha(colors.inputBackgroundSolid, 0.86),
+      shadowColor: '#000000',
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
     },
     pressablePressed: {
       opacity: 0.7,
@@ -45,6 +58,7 @@ export function createTelegramStackHeaderPresentationStyles(colors: ThemeColors)
     },
     titleWrap: {
       flexShrink: 1,
+      minWidth: 0,
       justifyContent: 'center',
     },
     headerTitleText: {

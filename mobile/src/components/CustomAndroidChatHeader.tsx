@@ -1,13 +1,9 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
-import {
-  ChatHeaderTitle,
-  GroupChatHeaderMembers,
-  createChatsStackStyles,
-} from '../navigation/ChatsStack';
+import { ChatPillHeaderTitle } from './ChatPillHeaderTitle';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 
@@ -17,13 +13,10 @@ interface CustomAndroidChatHeaderProps {
   avatarUrl?: string | null;
   isGroupChat: boolean;
   peerId: string | null;
-  currentUserId: string | null;
   chatId: string;
-  members: any[] | null;
   navigation: NativeStackNavigationProp<ChatsStackParamList, 'Chat'> | any;
   /** When set, title row opens this instead of Chatus GroupProfile / ChatProfile. */
   onTitlePress?: () => void;
-  onSearchPress?: () => void;
   /** Telegram chat: never fall back to Chatus profile routes when `onTitlePress` is unset. */
   telegramTitleOnly?: boolean;
   titleNavDisabled?: boolean;
@@ -35,17 +28,13 @@ export function CustomAndroidChatHeader({
   avatarUrl,
   isGroupChat,
   peerId,
-  currentUserId,
   chatId,
-  members,
   navigation,
   onTitlePress,
-  onSearchPress,
   telegramTitleOnly = false,
   titleNavDisabled = false,
 }: CustomAndroidChatHeaderProps) {
   const { colors } = useTheme();
-  const stackStyles = useMemo(() => createChatsStackStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
 
   const openProfile = () => {
@@ -56,6 +45,10 @@ export function CustomAndroidChatHeader({
     if (!peerId) return;
     navigation.navigate('ChatProfile', { chatId, userId: peerId, chatTitle: title });
   };
+
+  const canOpenProfile = telegramTitleOnly
+    ? onTitlePress != null
+    : onTitlePress != null || isGroupChat || !!peerId;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.toolbar, paddingTop: insets.top }]}>
@@ -68,58 +61,20 @@ export function CustomAndroidChatHeader({
           <Feather name="arrow-left" size={24} color={colors.textPrimary} />
         </Pressable>
 
-        <View style={stackStyles.chatHeaderTitleRoot}>
-          <Pressable
+        <View pointerEvents="box-none" style={styles.pillTitleRoot}>
+          <ChatPillHeaderTitle
+            title={title}
+            subtitle={subtitle}
+            avatarUrl={avatarUrl}
             onPress={
               telegramTitleOnly
                 ? onTitlePress
                 : onTitlePress ?? (isGroupChat || peerId ? openProfile : undefined)
             }
-            disabled={
-              titleNavDisabled ||
-              (telegramTitleOnly ? !onTitlePress : onTitlePress == null && !isGroupChat && !peerId)
-            }
-            style={({ pressed }) => [
-              stackStyles.headerTitlePressable,
-              stackStyles.chatHeaderTitlePressableFlex,
-              pressed &&
-                !titleNavDisabled &&
-                (telegramTitleOnly
-                  ? onTitlePress != null
-                  : onTitlePress != null || isGroupChat || peerId) &&
-                stackStyles.headerPressablePressed,
-            ]}
-          >
-            <ChatHeaderTitle
-              title={title}
-              subtitle={subtitle}
-              avatarUrl={avatarUrl}
-              stackStyles={stackStyles}
-            />
-          </Pressable>
-          {isGroupChat && members && members.length > 0 ? (
-            <GroupChatHeaderMembers
-              members={members as any}
-              currentUserId={currentUserId}
-              chatId={chatId}
-              navigation={navigation as any}
-              stackStyles={stackStyles}
-              headerBorderColor={colors.toolbar}
-            />
-          ) : null}
+            disabled={titleNavDisabled || !canOpenProfile}
+            accessibilityHint="Открывает профиль"
+          />
         </View>
-
-        {onSearchPress ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Поиск в чате"
-            onPress={onSearchPress}
-            hitSlop={10}
-            style={({ pressed }) => [styles.searchButton, pressed && styles.backButtonPressed]}
-          >
-            <Feather name="search" size={22} color={colors.textPrimary} />
-          </Pressable>
-        ) : null}
       </View>
     </View>
   );
@@ -146,10 +101,13 @@ const styles = StyleSheet.create({
   backButtonPressed: {
     opacity: 0.5,
   },
-  searchButton: {
-    width: 44,
-    height: 56,
-    justifyContent: 'center',
+  pillTitleRoot: {
+    position: 'absolute',
+    left: 56,
+    right: 56,
+    top: 5,
+    bottom: 5,
     alignItems: 'center',
+    justifyContent: 'center',
   },
 });

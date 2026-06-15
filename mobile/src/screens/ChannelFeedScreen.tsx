@@ -2153,9 +2153,7 @@ export function ChannelFeedScreen() {
             avatarUrl={headerAvatar}
             isGroupChat={false}
             peerId={null}
-            currentUserId={currentUserId}
             chatId={channelId}
-            members={null}
             navigation={navigation}
             onTitlePress={openChannelProfile}
           />

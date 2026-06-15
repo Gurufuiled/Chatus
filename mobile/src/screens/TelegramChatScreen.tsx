@@ -32,6 +32,7 @@ import { ChatDaySeparator } from '../components/ChatDaySeparator';
 import { ChatScrollToBottomButton } from '../components/ChatScrollToBottomButton';
 import { ChatTopBanners } from '../components/ChatTopBanners';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
+import { ChatPillHeaderTitle } from '../components/ChatPillHeaderTitle';
 import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
 import { formatPresence, formatGroupSubtitle } from '../navigation/ChatsStack';
 import { TelegramForwardSheet } from '../components/TelegramForwardSheet';
@@ -701,7 +702,6 @@ export function TelegramChatScreen() {
   );
 
   useLayoutEffect(() => {
-    const initialChar = (headerTitle.trim()[0] || '?').toUpperCase();
     if (telegramSelectionMode) {
       navigation.setOptions({
         headerTitle: () => (
@@ -726,67 +726,21 @@ export function TelegramChatScreen() {
     }
     navigation.setOptions({
       headerTitle: () => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={headerTitle}
-          accessibilityHint="Открывает профиль"
+        <ChatPillHeaderTitle
+          title={headerTitle}
+          subtitle={headerSubtitle}
+          avatarUrl={avatarUri}
           onPress={openTelegramChatProfile}
-          style={({ pressed }) => [
-            headerChromeStyles.pressableRow,
-            pressed ? headerChromeStyles.pressablePressed : null,
-          ]}
-        >
-          {avatarUri ? (
-            <Image
-              source={{ uri: avatarUri }}
-              style={headerChromeStyles.avatar}
-              contentFit="cover"
-              cachePolicy="disk"
-            />
-          ) : (
-            <View style={headerChromeStyles.avatarPlaceholder}>
-              <Text style={headerChromeStyles.avatarPlaceholderLetter}>{initialChar}</Text>
-            </View>
-          )}
-          <View style={headerChromeStyles.titleWrap}>
-            <Text style={headerChromeStyles.headerTitleText} numberOfLines={1} ellipsizeMode="tail">
-              {headerTitle}
-            </Text>
-            {headerSubtitle ? (
-              <Text style={headerChromeStyles.headerSubtitleText} numberOfLines={1} ellipsizeMode="tail">
-                {headerSubtitle}
-              </Text>
-            ) : null}
-          </View>
-        </Pressable>
+          accessibilityHint="Открывает профиль"
+        />
       ),
-      headerRight: isSearchMode
-        ? undefined
-        : () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Поиск в чате"
-              onPress={() => handleOpenSearch()}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.65 : 1,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-              })}
-            >
-              <Feather name="search" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ),
+      headerRight: undefined,
     });
   }, [
     avatarUri,
     clearTelegramSelection,
     colors.accent,
-    colors.textPrimary,
-    handleOpenSearch,
-    isSearchMode,
     openTelegramChatProfile,
-    routeChatType,
-    telegramChatId,
     headerChromeStyles,
     headerSubtitle,
     headerTitle,
@@ -799,15 +753,9 @@ export function TelegramChatScreen() {
 
   useEffect(() => {
     if (!startSearch) return;
-    setIsSearchMode(true);
-    const task = InteractionManager.runAfterInteractions(() => {
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-      });
-    });
+    handleOpenSearch();
     navigation.setParams({ startSearch: undefined });
-    return () => task.cancel();
-  }, [navigation, startSearch]);
+  }, [handleOpenSearch, navigation, startSearch]);
 
   useEffect(() => {
     return () => {
@@ -2646,21 +2594,16 @@ export function TelegramChatScreen() {
       >
         {Platform.OS === 'android' ? (
           <CustomAndroidChatHeader
-            title={title || 'Telegram'}
+            title={headerTitle}
             subtitle={headerSubtitle ?? (isGroupChat ? formatGroupSubtitle(undefined) : formatPresence(undefined, undefined))}
             avatarUrl={avatarUri}
             isGroupChat={isGroupChat}
             peerId={routeChatType === 'private' ? telegramChatId : null}
-            currentUserId={null}
             chatId={telegramChatId}
-            members={null}
             navigation={navigation}
             telegramTitleOnly
             titleNavDisabled={telegramSelectionMode}
             onTitlePress={openTelegramChatProfile}
-            onSearchPress={
-              telegramSelectionMode || isSearchMode ? undefined : handleOpenSearch
-            }
           />
         ) : null}
 
@@ -2756,10 +2699,10 @@ export function TelegramChatScreen() {
                     getChatDayKey(info.item.dateMs) !== getChatDayKey(olderComparableDateMs));
                 return (
                   <View>
+                    {renderMessageRow(info)}
                     {showDaySeparator ? (
                       <ChatDaySeparator label={formatChatDayLabel(info.item.dateMs)} />
                     ) : null}
-                    {renderMessageRow(info)}
                   </View>
                 );
               }}

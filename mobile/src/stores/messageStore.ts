@@ -1,4 +1,8 @@
 import { create } from 'zustand';
+import {
+  insertChatMessageNewestFirst,
+  sortChatMessagesNewestFirst,
+} from '../utils/chatMessageOrder';
 import { filterHiddenMessages, locallyHiddenMessageStore } from './locallyHiddenMessageStore';
 import type { Message } from './types';
 
@@ -10,7 +14,7 @@ type MessageState = {
 type MessageActions = {
   setMessages: (chatId: string, messages: Message[]) => void;
   addMessage: (chatId: string, message: Message) => void;
-  /** Prepend message (for new/incoming messages with inverted list). */
+  /** Insert message maintaining newest-first order (for inverted chat list). */
   prependMessage: (chatId: string, message: Message) => void;
   updateMessage: (
     chatId: string,
@@ -50,8 +54,9 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
         );
         return !likelyServerTwin;
       });
-      const merged =
-        pendingLocalOnly.length > 0 ? [...pendingLocalOnly, ...filteredIncoming] : filteredIncoming;
+      const merged = sortChatMessagesNewestFirst(
+        pendingLocalOnly.length > 0 ? [...pendingLocalOnly, ...filteredIncoming] : filteredIncoming,
+      );
       return {
         messagesByChatId: { ...state.messagesByChatId, [chatId]: merged },
       };
@@ -65,7 +70,7 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
       return {
         messagesByChatId: {
           ...state.messagesByChatId,
-          [chatId]: [...existing, message],
+          [chatId]: insertChatMessageNewestFirst(existing, message),
         },
       };
     }),
@@ -78,7 +83,7 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
       return {
         messagesByChatId: {
           ...state.messagesByChatId,
-          [chatId]: [message, ...existing],
+          [chatId]: insertChatMessageNewestFirst(existing, message),
         },
       };
     }),
@@ -88,14 +93,16 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
       const messages = state.messagesByChatId[chatId] ?? [];
       const index = messages.findIndex((m) => m.id === messageId);
       if (index === -1) return state;
-      
-      const nextMessages = [...messages];
-      nextMessages[index] = { ...messages[index], ...updates };
-      
+
+      const updated = { ...messages[index], ...updates };
+      const without = messages.filter(
+        (m) => m.id !== messageId && m.id !== updated.id,
+      );
+
       return {
         messagesByChatId: {
           ...state.messagesByChatId,
-          [chatId]: nextMessages,
+          [chatId]: insertChatMessageNewestFirst(without, updated),
         },
       };
     }),

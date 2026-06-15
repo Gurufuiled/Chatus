@@ -977,17 +977,13 @@ export function ChatScreen() {
     if (!WebSocketService.isConnected()) return;
 
     for (const message of messages) {
-      // Skip our own messages or deleted messages
       if (message.sender_id === currentUserId || message.is_deleted === 1) {
         continue;
       }
-      
-      // If we reach a message that is already read, we can safely stop.
-      // Since messages are sorted newest-first, all older messages from this user
-      // are also guaranteed to be read.
+
       if (message.status === 'read' || sentReadReceiptIdsRef.current.has(message.id)) {
         sentReadReceiptIdsRef.current.add(message.id);
-        break;
+        continue;
       }
 
       WebSocketService.sendEvent('ack', {
@@ -2880,9 +2876,7 @@ export function ChatScreen() {
             avatarUrl={avatarUrl}
             isGroupChat={isGroupChat}
             peerId={peerId}
-            currentUserId={currentUserId}
             chatId={chatId}
-            members={currentChat?.members ?? null}
             navigation={navigation}
           />
         ) : null}

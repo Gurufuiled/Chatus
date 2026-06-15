@@ -593,10 +593,11 @@ function wrapChatRowWithDaySeparator(
   dayLabel: string,
 ): React.ReactElement {
   if (!showDaySeparator) return row;
+  // Inverted FlatList flips each row — separator after message renders above it visually.
   return (
     <>
-      <ChatDaySeparator label={dayLabel} />
       {row}
+      <ChatDaySeparator label={dayLabel} />
     </>
   );
 }

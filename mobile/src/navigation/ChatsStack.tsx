@@ -37,6 +37,7 @@ import { authStore } from '../stores/authStore';
 import { chatStore } from '../stores/chatStore';
 import type { Chat } from '../stores/types';
 import { uiStore } from '../stores/uiStore';
+import { ChatPillHeaderTitle } from '../components/ChatPillHeaderTitle';
 import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
@@ -337,36 +338,15 @@ export function ChatsStack() {
             headerShown: Platform.OS !== 'android',
             title,
             headerBackTitle: 'Назад',
-            headerTitleAlign: 'left',
+            headerTitleAlign: 'center',
             headerTitle: () => (
-              <View style={stackStyles.chatHeaderTitleRoot}>
-                <Pressable
-                  onPress={isGroupChat || peerId ? openProfile : undefined}
-                  disabled={!isGroupChat && !peerId}
-                  style={({ pressed }) => [
-                    stackStyles.headerTitlePressable,
-                    stackStyles.chatHeaderTitlePressableFlex,
-                    pressed && (isGroupChat || peerId) && stackStyles.headerPressablePressed,
-                  ]}
-                >
-                  <ChatHeaderTitle
-                    title={title}
-                    subtitle={subtitle}
-                    avatarUrl={avatarUrl}
-                    stackStyles={stackStyles}
-                  />
-                </Pressable>
-                {isGroupChat && chat?.members && chat.members.length > 0 ? (
-                  <GroupChatHeaderMembers
-                    members={chat.members}
-                    currentUserId={currentUserId}
-                    chatId={route.params.chatId}
-                    navigation={navigation}
-                    stackStyles={stackStyles}
-                    headerBorderColor={colors.toolbar}
-                  />
-                ) : null}
-              </View>
+              <ChatPillHeaderTitle
+                title={title}
+                subtitle={subtitle}
+                avatarUrl={avatarUrl}
+                onPress={isGroupChat || peerId ? openProfile : undefined}
+                accessibilityHint="Открывает профиль"
+              />
             ),
           };
         }}
@@ -380,7 +360,7 @@ export function ChatsStack() {
           headerShown: Platform.OS !== 'android',
           title: route.params.title ?? 'Telegram',
           headerBackTitle: 'Назад',
-          headerTitleAlign: 'left',
+          headerTitleAlign: 'center',
         })}
       />
 

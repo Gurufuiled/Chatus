@@ -1275,9 +1275,7 @@ export function ChannelDiscussionScreen() {
             avatarUrl={null}
             isGroupChat={false}
             peerId={null}
-            currentUserId={null}
             chatId={channelId}
-            members={null}
             navigation={navigation as any}
           />
         ) : null}
