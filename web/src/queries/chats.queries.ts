@@ -3,6 +3,7 @@ import {
   deleteChatForBoth,
   leaveChat,
   listChats,
+  createOrFindPrivateChat,
 } from '@/services/chatService';
 import type { ChatSummary } from '@/types/chat';
 import { useAuthUiStore } from '@/stores/authUiStore';
@@ -107,6 +108,24 @@ export function useDeleteChatMutation() {
       queryClient.setQueryData<ChatSummary[]>(chatsQueryKey, (old) =>
         old?.filter((chat) => chat.id !== chatId),
       );
+    },
+  });
+}
+
+export function useCreatePrivateChatMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId: string) => createOrFindPrivateChat(userId),
+    onSuccess: (chat) => {
+      queryClient.setQueryData<ChatSummary[]>(chatsQueryKey, (old) => {
+        if (!old) return sortChats([chat]);
+        const exists = old.some((item) => item.id === chat.id);
+        if (exists) {
+          return sortChats(old.map((item) => (item.id === chat.id ? { ...item, ...chat } : item)));
+        }
+        return sortChats([chat, ...old]);
+      });
     },
   });
 }

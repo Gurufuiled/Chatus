@@ -19,3 +19,13 @@ export async function leaveChat(chatId: string): Promise<{ ok: true }> {
     body: JSON.stringify({}),
   });
 }
+
+export async function createOrFindPrivateChat(userId: string): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>('/chats', {
+    method: 'POST',
+    body: JSON.stringify({
+      chat_type: 'private',
+      member_ids: [userId],
+    }),
+  });
+}

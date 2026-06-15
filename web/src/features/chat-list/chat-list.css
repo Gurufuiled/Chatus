@@ -99,3 +99,57 @@
   margin-right: 4px;
   font-size: 12px;
 }
+
+.chat-list-section-title {
+  margin: 0;
+  padding: 10px 12px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.user-search-result {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.user-search-result:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.user-search-result:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.user-search-result__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-search-result__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-search-result__subtitle {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

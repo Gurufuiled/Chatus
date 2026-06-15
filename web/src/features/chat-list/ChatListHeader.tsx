@@ -6,6 +6,8 @@ import './chat-list.css';
 export function ChatListHeader() {
   const menuRef = useRef<HTMLButtonElement>(null);
   const isOpen = useChatUiStore((s) => s.isSettingsDrawerOpen);
+  const searchQuery = useChatUiStore((s) => s.searchQuery);
+  const setSearchQuery = useChatUiStore((s) => s.setSearchQuery);
   const setSettingsDrawerOpen = useChatUiStore((s) => s.setSettingsDrawerOpen);
   const setMenuAnchorRect = useChatUiStore((s) => s.setMenuAnchorRect);
 
@@ -37,8 +39,9 @@ export function ChatListHeader() {
         className="chat-list-header__search"
         type="search"
         placeholder="Поиск"
-        aria-label="Поиск чатов"
-        onChange={(e) => useChatUiStore.getState().setSearchQuery(e.target.value)}
+        aria-label="Поиск чатов и пользователей"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
       />
     </header>
   );
