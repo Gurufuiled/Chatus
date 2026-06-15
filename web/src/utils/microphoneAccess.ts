@@ -15,7 +15,7 @@ export function formatMicrophoneAccessError(err: unknown): string {
   }
   if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
     if (isEmbeddedInIframe()) {
-      return 'Нет доступа к микрофону: Loginus должен добавить allow="microphone" в iframe ChatUs';
+      return 'Нет доступа к микрофону. Если запрос не появлялся — Loginus должен добавить allow="microphone" в iframe ChatUs';
     }
     return 'Доступ к микрофону запрещён — разрешите в настройках браузера';
   }

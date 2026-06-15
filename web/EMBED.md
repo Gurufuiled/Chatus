@@ -235,6 +235,7 @@ Content-Type: application/json
 | От ChatUs → Loginus | Когда |
 |---------------------|-------|
 | `loginus:ready` | UI загружен, exchange успешен |
+| `loginus:featureRequired` | `{ feature: 'microphone' }` — родитель должен добавить `microphone` в `allow` iframe |
 | `loginus:openLink` | Открыть внешнюю ссылку вне iframe |
 | `loginus:data` | В будущем: unread count и т.п. |
 | `loginus:close` / `loginus:expand` | По необходимости (UX Loginus дорабатывается отдельно) |
