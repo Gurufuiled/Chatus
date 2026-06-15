@@ -117,10 +117,7 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
         <div
           ref={bodyRef}
           className="conversation-pane__body"
-          style={{
-            ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})`,
-            ['--chat-wallpaper-base' as string]: '#ddece8',
-          }}
+          style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
         >
           <MessageList chatId={chatId} />
           <MessageSelectionToolbar
