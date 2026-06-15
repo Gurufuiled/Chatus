@@ -1,13 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { useMessageContextStore } from '@/stores/messageContextStore';
 import { useComposerStore } from '@/stores/composerStore';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useChatsQuery } from '@/queries/chats.queries';
-import { useMessagesQuery, usePinMessageMutation, useDeleteMessageMutation } from '@/queries/messages.queries';
+import { usePinMessageMutation, useDeleteMessageMutation, useMessagesQuery } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 import { canForwardMessage } from '@/utils/forwardPayload';
+import { useFloatingMenuPosition } from '@/hooks/useFloatingMenuPosition';
 import type { MappedMessage } from '@/types/message';
 import './message-context-menu.css';
 
@@ -15,6 +17,7 @@ const REACTIONS = ['❤️', '🥳', '🥰', '👍', '😢', '👎', '😭'];
 
 interface MessageContextMenuProps {
   chatId: string;
+  boundsRef?: RefObject<HTMLElement | null>;
   onForward: (messageIds: string[]) => void;
 }
 
@@ -102,7 +105,7 @@ function DeleteIcon() {
   );
 }
 
-export function MessageContextMenu({ chatId, onForward }: MessageContextMenuProps) {
+export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const menuChatId = useMessageContextStore((s) => s.chatId);
   const messageId = useMessageContextStore((s) => s.messageId);
@@ -131,6 +134,14 @@ export function MessageContextMenu({ chatId, onForward }: MessageContextMenuProp
   const canForward = message ? canForwardMessage(message) : false;
   const isPinned = chat?.pinned_message_id === messageId;
 
+  const { left, top, maxHeight, ready } = useFloatingMenuPosition({
+    open,
+    anchor: position,
+    menuRef: ref,
+    boundsRef,
+    deps: [mode, messageId, copyableText, isOwnMessage, isPinned],
+  });
+
   useEffect(() => {
     if (!open) return;
 
@@ -143,11 +154,6 @@ export function MessageContextMenu({ chatId, onForward }: MessageContextMenuProp
   }, [open, closeMessageMenu]);
 
   if (!open || !position || !message) return null;
-
-  const panelWidth = mode === 'delete' ? 280 : 248;
-  const panelHeight = mode === 'delete' ? 120 : 320;
-  const left = Math.min(position.x, window.innerWidth - panelWidth - 12);
-  const top = Math.min(position.y, window.innerHeight - panelHeight - 12);
 
   const handleReply = () => {
     setReply(chatId, message.id);
@@ -265,11 +271,11 @@ export function MessageContextMenu({ chatId, onForward }: MessageContextMenuProp
         },
       ];
 
-  return (
+  const menu = (
     <div
       ref={ref}
-      className="message-context-menu"
-      style={{ left, top }}
+      className={`message-context-menu${ready ? '' : ' message-context-menu--measuring'}`}
+      style={{ left, top, maxHeight }}
       role="menu"
     >
       {mode === 'actions' ? (
@@ -338,4 +344,6 @@ export function MessageContextMenu({ chatId, onForward }: MessageContextMenuProp
       )}
     </div>
   );
+
+  return createPortal(menu, document.body);
 }

@@ -1,4 +1,7 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useFloatingMenuPosition } from '@/hooks/useFloatingMenuPosition';
+import type { ReactNode } from 'react';
 
 export interface ContextMenuItem {
   id: string;
@@ -20,6 +23,14 @@ interface ContextMenuProps {
 
 export function ContextMenu({ open, x, y, items, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const anchor = open ? { x, y } : null;
+
+  const { left, top, maxHeight, ready } = useFloatingMenuPosition({
+    open,
+    anchor,
+    menuRef: ref,
+    deps: [items.length, items.map((item) => item.id).join(',')],
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -41,16 +52,11 @@ export function ContextMenu({ open, x, y, items, onClose }: ContextMenuProps) {
 
   if (!open) return null;
 
-  const maxX = window.innerWidth - 220;
-  const maxY = window.innerHeight - items.length * 40 - 16;
-  const left = Math.min(x, maxX);
-  const top = Math.min(y, maxY);
-
-  return (
+  const menu = (
     <div
       ref={ref}
-      className="context-menu"
-      style={{ left, top }}
+      className={`context-menu${ready ? '' : ' context-menu--measuring'}`}
+      style={{ left, top, maxHeight }}
       role="menu"
     >
       {items.map((item) => (
@@ -72,4 +78,6 @@ export function ContextMenu({ open, x, y, items, onClose }: ContextMenuProps) {
       ))}
     </div>
   );
+
+  return createPortal(menu, document.body);
 }

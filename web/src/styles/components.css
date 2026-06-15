@@ -2,11 +2,21 @@
   position: fixed;
   z-index: 1000;
   min-width: 200px;
+  max-width: min(280px, calc(100vw - 16px));
   padding: 6px 0;
   background: var(--color-surface);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-menu);
   border: 1px solid var(--color-border);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.context-menu--measuring {
+  visibility: hidden;
+  pointer-events: none;
+  max-height: none !important;
 }
 
 .context-menu__item {

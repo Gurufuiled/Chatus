@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
 import {
@@ -34,6 +34,7 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
   const deleteMutation = useDeleteMessageMutation();
   const exitSelection = useSelectionStore((s) => s.exitSelection);
   const markedRef = useRef<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const chat = chats?.find((c) => c.id === chatId);
 
   const [forwardMessageIds, setForwardMessageIds] = useState<string[]>([]);
@@ -114,8 +115,9 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
       </div>
       <ConversationDropZone chatId={chatId} disabled={messagesLoading}>
         <div
+          ref={bodyRef}
           className="conversation-pane__body"
-          style={{ backgroundImage: `url(${wallpaperUrl})` }}
+          style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
         >
           <MessageList chatId={chatId} />
           <MessageSelectionToolbar
@@ -126,7 +128,11 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
           <MessageComposer chatId={chatId} disabled={messagesLoading} />
         </div>
       </ConversationDropZone>
-      <MessageContextMenu chatId={chatId} onForward={handleForwardRequest} />
+      <MessageContextMenu
+        chatId={chatId}
+        boundsRef={bodyRef as RefObject<HTMLElement | null>}
+        onForward={handleForwardRequest}
+      />
       <ForwardDialog
         open={forwardMessageIds.length > 0}
         sourceChatId={chatId}

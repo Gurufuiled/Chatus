@@ -68,9 +68,13 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background-color: #c5d9a8;
-  background-size: 420px;
-  background-repeat: repeat;
+  background-color: #c8dbaa;
+  background-image:
+    var(--chat-wallpaper-pattern),
+    linear-gradient(165deg, #e3f0d4 0%, #d4e6be 38%, #c5dba8 72%, #b8cf9a 100%);
+  background-size: auto, 400px 400px;
+  background-repeat: no-repeat, repeat;
+  background-attachment: local, local;
 }
 
 .message-list {
