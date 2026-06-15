@@ -7,6 +7,8 @@ import { ChatPillHeaderTitle } from './ChatPillHeaderTitle';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 
+export const ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT = 56;
+
 interface CustomAndroidChatHeaderProps {
   title: string;
   subtitle?: string;
@@ -20,6 +22,8 @@ interface CustomAndroidChatHeaderProps {
   /** Telegram chat: never fall back to Chatus profile routes when `onTitlePress` is unset. */
   telegramTitleOnly?: boolean;
   titleNavDisabled?: boolean;
+  floating?: boolean;
+  blurTargetRef?: React.RefObject<View | null>;
 }
 
 export function CustomAndroidChatHeader({
@@ -33,6 +37,8 @@ export function CustomAndroidChatHeader({
   onTitlePress,
   telegramTitleOnly = false,
   titleNavDisabled = false,
+  floating = false,
+  blurTargetRef,
 }: CustomAndroidChatHeaderProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -51,7 +57,13 @@ export function CustomAndroidChatHeader({
     : onTitlePress != null || isGroupChat || !!peerId;
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.toolbar, paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.root,
+        floating ? styles.rootFloating : { backgroundColor: colors.toolbar },
+        { paddingTop: insets.top },
+      ]}
+    >
       <View style={styles.toolbar}>
         <Pressable
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
@@ -66,6 +78,7 @@ export function CustomAndroidChatHeader({
             title={title}
             subtitle={subtitle}
             avatarUrl={avatarUrl}
+            blurTargetRef={blurTargetRef}
             onPress={
               telegramTitleOnly
                 ? onTitlePress
@@ -86,8 +99,16 @@ const styles = StyleSheet.create({
     zIndex: 10,
     elevation: 0,
   },
+  rootFloating: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    elevation: 10,
+    backgroundColor: 'transparent',
+  },
   toolbar: {
-    height: 56,
+    height: ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     paddingRight: 16,

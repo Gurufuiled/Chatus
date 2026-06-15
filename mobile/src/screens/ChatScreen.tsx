@@ -73,7 +73,10 @@ import {
   useVideoNotePlayer,
 } from '../components/VideoNoteBubble';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
-import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import {
+  ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
+  CustomAndroidChatHeader,
+} from '../components/CustomAndroidChatHeader';
 import { formatPresence, formatGroupSubtitle } from '../navigation/ChatsStack';
 
 import {
@@ -2878,6 +2881,8 @@ export function ChatScreen() {
             peerId={peerId}
             chatId={chatId}
             navigation={navigation}
+            floating
+            blurTargetRef={blurTargetRef}
           />
         ) : null}
 
@@ -2887,6 +2892,9 @@ export function ChatScreen() {
         style={[styles.chatContentLayer, { backgroundColor: chatTheme.canvasColor }]}
       >
         <ChatBackgroundPattern themeId={activeThemeId} />
+        {Platform.OS === 'android' ? (
+          <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
+        ) : null}
         <ChatTopBanners
           selectionMode={selectionMode}
           selectedCount={selectedMessageIds.length}

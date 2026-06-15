@@ -33,7 +33,10 @@ import { ChatScrollToBottomButton } from '../components/ChatScrollToBottomButton
 import { ChatTopBanners } from '../components/ChatTopBanners';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
 import { ChatPillHeaderTitle } from '../components/ChatPillHeaderTitle';
-import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import {
+  ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
+  CustomAndroidChatHeader,
+} from '../components/CustomAndroidChatHeader';
 import { formatPresence, formatGroupSubtitle } from '../navigation/ChatsStack';
 import { TelegramForwardSheet } from '../components/TelegramForwardSheet';
 import { FileBubble } from '../components/FileBubble';
@@ -2604,6 +2607,8 @@ export function TelegramChatScreen() {
             telegramTitleOnly
             titleNavDisabled={telegramSelectionMode}
             onTitlePress={openTelegramChatProfile}
+            floating
+            blurTargetRef={blurTargetRef}
           />
         ) : null}
 
@@ -2612,6 +2617,9 @@ export function TelegramChatScreen() {
           <View style={styles.wallpaperLayer} pointerEvents="none">
             <ChatBackgroundPattern themeId={wallpaperThemeId} />
           </View>
+          {Platform.OS === 'android' ? (
+            <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
+          ) : null}
           <ChatTopBanners
             selectionMode={telegramSelectionMode}
             selectedCount={selectedTelegramMessageIds.length}

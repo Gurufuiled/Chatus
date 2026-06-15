@@ -587,9 +587,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 24,
     right: 24,
-    top: '57%',
+    top: '66%',
     alignItems: 'center',
-    gap: 16,
+    gap: 14,
   },
   privacyRow: {
     flexDirection: 'row',

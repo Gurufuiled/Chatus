@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { assertGradleVersionMatchesAppJson } from './assertGradleVersionMatchesAppJson.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const mobileRoot = path.join(__dirname, '..');
@@ -53,6 +54,8 @@ if (/^(https?:\/\/)?(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.0\.0\.1|loca
   );
   process.exit(1);
 }
+
+assertGradleVersionMatchesAppJson();
 
 const isWin = process.platform === 'win32';
 const gradle = isWin ? path.join(androidDir, 'gradlew.bat') : path.join(androidDir, 'gradlew');
