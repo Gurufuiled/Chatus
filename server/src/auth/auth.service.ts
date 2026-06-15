@@ -209,6 +209,7 @@ export class AuthService {
       phone?: string;
       phone_number?: string;
       aud?: string;
+      appSlug?: string;
       time?: number;
     };
 
@@ -225,11 +226,17 @@ export class AuthService {
       throw new UnauthorizedException('Invalid initData audience');
     }
 
-    if (typeof payload.time === 'number') {
-      const ageSec = Math.floor(Date.now() / 1000) - payload.time;
-      if (ageSec > 300 || ageSec < -60) {
-        throw new UnauthorizedException('initData expired or invalid time');
-      }
+    const expectedAppSlug = process.env.LOGINUS_EMBEDDED_APP_SLUG;
+    if (expectedAppSlug && payload.appSlug !== expectedAppSlug) {
+      throw new UnauthorizedException('Invalid initData appSlug');
+    }
+
+    if (typeof payload.time !== 'number') {
+      throw new UnauthorizedException('initData missing time');
+    }
+    const ageSec = Math.floor(Date.now() / 1000) - payload.time;
+    if (ageSec > 300 || ageSec < -60) {
+      throw new UnauthorizedException('initData expired or invalid time');
     }
 
     const loginusId = payload.sub ?? payload.userId;

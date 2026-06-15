@@ -11,9 +11,8 @@ import type { Response } from 'express';
 import { AppModule } from './app.module';
 import { SnakeCaseInterceptor } from './common';
 
-/** CSP for ChatUs embed iframe — must match web/EMBED.md §10 */
-const EMBED_FRAME_ANCESTORS_CSP =
-  'frame-ancestors https://id.startapus.com https://loginus.startapus.com https://*.startapus.com';
+/** CSP for ChatUs embed iframe — must match Loginus embedded_apps registration */
+const EMBED_FRAME_ANCESTORS_CSP = 'frame-ancestors https://id.startapus.com';
 
 function setEmbedSecurityHeaders(res: Response) {
   res.setHeader('Content-Security-Policy', EMBED_FRAME_ANCESTORS_CSP);
