@@ -85,6 +85,10 @@
   }
 
   .message-composer__panel {
+    border-radius: var(--radius-full);
+  }
+
+  .message-composer__row {
     padding: 4px 6px;
   }
 

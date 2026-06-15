@@ -226,19 +226,25 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 12px 6px;
-  padding: 6px 8px 6px 0;
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--shadow-sm);
+  padding: 8px 6px 6px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .composer-reply-preview__bar {
   width: 3px;
   align-self: stretch;
+  min-height: 32px;
   border-radius: 2px;
   background: var(--color-accent);
-  margin-left: 8px;
+  margin-left: 10px;
+}
+
+.composer-reply-preview--own .composer-reply-preview__bar {
+  background: #f5a623;
+}
+
+.composer-reply-preview--own .composer-reply-preview__label {
+  color: #f5a623;
 }
 
 .composer-reply-preview__body {
@@ -430,13 +436,28 @@
 .message-composer__panel {
   flex: 1;
   display: flex;
+  flex-direction: column;
+  min-height: 44px;
+  border-radius: var(--radius-full);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.message-composer__panel--with-reply {
+  border-radius: var(--radius-lg);
+}
+
+.message-composer__panel:focus-within {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.message-composer__row {
+  display: flex;
   align-items: flex-end;
   gap: 2px;
   min-height: 44px;
   padding: 4px 6px 4px 4px;
-  border-radius: var(--radius-full);
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .message-composer__icon {
@@ -459,6 +480,13 @@
   font-size: 15px;
   line-height: 1.35;
   outline: none;
+  box-shadow: none;
+}
+
+.message-composer__input:focus,
+.message-composer__input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .message-composer__input::placeholder {

@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ChatListHeader } from './ChatListHeader';
 import { ChatListItem } from './ChatListItem';
 import { UserSearchResultItem } from './UserSearchResultItem';
+import { DeleteIcon, MuteIcon, PinIcon } from './ChatListContextMenuIcons';
 import type { AuthUser } from '@/types/auth';
 import './chat-list.css';
 
@@ -109,28 +110,32 @@ export function ChatListColumn({ activeChatId }: ChatListColumnProps) {
   const menuItems = menuChat
     ? [
         {
-          id: 'mute',
-          label: menuChat.is_muted ? 'Unmute' : 'Mute',
-          onSelect: () =>
-            muteMutation.mutate({ chatId: menuChat.id, muted: !menuChat.is_muted }),
-        },
-        {
           id: 'pin',
-          label: menuChat.is_pinned ? 'Unpin' : 'Pin',
+          label: menuChat.is_pinned ? 'Открепить' : 'Закрепить',
+          icon: <PinIcon pinned={menuChat.is_pinned} />,
           onSelect: () =>
             pinMutation.mutate({ chatId: menuChat.id, pinned: !menuChat.is_pinned }),
         },
         {
+          id: 'mute',
+          label: menuChat.is_muted ? 'Включить уведомления' : 'Отключить уведомления',
+          icon: <MuteIcon muted={menuChat.is_muted} />,
+          onSelect: () =>
+            muteMutation.mutate({ chatId: menuChat.id, muted: !menuChat.is_muted }),
+        },
+        {
           id: 'delete-me',
-          label: 'Delete for me',
+          label: 'Удалить у меня',
+          icon: <DeleteIcon />,
           danger: true,
           disabled: menuChat.chat_type === 'private',
           onSelect: () => deleteMutation.mutate({ chatId: menuChat.id, scope: 'me' }),
         },
         {
           id: 'delete-all',
-          label: 'Delete for both',
-          danger: true,
+          label: 'Удалить у всех',
+          icon: <DeleteIcon />,
+          dangerStrong: true,
           onSelect: () => deleteMutation.mutate({ chatId: menuChat.id, scope: 'all' }),
         },
       ]

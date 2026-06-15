@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 export interface ContextMenuItem {
   id: string;
   label: string;
+  icon?: ReactNode;
   danger?: boolean;
+  dangerStrong?: boolean;
   disabled?: boolean;
   onSelect: () => void;
 }
@@ -56,7 +58,7 @@ export function ContextMenu({ open, x, y, items, onClose }: ContextMenuProps) {
           key={item.id}
           type="button"
           role="menuitem"
-          className={`context-menu__item${item.danger ? ' context-menu__item--danger' : ''}`}
+          className={`context-menu__item${item.danger ? ' context-menu__item--danger' : ''}${item.dangerStrong ? ' context-menu__item--danger-strong' : ''}`}
           disabled={item.disabled}
           onClick={() => {
             if (item.disabled) return;
@@ -64,7 +66,8 @@ export function ContextMenu({ open, x, y, items, onClose }: ContextMenuProps) {
             onClose();
           }}
         >
-          {item.label}
+          {item.icon ? <span className="context-menu__icon">{item.icon}</span> : null}
+          <span className="context-menu__label">{item.label}</span>
         </button>
       ))}
     </div>
