@@ -4,6 +4,10 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   base: '/embed/',
+  build: {
+    outDir: resolve(__dirname, '../server/public/embed'),
+    emptyOutDir: true,
+  },
   plugins: [react()],
   resolve: {
     alias: {
