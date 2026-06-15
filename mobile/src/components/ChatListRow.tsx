@@ -51,7 +51,7 @@ function getStatusColor(status: string, accent: string, iconMuted: string) {
 type ChatListRowProps = {
   chat: Chat;
   currentUserId: string | null;
-  onPress: (chatId: string, chatTitle: string) => void;
+  onPress: (chat: Chat, chatTitle: string) => void;
   onLongPress: (chat: Chat, event: GestureResponderEvent) => void;
 };
 
@@ -118,7 +118,7 @@ export const ChatListRow = React.memo(
     return (
       <Pressable
         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={() => onPress(chat.id, title)}
+        onPress={() => onPress(chat, title)}
         onLongPress={(event) => onLongPress(chat, event)}
         delayLongPress={220}
       >

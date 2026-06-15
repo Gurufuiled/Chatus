@@ -442,6 +442,20 @@ export function ChatListScreen() {
     }
   }, [activeMenuListItem, closeMenu]);
 
+  const handleChatLongPress = React.useCallback((chat: Chat, event: GestureResponderEvent) => {
+    handleOpenMenu(chat.id, event);
+  }, [handleOpenMenu]);
+
+  const handleTelegramLongPress = React.useCallback((row: import('../stores/telegramAccountStore').TelegramDialogRow, event: any) => {
+    handleOpenMenu(row.id, event);
+  }, [handleOpenMenu]);
+
+  const noopLongPress = React.useCallback(() => undefined, []);
+
+  const onContactPress = React.useCallback((user: ApiUser) => {
+    void handleStartChat(user);
+  }, [handleStartChat]);
+
   const renderItem = React.useCallback(
     ({ item }: { item: ChatListItem }) => {
       if (item.type === 'header') {
@@ -453,7 +467,7 @@ export function ChatListScreen() {
           <TelegramDialogListRow
             item={item.row}
             navigation={navigation}
-            onLongPress={(row, event) => handleOpenMenu(row.id, event as any)}
+            onLongPress={handleTelegramLongPress}
           />
         );
       }
@@ -463,9 +477,7 @@ export function ChatListScreen() {
           <ContactResultRow
             user={item.user}
             disabled={creatingChatUserIds.has(item.user.id)}
-            onPress={(user) => {
-              void handleStartChat(user);
-            }}
+            onPress={onContactPress}
             listStyles={listStyles}
             accent={themeColors.accent}
           />
@@ -477,8 +489,8 @@ export function ChatListScreen() {
         <ChatListRow
           chat={chat}
           currentUserId={currentUserId}
-          onPress={(_, chatTitle) => handleOpenChat(chat, chatTitle)}
-          onLongPress={item.type === 'chat' ? (c, event) => handleOpenMenu(c.id, event as any) : () => undefined}
+          onPress={handleOpenChat}
+          onLongPress={item.type === 'chat' ? handleChatLongPress : noopLongPress}
         />
       );
     },
@@ -486,8 +498,10 @@ export function ChatListScreen() {
       creatingChatUserIds,
       currentUserId,
       handleOpenChat,
-      handleOpenMenu,
-      handleStartChat,
+      handleChatLongPress,
+      handleTelegramLongPress,
+      noopLongPress,
+      onContactPress,
       listStyles,
       navigation,
       themeColors.accent,
