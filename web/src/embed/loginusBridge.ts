@@ -44,7 +44,10 @@ function isAllowedOrigin(origin: string): boolean {
   });
 }
 
+let parentTargetOrigin: string | null = null;
+
 function getParentTargetOrigin(): string {
+  if (parentTargetOrigin) return parentTargetOrigin;
   const allowed = getAllowedOrigins();
   if (allowed.length === 1 && allowed[0].startsWith('http')) {
     return allowed[0];
@@ -64,6 +67,7 @@ export function listenForLoginusInit(onInit: InitDataHandler): () => void {
       return;
     }
 
+    parentTargetOrigin = event.origin;
     onInit(data.initData);
   };
 
