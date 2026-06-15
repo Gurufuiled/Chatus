@@ -16,6 +16,13 @@ type WsHandlers = {
 
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 30000;
+const REACTION_ACK_TIMEOUT_MS = 3000;
+
+type ReactionWaiter = {
+  resolve: () => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 class WsClient {
   private socket: WebSocket | null = null;
@@ -23,6 +30,7 @@ class WsClient {
   private reconnectAttempt = 0;
   private manualDisconnect = false;
   private handlers: WsHandlers = {};
+  private reactionWaiters = new Map<string, Set<ReactionWaiter>>();
 
   setHandlers(handlers: WsHandlers) {
     this.handlers = { ...this.handlers, ...handlers };
@@ -141,6 +149,38 @@ class WsClient {
     });
   }
 
+  waitForReactionUpdate(messageId: string, timeoutMs = REACTION_ACK_TIMEOUT_MS): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.removeReactionWaiter(messageId, entry);
+        reject(new Error('Реакция не подтверждена сервером'));
+      }, timeoutMs);
+
+      const entry: ReactionWaiter = { resolve, reject, timer };
+      const waiters = this.reactionWaiters.get(messageId) ?? new Set();
+      waiters.add(entry);
+      this.reactionWaiters.set(messageId, waiters);
+    });
+  }
+
+  private removeReactionWaiter(messageId: string, entry: ReactionWaiter) {
+    clearTimeout(entry.timer);
+    const waiters = this.reactionWaiters.get(messageId);
+    if (!waiters) return;
+    waiters.delete(entry);
+    if (!waiters.size) this.reactionWaiters.delete(messageId);
+  }
+
+  private fulfillReactionWaiters(messageId: string) {
+    const waiters = this.reactionWaiters.get(messageId);
+    if (!waiters) return;
+    for (const entry of waiters) {
+      clearTimeout(entry.timer);
+      entry.resolve();
+    }
+    this.reactionWaiters.delete(messageId);
+  }
+
   private getWsUrl(token: string) {
     const configured = import.meta.env.VITE_WS_URL as string | undefined;
     const base =
@@ -207,9 +247,14 @@ class WsClient {
       case 'chat_pinned_message_updated':
         this.handlers.onChatPinnedMessageUpdated?.(msg);
         break;
-      case 'message_reactions_updated':
+      case 'message_reactions_updated': {
+        const messageId = msg.message_id;
+        if (typeof messageId === 'string') {
+          this.fulfillReactionWaiters(messageId);
+        }
         this.handlers.onMessageReactionsUpdated?.(msg);
         break;
+      }
       default:
         break;
     }

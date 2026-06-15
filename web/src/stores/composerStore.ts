@@ -30,6 +30,12 @@ interface ComposerState {
   addPendingAttachment: (chatId: string, file: File, sendAsFile?: boolean) => void;
   removePendingAttachment: (chatId: string, id: string) => void;
   removePendingAttachmentsByIds: (chatId: string, ids: string[]) => void;
+  markPendingAttachmentUploaded: (
+    chatId: string,
+    id: string,
+    uploadedMedia: MessageMediaInput,
+    uploadedMsgType: MessageType,
+  ) => void;
   clearPendingAttachments: (chatId: string) => void;
   setReply: (chatId: string, messageId: string | null) => void;
   clearReply: () => void;
@@ -117,6 +123,19 @@ export const useComposerStore = create<ComposerState>((set, get) => ({
       return { pendingAttachments };
     });
   },
+  markPendingAttachmentUploaded: (chatId, id, uploadedMedia, uploadedMsgType) =>
+    set((state) => {
+      const list = state.pendingAttachments[chatId];
+      if (!list?.length) return state;
+      return {
+        pendingAttachments: {
+          ...state.pendingAttachments,
+          [chatId]: list.map((item) =>
+            item.id === id ? { ...item, uploadedMedia, uploadedMsgType } : item,
+          ),
+        },
+      };
+    }),
   clearPendingAttachments: (chatId) =>
     set((state) => {
       const list = state.pendingAttachments[chatId] ?? [];

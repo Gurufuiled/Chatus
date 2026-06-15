@@ -9,6 +9,7 @@ import { useMeQuery } from '@/queries/auth.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 import { canForwardMessage } from '@/utils/forwardPayload';
+import { isTempMessageId } from '@/features/conversation/messageFormatters';
 import { useFloatingMenuPosition } from '@/hooks/useFloatingMenuPosition';
 import type { MappedMessage } from '@/types/message';
 import './message-context-menu.css';
@@ -133,6 +134,11 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
   const isOwnMessage = !!me?.id && message?.sender_id === me.id;
   const copyableText = getCopyableText(message);
   const canForward = message ? canForwardMessage(message) : false;
+  const canReact = message
+    ? message.status !== 'sending' &&
+      message.status !== 'error' &&
+      !isTempMessageId(message.id)
+    : false;
   const isPinned = chat?.pinned_message_id === messageId;
 
   const { left, top, maxHeight, ready } = useFloatingMenuPosition({
@@ -209,7 +215,7 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
   };
 
   const handleReaction = (emoji: string) => {
-    if (toggleReaction.isPending) return;
+    if (!canReact || toggleReaction.isPending) return;
     toggleReaction.mutate(
       { chatId, messageId: message.id, emoji },
       { onSettled: () => closeMessageMenu() },
@@ -296,7 +302,7 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
                 type="button"
                 className="message-context-menu__reaction"
                 aria-label={`Реакция ${emoji}`}
-                disabled={toggleReaction.isPending}
+                disabled={!canReact || toggleReaction.isPending}
                 onClick={() => handleReaction(emoji)}
               >
                 {emoji}

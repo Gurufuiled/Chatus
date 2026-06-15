@@ -231,6 +231,7 @@ export function useToggleReactionMutation() {
       if (!sent) {
         throw new Error('WebSocket не подключён (реакции требуют WS)');
       }
+      await wsClient.waitForReactionUpdate(messageId);
       return { chatId, messageId, emoji };
     },
     onMutate: async ({ chatId, messageId, emoji }) => {

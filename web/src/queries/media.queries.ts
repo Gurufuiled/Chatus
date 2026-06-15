@@ -81,6 +81,7 @@ export function useSendPendingAttachmentsMutation() {
   const clearReply = useComposerStore((s) => s.clearReply);
   const clearPendingAttachments = useComposerStore((s) => s.clearPendingAttachments);
   const removePendingAttachmentsByIds = useComposerStore((s) => s.removePendingAttachmentsByIds);
+  const markPendingAttachmentUploaded = useComposerStore((s) => s.markPendingAttachmentUploaded);
   const clearDraft = useComposerStore((s) => s.clearDraft);
 
   return useMutation({
@@ -117,6 +118,7 @@ export function useSendPendingAttachmentsMutation() {
           });
           payload = buildMediaPayload(upload);
           msgType = inferred;
+          markPendingAttachmentUploaded(chatId, attachment.id, payload, msgType);
         }
 
         if (attachment.sendAsFile || msgType === 'file') {
@@ -208,7 +210,16 @@ export function useSendPendingAttachmentsMutation() {
       clearDraft(chatId);
       clearReply();
     },
-    onError: (err, { chatId }) => {
+    onError: (err, { chatId, attachments }) => {
+      const remaining = useComposerStore.getState().pendingAttachments[chatId]?.length ?? 0;
+      const sentCount = attachments.length - remaining;
+      if (sentCount > 0 && sentCount < attachments.length) {
+        setError(
+          chatId,
+          `Отправлено ${sentCount} из ${attachments.length}. Повторите отправку для оставшихся.`,
+        );
+        return;
+      }
       setError(chatId, err instanceof Error ? err.message : 'Не удалось отправить вложения');
     },
   });
