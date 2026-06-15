@@ -80,6 +80,7 @@ export function useSendPendingAttachmentsMutation() {
   const setError = useComposerStore((s) => s.setComposerError);
   const clearReply = useComposerStore((s) => s.clearReply);
   const clearPendingAttachments = useComposerStore((s) => s.clearPendingAttachments);
+  const removePendingAttachmentsByIds = useComposerStore((s) => s.removePendingAttachmentsByIds);
   const clearDraft = useComposerStore((s) => s.clearDraft);
 
   return useMutation({
@@ -96,68 +97,107 @@ export function useSendPendingAttachmentsMutation() {
       replyToId?: string | null;
       clientTempId?: string;
     }) => {
-      const albumMedia: MessageMediaInput[] = [];
-      const fileSends: { msgType: MessageType; media: MessageMediaInput; content?: string }[] = [];
+      type PreparedItem = {
+        attachmentId: string;
+        msgType: MessageType;
+        media: MessageMediaInput;
+        bucket: 'album' | 'file';
+        fileName: string;
+      };
+
+      const prepared: PreparedItem[] = [];
 
       for (const attachment of attachments) {
-        const { upload, msgType } = await prepareAndUpload(attachment.file, {
-          compressImages: !attachment.sendAsFile,
-          sendAsFile: attachment.sendAsFile,
-        });
-        const payload = buildMediaPayload(upload);
+        let payload = attachment.uploadedMedia;
+        let msgType = attachment.uploadedMsgType;
+        if (!payload || !msgType) {
+          const { upload, msgType: inferred } = await prepareAndUpload(attachment.file, {
+            compressImages: !attachment.sendAsFile,
+            sendAsFile: attachment.sendAsFile,
+          });
+          payload = buildMediaPayload(upload);
+          msgType = inferred;
+        }
+
         if (attachment.sendAsFile || msgType === 'file') {
-          fileSends.push({
+          prepared.push({
+            attachmentId: attachment.id,
             msgType,
             media: payload,
-            content: attachment.file.name,
+            bucket: 'file',
+            fileName: attachment.file.name,
           });
         } else if (msgType === 'image' || msgType === 'video') {
-          albumMedia.push({ ...payload, media_type: msgType });
+          prepared.push({
+            attachmentId: attachment.id,
+            msgType,
+            media: { ...payload, media_type: msgType },
+            bucket: 'album',
+            fileName: attachment.file.name,
+          });
         } else {
-          fileSends.push({ msgType, media: payload, content: attachment.file.name });
+          prepared.push({
+            attachmentId: attachment.id,
+            msgType,
+            media: payload,
+            bucket: 'file',
+            fileName: attachment.file.name,
+          });
         }
       }
+
+      const albumItems = prepared.filter((item) => item.bucket === 'album');
+      const fileItems = prepared.filter((item) => item.bucket === 'file');
+      const trimmedCaption = caption?.trim() || undefined;
 
       const tempId = clientTempId ?? crypto.randomUUID();
       let firstReplyToId = replyToId;
       let lastMessage = null;
 
-      if (albumMedia.length > 1) {
-        const msgType = albumMedia.some((m) => m.mime_type?.startsWith('video/'))
+      if (albumItems.length > 1) {
+        const msgType = albumItems.some((m) => m.media.mime_type?.startsWith('video/'))
           ? 'video'
           : 'image';
         lastMessage = await sendMedia.mutateAsync({
           chatId,
           msgType,
-          media: albumMedia,
-          content: caption ?? undefined,
+          media: albumItems.map((item) => item.media),
+          content: trimmedCaption,
           replyToId: firstReplyToId,
           clientTempId: tempId,
         });
+        removePendingAttachmentsByIds(
+          chatId,
+          albumItems.map((item) => item.attachmentId),
+        );
         firstReplyToId = undefined;
-      } else if (albumMedia.length === 1) {
-        const item = albumMedia[0];
-        const msgType = item.mime_type?.startsWith('video/') ? 'video' : 'image';
+      } else if (albumItems.length === 1) {
+        const item = albumItems[0];
+        const msgType = item.media.mime_type?.startsWith('video/') ? 'video' : 'image';
         lastMessage = await sendMedia.mutateAsync({
           chatId,
           msgType,
-          media: item,
-          content: caption ?? undefined,
+          media: item.media,
+          content: trimmedCaption,
           replyToId: firstReplyToId,
           clientTempId: tempId,
         });
+        removePendingAttachmentsByIds(chatId, [item.attachmentId]);
         firstReplyToId = undefined;
       }
 
-      for (const fileSend of fileSends) {
+      for (let index = 0; index < fileItems.length; index++) {
+        const fileSend = fileItems[index];
+        const useCaption = index === 0 && albumItems.length === 0 && trimmedCaption;
         lastMessage = await sendMedia.mutateAsync({
           chatId,
           msgType: fileSend.msgType,
           media: fileSend.media,
-          content: fileSend.content,
+          content: useCaption ? trimmedCaption : fileSend.fileName,
           replyToId: firstReplyToId,
           clientTempId: crypto.randomUUID(),
         });
+        removePendingAttachmentsByIds(chatId, [fileSend.attachmentId]);
         firstReplyToId = undefined;
       }
 

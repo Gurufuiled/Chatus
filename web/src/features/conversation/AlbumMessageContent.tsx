@@ -53,7 +53,7 @@ export function AlbumMessageContent({ media, msgType, onOpenAt }: AlbumMessageCo
         className="album-message__tile"
         style={style}
         aria-label="Открыть медиа"
-        onClick={() => openAt(index)}
+        onClick={() => openAt(showExtra ? visible.length : index)}
       >
         {src ? <img src={src} alt="" className="album-message__img" loading="lazy" /> : null}
         {kind === 'video' ? (

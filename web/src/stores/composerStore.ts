@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import type { MessageMediaInput } from '@/services/messageService';
+import type { MessageType } from '@/types/message';
 
 export type VoiceRecordingState = 'idle' | 'recording' | 'processing';
 
@@ -7,6 +9,8 @@ export interface PendingAttachment {
   file: File;
   previewUrl: string;
   sendAsFile: boolean;
+  uploadedMedia?: MessageMediaInput;
+  uploadedMsgType?: MessageType;
 }
 
 interface ComposerState {
@@ -25,6 +29,7 @@ interface ComposerState {
   clearDraft: (chatId: string) => void;
   addPendingAttachment: (chatId: string, file: File, sendAsFile?: boolean) => void;
   removePendingAttachment: (chatId: string, id: string) => void;
+  removePendingAttachmentsByIds: (chatId: string, ids: string[]) => void;
   clearPendingAttachments: (chatId: string) => void;
   setReply: (chatId: string, messageId: string | null) => void;
   clearReply: () => void;
@@ -67,23 +72,26 @@ export const useComposerStore = create<ComposerState>((set, get) => ({
       const { [chatId]: _removed, ...rest } = state.drafts;
       return { drafts: rest };
     }),
-  addPendingAttachment: (chatId, file, sendAsFile = false) =>
-    set((state) => {
-      const previewUrl = URL.createObjectURL(file);
-      const item: PendingAttachment = {
-        id: crypto.randomUUID(),
-        file,
-        previewUrl,
-        sendAsFile,
-      };
-      const existing = state.pendingAttachments[chatId] ?? [];
-      return {
-        pendingAttachments: {
-          ...state.pendingAttachments,
-          [chatId]: [...existing, item].slice(0, 10),
-        },
-      };
-    }),
+  addPendingAttachment: (chatId, file, sendAsFile = false) => {
+    const existing = get().pendingAttachments[chatId] ?? [];
+    if (existing.length >= 10) {
+      get().setComposerError(chatId, 'Можно прикрепить не больше 10 файлов');
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    const item: PendingAttachment = {
+      id: crypto.randomUUID(),
+      file,
+      previewUrl,
+      sendAsFile,
+    };
+    set((state) => ({
+      pendingAttachments: {
+        ...state.pendingAttachments,
+        [chatId]: [...existing, item],
+      },
+    }));
+  },
   removePendingAttachment: (chatId, id) =>
     set((state) => {
       const list = state.pendingAttachments[chatId] ?? [];
@@ -95,6 +103,20 @@ export const useComposerStore = create<ComposerState>((set, get) => ({
       else delete pendingAttachments[chatId];
       return { pendingAttachments };
     }),
+  removePendingAttachmentsByIds: (chatId, ids) => {
+    const idSet = new Set(ids);
+    set((state) => {
+      const list = state.pendingAttachments[chatId] ?? [];
+      for (const item of list) {
+        if (idSet.has(item.id)) revokePreviewUrl(item.previewUrl);
+      }
+      const next = list.filter((item) => !idSet.has(item.id));
+      const pendingAttachments = { ...state.pendingAttachments };
+      if (next.length) pendingAttachments[chatId] = next;
+      else delete pendingAttachments[chatId];
+      return { pendingAttachments };
+    });
+  },
   clearPendingAttachments: (chatId) =>
     set((state) => {
       const list = state.pendingAttachments[chatId] ?? [];

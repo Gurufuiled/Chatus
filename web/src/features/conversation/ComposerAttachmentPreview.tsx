@@ -24,7 +24,17 @@ export function ComposerAttachmentPreview({ chatId }: ComposerAttachmentPreviewP
               aria-label="Открыть превью"
               onClick={() => setLightboxSrc(item.previewUrl)}
             >
-              <img src={item.previewUrl} alt="" className="composer-attachments__img" />
+              {item.file.type.startsWith('video/') ? (
+                <video
+                  src={item.previewUrl}
+                  className="composer-attachments__img"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <img src={item.previewUrl} alt="" className="composer-attachments__img" />
+              )}
             </button>
             <button
               type="button"
