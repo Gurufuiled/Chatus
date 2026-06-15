@@ -18,7 +18,7 @@ import { ForwardDialog } from './ForwardDialog';
 import { MessageSelectionToolbar } from './MessageSelectionToolbar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useGlobalEscape } from '@/hooks/useGlobalEscape';
-import wallpaperUrl from '@/assets/wallpapers/telegram-pattern.svg';
+import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import './conversation.css';
 
 interface ConversationPaneProps {
@@ -117,7 +117,10 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
         <div
           ref={bodyRef}
           className="conversation-pane__body"
-          style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
+          style={{
+            ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})`,
+            ['--chat-wallpaper-base' as string]: '#ddece8',
+          }}
         >
           <MessageList chatId={chatId} />
           <MessageSelectionToolbar
