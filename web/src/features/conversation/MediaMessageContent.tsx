@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { formatFileSize } from '@/utils/formatFileSize';
 
@@ -113,15 +113,47 @@ interface VideoMessageContentProps {
 export function VideoMessageContent({ url, poster, round = false }: VideoMessageContentProps) {
   const src = resolveMediaUrl(url);
   const posterSrc = poster ? resolveMediaUrl(poster) : undefined;
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handleTogglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!round) return;
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      void video.play();
+      setIsPlaying(true);
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
 
   return (
-    <video
-      className={`video-message${round ? ' video-message--round' : ''}`}
-      src={src}
-      poster={posterSrc}
-      controls
-      preload="metadata"
-      onClick={(e) => e.stopPropagation()}
-    />
+    <div
+      className={`video-message-container${round ? ' video-message-container--round' : ''}`}
+      onClick={handleTogglePlay}
+    >
+      <video
+        ref={videoRef}
+        className={`video-message${round ? ' video-message--round' : ''}`}
+        src={src}
+        poster={posterSrc}
+        controls={!round}
+        preload="metadata"
+        loop={round}
+        playsInline={round}
+        onPlay={() => round && setIsPlaying(true)}
+        onPause={() => round && setIsPlaying(false)}
+      />
+      {round && !isPlaying && (
+        <div className="video-message__play-overlay">
+          <svg viewBox="0 0 24 24" className="video-message__play-icon">
+            <path fill="currentColor" d="M8 5v14l11-7z" />
+          </svg>
+        </div>
+      )}
+    </div>
   );
 }

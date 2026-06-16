@@ -256,7 +256,10 @@ export class AuthService {
     const user = await this.findOrCreateUser(userInfo);
 
     const avatarUrl = payload.avatarUrl ?? payload.avatar_url;
-    if (avatarUrl && avatarUrl !== user.avatarUrl) {
+    const isLocalAvatar = user.avatarUrl && (user.avatarUrl.startsWith('/uploads/') || user.avatarUrl.includes('/uploads/'));
+    const shouldUpdateAvatar = avatarUrl && avatarUrl !== user.avatarUrl && !isLocalAvatar;
+
+    if (shouldUpdateAvatar) {
       await this.prisma.user.update({
         where: { id: user.id },
         data: { avatarUrl },
@@ -264,7 +267,7 @@ export class AuthService {
     }
 
     const refreshedUser =
-      avatarUrl && avatarUrl !== user.avatarUrl
+      shouldUpdateAvatar
         ? await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } })
         : user;
 

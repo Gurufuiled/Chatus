@@ -52,7 +52,7 @@ export function MessageBubble({
   const albumCaption = isAlbum && isAlbumCaption(message.content) ? message.content?.trim() : null;
   const videoCaption =
     !isAlbum &&
-    (message.msg_type === 'video' || message.msg_type === 'video_note') &&
+    message.msg_type === 'video' &&
     isAlbumCaption(message.content)
       ? message.content?.trim()
       : null;
@@ -96,7 +96,15 @@ export function MessageBubble({
       </>
     );
   } else if (message.msg_type === 'image' && mediaUrl) {
-    body = <ImageMessageContent url={mediaUrl} />;
+    const imageCaption = isAlbumCaption(message.content) ? message.content?.trim() : null;
+    body = (
+      <>
+        <ImageMessageContent url={mediaUrl} />
+        {imageCaption ? (
+          <p className="message-bubble__text message-bubble__caption">{imageCaption}</p>
+        ) : null}
+      </>
+    );
   } else if (message.msg_type === 'voice' && mediaUrl) {
     body = (
       <VoiceMessagePlayer
@@ -147,7 +155,7 @@ export function MessageBubble({
       className={`message-stack${isOutgoing ? ' message-stack--outgoing' : ' message-stack--incoming'}`}
     >
       <div
-        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}`}
+        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}`}
         onContextMenu={onContextMenu}
       >
         {canReact ? (
