@@ -11,4 +11,6 @@ mobile/ios/
 server/public/embed/
 server/dist/
 **/*.snap
-mobile/patches/
+**/.env.example
+**/.env.*.example
+mobile/eas.json

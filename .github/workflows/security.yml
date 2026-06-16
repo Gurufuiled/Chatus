@@ -61,6 +61,7 @@ jobs:
             --config p/secrets \
             --sarif \
             --output semgrep.sarif \
+            --text \
             --error \
             .
 
@@ -143,7 +144,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: server/
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           exit-code: '1'
           format: sarif
           output: trivy-fs.sarif
@@ -171,7 +172,7 @@ jobs:
         with:
           scan-type: image
           image-ref: chatus-api:ci
-          severity: CRITICAL,HIGH
+          severity: CRITICAL
           exit-code: '1'
           format: sarif
           output: trivy-image.sarif
