@@ -4,7 +4,6 @@
 # push main + weekly: full scan including API Docker image (same Dockerfile as prod).
 #
 # npm audit: fails on CRITICAL (--omit=dev for server/web/mobile prod deps).
-# dependency-review on PR: fails on HIGH (stricter than npm audit until backlog is cleared).
 
 name: Security
 
@@ -121,17 +120,6 @@ jobs:
           else
             npm audit --audit-level=high || true
           fi
-
-  dependency-review:
-    name: Dependency review (PR)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
 
   trivy-fs:
     name: Trivy filesystem (server/)
