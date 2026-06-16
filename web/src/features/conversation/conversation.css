@@ -765,11 +765,16 @@
 }
 
 .message-composer--recording {
-  gap: 0;
+  gap: 8px;
 }
 
-.message-composer__panel--recording {
-  flex: 1;
+.message-composer--recording .message-composer__panel--recording {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.message-composer--recording .message-composer__panel--recording:not(.message-composer__panel--with-reply) {
+  display: none;
 }
 
 .message-composer__send {

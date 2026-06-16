@@ -143,25 +143,12 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
       <StickerPicker chatId={chatId} disabled={isDisabled} />
       <AttachmentPicker chatId={chatId} disabled={isDisabled} />
       <footer className={`message-composer${isRecording ? ' message-composer--recording' : ''}`}>
-        {isRecording ? (
-          <div
-            className={`message-composer__panel message-composer__panel--recording${replyToMessageId ? ' message-composer__panel--with-reply' : ''}`}
-          >
-            <ComposerReplyPreview chatId={chatId} />
-            <ComposerVoiceControls
-              chatId={chatId}
-              hasText={canSend}
-              onSendText={send}
-              disabled={disabled || isSending || !me?.id}
-              fullWidth
-            />
-          </div>
-        ) : (
-          <>
-            <div
-              className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}${hasAttachments ? ' message-composer__panel--with-attachments' : ''}`}
-            >
-              <ComposerReplyPreview chatId={chatId} />
+        <div
+          className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}${hasAttachments && !isRecording ? ' message-composer__panel--with-attachments' : ''}${isRecording ? ' message-composer__panel--recording' : ''}`}
+        >
+          <ComposerReplyPreview chatId={chatId} />
+          {!isRecording ? (
+            <>
               <ComposerAttachmentPreview chatId={chatId} />
               <div className="message-composer__row">
                 <IconButton
@@ -209,15 +196,16 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
                   </svg>
                 </IconButton>
               </div>
-            </div>
-            <ComposerVoiceControls
-              chatId={chatId}
-              hasText={canSend}
-              onSendText={send}
-              disabled={disabled || isSending || !me?.id}
-            />
-          </>
-        )}
+            </>
+          ) : null}
+        </div>
+        <ComposerVoiceControls
+          chatId={chatId}
+          hasText={canSend}
+          onSendText={send}
+          disabled={disabled || isSending || !me?.id}
+          fullWidth={isRecording}
+        />
       </footer>
     </div>
   );

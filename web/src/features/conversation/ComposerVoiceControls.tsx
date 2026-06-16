@@ -56,6 +56,7 @@ export function ComposerVoiceControls({
 
   useEffect(() => () => cleanupStream(), [cleanupStream]);
 
+  // Stop recording only when leaving this chat (chatId changes), not on layout re-renders.
   useEffect(() => {
     return () => {
       const { voiceRecordingChatId, voiceRecordingState, setVoiceRecording } =
@@ -113,7 +114,7 @@ export function ComposerVoiceControls({
         if (!shouldSend || blob.size < 1) {
           setRecordingState('idle');
           if (shouldSend && blob.size < 1) {
-            setError(chatId, 'Recording is too short');
+            setError(chatId, 'Запись слишком короткая');
           }
           return;
         }
@@ -124,6 +125,9 @@ export function ComposerVoiceControls({
           { onSettled: () => setRecordingState('idle') },
         );
       };
+      if (recorder.state === 'recording') {
+        recorder.requestData();
+      }
       recorder.stop();
     },
     [
