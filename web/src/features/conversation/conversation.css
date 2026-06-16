@@ -623,10 +623,11 @@
   height: 240px;
   border-radius: 50%;
   overflow: hidden;
-  background: #000;
+  clip-path: circle(50% at 50% 50%);
+  background: transparent;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   cursor: pointer;
-  position: relative;
+  isolation: isolate;
 }
 
 .video-message {
@@ -639,18 +640,21 @@
 }
 
 .video-message--round {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  border-radius: 50%;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
   object-fit: cover;
   display: block;
+  background: #000;
+  vertical-align: top;
 }
 
 .video-message__play-overlay {
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   background: rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
@@ -672,7 +676,14 @@
   border: none !important;
   padding: 0 !important;
   width: 240px;
+  max-width: 240px;
+  border-radius: 0 !important;
   overflow: visible !important;
+}
+
+.message-bubble--video-note.message-bubble--incoming,
+.message-bubble--video-note.message-bubble--outgoing {
+  border-radius: 0 !important;
 }
 
 .message-bubble--video-note .message-bubble__content {
@@ -683,9 +694,9 @@
 
 .message-bubble--video-note .message-bubble__body {
   width: 240px;
-  height: 240px;
-  border-radius: 50%;
-  overflow: hidden;
+  height: auto;
+  border-radius: 0;
+  overflow: visible;
   position: relative;
 }
 

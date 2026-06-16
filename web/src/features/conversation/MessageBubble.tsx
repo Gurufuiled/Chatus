@@ -235,7 +235,7 @@ export function MessageBubble({
       className={`message-stack${isOutgoing ? ' message-stack--outgoing' : ' message-stack--incoming'}`}
     >
       <div
-        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}${replyMessage ? ' message-bubble--with-reply' : ''}`}
+        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' || Boolean(media?.is_round) ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}${replyMessage ? ' message-bubble--with-reply' : ''}`}
         onContextMenu={onContextMenu}
       >
         {canReact ? (
