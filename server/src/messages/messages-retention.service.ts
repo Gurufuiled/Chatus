@@ -4,9 +4,17 @@ import { ChatType, MessageType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Retention applies only to multi-participant / broadcast chat lines (not 1:1 private archive). */
-const RETENTION_CHAT_TYPES: ChatType[] = [ChatType.group, ChatType.channel, ChatType.discussion];
+const RETENTION_CHAT_TYPES: ChatType[] = [
+  ChatType.group,
+  ChatType.channel,
+  ChatType.discussion,
+];
 
-function readBool(env: NodeJS.ProcessEnv, key: string, fallback: boolean): boolean {
+function readBool(
+  env: NodeJS.ProcessEnv,
+  key: string,
+  fallback: boolean,
+): boolean {
   const raw = env[key]?.trim().toLowerCase();
   if (!raw) return fallback;
   if (raw === '1' || raw === 'true') return true;
@@ -14,7 +22,11 @@ function readBool(env: NodeJS.ProcessEnv, key: string, fallback: boolean): boole
   return fallback;
 }
 
-function readPositiveInt(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
+function readPositiveInt(
+  env: NodeJS.ProcessEnv,
+  key: string,
+  fallback: number,
+): number {
   const raw = env[key]?.trim();
   if (!raw || !/^\d+$/.test(raw)) return fallback;
   const n = parseInt(raw, 10);
@@ -29,10 +41,15 @@ function previewFromStoredMessage(msg: {
 }): string {
   const maxLen = 100;
   if (msg.msgType === MessageType.text && msg.content) {
-    return msg.content.length <= maxLen ? msg.content : `${msg.content.slice(0, maxLen)}…`;
+    return msg.content.length <= maxLen
+      ? msg.content
+      : `${msg.content.slice(0, maxLen)}…`;
   }
   const mediaCount = msg.media?.length ?? 0;
-  if ((msg.msgType === MessageType.image || msg.msgType === MessageType.video) && mediaCount > 1) {
+  if (
+    (msg.msgType === MessageType.image || msg.msgType === MessageType.video) &&
+    mediaCount > 1
+  ) {
     return `${mediaCount} media`;
   }
   const placeholders: Partial<Record<MessageType, string>> = {
@@ -58,7 +75,11 @@ export class MessagesRetentionService {
   }
 
   private get maxPerChat(): number {
-    return readPositiveInt(process.env, 'MESSAGES_SERVER_RETENTION_MAX_PER_CHAT', 50);
+    return readPositiveInt(
+      process.env,
+      'MESSAGES_SERVER_RETENTION_MAX_PER_CHAT',
+      50,
+    );
   }
 
   /** Ежедневный prune (время — локальное для процесса Node; см. `CronExpression.EVERY_DAY_AT_3AM`). */
@@ -88,7 +109,9 @@ export class MessagesRetentionService {
     for (let i = 0; i < chats.length; i += CONCURRENCY) {
       const chunk = chats.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
-        chunk.map((chat) => this.pruneChat(chat.id, chat.pinnedMessageId, maxPerChat)),
+        chunk.map((chat) =>
+          this.pruneChat(chat.id, chat.pinnedMessageId, maxPerChat),
+        ),
       );
       for (let j = 0; j < results.length; j++) {
         const result = results[j];
@@ -97,7 +120,9 @@ export class MessagesRetentionService {
         } else {
           this.log.warn(
             `Retention prune failed for chat ${chunk[j].id}: ${
-              result.reason instanceof Error ? result.reason.message : String(result.reason)
+              result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason)
             }`,
           );
         }
@@ -131,6 +156,14 @@ export class MessagesRetentionService {
 
     const keepArray = [...keepIds];
     if (keepArray.length === 0) {
+      return 0;
+    }
+
+    const messageCount = await this.prisma.message.count({
+      where: { chatId, isDeleted: false },
+    });
+
+    if (messageCount <= keepArray.length) {
       return 0;
     }
 

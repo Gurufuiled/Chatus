@@ -30,4 +30,5 @@ ENV PORT=4000
 EXPOSE 4000 4001 4002
 
 # Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
+USER node
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
