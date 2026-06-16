@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { useMessageContextStore } from '@/stores/messageContextStore';
@@ -22,8 +22,20 @@ export function MessageList({ chatId }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastChatIdRef = useRef(chatId);
+
+  const triggerHighlight = (id: string) => {
+    setHighlightedId(id);
+    if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    highlightTimeoutRef.current = setTimeout(() => setHighlightedId(null), 1500);
+  };
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const behavior = lastChatIdRef.current === chatId ? 'smooth' : 'auto';
+    lastChatIdRef.current = chatId;
+    bottomRef.current?.scrollIntoView({ behavior });
   }, [chatId, messages?.length]);
 
   useEffect(() => {
@@ -84,7 +96,8 @@ export function MessageList({ chatId }: MessageListProps) {
           return (
             <div
               key={message.id}
-              className={`message-list__row${isOutgoing ? ' message-list__row--outgoing' : ' message-list__row--incoming'}${selectionActive ? ' message-list__row--selectable' : ''}${isSelected ? ' message-list__row--selected' : ''}`}
+              id={`msg-${message.id}`}
+              className={`message-list__row${isOutgoing ? ' message-list__row--outgoing' : ' message-list__row--incoming'}${selectionActive ? ' message-list__row--selectable' : ''}${isSelected ? ' message-list__row--selected' : ''}${highlightedId === message.id ? ' message-list__row--highlighted' : ''}`}
               onClick={() => handleRowClick(message.id)}
             >
               {selectionActive ? (
@@ -105,7 +118,9 @@ export function MessageList({ chatId }: MessageListProps) {
                 chatId={chatId}
                 message={message}
                 isOutgoing={isOutgoing}
+                selectionActive={selectionActive}
                 onContextMenu={(e) => handleContextMenu(message.id, e)}
+                onHighlightMessage={triggerHighlight}
               />
             </div>
           );

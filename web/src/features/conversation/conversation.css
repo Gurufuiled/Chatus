@@ -1331,3 +1331,120 @@
   font-size: 12px;
   color: var(--color-text-secondary);
 }
+
+/* Highlight effect on row scroll-to-message */
+.message-list__row {
+  transition: background-color 0.4s ease, transform 0.4s ease;
+}
+
+.message-list__row--highlighted {
+  animation: message-highlight-pulse 1.5s ease-in-out;
+  border-radius: var(--radius-md);
+}
+
+@keyframes message-highlight-pulse {
+  0% {
+    background-color: rgba(42, 171, 238, 0.25);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Reply/Quote inside the message bubble */
+.message-reply-quote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  user-select: none;
+  min-width: 140px;
+  width: 100%;
+}
+
+.message-reply-quote--own {
+  background: rgba(42, 171, 238, 0.04);
+}
+
+.message-reply-quote__bar {
+  width: 3px;
+  align-self: stretch;
+  background: var(--color-accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.message-reply-quote--own .message-reply-quote__bar {
+  background: #f5a623;
+}
+
+.message-reply-quote__thumbnail {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.message-reply-quote__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.message-reply-quote__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message-reply-quote--own .message-reply-quote__label {
+  color: #f5a623;
+}
+
+.message-reply-quote__text {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Enhancing the composer-reply-preview layout with reply icon & thumbnail */
+.composer-reply-preview {
+  padding: 8px 12px 6px 12px;
+}
+
+.composer-reply-preview__bar {
+  margin-left: 0 !important;
+}
+
+.composer-reply-preview__icon {
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.composer-reply-preview--own .composer-reply-preview__icon {
+  color: #f5a623;
+}
+
+.composer-reply-preview__thumbnail {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+

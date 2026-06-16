@@ -13,20 +13,54 @@ import {
 import { AlbumMessageContent } from './AlbumMessageContent';
 import { MessageQuickReaction } from './MessageQuickReaction';
 import { MessageReactionsBar } from './MessageReactionsBar';
+import { useMessagesQuery } from '@/queries/messages.queries';
+import { useMeQuery } from '@/queries/auth.queries';
 import type { MappedMessage } from '@/types/message';
+
+function summarizeReply(content: string | null, msgType: string): string {
+  if (msgType === 'voice') return 'Голосовое сообщение';
+  if (msgType === 'image') return 'Фотография';
+  if (msgType === 'video') return 'Видео';
+  if (msgType === 'video_note') return 'Видеосообщение';
+  if (msgType === 'file') return 'Файл';
+  if (content && isChatusStickerMessage(content)) return 'Стикер';
+  const text = content?.trim();
+  if (!text) return 'Сообщение';
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+}
+
+function getReplyThumbnailUrl(replyMessage: MappedMessage): string | null {
+  if (replyMessage.msg_type === 'image') {
+    const media = replyMessage.media?.[0];
+    return media?.remote_url ? resolveMediaUrl(media.remote_url) : null;
+  }
+  if (replyMessage.msg_type === 'video' || replyMessage.msg_type === 'video_note') {
+    const media = replyMessage.media?.[0];
+    return media?.thumbnail_url ? resolveMediaUrl(media.thumbnail_url) : null;
+  }
+  if (replyMessage.msg_type === 'text' && isChatusStickerMessage(replyMessage.content)) {
+    const stickerRef = tryDecodeStickerPayload(replyMessage.content);
+    return stickerRef ? getStickerImageUrl(stickerRef) : null;
+  }
+  return null;
+}
 
 interface MessageBubbleProps {
   chatId: string;
   message: MappedMessage;
   isOutgoing: boolean;
+  selectionActive: boolean;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onHighlightMessage?: (messageId: string) => void;
 }
 
 export function MessageBubble({
   chatId,
   message,
   isOutgoing,
+  selectionActive,
   onContextMenu,
+  onHighlightMessage,
 }: MessageBubbleProps) {
   if (message.is_deleted) {
     return (
@@ -37,6 +71,52 @@ export function MessageBubble({
       </div>
     );
   }
+
+  const { data: messages } = useMessagesQuery(chatId);
+  const { data: me } = useMeQuery();
+
+  const replyMessage = message.reply_to_id
+    ? messages?.find((m) => m.id === message.reply_to_id)
+    : null;
+
+  const handleReplyClick = (e: React.MouseEvent) => {
+    if (selectionActive) return; // Allow click to bubble up to selection row handler
+    if (!message.reply_to_id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const element = document.getElementById(`msg-${message.reply_to_id}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (onHighlightMessage) {
+        onHighlightMessage(message.reply_to_id);
+      }
+    }
+  };
+
+  const hasReply = !!message.reply_to_id;
+  const replySenderName = replyMessage?.sender_name?.trim() || 'Сообщение';
+  const replyPreview = replyMessage
+    ? replyMessage.is_deleted
+      ? 'Удалённое сообщение'
+      : summarizeReply(replyMessage.content, replyMessage.msg_type)
+    : 'Предыдущее сообщение';
+  const replyThumbnailUrl = replyMessage && !replyMessage.is_deleted ? getReplyThumbnailUrl(replyMessage) : null;
+
+  const replyNode = hasReply ? (
+    <div
+      className={`message-reply-quote${replyMessage?.sender_id === me?.id ? ' message-reply-quote--own' : ''}`}
+      onClick={handleReplyClick}
+    >
+      <div className="message-reply-quote__bar" />
+      {replyThumbnailUrl ? (
+        <img src={replyThumbnailUrl} alt="" className="message-reply-quote__thumbnail" />
+      ) : null}
+      <div className="message-reply-quote__body">
+        <span className="message-reply-quote__label">{replySenderName}</span>
+        <span className="message-reply-quote__text">{replyPreview}</span>
+      </div>
+    </div>
+  ) : null;
 
   const showChecks = isOutgoing && message.status !== 'error';
   const time = formatMessageTime(message.created_at);
@@ -155,7 +235,7 @@ export function MessageBubble({
       className={`message-stack${isOutgoing ? ' message-stack--outgoing' : ' message-stack--incoming'}`}
     >
       <div
-        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}`}
+        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}${replyMessage ? ' message-bubble--with-reply' : ''}`}
         onContextMenu={onContextMenu}
       >
         {canReact ? (
@@ -164,6 +244,7 @@ export function MessageBubble({
         <div className="message-bubble__content">
           {hasReactions ? (
             <>
+              {replyNode}
               <div className="message-bubble__body">{body}</div>
               <div className="message-bubble__footer">
                 <MessageReactionsBar
@@ -178,6 +259,7 @@ export function MessageBubble({
             </>
           ) : (
             <>
+              {replyNode}
               {body}
               {meta}
             </>
