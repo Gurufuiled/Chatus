@@ -790,12 +790,22 @@
 }
 
 .message-composer--recording {
+  display: grid;
+  grid-template-areas: 'composer-main';
   gap: 0;
+  align-items: stretch;
 }
 
 .message-composer--recording .message-composer__panel--recording {
+  grid-area: composer-main;
   flex: 1;
   min-height: 44px;
+}
+
+.message-composer--recording > .voice-recording-bar {
+  grid-area: composer-main;
+  align-self: end;
+  z-index: 1;
 }
 
 .message-composer__panel--recording {

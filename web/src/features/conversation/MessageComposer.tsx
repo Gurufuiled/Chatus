@@ -10,6 +10,7 @@ import { ComposerVoiceControls } from './ComposerVoiceControls';
 import { ComposerReplyPreview } from './ComposerReplyPreview';
 import { ComposerErrorBanner } from './ComposerErrorBanner';
 import { ComposerAttachmentPreview } from './ComposerAttachmentPreview';
+import { useVoiceRecorder } from './useVoiceRecorder';
 
 interface MessageComposerProps {
   chatId: string;
@@ -30,13 +31,15 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const isStickerPickerOpen = useComposerStore((s) => s.isStickerPickerOpen);
   const setStickerPickerOpen = useComposerStore((s) => s.setStickerPickerOpen);
   const setAttachmentPickerOpen = useComposerStore((s) => s.setAttachmentPickerOpen);
-  const voiceRecordingState = useComposerStore((s) => s.voiceRecordingState);
-  const voiceRecordingChatId = useComposerStore((s) => s.voiceRecordingChatId);
   const requestComposerFocus = useComposerStore((s) => s.requestComposerFocus);
   const composerFocusNonce = useComposerStore((s) => s.composerFocusNonce);
   const sendMutation = useSendMessageMutation();
   const sendPendingMutation = useSendPendingAttachmentsMutation();
   const { data: me } = useMeQuery();
+
+  const isSending = sendMutation.isPending || sendPendingMutation.isPending;
+  const voiceDisabled = disabled || isSending || !me?.id;
+  const voice = useVoiceRecorder(chatId, voiceDisabled);
 
   const resetTextareaHeight = () => {
     const el = textareaRef.current;
@@ -128,10 +131,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   };
 
-  const isRecording =
-    voiceRecordingChatId === chatId &&
-    (voiceRecordingState === 'recording' || voiceRecordingState === 'processing');
-  const isSending = sendMutation.isPending || sendPendingMutation.isPending;
+  const isRecording = voice.isRecording || voice.isProcessing;
   const isDisabled = disabled || isSending || !me?.id || isRecording;
   const hasText = draft.trim().length > 0;
   const hasAttachments = attachments.length > 0;
@@ -146,16 +146,8 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
         <div
           className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}${hasAttachments && !isRecording ? ' message-composer__panel--with-attachments' : ''}${isRecording ? ' message-composer__panel--recording' : ''}`}
         >
-          <ComposerReplyPreview chatId={chatId} />
-          {isRecording ? (
-            <ComposerVoiceControls
-              chatId={chatId}
-              hasText={canSend}
-              onSendText={send}
-              disabled={disabled || isSending || !me?.id}
-              inPanel
-            />
-          ) : (
+          {!isRecording ? <ComposerReplyPreview chatId={chatId} /> : null}
+          {!isRecording ? (
             <>
               <ComposerAttachmentPreview chatId={chatId} />
               <div className="message-composer__row">
@@ -205,16 +197,20 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
                 </IconButton>
               </div>
             </>
-          )}
+          ) : null}
         </div>
-        {!isRecording ? (
-          <ComposerVoiceControls
-            chatId={chatId}
-            hasText={canSend}
-            onSendText={send}
-            disabled={disabled || isSending || !me?.id}
-          />
-        ) : null}
+        <ComposerVoiceControls
+          hasText={canSend}
+          onSendText={send}
+          inPanel={isRecording}
+          elapsedMs={voice.elapsedMs}
+          isRecording={voice.isRecording}
+          isProcessing={voice.isProcessing}
+          isBusy={voice.isBusy}
+          onStartRecording={voice.startRecording}
+          onCancelRecording={voice.cancelRecording}
+          onFinishRecording={voice.finishRecording}
+        />
       </footer>
     </div>
   );
