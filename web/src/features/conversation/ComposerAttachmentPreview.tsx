@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useComposerStore } from '@/stores/composerStore';
+import { useComposerStore, EMPTY_PENDING_ATTACHMENTS } from '@/stores/composerStore';
 import { ImageLightbox } from './ImageLightbox';
 
 interface ComposerAttachmentPreviewProps {
@@ -7,7 +7,8 @@ interface ComposerAttachmentPreviewProps {
 }
 
 export function ComposerAttachmentPreview({ chatId }: ComposerAttachmentPreviewProps) {
-  const attachments = useComposerStore((s) => s.pendingAttachments[chatId] ?? []);
+  const pendingAttachments = useComposerStore((s) => s.pendingAttachments[chatId]);
+  const attachments = pendingAttachments ?? EMPTY_PENDING_ATTACHMENTS;
   const removePendingAttachment = useComposerStore((s) => s.removePendingAttachment);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 

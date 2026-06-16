@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { IconButton } from '@/components/buttons/IconButton';
-import { useComposerStore } from '@/stores/composerStore';
+import { useComposerStore, EMPTY_PENDING_ATTACHMENTS } from '@/stores/composerStore';
 import { useSendMessageMutation } from '@/queries/messages.queries';
 import { useSendPendingAttachmentsMutation } from '@/queries/media.queries';
 import { useMeQuery } from '@/queries/auth.queries';
@@ -19,7 +19,8 @@ interface MessageComposerProps {
 export function MessageComposer({ chatId, disabled = false }: MessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draft = useComposerStore((s) => s.drafts[chatId] ?? '');
-  const attachments = useComposerStore((s) => s.pendingAttachments[chatId] ?? []);
+  const pendingAttachments = useComposerStore((s) => s.pendingAttachments[chatId]);
+  const attachments = pendingAttachments ?? EMPTY_PENDING_ATTACHMENTS;
   const setDraft = useComposerStore((s) => s.setDraft);
   const clearDraft = useComposerStore((s) => s.clearDraft);
   const clearReply = useComposerStore((s) => s.clearReply);

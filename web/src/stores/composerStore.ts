@@ -13,6 +13,9 @@ export interface PendingAttachment {
   uploadedMsgType?: MessageType;
 }
 
+/** Stable fallback — never use inline `?? []` inside Zustand selectors (new ref → infinite re-render). */
+export const EMPTY_PENDING_ATTACHMENTS: PendingAttachment[] = [];
+
 interface ComposerState {
   drafts: Record<string, string>;
   pendingAttachments: Record<string, PendingAttachment[]>;
