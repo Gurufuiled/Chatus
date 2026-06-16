@@ -10,7 +10,7 @@ interface ComposerVoiceControlsProps {
   hasText: boolean;
   onSendText: () => void;
   disabled?: boolean;
-  fullWidth?: boolean;
+  inPanel?: boolean;
 }
 
 function pickRecorderMime(): string | undefined {
@@ -28,7 +28,7 @@ export function ComposerVoiceControls({
   hasText,
   onSendText,
   disabled = false,
-  fullWidth = false,
+  inPanel = false,
 }: ComposerVoiceControlsProps) {
   const recordingState = useComposerStore((s) =>
     s.voiceRecordingChatId === chatId ? s.voiceRecordingState : 'idle',
@@ -190,7 +190,7 @@ export function ComposerVoiceControls({
   if (isRecording || isProcessing) {
     return (
       <div
-        className={`voice-recording-bar${fullWidth ? ' voice-recording-bar--full' : ''}`}
+        className={`voice-recording-bar${inPanel ? ' voice-recording-bar--in-panel' : ''}`}
         aria-live="polite"
       >
         <IconButton

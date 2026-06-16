@@ -22,7 +22,7 @@ export function MessageReactionsBar({
 
   return (
     <div
-      className={`message-reactions${isOutgoing ? ' message-reactions--outgoing' : ' message-reactions--incoming'}`}
+      className={`message-bubble__reactions${isOutgoing ? ' message-bubble__reactions--outgoing' : ' message-bubble__reactions--incoming'}`}
     >
       {reactions.map((reaction) => (
         <button

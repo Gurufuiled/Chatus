@@ -179,6 +179,31 @@
   gap: 4px 8px;
 }
 
+.message-bubble--with-reactions .message-bubble__content {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+.message-bubble__body {
+  width: 100%;
+}
+
+.message-bubble__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 22px;
+  padding-top: 2px;
+}
+
+.message-bubble--with-reactions .message-bubble__meta {
+  margin-left: auto;
+}
+
 .message-bubble__text {
   margin: 0;
   font-size: 15px;
@@ -765,16 +790,16 @@
 }
 
 .message-composer--recording {
-  gap: 8px;
+  gap: 0;
 }
 
 .message-composer--recording .message-composer__panel--recording {
-  flex: 0 1 auto;
-  min-height: 0;
+  flex: 1;
+  min-height: 44px;
 }
 
-.message-composer--recording .message-composer__panel--recording:not(.message-composer__panel--with-reply) {
-  display: none;
+.message-composer__panel--recording {
+  justify-content: center;
 }
 
 .message-composer__send {
@@ -806,20 +831,23 @@
 }
 
 .message-composer__send--recording {
-  margin-left: 4px;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  margin-left: 2px;
 }
 
 .voice-recording-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  width: 100%;
   min-height: 44px;
-  padding: 4px 4px 4px 2px;
+  padding: 4px 6px 4px 2px;
 }
 
-.voice-recording-bar--full {
+.voice-recording-bar--in-panel {
   flex: 1;
-  padding-right: 0;
 }
 
 .voice-recording-bar__cancel {
@@ -1015,6 +1043,14 @@
   align-items: flex-start;
 }
 
+.message-bubble--with-reactions {
+  padding-bottom: 6px;
+}
+
+.message-bubble--media.message-bubble--with-reactions .message-bubble__footer {
+  padding: 0 2px 2px;
+}
+
 .message-bubble--album {
   padding: 4px;
   min-width: 0;
@@ -1094,16 +1130,20 @@
 }
 
 .message-quick-reaction {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin-right: 2px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: none;
   border-radius: var(--radius-full);
-  background: transparent;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   cursor: pointer;
   opacity: 0;
   transform: scale(0.75);
@@ -1111,6 +1151,7 @@
 }
 
 .message-bubble:hover .message-quick-reaction,
+.message-stack:hover .message-quick-reaction,
 .message-quick-reaction:focus-visible {
   opacity: 1;
   transform: scale(1);
@@ -1133,47 +1174,52 @@
   opacity: 0;
 }
 
-.message-reactions {
+.message-bubble__reactions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: -6px;
-  padding: 0 4px;
-  max-width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
-.message-reactions--outgoing {
-  justify-content: flex-end;
-}
-
-.message-reactions--incoming {
-  justify-content: flex-start;
-}
-
+.message-bubble__reactions__chip,
 .message-reactions__chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  gap: 3px;
+  padding: 1px 7px;
+  border: none;
   border-radius: var(--radius-full);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.08);
 }
 
+.message-bubble--outgoing .message-bubble__reactions__chip,
+.message-bubble--outgoing .message-reactions__chip {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.message-bubble__reactions__chip--mine,
 .message-reactions__chip--mine {
-  background: #e8f4ff;
-  border-color: rgba(59, 122, 237, 0.25);
+  background: rgba(232, 244, 255, 0.95);
 }
 
+.message-bubble--outgoing .message-bubble__reactions__chip--mine,
+.message-bubble--outgoing .message-reactions__chip--mine {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(59, 122, 237, 0.2);
+}
+
+.message-bubble__reactions__chip:disabled,
 .message-reactions__chip:disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
 
+.message-bubble__reactions__count,
 .message-reactions__count {
   font-size: 12px;
   color: var(--color-text-secondary);

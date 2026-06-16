@@ -147,7 +147,15 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
           className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}${hasAttachments && !isRecording ? ' message-composer__panel--with-attachments' : ''}${isRecording ? ' message-composer__panel--recording' : ''}`}
         >
           <ComposerReplyPreview chatId={chatId} />
-          {!isRecording ? (
+          {isRecording ? (
+            <ComposerVoiceControls
+              chatId={chatId}
+              hasText={canSend}
+              onSendText={send}
+              disabled={disabled || isSending || !me?.id}
+              inPanel
+            />
+          ) : (
             <>
               <ComposerAttachmentPreview chatId={chatId} />
               <div className="message-composer__row">
@@ -197,15 +205,16 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
                 </IconButton>
               </div>
             </>
-          ) : null}
+          )}
         </div>
-        <ComposerVoiceControls
-          chatId={chatId}
-          hasText={canSend}
-          onSendText={send}
-          disabled={disabled || isSending || !me?.id}
-          fullWidth={isRecording}
-        />
+        {!isRecording ? (
+          <ComposerVoiceControls
+            chatId={chatId}
+            hasText={canSend}
+            onSendText={send}
+            disabled={disabled || isSending || !me?.id}
+          />
+        ) : null}
       </footer>
     </div>
   );

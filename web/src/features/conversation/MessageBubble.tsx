@@ -68,9 +68,6 @@ export function MessageBubble({
 
   const meta = (
     <span className="message-bubble__meta">
-      {canReact ? (
-        <MessageQuickReaction chatId={chatId} messageId={message.id} />
-      ) : null}
       {message.status === 'error' ? (
         <span className="message-bubble__error-label" title="Failed to send">
           !
@@ -82,6 +79,8 @@ export function MessageBubble({
       {showChecks ? <ChatStatusChecks status={message.status} /> : null}
     </span>
   );
+
+  const hasReactions = reactions.length > 0;
 
   let body: React.ReactNode;
 
@@ -148,23 +147,35 @@ export function MessageBubble({
       className={`message-stack${isOutgoing ? ' message-stack--outgoing' : ' message-stack--incoming'}`}
     >
       <div
-        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${isAlbum ? ' message-bubble--album' : ''}`}
+        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}`}
         onContextMenu={onContextMenu}
       >
+        {canReact ? (
+          <MessageQuickReaction chatId={chatId} messageId={message.id} />
+        ) : null}
         <div className="message-bubble__content">
-          {body}
-          {meta}
+          {hasReactions ? (
+            <>
+              <div className="message-bubble__body">{body}</div>
+              <div className="message-bubble__footer">
+                <MessageReactionsBar
+                  chatId={chatId}
+                  messageId={message.id}
+                  reactions={reactions}
+                  isOutgoing={isOutgoing}
+                  disabled={!canReact}
+                />
+                {meta}
+              </div>
+            </>
+          ) : (
+            <>
+              {body}
+              {meta}
+            </>
+          )}
         </div>
       </div>
-      {reactions.length > 0 ? (
-        <MessageReactionsBar
-          chatId={chatId}
-          messageId={message.id}
-          reactions={reactions}
-          isOutgoing={isOutgoing}
-          disabled={!canReact}
-        />
-      ) : null}
     </div>
   );
 }
