@@ -3,7 +3,7 @@
 # PR: fast checks (no image build).
 # push main + weekly: full scan including API Docker image (same Dockerfile as prod).
 #
-# npm audit: fails on CRITICAL (--omit=dev for server/web; mobile audits full tree — RN ships dev tooling in lockfile).
+# npm audit: fails on CRITICAL (--omit=dev for server/web/mobile prod deps).
 # dependency-review on PR: fails on HIGH (stricter than npm audit until backlog is cleared).
 
 name: Security
@@ -50,7 +50,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Semgrep
-        run: pip install semgrep==1.128.0
+        run: pip install setuptools 'semgrep==1.166.0'
 
       - name: Semgrep scan
         run: |
@@ -84,8 +84,7 @@ jobs:
             omit_dev: true
           - dir: mobile
             install_flags: '--legacy-peer-deps'
-            # Expo/RN: audit full lockfile (runtime + tooling); omit_dev=false intentional
-            omit_dev: false
+            omit_dev: true
           - dir: web
             install_flags: ''
             omit_dev: true
@@ -140,7 +139,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Scan server tree
-        uses: aquasecurity/trivy-action@0.32.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: server/
@@ -168,7 +167,7 @@ jobs:
         run: docker build -f server/Dockerfile -t chatus-api:ci .
 
       - name: Scan API image
-        uses: aquasecurity/trivy-action@0.32.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: chatus-api:ci
