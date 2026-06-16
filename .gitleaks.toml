@@ -1,0 +1,22 @@
+# Gitleaks config for Chatus. Placeholders in examples/docs are not real secrets.
+title = "chatus gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known dev placeholders and generated artifacts"
+paths = [
+  '''(?i)server/\.env\.example$''',
+  '''(?i)server/public/embed/''',
+  '''(?i)obsidian-vault/''',
+  '''(?i)memory-bank/''',
+  '''(?i)package-lock\.json$''',
+]
+
+regexes = [
+  '''messenger_local_only_change_me''',
+  '''your-secret-key-change-in-production''',
+  '''replace-with-secret-from-loginus-panel''',
+  '''replace-with-embedded-app-secret''',
+]

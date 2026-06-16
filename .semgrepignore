@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+coverage/
+.expo/
+android/
+ios/
+mobile/android/
+mobile/ios/
+**/*.min.js
+server/public/embed/
+server/dist/
+**/*.snap
+mobile/patches/

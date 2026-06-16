@@ -1,0 +1,186 @@
+# Security CI: secrets, SAST, dependency audit, Trivy (filesystem + Docker image).
+#
+# PR: fast checks (no image build).
+# push main + weekly: full scan including API Docker image (same Dockerfile as prod).
+#
+# npm audit: fails on CRITICAL (--omit=dev for server/web; mobile audits full tree — RN ships dev tooling in lockfile).
+# dependency-review on PR: fails on HIGH (stricter than npm audit until backlog is cleared).
+
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  secrets:
+    name: Secret scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Semgrep
+        run: pip install semgrep==1.128.0
+
+      - name: Semgrep scan
+        run: |
+          semgrep scan \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/owasp-top-ten \
+            --config p/secrets \
+            --sarif \
+            --output semgrep.sarif \
+            --error \
+            .
+
+      - name: Upload Semgrep SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  dependencies:
+    name: Dependencies (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dir: server
+            install_flags: ''
+            omit_dev: true
+          - dir: mobile
+            install_flags: '--legacy-peer-deps'
+            # Expo/RN: audit full lockfile (runtime + tooling); omit_dev=false intentional
+            omit_dev: false
+          - dir: web
+            install_flags: ''
+            omit_dev: true
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci ${{ matrix.install_flags }}
+
+      - name: npm audit (fail on critical, production deps)
+        shell: bash
+        run: |
+          if [ "${{ matrix.omit_dev }}" = "true" ]; then
+            npm audit --omit=dev --audit-level=critical
+          else
+            npm audit --audit-level=critical
+          fi
+
+      - name: npm audit report (high — informational)
+        shell: bash
+        run: |
+          if [ "${{ matrix.omit_dev }}" = "true" ]; then
+            npm audit --omit=dev --audit-level=high || true
+          else
+            npm audit --audit-level=high || true
+          fi
+
+  dependency-review:
+    name: Dependency review (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  trivy-fs:
+    name: Trivy filesystem (server/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan server tree
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: fs
+          scan-ref: server/
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: sarif
+          output: trivy-fs.sarif
+
+      - name: Upload Trivy FS SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  trivy-image:
+    name: Trivy Docker image (API)
+    if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image (prod Dockerfile)
+        run: docker build -f server/Dockerfile -t chatus-api:ci .
+
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: image
+          image-ref: chatus-api:ci
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: sarif
+          output: trivy-image.sarif
+
+      - name: Upload Trivy image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
