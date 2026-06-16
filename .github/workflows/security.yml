@@ -64,14 +64,6 @@ jobs:
             --error \
             .
 
-      - name: Upload Semgrep SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: semgrep.sarif
-          category: semgrep
-
   dependencies:
     name: Dependencies (${{ matrix.dir }})
     runs-on: ubuntu-latest
@@ -137,14 +129,6 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
 
-      - name: Upload Trivy FS SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: trivy-fs.sarif
-          category: trivy-fs
-
   trivy-image:
     name: Trivy Docker image (API)
     if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -165,10 +149,3 @@ jobs:
           format: sarif
           output: trivy-image.sarif
 
-      - name: Upload Trivy image SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image
