@@ -1,3 +1,4 @@
+import { DeleteChatDialog } from './DeleteChatDialog';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ContextMenu } from '@/components/menus/ContextMenu';
@@ -20,6 +21,7 @@ import { ChatListItem } from './ChatListItem';
 import { UserSearchResultItem } from './UserSearchResultItem';
 import { DeleteIcon, MuteIcon, PinIcon } from './ChatListContextMenuIcons';
 import type { AuthUser } from '@/types/auth';
+import type { ChatSummary } from '@/types/chat';
 import './chat-list.css';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -47,6 +49,7 @@ export function ChatListColumn({ activeChatId }: ChatListColumnProps) {
 
   const [creatingUserId, setCreatingUserId] = useState<string | null>(null);
   const [createChatError, setCreateChatError] = useState<string | null>(null);
+  const [deletingChat, setDeletingChat] = useState<ChatSummary | null>(null);
 
   useEffect(() => {
     setCreateChatError(null);
@@ -124,19 +127,11 @@ export function ChatListColumn({ activeChatId }: ChatListColumnProps) {
             muteMutation.mutate({ chatId: menuChat.id, muted: !menuChat.is_muted }),
         },
         {
-          id: 'delete-me',
-          label: 'Удалить у меня',
-          icon: <DeleteIcon />,
-          danger: true,
-          disabled: menuChat.chat_type === 'private',
-          onSelect: () => deleteMutation.mutate({ chatId: menuChat.id, scope: 'me' }),
-        },
-        {
-          id: 'delete-all',
-          label: 'Удалить у всех',
+          id: 'delete-chat',
+          label: 'Удалить чат',
           icon: <DeleteIcon />,
           dangerStrong: true,
-          onSelect: () => deleteMutation.mutate({ chatId: menuChat.id, scope: 'all' }),
+          onSelect: () => setDeletingChat(menuChat),
         },
       ]
     : [];
@@ -213,6 +208,23 @@ export function ChatListColumn({ activeChatId }: ChatListColumnProps) {
         items={menuItems}
         onClose={closeChatMenu}
       />
+      {deletingChat ? (
+        <DeleteChatDialog
+          chat={deletingChat}
+          isPending={deleteMutation.isPending}
+          onClose={() => setDeletingChat(null)}
+          onConfirm={(scope) => {
+            deleteMutation.mutate(
+              { chatId: deletingChat.id, scope },
+              {
+                onSuccess: () => {
+                  setDeletingChat(null);
+                },
+              }
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }

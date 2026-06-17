@@ -46,6 +46,12 @@ export function MessageList({ chatId }: MessageListProps) {
     return () => container.removeEventListener('scroll', onScroll);
   }, [closeMessageMenu]);
 
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    };
+  }, []);
+
   const handleContextMenu = (messageId: string, e: React.MouseEvent) => {
     if (selectionActive) return;
     e.preventDefault();

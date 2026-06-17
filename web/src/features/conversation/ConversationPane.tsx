@@ -18,6 +18,7 @@ import { ForwardDialog } from './ForwardDialog';
 import { MessageSelectionToolbar } from './MessageSelectionToolbar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useGlobalEscape } from '@/hooks/useGlobalEscape';
+import { ChatInfoSidebar } from './ChatInfoSidebar';
 import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import './conversation.css';
 
@@ -38,6 +39,7 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
   const chat = chats?.find((c) => c.id === chatId);
 
   const [forwardMessageIds, setForwardMessageIds] = useState<string[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const closeForward = useCallback(() => setForwardMessageIds([]), []);
 
   useGlobalEscape({
@@ -49,6 +51,7 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
     markedRef.current = null;
     exitSelection();
     setForwardMessageIds([]);
+    setIsSidebarOpen(false);
   }, [chatId, exitSelection]);
 
   useEffect(() => {
@@ -106,40 +109,45 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
   }
 
   return (
-    <div className="conversation-pane">
-      <div className="conversation-pane__header-wrap">
-        <Link to="/" className="conversation-pane__back" aria-label="Назад к списку чатов">
-          ←
-        </Link>
-        <ConversationHeader chat={chat} />
-      </div>
-      <ConversationDropZone chatId={chatId} disabled={messagesLoading}>
-        <div
-          ref={bodyRef}
-          className="conversation-pane__body"
-          style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
-        >
-          <MessageList chatId={chatId} />
-          <MessageSelectionToolbar
-            chatId={chatId}
-            onForward={handleForwardRequest}
-            onDelete={handleBatchDelete}
-          />
-          <MessageComposer chatId={chatId} disabled={messagesLoading} />
+    <div className="conversation-container" style={{ display: 'flex', width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+      <div className="conversation-pane" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div className="conversation-pane__header-wrap">
+          <Link to="/" className="conversation-pane__back" aria-label="Назад к списку чатов">
+            ←
+          </Link>
+          <ConversationHeader chat={chat} onClick={() => setIsSidebarOpen((prev) => !prev)} />
         </div>
-      </ConversationDropZone>
-      <MessageContextMenu
-        chatId={chatId}
-        boundsRef={bodyRef as RefObject<HTMLElement | null>}
-        onForward={handleForwardRequest}
-      />
-      <ForwardDialog
-        open={forwardMessageIds.length > 0}
-        sourceChatId={chatId}
-        pending={forwardMutation.isPending}
-        onClose={closeForward}
-        onSelectChat={handleForwardToChat}
-      />
+        <ConversationDropZone chatId={chatId} disabled={messagesLoading}>
+          <div
+            ref={bodyRef}
+            className="conversation-pane__body"
+            style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
+          >
+            <MessageList chatId={chatId} />
+            <MessageSelectionToolbar
+              chatId={chatId}
+              onForward={handleForwardRequest}
+              onDelete={handleBatchDelete}
+            />
+            <MessageComposer chatId={chatId} disabled={messagesLoading} />
+          </div>
+        </ConversationDropZone>
+        <MessageContextMenu
+          chatId={chatId}
+          boundsRef={bodyRef as RefObject<HTMLElement | null>}
+          onForward={handleForwardRequest}
+        />
+        <ForwardDialog
+          open={forwardMessageIds.length > 0}
+          sourceChatId={chatId}
+          pending={forwardMutation.isPending}
+          onClose={closeForward}
+          onSelectChat={handleForwardToChat}
+        />
+      </div>
+      {isSidebarOpen ? (
+        <ChatInfoSidebar chat={chat} onClose={() => setIsSidebarOpen(false)} />
+      ) : null}
     </div>
   );
 }

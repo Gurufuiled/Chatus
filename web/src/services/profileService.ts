@@ -8,6 +8,10 @@ export async function searchUsers(query: string): Promise<AuthUser[]> {
   return apiRequest<AuthUser[]>(`/users/search?q=${encodeURIComponent(q)}`);
 }
 
+export async function getUserById(id: string): Promise<AuthUser> {
+  return apiRequest<AuthUser>(`/users/${encodeURIComponent(id)}`);
+}
+
 export async function updateProfile(payload: UpdateProfilePayload): Promise<AuthUser> {
   return apiRequest<AuthUser>('/users/me', {
     method: 'PATCH',
