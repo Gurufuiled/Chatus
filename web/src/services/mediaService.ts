@@ -60,13 +60,17 @@ export async function uploadFile(file: File | Blob, fileName?: string): Promise<
   }
 
   if (!response.ok) {
-    const message =
+    const raw =
       typeof data === 'object' &&
       data !== null &&
       'message' in data &&
       typeof (data as { message: unknown }).message === 'string'
         ? (data as { message: string }).message
         : `Upload failed (${response.status})`;
+    const message =
+      raw === 'Failed to save file'
+        ? 'Не удалось сохранить файл на сервере'
+        : raw;
     throw new Error(message);
   }
 

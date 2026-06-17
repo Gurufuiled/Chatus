@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
@@ -14,6 +15,7 @@ const ALLOWED_MIME_REGEX = /^(image\/(?!svg)|audio\/|video\/|application\/pdf)/;
 
 @Injectable()
 export class UploadService {
+  private readonly logger = new Logger(UploadService.name);
   private readonly uploadPath: string;
 
   constructor(private readonly rustMediaWorkerService: RustMediaWorkerService) {
@@ -64,7 +66,11 @@ export class UploadService {
     const sha256 = createHash('sha256').update(buf).digest('hex');
     try {
       await fs.writeFile(filepath, buf);
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        `Failed to write upload to ${filepath}`,
+        err instanceof Error ? err.stack : String(err),
+      );
       throw new InternalServerErrorException('Failed to save file');
     }
 
