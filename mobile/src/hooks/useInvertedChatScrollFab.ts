@@ -5,8 +5,17 @@ import type { FlatList, NativeScrollEvent, NativeSyntheticEvent } from 'react-na
 const SHOW_THRESHOLD_PX = 140;
 const HIDE_THRESHOLD_PX = 48;
 
-function evaluateFabVisibility(offsetY: number, currentlyVisible: boolean): boolean {
-  return offsetY > (currentlyVisible ? HIDE_THRESHOLD_PX : SHOW_THRESHOLD_PX);
+function evaluateFabVisibility(
+  offsetY: number,
+  lastOffsetY: number,
+  currentlyVisible: boolean
+): boolean {
+  if (currentlyVisible) {
+    return offsetY > HIDE_THRESHOLD_PX;
+  } else {
+    const isScrollingDown = offsetY < lastOffsetY;
+    return isScrollingDown && offsetY > SHOW_THRESHOLD_PX;
+  }
 }
 
 export function useInvertedChatScrollFab<T>(
@@ -18,8 +27,9 @@ export function useInvertedChatScrollFab<T>(
   const lastOffsetYRef = useRef(0);
 
   const applyVisibility = useCallback((offsetY: number) => {
+    const prevOffsetY = lastOffsetYRef.current;
     lastOffsetYRef.current = offsetY;
-    const nextVisible = evaluateFabVisibility(offsetY, showRef.current);
+    const nextVisible = evaluateFabVisibility(offsetY, prevOffsetY, showRef.current);
     if (nextVisible === showRef.current) return;
     showRef.current = nextVisible;
     setShowScrollToBottom(nextVisible);

@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -14,7 +15,7 @@ import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Feather from '@expo/vector-icons/Feather';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import type { SettingsStackParamList } from '../navigation/types';
 import { authStore } from '../stores/authStore';
 import { authService, apiUserToUserRow, type ApiUser } from '../services/AuthService';
@@ -27,7 +28,6 @@ import { ChangePhoneSheet } from '../components/ChangePhoneSheet';
 import { UsernameEditSheet } from '../components/UsernameEditSheet';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
-import { StyleSheet } from 'react-native';
 
 const HANDLE_REGEX = /^[a-zA-Z0-9_]{5,32}$/;
 
@@ -119,6 +119,35 @@ function createEditProfileStyles(c: ThemeColors) {
     rowLabel: { fontSize: 16, color: c.textPrimary },
     rowValue: { fontSize: 15, color: c.textSecondary, maxWidth: '55%' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    itemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.separator,
+    },
+    iconContainer: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 14,
+    },
+    itemContent: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    itemValue: {
+      fontSize: 16,
+      color: c.textPrimary,
+    },
+    itemLabel: {
+      fontSize: 13,
+      color: c.textSecondary,
+      marginTop: 2,
+    },
   });
 }
 
@@ -329,10 +358,6 @@ export function EditProfileScreen() {
             placeholderTextColor={colors.placeholder}
           />
         </View>
-        <Text style={styles.caption}>
-          Укажите имя и, если хотите, добавьте фотографию для Вашего профиля.
-        </Text>
-
         <View style={[styles.card, { marginTop: 20 }]}>
           <TextInput
             style={[styles.inputRowLast, styles.multiline]}
@@ -344,48 +369,68 @@ export function EditProfileScreen() {
           />
         </View>
         <Text style={styles.caption}>
-          Вы можете добавить несколько строк о себе. В настройках можно выбрать, кому они будут видны.
+          Напишите немного о себе.
         </Text>
 
         <View style={[styles.card, { marginTop: 20 }]}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: colors.accent, paddingHorizontal: 14, paddingTop: 14, paddingBottom: 6 }}>
+            Информация о Вас
+          </Text>
           <Pressable
-            style={styles.rowBetween}
-            onPress={() => setBirthdaySheetOpen(true)}
-          >
-            <Text style={styles.rowLabel}>День рождения</Text>
-            <Text style={[styles.rowValue, { flex: 1, textAlign: 'right' }]} numberOfLines={1}>
-              {formatBirthdayRowLabel(birthday)}
-            </Text>
-          </Pressable>
-        </View>
-        <Text style={styles.caption}>Ваш день рождения могут видеть только контакты.</Text>
-
-        <View style={[styles.card, { marginTop: 20 }]}>
-          <Pressable
-            style={styles.rowBetween}
+            style={styles.itemRow}
             onPress={() => setPhoneSheetOpen(true)}
           >
-            <Text style={styles.rowLabel}>Номер</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', gap: 6 }}>
-              <Text style={styles.rowValue} numberOfLines={1}>
+            <View style={[styles.iconContainer, { backgroundColor: '#34C759' }]}>
+              <MaterialCommunityIcons name="phone" size={18} color="#FFF" />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemValue} numberOfLines={1}>
                 {phone ?? '—'}
               </Text>
-              <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+              <Text style={styles.itemLabel}>
+                Нажмите, чтобы изменить номер телефона
+              </Text>
             </View>
           </Pressable>
           <Pressable
-            style={[styles.rowBetween, { borderBottomWidth: 0 }]}
+            style={styles.itemRow}
             onPress={() => setHandleSheetOpen(true)}
           >
-            <Text style={styles.rowLabel}>Имя пользователя</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: 'flex-end', gap: 6 }}>
-              <Text style={styles.rowValue} numberOfLines={1}>
+            <View style={[styles.iconContainer, { backgroundColor: '#FF9500' }]}>
+              <MaterialCommunityIcons name="at" size={18} color="#FFF" />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemValue} numberOfLines={1}>
                 {handle.trim() ? `@${handle.trim()}` : 'не задано'}
               </Text>
-              <Feather name="chevron-right" size={20} color={colors.textSecondary} />
+              <Text style={styles.itemLabel}>
+                Имя пользователя
+              </Text>
+            </View>
+          </Pressable>
+          <Pressable
+            style={[styles.itemRow, { borderBottomWidth: 0 }]}
+            onPress={() => setBirthdaySheetOpen(true)}
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#3390ec' }]}>
+              <MaterialCommunityIcons name="cake" size={18} color="#FFF" />
+            </View>
+            <View style={styles.itemContent}>
+              <Text style={styles.itemValue} numberOfLines={1}>
+                {birthday ? formatBirthdayRowLabel(birthday) : 'Не указан'}
+              </Text>
+              <Text style={styles.itemLabel}>
+                День рождения
+              </Text>
             </View>
           </Pressable>
         </View>
+        <Text style={styles.caption}>
+          Ваш день рождения могут видеть только контакты.{' '}
+          <Text style={{ color: colors.accent, fontWeight: '600' }} onPress={() => setBirthdaySheetOpen(true)}>
+            Изменить ›
+          </Text>
+        </Text>
       </ScrollView>
 
       <AvatarPickSheet

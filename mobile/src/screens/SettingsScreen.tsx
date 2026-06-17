@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -19,7 +20,9 @@ import { resolveAvatarUrl } from '../config';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SettingsStackParamList } from '../navigation/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
 import { SettingsIconRow } from '../components/settings/SettingsIconRow';
 import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
@@ -31,6 +34,7 @@ import { getTelegramSettingsConnectionMeta } from './telegramAuth/telegramAuthPr
 export function SettingsScreen() {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createSettingsScreenStyles(themeColors), [themeColors]);
+  const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const navigation =
     useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
@@ -184,7 +188,7 @@ export function SettingsScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 96 }]} keyboardShouldPersistTaps="handled">
         {error && (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>{error}</Text>
@@ -246,11 +250,12 @@ export function SettingsScreen() {
             onPress={openTelegram}
             style={({ pressed }) => [
               styles.servicesRow,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: themeColors.separator },
               pressed && styles.servicesRowPressed,
             ]}
           >
-            <View style={styles.servicesIconBubble}>
-              <MaterialCommunityIcons name="send-circle-outline" size={22} color={themeColors.accent} />
+            <View style={[styles.servicesIconBubble, { backgroundColor: '#3390ec' }]}>
+              <FontAwesome name="telegram" size={22} color="#FFF" />
             </View>
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Telegram</Text>
@@ -277,14 +282,15 @@ export function SettingsScreen() {
             onPress={() => navigation.navigate('Appearance')}
             style={({ pressed }) => [
               styles.servicesRow,
+              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: themeColors.separator },
               pressed && styles.servicesRowPressed,
             ]}
           >
-            <View style={styles.servicesIconBubble}>
+            <View style={[styles.servicesIconBubble, { backgroundColor: '#2fc1d6' }]}>
               <MaterialCommunityIcons
-                name="palette-outline"
-                size={22}
-                color={themeColors.accent}
+                name="palette"
+                size={20}
+                color="#FFF"
               />
             </View>
             <View style={styles.servicesText}>
@@ -294,9 +300,19 @@ export function SettingsScreen() {
             <Text style={styles.servicesChevron}>›</Text>
           </Pressable>
           <SettingsIconRow
+            title="Настройки чатов"
+            iconD={sg.chat.d}
+            iconFillRule={sg.chat.fillRule}
+            iconBgColor="#F2994A"
+            placeholder={false}
+            showChevron
+            onPress={() => navigation.navigate('ChatSettings')}
+          />
+          <SettingsIconRow
             title="Уведомления и звуки"
             iconD={sg.sounds.d}
             iconFillRule={sg.sounds.fillRule}
+            iconBgColor="#FF4A4A"
             placeholder
             onPress={() => showComingSoon('Уведомления и звуки')}
           />
@@ -304,6 +320,7 @@ export function SettingsScreen() {
             title="Конфиденциальность"
             iconD={sg.privacy.d}
             iconFillRule={sg.privacy.fillRule}
+            iconBgColor="#34C759"
             placeholder
             onPress={() => showComingSoon('Конфиденциальность')}
           />
@@ -311,21 +328,15 @@ export function SettingsScreen() {
             title="Данные и память"
             iconD={sg.data.d}
             iconFillRule={sg.data.fillRule}
+            iconBgColor="#42A5F5"
             placeholder
             onPress={() => showComingSoon('Данные и память')}
-          />
-          <SettingsIconRow
-            title="Настройки чатов"
-            iconD={sg.chat.d}
-            iconFillRule={sg.chat.fillRule}
-            placeholder={false}
-            showChevron
-            onPress={() => navigation.navigate('ChatSettings')}
           />
           <SettingsIconRow
             title="Язык"
             iconD={sg.language.d}
             iconFillRule={sg.language.fillRule}
+            iconBgColor="#AF52DE"
             placeholder
             onPress={() => showComingSoon('Язык')}
           />
@@ -333,6 +344,7 @@ export function SettingsScreen() {
             title="Устройства"
             iconD={sg.devices.d}
             iconFillRule={sg.devices.fillRule}
+            iconBgColor="#00C2CB"
             placeholder
             onPress={() => showComingSoon('Устройства')}
           />
@@ -340,6 +352,7 @@ export function SettingsScreen() {
             title="Пароль и безопасность"
             iconD={sg.security.d}
             iconFillRule={sg.security.fillRule}
+            iconBgColor="#1E88E5"
             placeholder
             onPress={() => showComingSoon('Пароль и безопасность')}
           />
@@ -351,11 +364,11 @@ export function SettingsScreen() {
             onPress={() => navigation.navigate('Services')}
             style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
           >
-            <View style={styles.servicesIconBubble}>
+            <View style={[styles.servicesIconBubble, { backgroundColor: '#3390ec' }]}>
               <MaterialCommunityIcons
                 name="apps"
-                size={22}
-                color={themeColors.accent}
+                size={20}
+                color="#FFF"
               />
             </View>
             <View style={styles.servicesText}>
@@ -374,8 +387,8 @@ export function SettingsScreen() {
             onPress={() => navigation.navigate('FeedbackList', { kind: 'bug' })}
             style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
           >
-            <View style={styles.servicesIconBubble}>
-              <MaterialCommunityIcons name="bug-outline" size={22} color={themeColors.accent} />
+            <View style={[styles.servicesIconBubble, { backgroundColor: '#E53935' }]}>
+              <MaterialCommunityIcons name="bug" size={20} color="#FFF" />
             </View>
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Сообщить о баге</Text>
@@ -391,8 +404,8 @@ export function SettingsScreen() {
               pressed && styles.servicesRowPressed,
             ]}
           >
-            <View style={styles.servicesIconBubble}>
-              <MaterialCommunityIcons name="lightbulb-outline" size={22} color={themeColors.accent} />
+            <View style={[styles.servicesIconBubble, { backgroundColor: '#FFB300' }]}>
+              <MaterialCommunityIcons name="lightbulb" size={20} color="#FFF" />
             </View>
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Предложения</Text>
@@ -407,7 +420,7 @@ export function SettingsScreen() {
             title="Выйти из аккаунта"
             iconD={sg.power.d}
             iconFillRule={sg.power.fillRule}
-            iconColor="#E53935"
+            iconBgColor="#E53935"
             destructive
             placeholder={false}
             showChevron={false}

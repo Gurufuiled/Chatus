@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import type { MaterialTopTabBarProps as BottomTabBarProps } from "@react-navigation/material-top-tabs";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../contexts/ThemeContext";
@@ -157,13 +157,8 @@ export function TelegramBottomTabBar({
 
   const focusedRoute = state.routes[state.index];
   const focusedOptions = descriptors[focusedRoute.key]?.options;
-  const focusedTabBarStyle = focusedOptions?.tabBarStyle;
-  if (
-    focusedTabBarStyle &&
-    typeof focusedTabBarStyle === "object" &&
-    "display" in focusedTabBarStyle &&
-    focusedTabBarStyle.display === "none"
-  ) {
+  const flattenedStyle = StyleSheet.flatten(focusedOptions?.tabBarStyle);
+  if (flattenedStyle?.display === "none") {
     return null;
   }
 
@@ -204,7 +199,7 @@ export function TelegramBottomTabBar({
                 return;
               }
               if (!focused) {
-                navigation.navigate(route.name, route.params);
+                navigation.navigate(routeName, route.params);
               }
             };
 

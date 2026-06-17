@@ -2882,7 +2882,6 @@ export function ChatScreen() {
             chatId={chatId}
             navigation={navigation}
             floating
-            blurTargetRef={blurTargetRef}
           />
         ) : null}
 

@@ -11,7 +11,7 @@ import {
 import { Image } from 'expo-image';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { CompositeNavigationProp } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { MaterialTopTabNavigationProp } from '@react-navigation/material-top-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainTabParamList } from '../navigation/types';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -33,7 +33,7 @@ import { contactsStore, type PhoneBookContact } from '../stores/contactsStore';
 const SEARCH_DEBOUNCE_MS = 300;
 
 type Nav = CompositeNavigationProp<
-  BottomTabNavigationProp<MainTabParamList, 'Contacts'>,
+  MaterialTopTabNavigationProp<MainTabParamList, 'Contacts'>,
   NativeStackNavigationProp<ChatsStackParamList>
 >;
 

@@ -10,6 +10,7 @@ export type SettingsIconRowProps = {
   iconD: string;
   iconFillRule?: TelegramGlyphFillRule;
   iconColor?: string;
+  iconBgColor?: string;
   onPress?: () => void;
   /** Показать бейдж «Скоро» (UI-only, логика не подключена). */
   placeholder?: boolean;
@@ -27,6 +28,7 @@ export function SettingsIconRow({
   iconD,
   iconFillRule = 'nonzero',
   iconColor,
+  iconBgColor,
   onPress,
   placeholder = false,
   destructive = false,
@@ -35,11 +37,12 @@ export function SettingsIconRow({
 }: SettingsIconRowProps) {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createSettingsIconRowStyles(themeColors), [themeColors]);
-  const resolvedIconColor = iconColor ?? themeColors.accent;
+  const resolvedIconColor = iconBgColor ? '#FFFFFF' : (iconColor ?? themeColors.accent);
+  const resolvedIconBg = iconBgColor;
 
   const content = (
     <>
-      <View style={styles.iconBubble}>
+      <View style={[styles.iconBubble, resolvedIconBg ? { backgroundColor: resolvedIconBg } : null]}>
         <TelegramGlyph d={iconD} fillRule={iconFillRule} color={resolvedIconColor} size={22} />
       </View>
       <View style={styles.textBlock}>

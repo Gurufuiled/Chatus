@@ -1,7 +1,5 @@
 import React from 'react';
-import Svg, { Circle } from 'react-native-svg';
-import { TelegramGlyph } from '../icons/telegram';
-import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { colors } from '../theme/colors';
 
 export type ProfileActionIconName = 'call' | 'video' | 'sound' | 'search' | 'more';
@@ -14,8 +12,7 @@ type ProfileActionIconProps = {
 };
 
 /**
- * Quick actions в шапке профиля: глифы из Telegram Android (`outline_profile_*`, `outline_search_1_24`).
- * `more` — см. docs/telegram-icon-divergences.md (упрощённые три точки).
+ * Quick actions в шапке профиля: солидные (filled) иконки в стиле Telegram.
  */
 export function ProfileActionIcon({
   name,
@@ -24,30 +21,16 @@ export function ProfileActionIcon({
   active = false,
 }: ProfileActionIconProps) {
   switch (name) {
-    case 'call': {
-      const g = active ? TELEGRAM_PROFILE_GLYPHS.callFilled : TELEGRAM_PROFILE_GLYPHS.callOutline;
-      return <TelegramGlyph d={g.d} fillRule={g.fillRule} color={color} size={size} />;
-    }
-    case 'video': {
-      const g = active ? TELEGRAM_PROFILE_GLYPHS.videoFilled : TELEGRAM_PROFILE_GLYPHS.videoOutline;
-      return <TelegramGlyph d={g.d} fillRule={g.fillRule} color={color} size={size} />;
-    }
-    case 'sound': {
-      const g = active ? TELEGRAM_PROFILE_GLYPHS.bellMuted : TELEGRAM_PROFILE_GLYPHS.bell;
-      return <TelegramGlyph d={g.d} fillRule={g.fillRule} color={color} size={size} />;
-    }
-    case 'search': {
-      const g = TELEGRAM_PROFILE_GLYPHS.search;
-      return <TelegramGlyph d={g.d} fillRule={g.fillRule} color={color} size={size} />;
-    }
+    case 'call':
+      return <MaterialCommunityIcons name="phone" size={size} color={color} />;
+    case 'video':
+      return <MaterialCommunityIcons name="video" size={size} color={color} />;
+    case 'sound':
+      return <MaterialCommunityIcons name={active ? "bell-off" : "bell"} size={size} color={color} />;
+    case 'search':
+      return <MaterialCommunityIcons name="magnify" size={size} color={color} />;
     case 'more':
-      return (
-        <Svg width={size} height={size} viewBox="0 0 72 72">
-          <Circle cx="18" cy="36" r="4.5" fill={color} />
-          <Circle cx="36" cy="36" r="4.5" fill={color} />
-          <Circle cx="54" cy="36" r="4.5" fill={color} />
-        </Svg>
-      );
+      return <MaterialCommunityIcons name="dots-horizontal" size={size} color={color} />;
     default:
       return null;
   }

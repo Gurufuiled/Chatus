@@ -1,10 +1,13 @@
 # Security CI: secrets, SAST, dependency audit, Trivy (filesystem + Docker image).
 #
+# Code Scanning (SARIF upload) is disabled — not available without GHAS on private repos.
+# Dependency Review is also omitted (requires GHAS on private repos; free on public).
+# Scans run with text/table output in CI logs instead.
+#
 # PR: fast checks (no image build).
 # push main + weekly: full scan including API Docker image (same Dockerfile as prod).
 #
 # npm audit: fails on CRITICAL (--omit=dev for server/web/mobile prod deps).
-# dependency-review on PR: fails on HIGH (stricter than npm audit until backlog is cleared).
 
 name: Security
 
@@ -21,7 +24,6 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write
   pull-requests: read
 
 jobs:
@@ -59,19 +61,9 @@ jobs:
             --config p/typescript \
             --config p/owasp-top-ten \
             --config p/secrets \
-            --sarif \
-            --output semgrep.sarif \
             --text \
             --error \
             .
-
-      - name: Upload Semgrep SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: semgrep.sarif
-          category: semgrep
 
   dependencies:
     name: Dependencies (${{ matrix.dir }})
@@ -122,17 +114,6 @@ jobs:
             npm audit --audit-level=high || true
           fi
 
-  dependency-review:
-    name: Dependency review (PR)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-
   trivy-fs:
     name: Trivy filesystem (server/)
     runs-on: ubuntu-latest
@@ -146,16 +127,7 @@ jobs:
           scan-ref: server/
           severity: CRITICAL
           exit-code: '1'
-          format: sarif
-          output: trivy-fs.sarif
-
-      - name: Upload Trivy FS SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: trivy-fs.sarif
-          category: trivy-fs
+          format: table
 
   trivy-image:
     name: Trivy Docker image (API)
@@ -174,13 +146,4 @@ jobs:
           image-ref: chatus-api:ci
           severity: CRITICAL
           exit-code: '1'
-          format: sarif
-          output: trivy-image.sarif
-
-      - name: Upload Trivy image SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image
+          format: table

@@ -83,6 +83,11 @@ export type TelegramMessageRow = {
     avatarUri: string | null;
     avatarFileId?: number;
   } | null;
+  reactions?: {
+    emoji: string;
+    count: number;
+    reacted_by_me: boolean;
+  }[];
 };
 
 /** Same layout contract as `ChatScreen` context menu — drives `ChatContextMenuOverlay`. */

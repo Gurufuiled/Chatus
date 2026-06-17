@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatPillHeaderTitle } from './ChatPillHeaderTitle';
 import type { ThemeColors } from '../theme/palettes';
-import { withAlpha } from '../theme/stylePrimitives';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
 
@@ -25,7 +24,6 @@ interface CustomAndroidChatHeaderProps {
   telegramTitleOnly?: boolean;
   titleNavDisabled?: boolean;
   floating?: boolean;
-  blurTargetRef?: React.RefObject<View | null>;
 }
 
 export function CustomAndroidChatHeader({
@@ -40,7 +38,6 @@ export function CustomAndroidChatHeader({
   telegramTitleOnly = false,
   titleNavDisabled = false,
   floating = false,
-  blurTargetRef,
 }: CustomAndroidChatHeaderProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -83,7 +80,6 @@ export function CustomAndroidChatHeader({
             title={title}
             subtitle={subtitle}
             avatarUrl={avatarUrl}
-            blurTargetRef={blurTargetRef}
             onPress={
               telegramTitleOnly
                 ? onTitlePress
@@ -131,9 +127,9 @@ function createStyles(colors: ThemeColors) {
       borderRadius: 20,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: withAlpha(colors.inputBackgroundSolid, 0.72),
+      backgroundColor: colors.inputBackgroundSolid,
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: withAlpha(colors.separator, 0.78),
+      borderColor: colors.separator,
       shadowColor: '#000000',
       shadowOpacity: 0.12,
       shadowRadius: 6,

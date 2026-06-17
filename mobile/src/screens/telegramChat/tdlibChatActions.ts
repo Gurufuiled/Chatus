@@ -91,6 +91,23 @@ export async function tdlibAddMessageReaction(
   throwIfTdError(res);
 }
 
+export async function tdlibRemoveMessageReaction(
+  chatId: number,
+  messageId: number,
+  emoji: string,
+): Promise<void> {
+  const res = (await tdlibClient.send({
+    '@type': 'removeMessageReaction',
+    chat_id: chatId,
+    message_id: messageId,
+    reaction_type: {
+      '@type': 'reactionTypeEmoji',
+      emoji,
+    },
+  })) as Record<string, unknown>;
+  throwIfTdError(res);
+}
+
 /** Долгое отключение уведомлений (по сути «без звука» в Telegram). */
 const MUTE_FOR_LONG_SEC = 2147483647;
 

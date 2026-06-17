@@ -557,6 +557,24 @@ export async function parseWebPagePreview(
   };
 }
 
+export function getTdMessageReactions(raw: Record<string, unknown>): TelegramMessageRow['reactions'] {
+  const interaction = getNestedRecord(raw.interaction_info);
+  const reactionsObj = getNestedRecord(interaction?.reactions);
+  const reactionsList = Array.isArray(reactionsObj?.reactions) ? reactionsObj.reactions : [];
+  const mapped = reactionsList
+    .map((rObj) => {
+      const r = getNestedRecord(rObj);
+      const typeObj = getNestedRecord(r?.type);
+      const emoji = typeof typeObj?.emoji === 'string' ? typeObj.emoji : '';
+      const count = typeof r?.total_count === 'number' ? r.total_count : 0;
+      const reacted_by_me =
+        r?.is_chosen === true || (typeof r?.chosen_order === 'number' && r.chosen_order > 0);
+      return { emoji, count, reacted_by_me };
+    })
+    .filter((item) => item.emoji !== '');
+  return mapped.length > 0 ? mapped : undefined;
+}
+
 export async function mapTdMessage(
   raw: Record<string, unknown>,
   lastReadOutboxMessageId: number,
@@ -581,6 +599,7 @@ export async function mapTdMessage(
   const mediaAlbumId = getTdMediaAlbumId(raw);
   const forwardInfoRaw = getNestedRecord(raw.forward_info);
   const forwardInfo = forwardInfoRaw ? await resolveForwardOrigin(forwardInfoRaw) : null;
+  const reactions = getTdMessageReactions(raw);
   const base = {
     id: String(id),
     messageId: id,
@@ -597,6 +616,7 @@ export async function mapTdMessage(
     messageThreadId,
     mediaAlbumId,
     forwardInfo,
+    reactions,
   };
 
   if (kind === 'messageText') {

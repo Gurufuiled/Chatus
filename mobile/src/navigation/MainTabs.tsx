@@ -1,7 +1,8 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { StyleSheet } from 'react-native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ChatsStack } from './ChatsStack';
 import { SettingsStack } from './SettingsStack';
 import { ContactsScreen } from '../screens';
@@ -9,7 +10,30 @@ import type { MainTabParamList } from './types';
 import { useTheme } from '../contexts/ThemeContext';
 import { TelegramBottomTabBar } from './TelegramBottomTabBar';
 
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Tab = createMaterialTopTabNavigator<MainTabParamList>();
+const ContactsStackNav = createNativeStackNavigator();
+
+function ContactsStack() {
+  const { colors: themeColors } = useTheme();
+  return (
+    <ContactsStackNav.Navigator
+      id={undefined as never}
+      screenOptions={{
+        headerShown: true,
+        headerStyle: { backgroundColor: themeColors.toolbar },
+        headerShadowVisible: false,
+        headerTintColor: themeColors.textPrimary,
+        headerTitleStyle: { color: themeColors.textPrimary, fontWeight: '700' },
+      }}
+    >
+      <ContactsStackNav.Screen
+        name="ContactsMain"
+        component={ContactsScreen}
+        options={{ title: 'Контакты' }}
+      />
+    </ContactsStackNav.Navigator>
+  );
+}
 
 const HIDDEN_TAB_BAR = StyleSheet.create({
   hidden: { display: 'none' },
@@ -26,19 +50,11 @@ export function MainTabs() {
   return (
     <Tab.Navigator
       id={undefined as never}
+      tabBarPosition="bottom"
       tabBar={(props) => <TelegramBottomTabBar {...props} />}
       screenOptions={{
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: themeColors.toolbar,
-        },
-        headerShadowVisible: false,
-        headerTintColor: themeColors.textPrimary,
-        headerTitleStyle: {
-          color: themeColors.textPrimary,
-          fontWeight: '700',
-        },
         tabBarShowLabel: false,
+        swipeEnabled: true,
       }}
     >
       <Tab.Screen
@@ -49,14 +65,13 @@ export function MainTabs() {
           const shouldHideTabBar = !CHAT_STACK_SHOW_TAB_ROUTES.has(focusedRoute);
           return {
             title: 'Чаты',
-            headerShown: false,
             tabBarStyle: shouldHideTabBar ? HIDDEN_TAB_BAR : undefined,
           };
         }}
       />
       <Tab.Screen
         name="Contacts"
-        component={ContactsScreen}
+        component={ContactsStack}
         options={{
           title: 'Контакты',
         }}
@@ -69,7 +84,6 @@ export function MainTabs() {
           const hide = SETTINGS_HIDE_TAB_ROUTES.has(focused);
           return {
             title: 'Настройки',
-            headerShown: false,
             tabBarStyle: hide ? HIDDEN_TAB_BAR : undefined,
           };
         }}
@@ -77,3 +91,4 @@ export function MainTabs() {
     </Tab.Navigator>
   );
 }
+

@@ -25,7 +25,8 @@ import {
 } from '../utils/chatComposerKeyboard';
 import Reanimated, { useAnimatedKeyboard, useSharedValue } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
-import { ChatContextMenuOverlay } from '../components/ChatContextMenuOverlay';
+import { ChatContextMenuOverlay, DOUBLE_TAP_REACTION_EMOJI } from '../components/ChatContextMenuOverlay';
+import { MessageReactionInline } from '../components/MessageReactionInline';
 import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
 import type { MediaTile } from '../components/ChatProfileMediaSection';
 import { ChatDaySeparator } from '../components/ChatDaySeparator';
@@ -118,6 +119,7 @@ import {
   mapTdMessage,
   mapTdMessages,
   scheduleTdlibFileDownload,
+  getTdMessageReactions,
 } from './telegramChat/tdlibMapping';
 import {
   collectPendingTdlibFileIds,
@@ -133,6 +135,8 @@ import {
   tdlibDeleteMessages,
   tdlibForwardMessages,
   tdlibUnpinChatMessage,
+  tdlibAddMessageReaction,
+  tdlibRemoveMessageReaction,
 } from './telegramChat/tdlibChatActions';
 import {
   deleteTelegramMessagesFromCache,
@@ -239,6 +243,8 @@ export function TelegramChatScreen() {
   const mountedRef = useRef(true);
   const messagesRef = useRef<TelegramMessageRow[]>([]);
   const listRef = useRef<FlatList<TelegramMessageRow>>(null);
+  const lastTapAtRef = useRef<number>(0);
+  const lastTapMessageIdRef = useRef<string | null>(null);
   const [inputBarHeight, setInputBarHeight] = useState(88);
   const [scrollTick, setScrollTick] = useState(0);
   const lastScrollBumpAtRef = useRef(0);
@@ -567,6 +573,49 @@ export function TelegramChatScreen() {
     resolvedScheme,
     scrollTick,
   });
+
+  const handleToggleReaction = useCallback(
+    async (item: TelegramMessageRow, emoji: string) => {
+      if (item.messageId <= 0) return;
+
+      const existing = item.reactions?.find((r) => r.emoji === emoji);
+      const isChosenByMe = existing?.reacted_by_me === true;
+
+      try {
+        await ensureReady();
+        if (isChosenByMe) {
+          await tdlibRemoveMessageReaction(chatId, item.messageId, emoji);
+        } else {
+          await tdlibAddMessageReaction(chatId, item.messageId, emoji, false);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        Alert.alert('Реакция', msg);
+      }
+    },
+    [chatId, ensureReady],
+  );
+
+  const handleMessageRowPress = useCallback(
+    (item: TelegramMessageRow) => {
+      if (telegramSelectionMode) {
+        toggleTelegramSelection(item.id);
+        return;
+      }
+      if (item.messageId <= 0) return;
+
+      const now = Date.now();
+      if (lastTapMessageIdRef.current === item.id && now - lastTapAtRef.current < 380) {
+        lastTapAtRef.current = 0;
+        lastTapMessageIdRef.current = null;
+        void handleToggleReaction(item, DOUBLE_TAP_REACTION_EMOJI);
+        return;
+      }
+      lastTapAtRef.current = now;
+      lastTapMessageIdRef.current = item.id;
+    },
+    [telegramSelectionMode, toggleTelegramSelection, handleToggleReaction],
+  );
 
   const handleCancelSearch = useCallback(() => {
     setIsSearchMode(false);
@@ -1218,6 +1267,35 @@ export function TelegramChatScreen() {
             return;
           }
 
+          if (type === 'updateMessageInteractionInfo') {
+            if (update.chat_id !== chatId) return;
+            const messageId = update.message_id;
+            const info = getNestedRecord(update.interaction_info);
+            if (typeof messageId !== 'number' || !info) return;
+
+            const reactions = getTdMessageReactions(update);
+            const threadParam =
+              typeof messageThreadId === 'number' &&
+              Number.isFinite(messageThreadId) &&
+              messageThreadId !== 0
+                ? messageThreadId
+                : 0;
+
+            setMessages((prev) => {
+              const index = prev.findIndex((m) => m.messageId === messageId);
+              if (index === -1) return prev;
+              const next = [...prev];
+              const updatedRow = {
+                ...next[index],
+                reactions,
+              };
+              next[index] = updatedRow;
+              void persistTelegramMessages(chatId, threadParam, [updatedRow]).catch(() => {});
+              return next;
+            });
+            return;
+          }
+
           if (
             type !== 'updateNewMessage' &&
             type !== 'updateMessageSendSucceeded' &&
@@ -1650,6 +1728,15 @@ export function TelegramChatScreen() {
   const renderMessageRow = useCallback(
     ({ item, index }: { item: TelegramMessageRow; index: number }) => {
       const isMe = item.outgoing;
+      const reactionsNode = item.reactions && item.reactions.length > 0 ? (
+        <MessageReactionInline
+          reactions={item.reactions}
+          isMe={isMe}
+          allowReactions={true}
+          onToggle={(emoji) => void handleToggleReaction(item, emoji)}
+          accentColor={chatTheme.bubbleMeAccent}
+        />
+      ) : null;
       const useViewportOutgoingGradient =
         isMe && shouldUseDarkDefaultOutgoingBubbleGradient(chatTheme, resolvedScheme);
       const meBubbleFill =
@@ -1792,6 +1879,7 @@ export function TelegramChatScreen() {
         : {
             accessibilityRole: 'button' as const,
             accessibilityHint: 'Удерживайте для меню сообщения',
+            onPress: () => handleMessageRowPress(item),
             onLongPress: handleOpenMessageMenu,
             delayLongPress: 260,
           };
@@ -1988,6 +2076,10 @@ export function TelegramChatScreen() {
                     incomingDurationColor={colors.textSecondary}
                     style={undefined}
                     loading={!item.voiceUri}
+                    inlineReactions={item.reactions}
+                    allowMessageReactions={true}
+                    onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+                    reactionAccentColor={chatTheme.bubbleMeAccent}
                   />
                 </MeBubbleChrome>
               ) : (
@@ -2012,6 +2104,10 @@ export function TelegramChatScreen() {
                       : textBubbleColorStyle
                   }
                   loading={!item.voiceUri}
+                  inlineReactions={item.reactions}
+                  allowMessageReactions={true}
+                  onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+                  reactionAccentColor={chatTheme.bubbleMeAccent}
                 />
               )}
             </View>
@@ -2072,6 +2168,10 @@ export function TelegramChatScreen() {
                 }
                 scrollTick={scrollTick}
                 registerPlaybackState
+                inlineReactions={item.reactions}
+                allowMessageReactions={true}
+                onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+                reactionAccentColor={chatTheme.bubbleMeAccent}
               />
             </View>
           </Pressable>,
@@ -2115,6 +2215,7 @@ export function TelegramChatScreen() {
               style={measureShellStyle}
             >
               {channelIncoming ? albumBubble : wrapTelegramMediaBubble(albumBubble)}
+              {reactionsNode}
             </View>
           </Pressable>,
         );
@@ -2168,6 +2269,7 @@ export function TelegramChatScreen() {
               ) : (
                 <View style={[styles.bubble, textBubbleColorStyle]}>{placeholderBody}</View>
               )}
+              {reactionsNode}
             </View>
           </Pressable>,
         );
@@ -2233,6 +2335,7 @@ export function TelegramChatScreen() {
                 style={measureShellStyle}
               >
                 {channelSinglePhoto}
+                {reactionsNode}
               </View>
             </Pressable>,
           );
@@ -2260,6 +2363,10 @@ export function TelegramChatScreen() {
             viewCountShortLabel={viewCountFormatted ?? undefined}
             mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
             footer={discussionFooter}
+            inlineReactions={item.reactions}
+            allowMessageReactions={true}
+            onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+            reactionAccentColor={chatTheme.bubbleMeAccent}
           />
         );
 
@@ -2337,6 +2444,10 @@ export function TelegramChatScreen() {
             mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
             incomingChannelPost={channelIncoming}
             footer={discussionFooter}
+            inlineReactions={item.reactions}
+            allowMessageReactions={true}
+            onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+            reactionAccentColor={chatTheme.bubbleMeAccent}
           />
         );
 
@@ -2409,6 +2520,10 @@ export function TelegramChatScreen() {
                     incomingSecondaryTextColor={colors.textSecondary}
                     incomingCaptionColor={colors.textPrimary}
                     style={outgoingGradientBubbleStyle}
+                    inlineReactions={item.reactions}
+                    allowMessageReactions={true}
+                    onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+                    reactionAccentColor={chatTheme.bubbleMeAccent}
                   />
                 </MeBubbleChrome>
               ) : (
@@ -2435,6 +2550,10 @@ export function TelegramChatScreen() {
                       ? [styles.bubble, outgoingBubbleSurfaceStyle, { alignSelf: 'flex-end' as const }]
                       : textBubbleColorStyle
                   }
+                  inlineReactions={item.reactions}
+                  allowMessageReactions={true}
+                  onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+                  reactionAccentColor={chatTheme.bubbleMeAccent}
                 />
               )}
             </View>
@@ -2554,6 +2673,7 @@ export function TelegramChatScreen() {
             ) : (
               <View style={incomingTextBubbleSolidStyle}>{textBubbleBody}</View>
             )}
+            {reactionsNode}
           </View>
         </Pressable>,
       );
@@ -2581,6 +2701,8 @@ export function TelegramChatScreen() {
       windowWidth,
       normalizedSearchQuery,
       highlightedMessageId,
+      handleMessageRowPress,
+      handleToggleReaction,
     ],
   );
 
@@ -2608,7 +2730,6 @@ export function TelegramChatScreen() {
             titleNavDisabled={telegramSelectionMode}
             onTitlePress={openTelegramChatProfile}
             floating
-            blurTargetRef={blurTargetRef}
           />
         ) : null}
 
