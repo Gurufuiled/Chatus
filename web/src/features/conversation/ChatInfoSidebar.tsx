@@ -29,18 +29,18 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
   const { data: peerDetail } = useUserDetailQuery(peer?.user_id ?? undefined);
 
   // States
-  const [activeTab, setActiveTab] = useState(1); // Default to 'Медиа' (index 1)
+  const [activeTab, setActiveTab] = useState(0); // Default to 'Медиа'
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // Close on Escape
+  // Close on Escape (but not while lightbox is open)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !lightboxSrc) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, lightboxSrc]);
 
   // Extract info matching the user's Dobry screenshot or dynamic fields
   const isDobry = useMemo(() => {
@@ -127,11 +127,11 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
     );
   }, [messages]);
 
-  const tabs = ['Подарки', 'Медиа', 'Файлы', 'Ссылки', 'Голосовые'];
+  const tabs = ['Медиа', 'Файлы', 'Ссылки', 'Голосовые'];
 
   const handleAvatarClick = () => {
     if (chat.avatar_url) {
-      setLightboxSrc(chat.avatar_url);
+      setLightboxSrc(resolveMediaUrl(chat.avatar_url));
     }
   };
 
@@ -317,179 +317,166 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
           />
         </div>
 
-        {/* Sliding panels swiper container */}
-        <div className="chat-info-sidebar__panels-wrapper">
-          <div
-            className="chat-info-sidebar__panels"
-            style={{ transform: `translateX(-${activeTab * 20}%)` }}
-          >
-            {/* Panel 0: Подарки */}
-            <div className="chat-info-sidebar__panel">
+        {/* Tab panel — only active tab content */}
+        <div className="chat-info-sidebar__panel">
+          {activeTab === 0 && (
+            mediaMessages.length === 0 ? (
               <div className="chat-info-sidebar__empty-state">
-                <span className="chat-info-sidebar__empty-icon" aria-hidden>🎁</span>
-                <p className="chat-info-sidebar__empty-text">Подарков пока нет</p>
+                <span className="chat-info-sidebar__empty-icon" aria-hidden>🖼️</span>
+                <p className="chat-info-sidebar__empty-text">Нет медиа файлов</p>
               </div>
-            </div>
+            ) : (
+              <div className="chat-info-sidebar__media-grid">
+                {mediaMessages.map((msg) => {
+                  const media = msg.media?.[0];
+                  if (!media) return null;
+                  const isVideo = media.media_type === 'video' || msg.msg_type === 'video';
+                  const fullUrl = resolveMediaUrl(media.remote_url || '');
+                  return (
+                    <button
+                      key={msg.id}
+                      type="button"
+                      className="chat-info-sidebar__media-item"
+                      onClick={() => {
+                        if (!isVideo) setLightboxSrc(fullUrl);
+                      }}
+                    >
+                      <img
+                        src={resolveMediaUrl(media.thumbnail_url || media.remote_url || '')}
+                        alt=""
+                        loading="lazy"
+                        draggable={false}
+                      />
+                      {isVideo && (
+                        <span className="chat-info-sidebar__video-play-badge">
+                          ▶
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
 
-            {/* Panel 1: Медиа */}
-            <div className="chat-info-sidebar__panel">
-              {mediaMessages.length === 0 ? (
-                <div className="chat-info-sidebar__empty-state">
-                  <span className="chat-info-sidebar__empty-icon" aria-hidden>🖼️</span>
-                  <p className="chat-info-sidebar__empty-text">Нет медиа файлов</p>
-                </div>
-              ) : (
-                <div className="chat-info-sidebar__media-grid">
-                  {mediaMessages.map((msg) => {
-                    const media = msg.media?.[0];
-                    if (!media) return null;
-                    const isVideo = media.media_type === 'video' || msg.msg_type === 'video';
-                    return (
-                      <button
-                        key={msg.id}
-                        type="button"
-                        className="chat-info-sidebar__media-item"
-                        onClick={() => setLightboxSrc(media.remote_url)}
-                      >
-                        <img
-                          src={resolveMediaUrl(media.thumbnail_url || media.remote_url || '')}
-                          alt=""
-                          loading="lazy"
-                        />
-                        {isVideo && (
-                          <span className="chat-info-sidebar__video-play-badge">
-                            ▶
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Panel 2: Файлы */}
-            <div className="chat-info-sidebar__panel">
-              {fileMessages.length === 0 ? (
-                <div className="chat-info-sidebar__empty-state">
-                  <span className="chat-info-sidebar__empty-icon" aria-hidden>📁</span>
-                  <p className="chat-info-sidebar__empty-text">Нет файлов</p>
-                </div>
-              ) : (
-                <div className="chat-info-sidebar__files-list">
-                  {fileMessages.map((msg) => {
-                    const media = msg.media?.[0];
-                    if (!media) return null;
-                    const resolved = resolveMediaUrl(media.remote_url || '');
-                    return (
-                      <a
-                        key={msg.id}
-                        href={resolved}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="chat-info-sidebar__file-row"
-                        download={media.file_name ?? undefined}
-                      >
-                        <div className="chat-info-sidebar__file-icon">
-                          {media.file_name?.split('.').pop()?.toUpperCase() || 'FILE'}
-                        </div>
-                        <div className="chat-info-sidebar__file-details">
-                          <span className="chat-info-sidebar__file-name">{media.file_name}</span>
-                          <span className="chat-info-sidebar__file-size">{formatFileSize(media.file_size)}</span>
-                        </div>
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Panel 3: Ссылки */}
-            <div className="chat-info-sidebar__panel">
-              {linkMessages.length === 0 ? (
-                <div className="chat-info-sidebar__empty-state">
-                  <span className="chat-info-sidebar__empty-icon" aria-hidden>🔗</span>
-                  <p className="chat-info-sidebar__empty-text">Нет ссылок</p>
-                </div>
-              ) : (
-                <div className="chat-info-sidebar__links-list">
-                  {linkMessages.map((msg) => {
-                    const matches = msg.content?.match(/(https?:\/\/[^\s]+)/gi) || [];
-                    return matches.map((link, idx) => (
-                      <a
-                        key={`${msg.id}-${idx}`}
-                        href={link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="chat-info-sidebar__link-row"
-                      >
-                        <div className="chat-info-sidebar__link-icon">
-                          🌍
-                        </div>
-                        <div className="chat-info-sidebar__link-details">
-                          <span className="chat-info-sidebar__link-url">{link}</span>
-                          <span className="chat-info-sidebar__link-date">
-                            {new Date(msg.created_at).toLocaleDateString([], {
-                              day: 'numeric',
-                              month: 'short',
-                            })}
-                          </span>
-                        </div>
-                      </a>
-                    ));
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Panel 4: Голосовые */}
-            <div className="chat-info-sidebar__panel">
-              {voiceMessages.length === 0 ? (
-                <div className="chat-info-sidebar__empty-state">
-                  <span className="chat-info-sidebar__empty-icon" aria-hidden>🎤</span>
-                  <p className="chat-info-sidebar__empty-text">Нет голосовых сообщений</p>
-                </div>
-              ) : (
-                <div className="chat-info-sidebar__voice-list">
-                  {voiceMessages.map((msg) => {
-                    const media = msg.media?.[0];
-                    if (!media) return null;
-                    const durationStr = media.duration_ms
-                      ? `${Math.floor(media.duration_ms / 60000)}:${String(
-                          Math.floor((media.duration_ms % 60000) / 1000)
-                        ).padStart(2, '0')}`
-                      : '0:00';
-                    return (
-                      <div key={msg.id} className="chat-info-sidebar__voice-row">
-                        <div className="chat-info-sidebar__voice-icon">
-                          {msg.msg_type === 'video_note' ? '📹' : '🎤'}
-                        </div>
-                        <div className="chat-info-sidebar__voice-details">
-                          <span className="chat-info-sidebar__voice-title">
-                            {msg.msg_type === 'video_note' ? 'Видеосообщение' : 'Голосовое сообщение'}
-                          </span>
-                          <span className="chat-info-sidebar__voice-duration">
-                            {durationStr} • {new Date(msg.created_at).toLocaleDateString([], {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        </div>
+          {activeTab === 1 && (
+            fileMessages.length === 0 ? (
+              <div className="chat-info-sidebar__empty-state">
+                <span className="chat-info-sidebar__empty-icon" aria-hidden>📁</span>
+                <p className="chat-info-sidebar__empty-text">Нет файлов</p>
+              </div>
+            ) : (
+              <div className="chat-info-sidebar__files-list">
+                {fileMessages.map((msg) => {
+                  const media = msg.media?.[0];
+                  if (!media) return null;
+                  const resolved = resolveMediaUrl(media.remote_url || '');
+                  return (
+                    <a
+                      key={msg.id}
+                      href={resolved}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="chat-info-sidebar__file-row"
+                      download={media.file_name ?? undefined}
+                    >
+                      <div className="chat-info-sidebar__file-icon">
+                        {media.file_name?.split('.').pop()?.toUpperCase() || 'FILE'}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+                      <div className="chat-info-sidebar__file-details">
+                        <span className="chat-info-sidebar__file-name">{media.file_name}</span>
+                        <span className="chat-info-sidebar__file-size">{formatFileSize(media.file_size)}</span>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {activeTab === 2 && (
+            linkMessages.length === 0 ? (
+              <div className="chat-info-sidebar__empty-state">
+                <span className="chat-info-sidebar__empty-icon" aria-hidden>🔗</span>
+                <p className="chat-info-sidebar__empty-text">Нет ссылок</p>
+              </div>
+            ) : (
+              <div className="chat-info-sidebar__links-list">
+                {linkMessages.map((msg) => {
+                  const matches = msg.content?.match(/(https?:\/\/[^\s]+)/gi) || [];
+                  return matches.map((link, idx) => (
+                    <a
+                      key={`${msg.id}-${idx}`}
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="chat-info-sidebar__link-row"
+                    >
+                      <div className="chat-info-sidebar__link-icon">
+                        🌍
+                      </div>
+                      <div className="chat-info-sidebar__link-details">
+                        <span className="chat-info-sidebar__link-url">{link}</span>
+                        <span className="chat-info-sidebar__link-date">
+                          {new Date(msg.created_at).toLocaleDateString([], {
+                            day: 'numeric',
+                            month: 'short',
+                          })}
+                        </span>
+                      </div>
+                    </a>
+                  ));
+                })}
+              </div>
+            )
+          )}
+
+          {activeTab === 3 && (
+            voiceMessages.length === 0 ? (
+              <div className="chat-info-sidebar__empty-state">
+                <span className="chat-info-sidebar__empty-icon" aria-hidden>🎤</span>
+                <p className="chat-info-sidebar__empty-text">Нет голосовых сообщений</p>
+              </div>
+            ) : (
+              <div className="chat-info-sidebar__voice-list">
+                {voiceMessages.map((msg) => {
+                  const media = msg.media?.[0];
+                  if (!media) return null;
+                  const durationStr = media.duration_ms
+                    ? `${Math.floor(media.duration_ms / 60000)}:${String(
+                        Math.floor((media.duration_ms % 60000) / 1000)
+                      ).padStart(2, '0')}`
+                    : '0:00';
+                  return (
+                    <div key={msg.id} className="chat-info-sidebar__voice-row">
+                      <div className="chat-info-sidebar__voice-icon">
+                        {msg.msg_type === 'video_note' ? '📹' : '🎤'}
+                      </div>
+                      <div className="chat-info-sidebar__voice-details">
+                        <span className="chat-info-sidebar__voice-title">
+                          {msg.msg_type === 'video_note' ? 'Видеосообщение' : 'Голосовое сообщение'}
+                        </span>
+                        <span className="chat-info-sidebar__voice-duration">
+                          {durationStr} • {new Date(msg.created_at).toLocaleDateString([], {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
         </div>
       </div>
 
       {/* Lightbox Modal */}
       {lightboxSrc && (
-        <ImageLightbox src={resolveMediaUrl(lightboxSrc)} onClose={() => setLightboxSrc(null)} />
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
     </div>
   );
