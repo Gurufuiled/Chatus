@@ -23,7 +23,7 @@ function ContactsStack() {
         headerStyle: { backgroundColor: themeColors.toolbar },
         headerShadowVisible: false,
         headerTintColor: themeColors.textPrimary,
-        headerTitleStyle: { color: themeColors.textPrimary, fontWeight: '700' },
+        headerTitleStyle: { color: themeColors.textPrimary, fontWeight: '700', fontSize: 17 },
       }}
     >
       <ContactsStackNav.Screen
@@ -45,8 +45,6 @@ const CHAT_STACK_SHOW_TAB_ROUTES = new Set(['ChatList']);
 const SETTINGS_HIDE_TAB_ROUTES = new Set(['MiniApp', 'Services', 'EditProfile', 'MyProfile']);
 
 export function MainTabs() {
-  const { colors: themeColors } = useTheme();
-
   return (
     <Tab.Navigator
       id={undefined as never}
@@ -62,10 +60,11 @@ export function MainTabs() {
         component={ChatsStack}
         options={({ route }) => {
           const focusedRoute = getFocusedRouteNameFromRoute(route) ?? 'ChatList';
-          const shouldHideTabBar = !CHAT_STACK_SHOW_TAB_ROUTES.has(focusedRoute);
+          const onRootList = CHAT_STACK_SHOW_TAB_ROUTES.has(focusedRoute);
           return {
             title: 'Чаты',
-            tabBarStyle: shouldHideTabBar ? HIDDEN_TAB_BAR : undefined,
+            tabBarStyle: onRootList ? undefined : HIDDEN_TAB_BAR,
+            swipeEnabled: onRootList,
           };
         }}
       />
@@ -81,14 +80,14 @@ export function MainTabs() {
         component={SettingsStack}
         options={({ route }) => {
           const focused = getFocusedRouteNameFromRoute(route) ?? 'SettingsMain';
-          const hide = SETTINGS_HIDE_TAB_ROUTES.has(focused);
+          const onRoot = !SETTINGS_HIDE_TAB_ROUTES.has(focused);
           return {
             title: 'Настройки',
-            tabBarStyle: hide ? HIDDEN_TAB_BAR : undefined,
+            tabBarStyle: onRoot ? undefined : HIDDEN_TAB_BAR,
+            swipeEnabled: onRoot,
           };
         }}
       />
     </Tab.Navigator>
   );
 }
-
