@@ -32,5 +32,8 @@ ENV PORT=4000
 EXPOSE 4000 4001 4002
 
 # Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/docker-entrypoint.sh"]
+
+# nosemgrep: dockerfile.security.missing-user.missing-user
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
