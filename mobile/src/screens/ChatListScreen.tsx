@@ -96,7 +96,7 @@ function matchesChatQuery(chat: Chat, normalizedQuery: string) {
   return haystack.includes(normalizedQuery);
 }
 
-function ContactResultRow({
+const ContactResultRow = React.memo(function ContactResultRow({
   user,
   disabled,
   onPress,
@@ -150,7 +150,7 @@ function ContactResultRow({
       ) : null}
     </Pressable>
   );
-}
+});
 
 export function ChatListScreen() {
   const { colors: themeColors } = useTheme();
@@ -541,9 +541,7 @@ export function ChatListScreen() {
           <ContactResultRow
             user={item.user}
             disabled={creatingChatUserIds.has(item.user.id)}
-            onPress={(user) => {
-              void handleStartChat(user);
-            }}
+            onPress={handleStartChat}
             listStyles={listStyles}
             accent={themeColors.accent}
           />
@@ -574,13 +572,18 @@ export function ChatListScreen() {
 
   const keyExtractor = React.useCallback((item: ChatListItem) => item.id, []);
 
+  const renderSeparator = React.useCallback(
+    () => <ChatSeparator listStyles={listStyles} />,
+    [listStyles],
+  );
+
   return (
     <View style={listStyles.container}>
       <FlatList
         data={listItems}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        ItemSeparatorComponent={() => <ChatSeparator listStyles={listStyles} />}
+        ItemSeparatorComponent={renderSeparator}
         removeClippedSubviews={
           Platform.OS === "android" ? true : !isSearchActive
         }
