@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,75 +13,78 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { Image } from 'expo-image';
-import Feather from '@expo/vector-icons/Feather';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ChatsStackParamList } from '../navigation/types';
-import type { ApiUser } from '../services/AuthService';
-import { createOrFindChat } from '../services/chatService';
+} from "react-native";
+import { Image } from "expo-image";
+import Feather from "@expo/vector-icons/Feather";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { ChatsStackParamList } from "../navigation/types";
+import type { ApiUser } from "../services/AuthService";
+import { createOrFindChat } from "../services/chatService";
 import {
   listAddressBookContacts,
   type AddressBookContact,
-} from '../services/contactService';
-import { searchUsers } from '../services/profileService';
-import { authStore } from '../stores/authStore';
-import { chatStore } from '../stores/chatStore';
-import { uiStore } from '../stores/uiStore';
+} from "../services/contactService";
+import { searchUsers } from "../services/profileService";
+import { authStore } from "../stores/authStore";
+import { chatStore } from "../stores/chatStore";
+import { uiStore } from "../stores/uiStore";
 import {
   filterGroupMemberPickerUsers,
   getContactSortName,
   getGroupMemberPickerContacts,
   mergeGroupMemberPickerUsers,
-} from '../utils/groupMemberPicker';
-import { formatContactPresenceSubtitle } from '../utils/presenceFormat';
-import { resolveAvatarUrl } from '../config';
-import { useTheme } from '../contexts/ThemeContext';
-import { createComposeMessageStyles } from './composeMessage.styles';
-import { TelegramGlyph } from '../icons/telegram';
-import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
+} from "../utils/groupMemberPicker";
+import { formatContactPresenceSubtitle } from "../utils/presenceFormat";
+import { resolveAvatarUrl } from "../config";
+import { useTheme } from "../contexts/ThemeContext";
+import { createComposeMessageStyles } from "./composeMessage.styles";
+import { TelegramGlyph } from "../icons/telegram";
+import { TELEGRAM_PROFILE_GLYPHS } from "../icons/telegram/profilePaths";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ComposeMessage'>;
+type Nav = NativeStackNavigationProp<ChatsStackParamList, "ComposeMessage">;
 
 type Row =
-  | { kind: 'user'; user: ApiUser }
-  | { kind: 'address'; contact: AddressBookContact };
+  | { kind: "user"; user: ApiUser }
+  | { kind: "address"; contact: AddressBookContact };
 
 function letterForRow(row: Row): string {
-  if (row.kind === 'user') {
+  if (row.kind === "user") {
     const n = getContactSortName(row.user);
     const ch = n.charAt(0).toUpperCase();
     if (/[A-ZА-ЯЁ]/i.test(ch)) {
-      return ch === 'Ё' ? 'Е' : ch;
+      return ch === "Ё" ? "Е" : ch;
     }
-    return '#';
+    return "#";
   }
   const name =
-    [row.contact.first_name, row.contact.last_name].filter(Boolean).join(' ').trim() ||
-    row.contact.phone;
+    [row.contact.first_name, row.contact.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || row.contact.phone;
   const ch = name.charAt(0).toUpperCase();
-  if (/[0-9]/.test(ch)) return '#';
+  if (/[0-9]/.test(ch)) return "#";
   if (/[A-ZА-ЯЁ]/i.test(ch)) {
-    return ch === 'Ё' ? 'Е' : ch;
+    return ch === "Ё" ? "Е" : ch;
   }
-  return '#';
+  return "#";
 }
 
 function sortLetters(a: string, b: string): number {
-  if (a === '#' && b !== '#') return 1;
-  if (b === '#' && a !== '#') return -1;
-  return a.localeCompare(b, 'ru', { sensitivity: 'base' });
+  if (a === "#" && b !== "#") return 1;
+  if (b === "#" && a !== "#") return -1;
+  return a.localeCompare(b, "ru", { sensitivity: "base" });
 }
 
 function addressLinkedUserStub(contact: AddressBookContact): ApiUser {
   const now = Date.now();
   const label =
-    [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() || contact.phone;
+    [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
+    contact.phone;
   return {
     id: contact.linked_user_id!,
     loginus_id: null,
@@ -104,7 +113,7 @@ export function ComposeMessageScreen() {
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const presenceByUserId = uiStore((s) => s.presenceByUserId);
 
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [remoteResults, setRemoteResults] = useState<ApiUser[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [addressBook, setAddressBook] = useState<AddressBookContact[]>([]);
@@ -124,12 +133,12 @@ export function ComposeMessageScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadAddressBook();
-    }, [loadAddressBook])
+    }, [loadAddressBook]),
   );
 
   useEffect(() => {
     const raw = query.trim();
-    const normalized = raw.replace(/^@+/, '');
+    const normalized = raw.replace(/^@+/, "");
     if (!normalized) {
       searchIdRef.current += 1;
       setRemoteResults([]);
@@ -142,7 +151,9 @@ export function ComposeMessageScreen() {
       void searchUsers(raw)
         .then((users) => {
           if (id !== searchIdRef.current) return;
-          setRemoteResults(currentUserId ? users.filter((u) => u.id !== currentUserId) : users);
+          setRemoteResults(
+            currentUserId ? users.filter((u) => u.id !== currentUserId) : users,
+          );
         })
         .catch(() => {
           if (id !== searchIdRef.current) return;
@@ -157,7 +168,7 @@ export function ComposeMessageScreen() {
 
   const chatContacts = useMemo(
     () => getGroupMemberPickerContacts({ chats, currentUserId }),
-    [chats, currentUserId]
+    [chats, currentUserId],
   );
 
   const mergedUsers = useMemo(() => {
@@ -178,29 +189,33 @@ export function ComposeMessageScreen() {
 
     for (const u of mergedUsers) {
       seen.add(u.id);
-      out.push({ kind: 'user', user: u });
+      out.push({ kind: "user", user: u });
     }
 
     for (const c of addressBook) {
       if (c.linked_user_id && seen.has(c.linked_user_id)) continue;
       if (c.linked_user_id) {
         seen.add(c.linked_user_id);
-        out.push({ kind: 'user', user: addressLinkedUserStub(c) });
+        out.push({ kind: "user", user: addressLinkedUserStub(c) });
         continue;
       }
-      out.push({ kind: 'address', contact: c });
+      out.push({ kind: "address", contact: c });
     }
 
     out.sort((a, b) => {
       const na =
-        a.kind === 'user'
+        a.kind === "user"
           ? getContactSortName(a.user)
-          : [a.contact.first_name, a.contact.last_name].filter(Boolean).join(' ') || a.contact.phone;
+          : [a.contact.first_name, a.contact.last_name]
+              .filter(Boolean)
+              .join(" ") || a.contact.phone;
       const nb =
-        b.kind === 'user'
+        b.kind === "user"
           ? getContactSortName(b.user)
-          : [b.contact.first_name, b.contact.last_name].filter(Boolean).join(' ') || b.contact.phone;
-      return na.localeCompare(nb, 'ru', { sensitivity: 'base' });
+          : [b.contact.first_name, b.contact.last_name]
+              .filter(Boolean)
+              .join(" ") || b.contact.phone;
+      return na.localeCompare(nb, "ru", { sensitivity: "base" });
     });
 
     return out;
@@ -227,7 +242,7 @@ export function ComposeMessageScreen() {
       try {
         const chat = await createOrFindChat(user.id);
         chatStore.getState().addOrUpdateChat(chat);
-        navigation.replace('Chat', {
+        navigation.replace("Chat", {
           chatId: chat.id,
           chatTitle:
             chat.local_contact_name?.trim() ||
@@ -235,10 +250,13 @@ export function ComposeMessageScreen() {
             chat.name ||
             user.display_name ||
             user.username ||
-            'Чат',
+            "Чат",
         });
       } catch (e) {
-        Alert.alert('Не удалось открыть чат', e instanceof Error ? e.message : String(e));
+        Alert.alert(
+          "Не удалось открыть чат",
+          e instanceof Error ? e.message : String(e),
+        );
       } finally {
         setCreatingIds((prev) => {
           const n = new Set(prev);
@@ -247,21 +265,21 @@ export function ComposeMessageScreen() {
         });
       }
     },
-    [navigation]
+    [navigation],
   );
 
   const onPressRow = useCallback(
     (row: Row) => {
-      if (row.kind === 'user') {
+      if (row.kind === "user") {
         void startChat(row.user);
         return;
       }
       Alert.alert(
-        'Контакт',
-        'Этот номер пока не зарегистрирован в приложении. Когда пользователь появится, вы сможете написать ему из списка чатов.',
+        "Контакт",
+        "Этот номер пока не зарегистрирован в приложении. Когда пользователь появится, вы сможете написать ему из списка чатов.",
       );
     },
-    [startChat]
+    [startChat],
   );
 
   const searchG = TELEGRAM_PROFILE_GLYPHS.search;
@@ -269,11 +287,12 @@ export function ComposeMessageScreen() {
 
   const renderRow = useCallback(
     ({ item }: { item: Row }) => {
-      if (item.kind === 'address') {
+      if (item.kind === "address") {
         const c = item.contact;
         const title =
-          [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.phone;
-        const initial = (title.trim()[0] || '?').toUpperCase();
+          [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+          c.phone;
+        const initial = (title.trim()[0] || "?").toUpperCase();
         return (
           <Pressable
             style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -296,14 +315,17 @@ export function ComposeMessageScreen() {
 
       const user = item.user;
       const displayName =
-        user.display_name?.trim() || user.username?.trim() || user.handle || 'Контакт';
+        user.display_name?.trim() ||
+        user.username?.trim() ||
+        user.handle ||
+        "Контакт";
       const presence = presenceByUserId[user.id] ?? {
         is_online: user.is_online,
         last_seen: user.last_seen,
       };
       const subtitle = formatContactPresenceSubtitle(
         Boolean(presence?.is_online),
-        presence?.last_seen ?? user.last_seen
+        presence?.last_seen ?? user.last_seen,
       );
       const avatarUrl = resolveAvatarUrl(user.avatar_url);
       const busy = creatingIds.has(user.id);
@@ -324,7 +346,7 @@ export function ComposeMessageScreen() {
           ) : (
             <View style={[styles.avatarPh, { backgroundColor: colors.accent }]}>
               <Text style={styles.avatarPhText}>
-                {(displayName.trim()[0] || '?').toUpperCase()}
+                {(displayName.trim()[0] || "?").toUpperCase()}
               </Text>
             </View>
           )}
@@ -336,11 +358,13 @@ export function ComposeMessageScreen() {
               {subtitle}
             </Text>
           </View>
-          {busy ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+          {busy ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : null}
         </Pressable>
       );
     },
-    [colors.accent, creatingIds, onPressRow, presenceByUserId, styles]
+    [colors.accent, creatingIds, onPressRow, presenceByUserId, styles],
   );
 
   const header = useMemo(
@@ -349,31 +373,65 @@ export function ComposeMessageScreen() {
         <Pressable
           style={styles.quickAction}
           onPress={() => {
-            navigation.navigate('CreateGroupChat');
+            navigation.navigate("CreateGroupChat");
           }}
         >
-          <View style={[styles.quickIconWrap, { backgroundColor: `${colors.accent}22` }]}>
-            <TelegramGlyph d={groupG.d} fillRule={groupG.fillRule} color={colors.accent} size={22} />
+          <View
+            style={[
+              styles.quickIconWrap,
+              { backgroundColor: `${colors.accent}22` },
+            ]}
+          >
+            <TelegramGlyph
+              d={groupG.d}
+              fillRule={groupG.fillRule}
+              color={colors.accent}
+              size={22}
+            />
           </View>
-          <Text style={[styles.quickLabel, { color: colors.accent }]}>Создать группу</Text>
+          <Text style={[styles.quickLabel, { color: colors.accent }]}>
+            Создать группу
+          </Text>
         </Pressable>
         <Pressable
           style={styles.quickAction}
-          onPress={() => navigation.navigate('CreateContact')}
+          onPress={() => navigation.navigate("CreateContact")}
         >
-          <View style={[styles.quickIconWrap, { backgroundColor: `${colors.accent}22` }]}>
-            <MaterialCommunityIcons name="account-plus-outline" size={24} color={colors.accent} />
+          <View
+            style={[
+              styles.quickIconWrap,
+              { backgroundColor: `${colors.accent}22` },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="account-plus-outline"
+              size={24}
+              color={colors.accent}
+            />
           </View>
-          <Text style={[styles.quickLabel, { color: colors.accent }]}>Создать контакт</Text>
+          <Text style={[styles.quickLabel, { color: colors.accent }]}>
+            Создать контакт
+          </Text>
         </Pressable>
         <Pressable
           style={styles.quickAction}
-          onPress={() => navigation.navigate('CreateChannel')}
+          onPress={() => navigation.navigate("CreateChannel")}
         >
-          <View style={[styles.quickIconWrap, { backgroundColor: `${colors.accent}22` }]}>
-            <MaterialCommunityIcons name="bullhorn-outline" size={22} color={colors.accent} />
+          <View
+            style={[
+              styles.quickIconWrap,
+              { backgroundColor: `${colors.accent}22` },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="bullhorn-outline"
+              size={22}
+              color={colors.accent}
+            />
           </View>
-          <Text style={[styles.quickLabel, { color: colors.accent }]}>Создать канал</Text>
+          <Text style={[styles.quickLabel, { color: colors.accent }]}>
+            Создать канал
+          </Text>
         </Pressable>
 
         <View style={styles.searchWrap}>
@@ -394,11 +452,21 @@ export function ComposeMessageScreen() {
             autoCapitalize="none"
             autoCorrect={false}
           />
-          {loadingSearch ? <ActivityIndicator size="small" color={colors.accent} /> : null}
+          {loadingSearch ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : null}
         </View>
       </View>
     ),
-    [colors, groupG, navigation, query, loadingSearch, searchG, styles]
+    [colors, groupG, navigation, query, loadingSearch, searchG, styles],
+  );
+
+  // ⚡ Bolt: Extracting ItemSeparatorComponent to a memoized callback to prevent
+  // FlatList from unmounting and remounting separator components on every render.
+  // Impact: Reduces React view reconciliations during fast scrolling.
+  const renderSeparator = useCallback(
+    () => <View style={styles.separator} />,
+    [styles.separator],
   );
 
   return (
@@ -419,7 +487,7 @@ export function ComposeMessageScreen() {
         ref={sectionListRef}
         sections={sections}
         keyExtractor={(item) =>
-          item.kind === 'user' ? `u:${item.user.id}` : `a:${item.contact.id}`
+          item.kind === "user" ? `u:${item.user.id}` : `a:${item.contact.id}`
         }
         renderItem={({ item }) => renderRow({ item })}
         renderSectionHeader={({ section: { title } }) => (
@@ -427,13 +495,13 @@ export function ComposeMessageScreen() {
         )}
         ListHeaderComponent={header}
         stickySectionHeadersEnabled={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <Text
             style={{
-              textAlign: 'center',
+              textAlign: "center",
               marginTop: 32,
               paddingHorizontal: 24,
               color: colors.textSecondary,
