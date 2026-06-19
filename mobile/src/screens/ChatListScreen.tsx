@@ -572,6 +572,8 @@ export function ChatListScreen() {
     ],
   );
 
+  const renderSeparator = React.useCallback(() => <ChatSeparator listStyles={listStyles} />, [listStyles]);
+
   const keyExtractor = React.useCallback((item: ChatListItem) => item.id, []);
 
   return (
@@ -580,7 +582,7 @@ export function ChatListScreen() {
         data={listItems}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        ItemSeparatorComponent={() => <ChatSeparator listStyles={listStyles} />}
+        ItemSeparatorComponent={renderSeparator}
         removeClippedSubviews={
           Platform.OS === "android" ? true : !isSearchActive
         }

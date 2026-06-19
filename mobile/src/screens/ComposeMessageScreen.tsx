@@ -343,6 +343,8 @@ export function ComposeMessageScreen() {
     [colors.accent, creatingIds, onPressRow, presenceByUserId, styles]
   );
 
+  const renderSeparator = useCallback(() => <View style={styles.separator} />, [styles.separator]);
+
   const header = useMemo(
     () => (
       <View>
@@ -427,7 +429,7 @@ export function ComposeMessageScreen() {
         )}
         ListHeaderComponent={header}
         stickySectionHeadersEnabled={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
