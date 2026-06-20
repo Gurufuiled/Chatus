@@ -31,6 +31,11 @@ ENV PORT=4000
 
 EXPOSE 4000 4001 4002
 
+# Create a non-root user and switch to it for security
+RUN groupadd -r chatus && useradd -r -g chatus -m chatus
+RUN chown -R chatus:chatus /app /docker-entrypoint.sh
+USER chatus
+
 # Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
