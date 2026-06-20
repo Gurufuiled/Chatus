@@ -166,6 +166,8 @@ export function ChannelCatalogScreen() {
     }, [load])
   );
 
+  const renderSeparator = React.useCallback(() => <View style={styles.separator} />, [styles.separator]);
+
   const renderItem = React.useCallback(
     ({ item }: { item: Chat }) => {
       const title = item.name ?? 'Безымянный канал';
@@ -217,7 +219,7 @@ export function ChannelCatalogScreen() {
       renderItem={renderItem}
       refreshing={isLoading}
       onRefresh={() => void load()}
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ItemSeparatorComponent={renderSeparator}
       contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
       ListHeaderComponent={
         loadError && catalog.length > 0 ? (

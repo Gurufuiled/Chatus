@@ -267,6 +267,8 @@ export function ComposeMessageScreen() {
   const searchG = TELEGRAM_PROFILE_GLYPHS.search;
   const groupG = TELEGRAM_PROFILE_GLYPHS.groupAddMember;
 
+  const renderSeparator = useCallback(() => <View style={styles.separator} />, [styles.separator]);
+
   const renderRow = useCallback(
     ({ item }: { item: Row }) => {
       if (item.kind === 'address') {
@@ -427,7 +429,7 @@ export function ComposeMessageScreen() {
         )}
         ListHeaderComponent={header}
         stickySectionHeadersEnabled={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
