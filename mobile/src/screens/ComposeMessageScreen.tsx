@@ -401,6 +401,13 @@ export function ComposeMessageScreen() {
     [colors, groupG, navigation, query, loadingSearch, searchG, styles]
   );
 
+  // ⚡ Bolt: Memoize ItemSeparatorComponent to prevent FlatList from remounting separators on every render,
+  // which saves CPU and memory.
+  const renderSeparator = useCallback(
+    () => <View style={styles.separator} />,
+    [styles.separator]
+  );
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -427,7 +434,7 @@ export function ComposeMessageScreen() {
         )}
         ListHeaderComponent={header}
         stickySectionHeadersEnabled={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={

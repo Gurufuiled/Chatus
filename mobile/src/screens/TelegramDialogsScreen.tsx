@@ -63,6 +63,13 @@ export function TelegramDialogsScreen() {
     [isSearchActive, lastError, listStyles.empty, listStyles.emptyText],
   );
 
+  // ⚡ Bolt: Memoize ItemSeparatorComponent to prevent FlatList from remounting separators on every render,
+  // which saves CPU and memory.
+  const renderSeparator = useCallback(
+    () => <View style={listStyles.separator} />,
+    [listStyles.separator]
+  );
+
   return (
     <View style={listStyles.container}>
       <FlatList
@@ -70,7 +77,7 @@ export function TelegramDialogsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
-        ItemSeparatorComponent={() => <View style={listStyles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         ListHeaderComponent={
           <ChatListSearchBar
             listStyles={listStyles}
