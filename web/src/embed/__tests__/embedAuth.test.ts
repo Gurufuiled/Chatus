@@ -59,6 +59,7 @@ describe('embedAuth recovery', () => {
 
     expect(useAuthUiStore.getState().embedStatus).toBe('waiting_init');
     expect(useAuthUiStore.getState().accessToken).toBeNull();
+    expect(useAuthUiStore.getState().user).toBeNull();
     expect(requestLoginusInit).toHaveBeenCalledTimes(1);
   });
 });

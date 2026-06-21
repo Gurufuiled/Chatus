@@ -1,5 +1,5 @@
 import { exchangeLoginusInitData, refreshAccessToken } from '@/services/authService';
-import { ApiError, setAccessToken } from '@/services/apiClient';
+import { ApiError, setAccessToken, setAuthFailureHandler } from '@/services/apiClient';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { activateUiPreview } from '@/dev/uiPreview';
 import type { AuthResponse, AuthUser } from '@/types/auth';
@@ -136,10 +136,13 @@ export function handleAuthFailure(): void {
   clearEmbedSession();
   setAccessToken(null);
   store.setAccessToken(null);
+  store.setUser(null);
   store.setAuthError(null);
   store.setEmbedStatus('waiting_init');
   requestLoginusInit();
 }
+
+setAuthFailureHandler(handleAuthFailure);
 
 export function activateDevAuthBypass(): void {
   if (import.meta.env.VITE_DEV_UI_PREVIEW === 'true') {

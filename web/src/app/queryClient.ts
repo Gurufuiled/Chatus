@@ -14,10 +14,24 @@ export const queryClient = new QueryClient({
   },
 });
 
-queryClient.getQueryCache().subscribe((event) => {
-  if (event?.type !== 'updated') return;
-  const error = event.query.state.error;
-  if (error && typeof error === 'object' && 'status' in error && error.status === 401) {
+function isUnauthorizedError(error: unknown): boolean {
+  return Boolean(
+    error && typeof error === 'object' && 'status' in error && error.status === 401,
+  );
+}
+
+function onCacheAuthError(error: unknown): void {
+  if (isUnauthorizedError(error)) {
     handleAuthFailure();
   }
+}
+
+queryClient.getQueryCache().subscribe((event) => {
+  if (event?.type !== 'updated') return;
+  onCacheAuthError(event.query.state.error);
+});
+
+queryClient.getMutationCache().subscribe((event) => {
+  if (event?.type !== 'updated') return;
+  onCacheAuthError(event.mutation.state.error);
 });

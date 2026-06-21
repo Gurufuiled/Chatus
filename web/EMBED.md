@@ -235,6 +235,7 @@ Content-Type: application/json
 | От ChatUs → Loginus | Когда |
 |---------------------|-------|
 | `loginus:ready` | UI загружен, exchange успешен |
+| `loginus:requestInit` | Embed загрузился, но нет валидной сессии — просим Loginus прислать `loginus:init` (boot, восстановление после 401) |
 | `loginus:featureRequired` | `{ feature: 'microphone' }` — родитель должен добавить `microphone` в `allow` iframe |
 | `loginus:openLink` | Открыть внешнюю ссылку вне iframe |
 | `loginus:data` | В будущем: unread count и т.п. |
@@ -303,8 +304,8 @@ testik/
 
 ```
 1. Загрузка /embed
-2. embedStatus = 'waiting_init'
-3. Получили loginus:init → embedStatus = 'exchanging'
+2. Попытка восстановить сессию из sessionStorage; если не удалось — embedStatus = 'waiting_init' и `postMessage` `loginus:requestInit`
+3. Loginus отвечает `loginus:init` → embedStatus = 'exchanging'
 4. POST /auth/loginus/exchange
 5. Сохранили token → embedStatus = 'ready'
 6. postMessage loginus:ready

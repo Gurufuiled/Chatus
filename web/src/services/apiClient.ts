@@ -19,6 +19,12 @@ export class ApiError extends Error {
 
 let accessToken: string | null = null;
 let refreshPromise: Promise<string> | null = null;
+let authFailureHandler: (() => void) | null = null;
+
+/** Injected by embedAuth to avoid circular imports. */
+export function setAuthFailureHandler(handler: (() => void) | null): void {
+  authFailureHandler = handler;
+}
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -126,9 +132,13 @@ export async function apiRequest<T>(
       await tryRefreshAccessToken();
       return apiRequest<T>(path, { ...options, _authRetried: true });
     } catch {
-      clearEmbedSession();
-      setAccessToken(null);
-      useAuthUiStore.getState().setAccessToken(null);
+      if (authFailureHandler) {
+        authFailureHandler();
+      } else {
+        clearEmbedSession();
+        setAccessToken(null);
+        useAuthUiStore.getState().setAccessToken(null);
+      }
     }
   }
 

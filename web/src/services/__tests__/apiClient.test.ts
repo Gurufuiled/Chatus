@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiRequest, setAccessToken } from '@/services/apiClient';
+import { ApiError, apiRequest, setAccessToken, setAuthFailureHandler } from '@/services/apiClient';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { saveEmbedSession } from '@/embed/authSessionStorage';
 import { MOCK_USER } from '@/dev/uiPreview';
@@ -7,6 +7,7 @@ import { MOCK_USER } from '@/dev/uiPreview';
 describe('apiClient auth refresh', () => {
   beforeEach(() => {
     setAccessToken('expired-token');
+    setAuthFailureHandler(null);
     useAuthUiStore.setState({
       embedStatus: 'ready',
       accessToken: 'expired-token',
@@ -67,5 +68,28 @@ describe('apiClient auth refresh', () => {
 
     await expect(apiRequest('/users/me')).rejects.toBeInstanceOf(ApiError);
     expect(useAuthUiStore.getState().accessToken).toBeNull();
+  });
+
+  it('calls auth failure handler when refresh fails after 401', async () => {
+    const onAuthFailure = vi.fn();
+    setAuthFailureHandler(onAuthFailure);
+
+    saveEmbedSession({
+      refresh_token: 'rt-1',
+      expires_at: Date.now() + 3600_000,
+      user: MOCK_USER,
+    });
+
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: 'Invalid refresh token' }), { status: 401 }),
+      );
+
+    await expect(apiRequest('/users/me')).rejects.toBeInstanceOf(ApiError);
+    expect(onAuthFailure).toHaveBeenCalledTimes(1);
   });
 });
