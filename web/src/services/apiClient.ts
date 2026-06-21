@@ -137,7 +137,9 @@ export async function apiRequest<T>(
       } else {
         clearEmbedSession();
         setAccessToken(null);
-        useAuthUiStore.getState().setAccessToken(null);
+        const store = useAuthUiStore.getState();
+        store.setAccessToken(null);
+        store.setUser(null);
       }
     }
   }

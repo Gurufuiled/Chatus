@@ -68,6 +68,7 @@ describe('apiClient auth refresh', () => {
 
     await expect(apiRequest('/users/me')).rejects.toBeInstanceOf(ApiError);
     expect(useAuthUiStore.getState().accessToken).toBeNull();
+    expect(useAuthUiStore.getState().user).toBeNull();
   });
 
   it('calls auth failure handler when refresh fails after 401', async () => {
