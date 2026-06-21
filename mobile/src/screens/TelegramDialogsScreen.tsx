@@ -47,6 +47,11 @@ export function TelegramDialogsScreen() {
     [navigation],
   );
 
+  const renderSeparator = useCallback(
+    () => <View style={listStyles.separator} />,
+    [listStyles.separator],
+  );
+
   const empty = useMemo(
     () => (
       <View style={listStyles.empty}>
@@ -70,7 +75,7 @@ export function TelegramDialogsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
-        ItemSeparatorComponent={() => <View style={listStyles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         ListHeaderComponent={
           <ChatListSearchBar
             listStyles={listStyles}

@@ -220,6 +220,8 @@ export function ComposeMessageScreen() {
 
   const indexLetters = useMemo(() => sections.map((s) => s.title), [sections]);
 
+  const renderSeparator = useCallback(() => <View style={styles.separator} />, [styles.separator]);
+
   const startChat = useCallback(
     async (user: ApiUser) => {
       if (!user.id.trim()) return;
@@ -427,7 +429,7 @@ export function ComposeMessageScreen() {
         )}
         ListHeaderComponent={header}
         stickySectionHeadersEnabled={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
