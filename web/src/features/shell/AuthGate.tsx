@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 import { listenForLoginusInit } from '@/embed/loginusBridge';
-import { activateDevAuthBypass, runEmbedAuthExchange } from '@/embed/embedAuth';
+import {
+  activateDevAuthBypass,
+  bootEmbedAuth,
+  runEmbedAuthExchange,
+} from '@/embed/embedAuth';
 import { activateUiPreview, isUiPreviewMode } from '@/dev/uiPreview';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { Spinner } from '@/components/ui/Spinner';
@@ -26,6 +30,8 @@ export function AuthGate({ children }: AuthGateProps) {
       activateDevAuthBypass();
       return;
     }
+
+    void bootEmbedAuth();
 
     const unsubscribe = listenForLoginusInit((initData) => {
       const status = useAuthUiStore.getState().embedStatus;

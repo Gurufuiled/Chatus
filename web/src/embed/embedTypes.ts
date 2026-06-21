@@ -17,9 +17,14 @@ export type LoginusFeatureRequiredMessage = {
   feature: 'microphone';
 };
 
+export type LoginusRequestInitMessage = {
+  type: 'loginus:requestInit';
+};
+
 export type LoginusOutboundMessage =
   | LoginusReadyMessage
   | LoginusErrorMessage
-  | LoginusFeatureRequiredMessage;
+  | LoginusFeatureRequiredMessage
+  | LoginusRequestInitMessage;
 
 export type LoginusInboundMessage = LoginusInitMessage;

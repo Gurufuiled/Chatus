@@ -79,3 +79,7 @@ export function postToLoginusParent(message: LoginusOutboundMessage) {
   if (window.parent === window) return;
   window.parent.postMessage(message, getParentTargetOrigin());
 }
+
+export function requestLoginusInit(): void {
+  postToLoginusParent({ type: 'loginus:requestInit' });
+}

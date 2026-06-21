@@ -2,11 +2,51 @@ import { apiRequest } from './apiClient';
 import type { AuthResponse } from '@/types/auth';
 import { MOCK_USER, isUiPreviewMode } from '@/dev/uiPreview';
 
+export type RefreshTokenResponse = Pick<
+  AuthResponse,
+  'access_token' | 'refresh_token' | 'expires_at'
+>;
+
 export async function exchangeLoginusInitData(initData: string): Promise<AuthResponse> {
   return apiRequest<AuthResponse>('/auth/loginus/exchange', {
     method: 'POST',
     body: JSON.stringify({ init_data: initData }),
+    skipAuth: true,
   });
+}
+
+export async function refreshAccessToken(refreshToken: string): Promise<RefreshTokenResponse> {
+  const base = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  const apiBase = base?.replace(/\/$/, '') ?? '';
+
+  const response = await fetch(`${apiBase}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  const text = await response.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data === 'object' &&
+      data !== null &&
+      'message' in data &&
+      typeof (data as { message: unknown }).message === 'string'
+        ? (data as { message: string }).message
+        : `Refresh failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return data as RefreshTokenResponse;
 }
 
 export async function getMe() {
