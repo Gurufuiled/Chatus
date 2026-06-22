@@ -57,6 +57,47 @@ describe('loginus-profile.util', () => {
     });
   });
 
+  it('prefers signed JWT fields over optional profile body override', () => {
+    const fields = profileFieldsFromInitPayload(
+      {
+        sub: 'sub-1',
+        email: 'jwt@example.com',
+        firstName: 'Anna',
+        lastName: 'Smirnova',
+        avatarUrl: 'https://cdn.example/jwt.png',
+      },
+      {
+        loginusId: 'sub-1',
+        email: 'body@example.com',
+        firstName: 'Hacker',
+        lastName: 'Evil',
+        avatarUrl: 'https://cdn.example/body.png',
+      },
+    );
+
+    expect(fields).toMatchObject({
+      loginusId: 'sub-1',
+      email: 'jwt@example.com',
+      firstName: 'Anna',
+      lastName: 'Smirnova',
+      avatarUrl: 'https://cdn.example/jwt.png',
+    });
+  });
+
+  it('fills missing JWT fields from profile body override', () => {
+    const fields = profileFieldsFromInitPayload(
+      { sub: 'sub-1', firstName: 'Anna' },
+      { lastName: 'Smirnova', avatarUrl: 'https://cdn.example/a.png' },
+    );
+
+    expect(fields).toMatchObject({
+      loginusId: 'sub-1',
+      firstName: 'Anna',
+      lastName: 'Smirnova',
+      avatarUrl: 'https://cdn.example/a.png',
+    });
+  });
+
   it('preserves local upload avatar unless Loginus sends external URL', () => {
     expect(
       resolveInboundAvatarUrl('/uploads/local.jpg', '/uploads/other.jpg'),

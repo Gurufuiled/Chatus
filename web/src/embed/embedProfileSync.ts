@@ -5,6 +5,7 @@ import { meQueryKey } from '@/queries/auth.queries';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import type { LoginusProfilePayload } from './embedTypes';
 import { loadEmbedSession, saveEmbedSession } from './authSessionStorage';
+import { requestLoginusInit } from './loginusBridge';
 
 export async function runEmbedProfileSync(
   initData: string,
@@ -29,7 +30,7 @@ export async function runEmbedProfileSync(
   } catch (err) {
     console.error('[embed] Loginus profile sync failed', err);
     if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-      store.setAuthError('Сессия истекла. Обновите раздел «Чаты» в Loginus.');
+      requestLoginusInit();
     }
   }
 }

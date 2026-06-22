@@ -44,30 +44,22 @@ export function profileFieldsFromInitPayload(
   payload: LoginusInitDataPayload,
   profileOverride?: Partial<LoginusProfileFields>,
 ): LoginusProfileFields {
-  const loginusId =
-    profileOverride?.loginusId ??
-    extractLoginusId(payload) ??
-    '';
+  const loginusId = extractLoginusId(payload) ?? profileOverride?.loginusId ?? '';
+  const fromJwt = {
+    email: payload.email ?? null,
+    firstName: payload.firstName ?? payload.first_name ?? null,
+    lastName: payload.lastName ?? payload.last_name ?? null,
+    avatarUrl:
+      payload.avatarUrl ?? payload.avatar_url ?? payload.avatar ?? null,
+    phone: payload.phone ?? payload.phone_number ?? null,
+  };
   return {
     loginusId,
-    email: profileOverride?.email ?? payload.email ?? null,
-    firstName:
-      profileOverride?.firstName ??
-      payload.firstName ??
-      payload.first_name ??
-      null,
-    lastName:
-      profileOverride?.lastName ??
-      payload.lastName ??
-      payload.last_name ??
-      null,
-    avatarUrl:
-      profileOverride?.avatarUrl ??
-      payload.avatarUrl ??
-      payload.avatar_url ??
-      payload.avatar ??
-      null,
-    phone: profileOverride?.phone ?? payload.phone ?? payload.phone_number ?? null,
+    email: fromJwt.email ?? profileOverride?.email ?? null,
+    firstName: fromJwt.firstName ?? profileOverride?.firstName ?? null,
+    lastName: fromJwt.lastName ?? profileOverride?.lastName ?? null,
+    avatarUrl: fromJwt.avatarUrl ?? profileOverride?.avatarUrl ?? null,
+    phone: fromJwt.phone ?? profileOverride?.phone ?? null,
   };
 }
 

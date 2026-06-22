@@ -14,8 +14,14 @@ vi.mock('@/embed/authSessionStorage', () => ({
   saveEmbedSession: vi.fn(),
 }));
 
+vi.mock('@/embed/loginusBridge', () => ({
+  requestLoginusInit: vi.fn(),
+}));
+
 import { syncLoginusProfile } from '@/services/authService';
 import { saveEmbedSession } from '@/embed/authSessionStorage';
+import { requestLoginusInit } from '@/embed/loginusBridge';
+import { ApiError } from '@/services/apiClient';
 
 describe('runEmbedProfileSync', () => {
   beforeEach(() => {
@@ -28,6 +34,7 @@ describe('runEmbedProfileSync', () => {
     queryClient.clear();
     vi.mocked(syncLoginusProfile).mockReset();
     vi.mocked(saveEmbedSession).mockReset();
+    vi.mocked(requestLoginusInit).mockReset();
   });
 
   it('no-ops when embed is not ready', async () => {
@@ -47,5 +54,16 @@ describe('runEmbedProfileSync', () => {
     });
     expect(useAuthUiStore.getState().user).toEqual(updatedUser);
     expect(queryClient.getQueryData(meQueryKey)).toEqual(updatedUser);
+  });
+
+  it('requests fresh initData when sync fails with 401', async () => {
+    vi.mocked(syncLoginusProfile).mockRejectedValue(
+      new ApiError('Unauthorized', 401),
+    );
+
+    await runEmbedProfileSync('stale-init');
+
+    expect(requestLoginusInit).toHaveBeenCalled();
+    expect(useAuthUiStore.getState().authError).toBeNull();
   });
 });
