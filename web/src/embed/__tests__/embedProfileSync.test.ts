@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { MOCK_USER } from '@/dev/uiPreview';
-import { runEmbedProfileSync } from '@/embed/embedProfileSync';
+import { runEmbedProfileSync, requestLoginusProfileRecovery } from '@/embed/embedProfileSync';
 import { queryClient } from '@/app/queryClient';
 import { meQueryKey } from '@/queries/auth.queries';
 
@@ -14,13 +14,17 @@ vi.mock('@/embed/authSessionStorage', () => ({
   saveEmbedSession: vi.fn(),
 }));
 
-vi.mock('@/embed/loginusBridge', () => ({
-  requestLoginusInit: vi.fn(),
-}));
+vi.mock('@/embed/loginusBridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/embed/loginusBridge')>();
+  return {
+    ...actual,
+    requestLoginusInit: vi.fn(),
+  };
+});
 
 import { syncLoginusProfile } from '@/services/authService';
 import { saveEmbedSession } from '@/embed/authSessionStorage';
-import { requestLoginusInit } from '@/embed/loginusBridge';
+import { requestLoginusInit, listenForLoginusInit } from '@/embed/loginusBridge';
 import { ApiError } from '@/services/apiClient';
 
 describe('runEmbedProfileSync', () => {
@@ -64,6 +68,52 @@ describe('runEmbedProfileSync', () => {
     await runEmbedProfileSync('stale-init');
 
     expect(requestLoginusInit).toHaveBeenCalled();
+    expect(useAuthUiStore.getState().embedStatus).toBe('waiting_init');
     expect(useAuthUiStore.getState().authError).toBeNull();
+  });
+
+  it('requests fresh initData when sync fails with 403', async () => {
+    vi.mocked(syncLoginusProfile).mockRejectedValue(
+      new ApiError('Forbidden', 403),
+    );
+
+    await runEmbedProfileSync('stale-init');
+
+    expect(requestLoginusInit).toHaveBeenCalled();
+    expect(useAuthUiStore.getState().embedStatus).toBe('waiting_init');
+  });
+
+  it('accepts follow-up loginus:init after profile sync recovery', async () => {
+    vi.mocked(syncLoginusProfile).mockRejectedValue(
+      new ApiError('Unauthorized', 401),
+    );
+    const onInit = vi.fn();
+    const unsubscribe = listenForLoginusInit((initData) => {
+      const status = useAuthUiStore.getState().embedStatus;
+      if (status === 'exchanging' || status === 'ready') return;
+      onInit(initData);
+    });
+
+    await runEmbedProfileSync('stale-init');
+
+    const event = new MessageEvent('message', {
+      data: { type: 'loginus:init', initData: 'fresh-init' },
+      origin: 'https://id.startapus.com',
+      source: window.parent,
+    });
+    vi.spyOn(window, 'parent', 'get').mockReturnValue(event.source as Window);
+    window.dispatchEvent(event);
+
+    expect(onInit).toHaveBeenCalledWith('fresh-init');
+    unsubscribe();
+  });
+
+  it('requestLoginusProfileRecovery sets waiting_init without clearing user', () => {
+    requestLoginusProfileRecovery();
+
+    expect(useAuthUiStore.getState().embedStatus).toBe('waiting_init');
+    expect(useAuthUiStore.getState().user).toEqual(MOCK_USER);
+    expect(useAuthUiStore.getState().accessToken).toBe('token');
+    expect(requestLoginusInit).toHaveBeenCalled();
   });
 });

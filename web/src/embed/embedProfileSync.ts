@@ -7,6 +7,13 @@ import type { LoginusProfilePayload } from './embedTypes';
 import { loadEmbedSession, saveEmbedSession } from './authSessionStorage';
 import { requestLoginusInit } from './loginusBridge';
 
+export function requestLoginusProfileRecovery(): void {
+  const store = useAuthUiStore.getState();
+  store.setAuthError(null);
+  store.setEmbedStatus('waiting_init');
+  requestLoginusInit();
+}
+
 export async function runEmbedProfileSync(
   initData: string,
   profile?: LoginusProfilePayload,
@@ -30,7 +37,7 @@ export async function runEmbedProfileSync(
   } catch (err) {
     console.error('[embed] Loginus profile sync failed', err);
     if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-      requestLoginusInit();
+      requestLoginusProfileRecovery();
     }
   }
 }

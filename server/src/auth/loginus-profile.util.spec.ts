@@ -98,6 +98,16 @@ describe('loginus-profile.util', () => {
     });
   });
 
+  it('prefers JWT sub over conflicting profile body loginusId', () => {
+    const fields = profileFieldsFromInitPayload(
+      { sub: 'jwt-sub' },
+      { loginusId: 'body-sub', firstName: 'Anna' },
+    );
+
+    expect(fields.loginusId).toBe('jwt-sub');
+    expect(fields.firstName).toBe('Anna');
+  });
+
   it('preserves local upload avatar unless Loginus sends external URL', () => {
     expect(
       resolveInboundAvatarUrl('/uploads/local.jpg', '/uploads/other.jpg'),
