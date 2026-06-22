@@ -14,6 +14,7 @@ import * as Express from 'express';
 import { AuthService } from './auth.service';
 import { LoginusDto } from './dto/loginus.dto';
 import { LoginusExchangeDto } from './dto/loginus-exchange.dto';
+import { LoginusSyncProfileDto } from './dto/loginus-sync-profile.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -90,11 +91,26 @@ export class AuthController {
     console.log('[Auth] POST /loginus/exchange ← embed initData', {
       hasInitData: !!dto?.init_data,
     });
-    const result = await this.authService.loginWithInitData(dto.init_data);
+    const result = await this.authService.loginWithInitData(dto.init_data, dto.profile);
     console.log('[Auth] POST /loginus/exchange → success', {
       userId: result.user?.id,
     });
     return result;
+  }
+
+  @Post('loginus/sync-profile')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async loginusSyncProfile(
+    @Request() req: { user: { id: string } },
+    @Body() dto: LoginusSyncProfileDto,
+  ) {
+    const user = await this.authService.syncProfileFromInitData(
+      req.user.id,
+      dto.init_data,
+      dto.profile,
+    );
+    return { user };
   }
 
   @Post('loginus')

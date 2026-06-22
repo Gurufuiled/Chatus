@@ -1,5 +1,6 @@
 import { apiRequest } from './apiClient';
-import type { AuthResponse } from '@/types/auth';
+import type { AuthResponse, AuthUser } from '@/types/auth';
+import type { LoginusProfilePayload } from '@/embed/embedTypes';
 import { MOCK_USER, isUiPreviewMode } from '@/dev/uiPreview';
 
 export type RefreshTokenResponse = Pick<
@@ -7,10 +8,16 @@ export type RefreshTokenResponse = Pick<
   'access_token' | 'refresh_token' | 'expires_at'
 >;
 
-export async function exchangeLoginusInitData(initData: string): Promise<AuthResponse> {
+export async function exchangeLoginusInitData(
+  initData: string,
+  profile?: LoginusProfilePayload,
+): Promise<AuthResponse> {
   return apiRequest<AuthResponse>('/auth/loginus/exchange', {
     method: 'POST',
-    body: JSON.stringify({ init_data: initData }),
+    body: JSON.stringify({
+      init_data: initData,
+      ...(profile ? { profile } : {}),
+    }),
     skipAuth: true,
   });
 }
@@ -47,6 +54,19 @@ export async function refreshAccessToken(refreshToken: string): Promise<RefreshT
   }
 
   return data as RefreshTokenResponse;
+}
+
+export async function syncLoginusProfile(
+  initData: string,
+  profile?: LoginusProfilePayload,
+): Promise<{ user: AuthUser }> {
+  return apiRequest<{ user: AuthUser }>('/auth/loginus/sync-profile', {
+    method: 'POST',
+    body: JSON.stringify({
+      init_data: initData,
+      ...(profile ? { profile } : {}),
+    }),
+  });
 }
 
 export async function getMe() {

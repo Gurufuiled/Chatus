@@ -244,10 +244,33 @@ Content-Type: application/json
 Frontend проверяет входящие сообщения:
 
 - `event.source === window.parent`
-- `event.data.type === 'loginus:init'`
+- `event.data.type === 'loginus:init'` или `'loginus:profileUpdated'`
 - `event.origin` из whitelist (`https://id.startapus.com`, `*.startapus.com`)
 
 Главная проверка безопасности — **на backend** (verify JWT).
+
+### 6.5. Синхронизация профиля (bidirectional)
+
+| Направление | Механизм |
+|-------------|----------|
+| Loginus → ChatUs | `postMessage` `{ type: 'loginus:profileUpdated', initData, profile? }` → `POST /api/auth/loginus/sync-profile` (JWT) |
+| ChatUs → Loginus | После `PATCH /users/me` backend шлёт `PATCH {LOGINUS_API_BASE_URL}/embedded-apps/chatus/profile` с `X-Embedded-App-Secret` |
+
+Маппинг полей:
+
+| Loginus | ChatUs |
+|---------|--------|
+| `sub` / `userId` | `loginusId` |
+| `firstName` | `displayName` |
+| `lastName` | `lastName` |
+| `avatarUrl` / `avatar` | `avatarUrl` (локальный `/uploads/` сохраняется, пока Loginus не пришлёт внешний HTTPS URL) |
+| `email` | `username` |
+
+`bio`, `birthday`, `handle` — только в ChatUs, наружу не синхронизируются.
+
+Защита от петли: inbound sync пропускает update, если поля не изменились; outbound PATCH дедуплицируется по fingerprint payload.
+
+Embed слушает `loginus:profileUpdated` отдельно от `loginus:init` (работает при `embedStatus === 'ready'`).
 
 ---
 

@@ -9,6 +9,7 @@ import {
   saveEmbedSession,
 } from './authSessionStorage';
 import { postToLoginusParent, requestLoginusInit } from './loginusBridge';
+import type { LoginusProfilePayload } from './embedTypes';
 
 const EXCHANGE_MAX_ATTEMPTS = 3;
 const EXCHANGE_RETRY_DELAY_MS = 600;
@@ -57,7 +58,10 @@ function applyAuthSession(
   }
 }
 
-export async function runEmbedAuthExchange(initData: string): Promise<void> {
+export async function runEmbedAuthExchange(
+  initData: string,
+  profile?: LoginusProfilePayload,
+): Promise<void> {
   const store = useAuthUiStore.getState();
   store.setEmbedStatus('exchanging');
   store.setAuthError(null);
@@ -66,7 +70,7 @@ export async function runEmbedAuthExchange(initData: string): Promise<void> {
 
   for (let attempt = 1; attempt <= EXCHANGE_MAX_ATTEMPTS; attempt++) {
     try {
-      const session = await exchangeLoginusInitData(initData);
+      const session = await exchangeLoginusInitData(initData, profile);
       applyAuthSession(session, session.user);
       store.setEmbedStatus('ready');
       postToLoginusParent({ type: 'loginus:ready' });

@@ -1,6 +1,23 @@
+export type LoginusProfilePayload = {
+  sub?: string;
+  userId?: string;
+  firstName?: string;
+  lastName?: string;
+  avatarUrl?: string;
+  avatar?: string;
+  email?: string;
+};
+
 export type LoginusInitMessage = {
   type: 'loginus:init';
   initData: string;
+  profile?: LoginusProfilePayload;
+};
+
+export type LoginusProfileUpdatedMessage = {
+  type: 'loginus:profileUpdated';
+  initData: string;
+  profile?: LoginusProfilePayload;
 };
 
 export type LoginusReadyMessage = {
@@ -27,4 +44,6 @@ export type LoginusOutboundMessage =
   | LoginusFeatureRequiredMessage
   | LoginusRequestInitMessage;
 
-export type LoginusInboundMessage = LoginusInitMessage;
+export type LoginusInboundMessage =
+  | LoginusInitMessage
+  | LoginusProfileUpdatedMessage;

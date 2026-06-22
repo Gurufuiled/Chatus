@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { listenForLoginusInit } from '@/embed/loginusBridge';
+import { listenForLoginusInit, listenForLoginusProfileUpdated } from '@/embed/loginusBridge';
 import {
   activateDevAuthBypass,
   bootEmbedAuth,
   runEmbedAuthExchange,
 } from '@/embed/embedAuth';
+import { runEmbedProfileSync } from '@/embed/embedProfileSync';
 import { activateUiPreview, isUiPreviewMode } from '@/dev/uiPreview';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { Spinner } from '@/components/ui/Spinner';
@@ -33,12 +34,20 @@ export function AuthGate({ children }: AuthGateProps) {
 
     void bootEmbedAuth();
 
-    const unsubscribe = listenForLoginusInit((initData) => {
+    const unsubscribeInit = listenForLoginusInit((initData, profile) => {
       const status = useAuthUiStore.getState().embedStatus;
       if (status === 'exchanging' || status === 'ready') return;
-      void runEmbedAuthExchange(initData);
+      void runEmbedAuthExchange(initData, profile);
     });
-    return unsubscribe;
+
+    const unsubscribeProfile = listenForLoginusProfileUpdated((initData, profile) => {
+      void runEmbedProfileSync(initData, profile);
+    });
+
+    return () => {
+      unsubscribeInit();
+      unsubscribeProfile();
+    };
   }, []);
 
   if (embedStatus === 'waiting_init') {

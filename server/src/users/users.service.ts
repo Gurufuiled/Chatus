@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
+import { LoginusProfileClient } from '../auth/loginus-profile.client';
 import { mapUser, type MappedUser } from '../common/mappers';
+import { outboundProfileFromUser, isLocalUploadAvatarUrl } from '../auth/loginus-profile.util';
 import type { User } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
@@ -15,6 +17,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
+    private readonly loginusProfileClient: LoginusProfileClient,
   ) {}
 
   async getProfile(userId: string): Promise<MappedUser> {
@@ -189,6 +192,7 @@ export class UsersService {
         where: { id: userId },
         data: updateData,
       });
+      await this.syncProfileToLoginusIfLinked(user);
       return mapUser(user);
     } catch (e) {
       if (
@@ -215,5 +219,24 @@ export class UsersService {
     expoToken: string,
   ): Promise<void> {
     await this.pushService.unregisterToken(userId, expoToken);
+  }
+
+  private async syncProfileToLoginusIfLinked(user: User): Promise<void> {
+    const outbound = outboundProfileFromUser(user);
+    if (!outbound) return;
+    if (
+      user.avatarUrl &&
+      isLocalUploadAvatarUrl(user.avatarUrl) &&
+      !outbound.avatarUrl
+    ) {
+      console.warn(
+        '[Users] Skip Loginus avatar sync: set PUBLIC_ORIGIN for absolute /uploads/ URLs',
+      );
+    }
+    try {
+      await this.loginusProfileClient.syncProfileToLoginus(outbound);
+    } catch (err) {
+      console.error('[Users] Loginus profile sync failed', err);
+    }
   }
 }

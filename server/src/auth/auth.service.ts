@@ -10,6 +10,15 @@ import type { User } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
+import type { LoginusProfileDto } from './dto/loginus-profile.dto';
+import {
+  buildUserUpdateFromLoginusProfile,
+  extractLoginusId,
+  normalizeLoginusPhone,
+  profileFieldsFromInitPayload,
+  type LoginusInitDataPayload,
+  type LoginusProfileFields,
+} from './loginus-profile.util';
 
 /** Декодирует JWT payload без проверки подписи (для id_token от Loginus). */
 function decodeJwtPayload<T = Record<string, unknown>>(
@@ -191,34 +200,18 @@ export class AuthService {
     }
   }
 
-  async loginWithInitData(initData: string): Promise<AuthResponse> {
+  verifyInitData(initData: string): LoginusInitDataPayload {
     const embeddedSecret = process.env.LOGINUS_EMBEDDED_SECRET;
     if (!embeddedSecret) {
       throw new BadRequestException('LOGINUS_EMBEDDED_SECRET must be configured');
     }
 
-    let payload: {
-      sub?: string;
-      userId?: string;
-      email?: string;
-      firstName?: string;
-      lastName?: string;
-      first_name?: string;
-      last_name?: string;
-      avatarUrl?: string;
-      avatar_url?: string;
-      phone?: string;
-      phone_number?: string;
-      aud?: string;
-      appSlug?: string;
-      time?: number;
-    };
-
+    let payload: LoginusInitDataPayload;
     try {
       payload = this.jwtService.verify(initData, {
         secret: embeddedSecret,
         algorithms: ['HS256'],
-      }) as typeof payload;
+      }) as LoginusInitDataPayload;
     } catch {
       throw new UnauthorizedException('Invalid or expired initData');
     }
@@ -240,36 +233,77 @@ export class AuthService {
       throw new UnauthorizedException('initData expired or invalid time');
     }
 
-    const loginusId = payload.sub ?? payload.userId;
+    if (!extractLoginusId(payload)) {
+      throw new BadRequestException('initData missing sub');
+    }
+
+    return payload;
+  }
+
+  private profileOverrideFromDto(
+    profileDto: LoginusProfileDto | undefined,
+    loginusId: string,
+  ): Partial<LoginusProfileFields> | undefined {
+    if (!profileDto) return undefined;
+    return {
+      loginusId: profileDto.sub ?? profileDto.userId ?? loginusId,
+      email: profileDto.email ?? null,
+      firstName: profileDto.firstName ?? null,
+      lastName: profileDto.lastName ?? null,
+      avatarUrl: profileDto.avatarUrl ?? profileDto.avatar ?? null,
+    };
+  }
+
+  async syncProfileFromInitData(
+    userId: string,
+    initData: string,
+    profileDto?: LoginusProfileDto,
+  ): Promise<MappedUser> {
+    const payload = this.verifyInitData(initData);
+    const loginusId = extractLoginusId(payload);
     if (!loginusId) {
       throw new BadRequestException('initData missing sub');
     }
 
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    if (!user.loginusId || user.loginusId !== loginusId) {
+      throw new UnauthorizedException('initData sub does not match authenticated user');
+    }
+
+    const refreshed = await this.applyLoginusProfileToUser(
+      user,
+      profileFieldsFromInitPayload(
+        payload,
+        this.profileOverrideFromDto(profileDto, loginusId),
+      ),
+    );
+    return mapUser(refreshed);
+  }
+
+  async loginWithInitData(
+    initData: string,
+    profileDto?: LoginusProfileDto,
+  ): Promise<AuthResponse> {
+    const payload = this.verifyInitData(initData);
+    const loginusId = extractLoginusId(payload)!;
+    const fields = profileFieldsFromInitPayload(
+      payload,
+      this.profileOverrideFromDto(profileDto, loginusId),
+    );
+
     const userInfo: LoginusUserInfo = {
       id: loginusId,
-      email: payload.email ?? null,
-      firstName: payload.firstName ?? payload.first_name,
-      lastName: payload.lastName ?? payload.last_name,
-      phone: payload.phone ?? payload.phone_number ?? null,
+      email: fields.email ?? null,
+      firstName: fields.firstName ?? undefined,
+      lastName: fields.lastName ?? undefined,
+      phone: fields.phone ?? null,
     };
 
     const user = await this.findOrCreateUser(userInfo);
-
-    const avatarUrl = payload.avatarUrl ?? payload.avatar_url;
-    const isLocalAvatar = user.avatarUrl && (user.avatarUrl.startsWith('/uploads/') || user.avatarUrl.includes('/uploads/'));
-    const shouldUpdateAvatar = avatarUrl && avatarUrl !== user.avatarUrl && !isLocalAvatar;
-
-    if (shouldUpdateAvatar) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { avatarUrl },
-      });
-    }
-
-    const refreshedUser =
-      shouldUpdateAvatar
-        ? await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } })
-        : user;
+    const refreshedUser = await this.applyLoginusProfileToUser(user, fields);
 
     const { access_token, expires_at, refresh_token } =
       await this.issueTokens(refreshedUser, randomUUID());
@@ -352,35 +386,73 @@ export class AuthService {
     };
   }
 
+  private async applyLoginusProfileToUser(
+    user: User,
+    fields: LoginusProfileFields,
+  ): Promise<User> {
+    const { data, changed } = buildUserUpdateFromLoginusProfile(user, fields);
+    if (!changed) return user;
+
+    let phoneUpdate = data.phone;
+    if (phoneUpdate) {
+      const phoneOwner = await this.prisma.user.findUnique({
+        where: { phone: phoneUpdate },
+        select: { id: true },
+      });
+      if (phoneOwner && phoneOwner.id !== user.id) {
+        delete data.phone;
+        phoneUpdate = undefined;
+      }
+    }
+
+    if (data.username) {
+      const usernameOwner = await this.prisma.user.findUnique({
+        where: { username: data.username },
+        select: { id: true },
+      });
+      if (usernameOwner && usernameOwner.id !== user.id) {
+        delete data.username;
+      }
+    }
+
+    if (Object.keys(data).length === 0) return user;
+
+    try {
+      return await this.prisma.user.update({
+        where: { id: user.id },
+        data,
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        return user;
+      }
+      throw err;
+    }
+  }
+
   private async findOrCreateUser(userInfo: LoginusUserInfo): Promise<User> {
     const loginusId = userInfo.id;
     const username = userInfo.email ?? null;
-    const displayName =
-      [userInfo.firstName, userInfo.lastName]
-        .filter(Boolean)
-        .join(' ')
-        .trim() || null;
-
-    let phone: string | null = null;
-    if (userInfo.phone) {
-      const raw = userInfo.phone.replace(/\D/g, '');
-      if (raw.length > 0) {
-        if (raw.length === 11 && raw.startsWith('8')) {
-          phone = `+7${raw.slice(1)}`;
-        } else if (raw.length === 11 && raw.startsWith('7')) {
-          phone = `+${raw}`;
-        } else if (raw.length === 10 && raw.startsWith('9')) {
-          phone = `+7${raw}`;
-        } else {
-          phone = `+${raw}`;
-        }
-      }
-    }
+    const displayName = userInfo.firstName?.trim() || null;
+    const lastName = userInfo.lastName?.trim() || null;
+    const phone = normalizeLoginusPhone(userInfo.phone);
 
     const existing = await this.prisma.user.findUnique({
       where: { loginusId },
     });
     if (existing) {
+      const updateData: Prisma.UserUpdateInput = {};
+      if (username) updateData.username = username;
+      if (userInfo.firstName !== undefined) {
+        updateData.displayName = displayName;
+      }
+      if (userInfo.lastName !== undefined) {
+        updateData.lastName = lastName;
+      }
+
       let phoneUpdate: string | undefined;
       if (phone && !existing.phone) {
         const phoneOwner = await this.prisma.user.findUnique({
@@ -391,11 +463,18 @@ export class AuthService {
           phoneUpdate = phone;
         }
       }
+
+      if (
+        Object.keys(updateData).length === 0 &&
+        !phoneUpdate
+      ) {
+        return existing;
+      }
+
       return this.prisma.user.update({
         where: { id: existing.id },
         data: {
-          username: username ?? existing.username,
-          displayName: displayName ?? existing.displayName,
+          ...updateData,
           ...(phoneUpdate ? { phone: phoneUpdate } : {}),
         },
       });
@@ -418,6 +497,7 @@ export class AuthService {
           loginusId,
           username,
           displayName,
+          lastName,
           phone: createPhone,
         },
       });
@@ -438,6 +518,7 @@ export class AuthService {
               loginusId,
               username,
               displayName,
+              lastName,
               phone: null,
             },
           });

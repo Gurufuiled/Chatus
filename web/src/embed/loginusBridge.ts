@@ -1,4 +1,8 @@
-import type { LoginusInboundMessage, LoginusOutboundMessage } from './embedTypes';
+import type {
+  LoginusInboundMessage,
+  LoginusOutboundMessage,
+  LoginusProfilePayload,
+} from './embedTypes';
 
 const DEFAULT_ORIGINS = ['https://id.startapus.com'];
 
@@ -55,20 +59,58 @@ function getParentTargetOrigin(): string {
   return 'https://id.startapus.com';
 }
 
-export type InitDataHandler = (initData: string) => void;
+function rememberParentOrigin(origin: string): void {
+  parentTargetOrigin = origin;
+}
+
+function parseInboundMessage(data: unknown): LoginusInboundMessage | null {
+  if (!data || typeof data !== 'object') return null;
+  const msg = data as LoginusInboundMessage;
+  if (typeof msg.initData !== 'string' || !msg.initData) return null;
+  if (msg.type === 'loginus:init' || msg.type === 'loginus:profileUpdated') {
+    return msg;
+  }
+  return null;
+}
+
+export type InitDataHandler = (
+  initData: string,
+  profile?: LoginusProfilePayload,
+) => void;
+
+export type ProfileUpdatedHandler = (
+  initData: string,
+  profile?: LoginusProfilePayload,
+) => void;
 
 export function listenForLoginusInit(onInit: InitDataHandler): () => void {
   const handler = (event: MessageEvent) => {
     if (event.source !== window.parent) return;
     if (!isAllowedOrigin(event.origin)) return;
 
-    const data = event.data as LoginusInboundMessage | undefined;
-    if (!data || data.type !== 'loginus:init' || typeof data.initData !== 'string') {
-      return;
-    }
+    const data = parseInboundMessage(event.data);
+    if (!data || data.type !== 'loginus:init') return;
 
-    parentTargetOrigin = event.origin;
-    onInit(data.initData);
+    rememberParentOrigin(event.origin);
+    onInit(data.initData, data.profile);
+  };
+
+  window.addEventListener('message', handler);
+  return () => window.removeEventListener('message', handler);
+}
+
+export function listenForLoginusProfileUpdated(
+  onProfileUpdated: ProfileUpdatedHandler,
+): () => void {
+  const handler = (event: MessageEvent) => {
+    if (event.source !== window.parent) return;
+    if (!isAllowedOrigin(event.origin)) return;
+
+    const data = parseInboundMessage(event.data);
+    if (!data || data.type !== 'loginus:profileUpdated') return;
+
+    rememberParentOrigin(event.origin);
+    onProfileUpdated(data.initData, data.profile);
   };
 
   window.addEventListener('message', handler);
