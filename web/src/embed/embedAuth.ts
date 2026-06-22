@@ -121,9 +121,11 @@ export async function runEmbedAuthExchange(
   throw lastError;
 }
 
-export async function tryRestoreStoredSession(): Promise<boolean> {
+export type BootRestoreResult = 'none' | 'restored' | 'aborted' | 'failed';
+
+export async function tryRestoreStoredSession(): Promise<BootRestoreResult> {
   const stored = loadEmbedSession();
-  if (!stored?.refresh_token) return false;
+  if (!stored?.refresh_token) return 'none';
 
   const generation = nextBootGeneration();
   const store = useAuthUiStore.getState();
@@ -132,7 +134,7 @@ export async function tryRestoreStoredSession(): Promise<boolean> {
 
   try {
     const tokens = await refreshWithTimeout(stored.refresh_token);
-    if (generation !== bootSessionGeneration) return false;
+    if (generation !== bootSessionGeneration) return 'aborted';
 
     applyAuthSession(
       {
@@ -144,15 +146,16 @@ export async function tryRestoreStoredSession(): Promise<boolean> {
     );
     store.setEmbedStatus('ready');
     postToLoginusParent({ type: 'loginus:ready' });
-    return true;
-  } catch {
-    if (generation !== bootSessionGeneration) return false;
+    return 'restored';
+  } catch (err) {
+    if (generation !== bootSessionGeneration) return 'aborted';
 
+    console.warn('[embed] session restore failed', err);
     clearEmbedSession();
     setAccessToken(null);
     store.setAccessToken(null);
     store.setUser(null);
-    return false;
+    return 'failed';
   }
 }
 
@@ -160,8 +163,8 @@ export async function bootEmbedAuth(): Promise<void> {
   const store = useAuthUiStore.getState();
   if (store.embedStatus === 'ready') return;
 
-  const restored = await tryRestoreStoredSession();
-  if (restored) return;
+  const result = await tryRestoreStoredSession();
+  if (result === 'restored' || result === 'aborted') return;
 
   store.setEmbedStatus('waiting_init');
   requestLoginusInit();

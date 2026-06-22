@@ -42,7 +42,7 @@ describe('embedAuth recovery', () => {
     });
 
     const restored = await tryRestoreStoredSession();
-    expect(restored).toBe(true);
+    expect(restored).toBe('restored');
     expect(useAuthUiStore.getState().embedStatus).toBe('ready');
     expect(useAuthUiStore.getState().accessToken).toBe('access-1');
   });
@@ -91,8 +91,27 @@ describe('embedAuth recovery', () => {
       expires_at: Date.now() + 3600_000,
     });
 
-    await expect(restorePromise).resolves.toBe(false);
+    await expect(restorePromise).resolves.toBe('aborted');
     expect(useAuthUiStore.getState().embedStatus).toBe('exchanging');
     expect(useAuthUiStore.getState().accessToken).toBeNull();
+  });
+
+  it('fails restore after refresh timeout and clears stored session', async () => {
+    vi.useFakeTimers();
+    saveEmbedSession({
+      refresh_token: 'rt-1',
+      expires_at: Date.now() + 3600_000,
+      user: MOCK_USER,
+    });
+    vi.mocked(refreshAccessToken).mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    const restorePromise = tryRestoreStoredSession();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(restorePromise).resolves.toBe('failed');
+    expect(useAuthUiStore.getState().accessToken).toBeNull();
+    vi.useRealTimers();
   });
 });
