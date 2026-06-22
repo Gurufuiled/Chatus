@@ -72,7 +72,10 @@ export function ChatInputDock({
   onVoiceActiveChange,
 }: ChatInputDockProps) {
   return (
-    <Reanimated.View style={[animatedStyle, { overflow: 'visible', height: 220, justifyContent: 'flex-end' }]}>
+    <Reanimated.View
+      pointerEvents="box-none"
+      style={[animatedStyle, { overflow: 'visible', height: 220, justifyContent: 'flex-end' }]}
+    >
       <Reanimated.View onLayout={onLayout} style={{ width: '100%', overflow: 'visible' }}>
         <InputBar
           telegramAvailable={telegramAvailable}

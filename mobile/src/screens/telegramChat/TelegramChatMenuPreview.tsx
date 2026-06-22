@@ -6,7 +6,7 @@ import { MessageTextBubbleBody } from '../../components/MessageTextBubbleBody';
 import { MessageTimeStatus } from '../../components/MessageTimeStatus';
 import { ReplyPreview } from '../../components/ReplyPreview';
 import { VideoBubble } from '../../components/VideoBubble';
-import { VideoNoteBubble } from '../../components/VideoNoteBubble';
+import { PendingVideoNoteBubble } from '../../components/TelegramPendingMediaBubble';
 import { VoiceBubble } from '../../components/VoiceBubble';
 import { TelegramMediaAlbumBubble } from '../../components/TelegramMediaAlbumBubble';
 import type { Message } from '../../stores/types';
@@ -86,7 +86,6 @@ export function TelegramChatMenuPreviewBody({
     ? { backgroundColor: chatTheme.bubbleMe, borderBottomRightRadius: 6 }
     : null;
   const outgoingVideoNoteMetaColor = outgoingBubbleMetaColor;
-  const outgoingVideoNoteAccentColor = outgoingBubbleAccentColor;
   const replyTarget =
     row.replyToMessageId != null ? messageById.get(row.replyToMessageId) ?? null : null;
   const replySnippet =
@@ -200,22 +199,14 @@ export function TelegramChatMenuPreviewBody({
     }
     return (
       <View style={fixedWidthStyle}>
-        <VideoNoteBubble
-          messageId={row.id}
-          uri={row.mediaUri}
+        <PendingVideoNoteBubble
+          isMe={isMe}
           thumbnailUri={row.thumbnailUri ?? undefined}
           durationMs={row.durationMs ?? 0}
-          isMe={isMe}
           time={formatTime(row.dateMs)}
           status={row.status}
           header={bubbleHeader}
           outgoingMetaColor={outgoingVideoNoteMetaColor}
-          outgoingAccentColor={outgoingVideoNoteAccentColor}
-          viewportOutgoingGradient={
-            isMe && usePreviewOutgoingGradient && row.replyToMessageId == null
-          }
-          scrollTick={scrollTick}
-          registerPlaybackState={false}
         />
       </View>
     );

@@ -1,6 +1,6 @@
 import React from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 type ChatScrollToBottomButtonProps = {
   visible: boolean;
@@ -16,25 +16,30 @@ export const ChatScrollToBottomButton = React.memo(function ChatScrollToBottomBu
   if (!visible) return null;
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Прокрутить к новым сообщениям"
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        { bottom },
-        pressed && styles.buttonPressed,
-      ]}
-    >
-      <Feather name="chevron-down" size={22} color="#FFFFFF" />
-    </Pressable>
+    <View pointerEvents="box-none" style={[styles.host, { bottom }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Прокрутить к новым сообщениям"
+        onPress={onPress}
+        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+      >
+        <Feather name="chevron-down" size={22} color="#FFFFFF" />
+      </Pressable>
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
-  button: {
+  host: {
     position: 'absolute',
-    right: 12,
+    right: 0,
+    left: 0,
+    zIndex: 35,
+    elevation: 6,
+    alignItems: 'flex-end',
+    paddingRight: 12,
+  },
+  button: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -43,7 +48,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.14)',
-    zIndex: 20,
     elevation: 5,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },

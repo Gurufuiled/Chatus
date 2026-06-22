@@ -7,30 +7,24 @@ import { useAnimatedStyle } from 'react-native-reanimated';
 const CHAT_COMPOSER_DOCK_PADDING_MIN = 8;
 
 /**
- * Android при открытой клавиатуре: нижний safe-area inset часто не «схлопывается» визуально над IME —
- * не дублируем его в padding дока (как в Telegram — плотно к панели клавиатуры).
+ * При открытой клавиатуре нижний safe-area inset не дублируем в padding дока
+ * (композер плотно к панели IME на iOS и Android).
  */
-export const CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_ANDROID = CHAT_COMPOSER_DOCK_PADDING_MIN;
+export const CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN = CHAT_COMPOSER_DOCK_PADDING_MIN;
+
+/** @deprecated Use {@link CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN}. */
+export const CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_ANDROID = CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN;
 
 export type ChatComposerAnimatedKeyboard = {
   height: SharedValue<number>;
 };
 
 /**
- * Когда `true`, док смещается вверх на `useAnimatedKeyboard().height`, а список получает
- * столько же `marginBottom` — это нужно там, где корень **не** сжимается под IME (типичный iOS,
- * либо Android с `adjustPan` / иным режимом без изменения высоты окна).
- *
- * На типичном Android в Expo / React Native по умолчанию действует **`adjustResize`**: корень уже
- * поднимается над клавиатурой. Повторно применять высоту IME к доку и списку даёт **двойной зазор**
- * (заметно на части устройств с большим gesture inset), поэтому на Android здесь `false`.
- *
- * **Важно:** если для Activity когда-либо включат **`adjustPan`** (высота окна не меняется,
- * контент сдвигается), для Android этот флаг нужно будет снова включать или определять режим
- * динамически — иначе композер окажется под клавиатурой. Сейчас явно ориентируемся на resize.
+ * Когда `true`, список получает `marginBottom` на высоту клавиатуры.
+ * Сейчас `false` на всех платформах: iOS и Android (`adjustResize`) уже сжимают корень под IME.
+ * Подъём только дока на Android — {@link CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT}.
  */
-/** iOS / Android: смещаем и док, и список. */
-export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = true;
+export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = false;
 
 /**
  * Android: абсолютный док не всегда поднимается с `adjustResize` (MIUI / gesture nav).
@@ -68,23 +62,24 @@ export function useChatComposerKeyboardLiftStyles(
 
 /**
  * Нижний padding дока композера: на Android при открытой клавиатуре не суммируем полный gesture inset
- * с уже поджатым под IME layout (см. {@link CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_ANDROID}).
+ * с уже поджатым под IME layout (см. {@link CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN}).
  */
 export function useChatComposerDockPaddingBottom(insetsBottom: number): number {
   const [kbOpen, setKbOpen] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    const show = Keyboard.addListener('keyboardDidShow', () => setKbOpen(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKbOpen(false));
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, () => setKbOpen(true));
+    const hide = Keyboard.addListener(hideEvent, () => setKbOpen(false));
     return () => {
       show.remove();
       hide.remove();
     };
   }, []);
 
-  if (Platform.OS === 'android' && kbOpen) {
-    return CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_ANDROID;
+  if (kbOpen) {
+    return CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN;
   }
   return Math.max(insetsBottom, CHAT_COMPOSER_DOCK_PADDING_MIN);
 }

@@ -100,6 +100,7 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       justifyContent: 'flex-end',
       zIndex: 30,
       overflow: 'visible',
+      pointerEvents: 'box-none',
     },
     listContent: {
       paddingHorizontal: CHAT_MSG_HORIZONTAL_PADDING,

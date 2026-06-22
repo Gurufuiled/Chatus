@@ -38,7 +38,7 @@ import { chatStore } from '../stores/chatStore';
 import type { Chat } from '../stores/types';
 import { uiStore } from '../stores/uiStore';
 import { ChatPillHeaderTitle } from '../components/ChatPillHeaderTitle';
-import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
+import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation, createIosOpaqueChatHeaderOptions } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
 
@@ -335,6 +335,7 @@ export function ChatsStack() {
 
           return {
             ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+            ...createIosOpaqueChatHeaderOptions(colors.toolbar),
             headerShown: Platform.OS !== 'android',
             title,
             headerBackTitle: 'Назад',
@@ -357,6 +358,7 @@ export function ChatsStack() {
         component={TelegramChatScreen}
         options={({ route }) => ({
           ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+          ...createIosOpaqueChatHeaderOptions(colors.toolbar),
           headerShown: Platform.OS !== 'android',
           title: route.params.title ?? 'Telegram',
           headerBackTitle: 'Назад',
@@ -416,6 +418,7 @@ export function ChatsStack() {
           const avatarUrl = resolveAvatarUrl(channel?.avatar_url);
           return {
             ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+            ...createIosOpaqueChatHeaderOptions(colors.toolbar),
             headerShown: Platform.OS !== 'android',
             headerBackTitle: 'Назад',
             headerTitleAlign: 'left',
@@ -474,7 +477,7 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChannelDiscussion"
         component={ChannelDiscussionScreen}
-        options={{ title: 'Обсуждение', headerBackTitle: 'Назад', ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS, headerShown: Platform.OS !== 'android' }}
+        options={{ title: 'Обсуждение', headerBackTitle: 'Назад', ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS, ...createIosOpaqueChatHeaderOptions(colors.toolbar), headerShown: Platform.OS !== 'android' }}
       />
 
       <Stack.Screen

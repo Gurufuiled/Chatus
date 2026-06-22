@@ -47,7 +47,7 @@ type UseTelegramChatMenuParams = {
   isGroupChat: boolean;
   inputBarHeight: number;
   insets: EdgeInsets;
-  setReplyToMessageId: React.Dispatch<React.SetStateAction<number | null>>;
+  beginReplyToTdMessage: (tdId: number, options?: { deferMs?: number }) => void;
   pinnedMessageId: number | null;
   setPinnedMessageId: React.Dispatch<React.SetStateAction<number | null>>;
   ensureReady: () => Promise<void>;
@@ -70,7 +70,7 @@ export function useTelegramChatMenu({
   isGroupChat,
   inputBarHeight,
   insets,
-  setReplyToMessageId,
+  beginReplyToTdMessage,
   pinnedMessageId,
   setPinnedMessageId,
   ensureReady,
@@ -307,9 +307,11 @@ export function useTelegramChatMenu({
 
       if (key === 'reply') {
         if (tdId != null) {
-          setReplyToMessageId(tdId);
+          closeMenu();
+          beginReplyToTdMessage(tdId, { deferMs: 160 });
+        } else {
+          closeMenu();
         }
-        closeMenu();
         return;
       }
 
@@ -382,7 +384,7 @@ export function useTelegramChatMenu({
       onEnterSelection,
       onStartForward,
       setPinnedMessageId,
-      setReplyToMessageId,
+      beginReplyToTdMessage,
     ],
   );
 

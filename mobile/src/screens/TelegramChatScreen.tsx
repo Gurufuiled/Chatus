@@ -51,7 +51,7 @@ import { ReplyPreview } from '../components/ReplyPreview';
 import { WebPagePreviewBubble } from '../components/WebPagePreviewBubble';
 import { TelegramChannelCommentsBar } from '../components/TelegramChannelCommentsBar';
 import { VideoBubble } from '../components/VideoBubble';
-import { VideoNoteBubble } from '../components/VideoNoteBubble';
+import { VideoNoteBubble, stopActiveVideoNotePlayback } from '../components/VideoNoteBubble';
 import { VoiceBubble } from '../components/VoiceBubble';
 import { PendingVideoBubble, PendingVideoNoteBubble } from '../components/TelegramPendingMediaBubble';
 import {
@@ -84,6 +84,7 @@ import {
   CHAT_MSG_ROW_MARGIN_ISOLATED,
   CHAT_MSG_VERTICAL_PADDING,
 } from '../presentation/telegramChatUi';
+import { createIosOpaqueChatHeaderOptions } from '../presentation';
 import {
   buildInputMessageVideoNoteContent,
   fileUriToPath,
@@ -189,6 +190,10 @@ export function TelegramChatScreen() {
     () => createTelegramStackHeaderPresentationStyles(colors),
     [colors],
   );
+  const iosOpaqueHeaderOptions = useMemo(
+    () => createIosOpaqueChatHeaderOptions(colors.toolbar),
+    [colors.toolbar],
+  );
   const route = useRoute<RouteProp<ChatsStackParamList, 'TelegramChat'>>();
   const {
     telegramChatId,
@@ -222,6 +227,7 @@ export function TelegramChatScreen() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [replyToMessageId, setReplyToMessageId] = useState<number | null>(null);
+  const replyScheduleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [forwardMessageIds, setForwardMessageIds] = useState<number[]>([]);
   const [forwardPending, setForwardPending] = useState(false);
   const telegramDialogs = telegramAccountStore((s) => s.dialogs);
@@ -449,6 +455,31 @@ export function TelegramChatScreen() {
     [navigation, channelLinkedDiscussionChatId],
   );
 
+  const beginReplyToTdMessage = useCallback((tdId: number, options?: { deferMs?: number }) => {
+    stopActiveVideoNotePlayback();
+    if (replyScheduleRef.current) {
+      clearTimeout(replyScheduleRef.current);
+      replyScheduleRef.current = null;
+    }
+    const deferMs = options?.deferMs ?? 0;
+    if (deferMs <= 0) {
+      setReplyToMessageId((current) => (current === tdId ? current : tdId));
+      return;
+    }
+    replyScheduleRef.current = setTimeout(() => {
+      replyScheduleRef.current = null;
+      setReplyToMessageId((current) => (current === tdId ? current : tdId));
+    }, deferMs);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (replyScheduleRef.current) {
+        clearTimeout(replyScheduleRef.current);
+      }
+    };
+  }, []);
+
   const handleStartForward = useCallback((messageIds: number[]) => {
     const ids = [...new Set(messageIds.filter((id) => id > 0))].sort((a, b) => a - b);
     if (ids.length === 0) return;
@@ -562,7 +593,7 @@ export function TelegramChatScreen() {
     isGroupChat,
     inputBarHeight,
     insets,
-    setReplyToMessageId,
+    beginReplyToTdMessage,
     pinnedMessageId,
     setPinnedMessageId,
     ensureReady,
@@ -756,6 +787,7 @@ export function TelegramChatScreen() {
   useLayoutEffect(() => {
     if (telegramSelectionMode) {
       navigation.setOptions({
+        ...iosOpaqueHeaderOptions,
         headerTitle: () => (
           <Text style={headerChromeStyles.headerTitleText}>
             {selectedTelegramMessageIds.length === 1
@@ -777,6 +809,7 @@ export function TelegramChatScreen() {
       return;
     }
     navigation.setOptions({
+      ...iosOpaqueHeaderOptions,
       headerTitle: () => (
         <ChatPillHeaderTitle
           title={headerTitle}
@@ -792,6 +825,8 @@ export function TelegramChatScreen() {
     avatarUri,
     clearTelegramSelection,
     colors.accent,
+    colors.toolbar,
+    iosOpaqueHeaderOptions,
     openTelegramChatProfile,
     headerChromeStyles,
     headerSubtitle,
@@ -1938,7 +1973,7 @@ export function TelegramChatScreen() {
 
       const handleSwipeReply = () => {
         if (item.messageId > 0) {
-          setReplyToMessageId((current) => (current === item.messageId ? current : item.messageId));
+          beginReplyToTdMessage(item.messageId);
         }
       };
 
@@ -2683,6 +2718,7 @@ export function TelegramChatScreen() {
       channelMediaClamp,
       chatTheme,
       colors,
+      beginReplyToTdMessage,
       handleOpenDiscussion,
       handleOpenTelegramMemberProfile,
       headerTitle,

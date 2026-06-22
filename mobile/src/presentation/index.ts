@@ -1,4 +1,5 @@
 export { getChatListTitle } from './chatTitle';
+export { createIosOpaqueChatHeaderOptions } from './iosOpaqueChatHeader';
 export {
   CHAT_LIST_AVATAR_GAP,
   CHAT_LIST_AVATAR_SIZE,
