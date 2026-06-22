@@ -3,6 +3,7 @@ import { listenForLoginusInit, listenForLoginusProfileUpdated } from '@/embed/lo
 import {
   activateDevAuthBypass,
   bootEmbedAuth,
+  prioritizeLoginusInit,
   runEmbedAuthExchange,
 } from '@/embed/embedAuth';
 import { runEmbedProfileSync } from '@/embed/embedProfileSync';
@@ -32,17 +33,18 @@ export function AuthGate({ children }: AuthGateProps) {
       return;
     }
 
-    void bootEmbedAuth();
-
     const unsubscribeInit = listenForLoginusInit((initData, profile) => {
       const status = useAuthUiStore.getState().embedStatus;
-      if (status === 'exchanging' || status === 'ready') return;
+      if (status === 'ready') return;
+      prioritizeLoginusInit();
       void runEmbedAuthExchange(initData, profile);
     });
 
     const unsubscribeProfile = listenForLoginusProfileUpdated((initData, profile) => {
       void runEmbedProfileSync(initData, profile);
     });
+
+    void bootEmbedAuth();
 
     return () => {
       unsubscribeInit();

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { saveEmbedSession } from '@/embed/authSessionStorage';
 import { MOCK_USER } from '@/dev/uiPreview';
-import { handleAuthFailure, tryRestoreStoredSession } from '@/embed/embedAuth';
+import { handleAuthFailure, prioritizeLoginusInit, tryRestoreStoredSession } from '@/embed/embedAuth';
 import { requestLoginusInit } from '@/embed/loginusBridge';
 
 vi.mock('@/embed/loginusBridge', () => ({
@@ -61,5 +61,38 @@ describe('embedAuth recovery', () => {
     expect(useAuthUiStore.getState().accessToken).toBeNull();
     expect(useAuthUiStore.getState().user).toBeNull();
     expect(requestLoginusInit).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts stale restore when loginus init is prioritized', async () => {
+    saveEmbedSession({
+      refresh_token: 'rt-1',
+      expires_at: Date.now() + 3600_000,
+      user: MOCK_USER,
+    });
+
+    let resolveRefresh: (value: {
+      access_token: string;
+      refresh_token: string;
+      expires_at: number;
+    }) => void;
+    vi.mocked(refreshAccessToken).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+
+    const restorePromise = tryRestoreStoredSession();
+    prioritizeLoginusInit();
+
+    resolveRefresh!({
+      access_token: 'late-access',
+      refresh_token: 'rt-2',
+      expires_at: Date.now() + 3600_000,
+    });
+
+    await expect(restorePromise).resolves.toBe(false);
+    expect(useAuthUiStore.getState().embedStatus).toBe('exchanging');
+    expect(useAuthUiStore.getState().accessToken).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { exchangeLoginusInitData, refreshAccessToken } from '@/services/authService';
+import type { RefreshTokenResponse } from '@/services/authService';
 import { ApiError, setAccessToken, setAuthFailureHandler } from '@/services/apiClient';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { activateUiPreview } from '@/dev/uiPreview';
@@ -13,6 +14,34 @@ import type { LoginusProfilePayload } from './embedTypes';
 
 const EXCHANGE_MAX_ATTEMPTS = 3;
 const EXCHANGE_RETRY_DELAY_MS = 600;
+const RESTORE_REFRESH_TIMEOUT_MS = 10_000;
+
+let bootSessionGeneration = 0;
+
+/** Cancel in-flight session restore so a fresh loginus:init can exchange. */
+export function prioritizeLoginusInit(): void {
+  bootSessionGeneration += 1;
+}
+
+function nextBootGeneration(): number {
+  bootSessionGeneration += 1;
+  return bootSessionGeneration;
+}
+
+async function refreshWithTimeout(refreshToken: string): Promise<RefreshTokenResponse> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error('Refresh timed out')),
+      RESTORE_REFRESH_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([refreshAccessToken(refreshToken), timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -96,12 +125,15 @@ export async function tryRestoreStoredSession(): Promise<boolean> {
   const stored = loadEmbedSession();
   if (!stored?.refresh_token) return false;
 
+  const generation = nextBootGeneration();
   const store = useAuthUiStore.getState();
   store.setEmbedStatus('exchanging');
   store.setAuthError(null);
 
   try {
-    const tokens = await refreshAccessToken(stored.refresh_token);
+    const tokens = await refreshWithTimeout(stored.refresh_token);
+    if (generation !== bootSessionGeneration) return false;
+
     applyAuthSession(
       {
         access_token: tokens.access_token,
@@ -114,6 +146,8 @@ export async function tryRestoreStoredSession(): Promise<boolean> {
     postToLoginusParent({ type: 'loginus:ready' });
     return true;
   } catch {
+    if (generation !== bootSessionGeneration) return false;
+
     clearEmbedSession();
     setAccessToken(null);
     store.setAccessToken(null);
