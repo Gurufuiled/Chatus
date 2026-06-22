@@ -63,12 +63,37 @@ function rememberParentOrigin(origin: string): void {
   parentTargetOrigin = origin;
 }
 
+function pickLoginusProfile(raw: unknown): LoginusProfilePayload | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const src = raw as Record<string, unknown>;
+  const keys = [
+    'sub',
+    'userId',
+    'email',
+    'firstName',
+    'lastName',
+    'avatarUrl',
+    'avatar',
+  ] as const;
+  const profile: LoginusProfilePayload = {};
+  let hasField = false;
+  for (const key of keys) {
+    const value = src[key];
+    if (typeof value === 'string' && value.length > 0) {
+      profile[key] = value;
+      hasField = true;
+    }
+  }
+  return hasField ? profile : undefined;
+}
+
 function parseInboundMessage(data: unknown): LoginusInboundMessage | null {
   if (!data || typeof data !== 'object') return null;
   const msg = data as LoginusInboundMessage;
   if (typeof msg.initData !== 'string' || !msg.initData) return null;
   if (msg.type === 'loginus:init' || msg.type === 'loginus:profileUpdated') {
-    return msg;
+    const profile = pickLoginusProfile((data as { profile?: unknown }).profile);
+    return { ...msg, profile };
   }
   return null;
 }

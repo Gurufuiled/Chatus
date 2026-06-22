@@ -1,6 +1,6 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
-import { LoginusProfileDto } from './loginus-profile.dto';
+import { LoginusProfileDto, sanitizeLoginusProfileInput } from './loginus-profile.dto';
 
 export class LoginusExchangeDto {
   @IsString()
@@ -10,5 +10,6 @@ export class LoginusExchangeDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => LoginusProfileDto)
+  @Transform(({ value }) => sanitizeLoginusProfileInput(value))
   profile?: LoginusProfileDto;
 }

@@ -54,4 +54,29 @@ describe('loginusBridge profile listeners', () => {
 
     unsubscribe();
   });
+
+  it('strips unknown Loginus profile fields before handler', () => {
+    const onInit = vi.fn();
+    const unsubscribe = listenForLoginusInit(onInit);
+
+    const event = new MessageEvent('message', {
+      data: {
+        type: 'loginus:init',
+        initData: 'jwt-token',
+        profile: {
+          firstName: 'Anna',
+          updatedAt: '2026-06-22T10:00:00.000Z',
+        },
+      },
+      origin: 'https://id.startapus.com',
+      source: window.parent,
+    });
+
+    vi.spyOn(window, 'parent', 'get').mockReturnValue(event.source as Window);
+    window.dispatchEvent(event);
+
+    expect(onInit).toHaveBeenCalledWith('jwt-token', { firstName: 'Anna' });
+
+    unsubscribe();
+  });
 });
