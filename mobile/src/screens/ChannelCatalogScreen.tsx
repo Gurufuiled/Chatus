@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -6,21 +6,21 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ChatsStackParamList } from '../navigation/types';
-import { fetchChannelCatalog } from '../services/channelService';
-import { channelStore } from '../stores/channelStore';
-import { chatStore } from '../stores/chatStore';
-import type { Chat } from '../stores/types';
-import { useTheme } from '../contexts/ThemeContext';
-import type { ThemeColors } from '../theme/palettes';
-import { withAlpha } from '../theme/stylePrimitives';
-import { LoadErrorState } from '../components/LoadErrorState';
+} from "react-native";
+import Feather from "@expo/vector-icons/Feather";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { ChatsStackParamList } from "../navigation/types";
+import { fetchChannelCatalog } from "../services/channelService";
+import { channelStore } from "../stores/channelStore";
+import { chatStore } from "../stores/chatStore";
+import type { Chat } from "../stores/types";
+import { useTheme } from "../contexts/ThemeContext";
+import type { ThemeColors } from "../theme/palettes";
+import { withAlpha } from "../theme/stylePrimitives";
+import { LoadErrorState } from "../components/LoadErrorState";
 
-type Nav = NativeStackNavigationProp<ChatsStackParamList, 'ChannelCatalog'>;
+type Nav = NativeStackNavigationProp<ChatsStackParamList, "ChannelCatalog">;
 
 type ChannelCatalogStyles = ReturnType<typeof createChannelCatalogStyles>;
 
@@ -30,8 +30,8 @@ function createChannelCatalogStyles(c: ThemeColors) {
       minHeight: 76,
       paddingHorizontal: 16,
       paddingVertical: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       backgroundColor: c.inputBackgroundSolid,
     },
     rowPressed: {
@@ -42,13 +42,13 @@ function createChannelCatalogStyles(c: ThemeColors) {
       height: 52,
       borderRadius: 26,
       backgroundColor: c.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
     },
     avatarText: {
-      color: '#FFFFFF',
+      color: "#FFFFFF",
       fontSize: 20,
-      fontWeight: '700',
+      fontWeight: "700",
     },
     textWrap: {
       flex: 1,
@@ -56,7 +56,7 @@ function createChannelCatalogStyles(c: ThemeColors) {
     },
     title: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: "600",
       color: c.textPrimary,
     },
     subtitle: {
@@ -71,29 +71,29 @@ function createChannelCatalogStyles(c: ThemeColors) {
     },
     loadingState: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
       backgroundColor: c.chatBackground,
     },
     emptyContainer: {
       flexGrow: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
       padding: 24,
       backgroundColor: c.chatBackground,
     },
     emptyState: {
-      alignItems: 'center',
+      alignItems: "center",
     },
     emptyTitle: {
       fontSize: 17,
-      fontWeight: '600',
+      fontWeight: "600",
       color: c.textPrimary,
     },
     emptySubtitle: {
       marginTop: 8,
       fontSize: 14,
-      textAlign: 'center',
+      textAlign: "center",
       color: c.textSecondary,
     },
     refreshErrorBanner: {
@@ -102,33 +102,41 @@ function createChannelCatalogStyles(c: ThemeColors) {
       marginBottom: 4,
       padding: 12,
       borderRadius: 12,
-      backgroundColor: withAlpha('#EF4444', 0.14),
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+      backgroundColor: withAlpha("#EF4444", 0.14),
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
       gap: 8,
     },
     refreshErrorText: {
       flex: 1,
       fontSize: 14,
-      color: '#DC2626',
+      color: "#DC2626",
     },
     refreshErrorRetry: {
       fontSize: 14,
-      fontWeight: '700',
+      fontWeight: "700",
       color: c.accent,
     },
   });
 }
 
 function isPreviewRequired(channel: Chat) {
-  return channel.access_type === 'paid' && channel.access_status !== 'active';
+  return channel.access_type === "paid" && channel.access_status !== "active";
 }
 
-function ChannelAvatar({ title, st }: { title: string; st: ChannelCatalogStyles }) {
+function ChannelAvatar({
+  title,
+  st,
+}: {
+  title: string;
+  st: ChannelCatalogStyles;
+}) {
   return (
     <View style={st.avatar}>
-      <Text style={st.avatarText}>{(title.trim()[0] || 'К').toUpperCase()}</Text>
+      <Text style={st.avatarText}>
+        {(title.trim()[0] || "К").toUpperCase()}
+      </Text>
     </View>
   );
 }
@@ -146,14 +154,18 @@ export function ChannelCatalogScreen() {
     setLoadError(null);
     try {
       const channels = await fetchChannelCatalog();
-      const onlyChannels = channels.filter((channel) => channel.chat_type === 'channel');
+      const onlyChannels = channels.filter(
+        (channel) => channel.chat_type === "channel",
+      );
       channelStore.getState().setCatalog(onlyChannels);
       onlyChannels
-        .filter((channel) => channel.access_status === 'active')
+        .filter((channel) => channel.access_status === "active")
         .forEach((channel) => chatStore.getState().addOrUpdateChat(channel));
     } catch (error) {
       setLoadError(
-        error instanceof Error ? error.message : 'Не удалось загрузить список каналов.',
+        error instanceof Error
+          ? error.message
+          : "Не удалось загрузить список каналов.",
       );
     } finally {
       channelStore.getState().setLoadingCatalog(false);
@@ -163,12 +175,12 @@ export function ChannelCatalogScreen() {
   useFocusEffect(
     React.useCallback(() => {
       void load();
-    }, [load])
+    }, [load]),
   );
 
   const renderItem = React.useCallback(
     ({ item }: { item: Chat }) => {
-      const title = item.name ?? 'Безымянный канал';
+      const title = item.name ?? "Безымянный канал";
       const locked = isPreviewRequired(item);
       const subtitle = `${item.subscriber_count ?? 0} подписчиков`;
 
@@ -176,7 +188,7 @@ export function ChannelCatalogScreen() {
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() =>
-            navigation.navigate(locked ? 'ChannelPreview' : 'ChannelFeed', {
+            navigation.navigate(locked ? "ChannelPreview" : "ChannelFeed", {
               channelId: item.id,
             })
           }
@@ -190,16 +202,23 @@ export function ChannelCatalogScreen() {
               {subtitle}
             </Text>
           </View>
-          {locked ? <Feather name="lock" size={16} color={c.textSecondary} /> : null}
+          {locked ? (
+            <Feather name="lock" size={16} color={c.textSecondary} />
+          ) : null}
         </Pressable>
       );
     },
-    [navigation, styles, c]
+    [navigation, styles, c],
   );
 
   if (loadError && catalog.length === 0 && !isLoading) {
     return <LoadErrorState message={loadError} onRetry={() => void load()} />;
   }
+
+  const itemSeparatorComponent = React.useCallback(
+    () => <View style={styles.separator} />,
+    [styles.separator],
+  );
 
   if (isLoading && catalog.length === 0) {
     return (
@@ -217,8 +236,10 @@ export function ChannelCatalogScreen() {
       renderItem={renderItem}
       refreshing={isLoading}
       onRefresh={() => void load()}
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
-      contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
+      ItemSeparatorComponent={itemSeparatorComponent}
+      contentContainerStyle={
+        catalog.length === 0 ? styles.emptyContainer : undefined
+      }
       ListHeaderComponent={
         loadError && catalog.length > 0 ? (
           <View style={styles.refreshErrorBanner}>
@@ -232,10 +253,11 @@ export function ChannelCatalogScreen() {
       ListEmptyComponent={
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Пока нет каналов</Text>
-          <Text style={styles.emptySubtitle}>Создайте канал через меню удержания вкладки чатов.</Text>
+          <Text style={styles.emptySubtitle}>
+            Создайте канал через меню удержания вкладки чатов.
+          </Text>
         </View>
       }
     />
   );
 }
-
