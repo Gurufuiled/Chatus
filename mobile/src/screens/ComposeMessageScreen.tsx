@@ -110,6 +110,12 @@ export function ComposeMessageScreen() {
   const [addressBook, setAddressBook] = useState<AddressBookContact[]>([]);
   const [creatingIds, setCreatingIds] = useState<Set<string>>(new Set());
   const searchIdRef = useRef(0);
+
+  // ⚡ Bolt: Memoize ItemSeparatorComponent to prevent it from unmounting and remounting on every render
+  const renderSeparator = useCallback(
+    () => <View style={styles.separator} />,
+    [styles.separator]
+  );
   const sectionListRef = useRef<SectionList<Row>>(null);
 
   const loadAddressBook = useCallback(async () => {
@@ -427,7 +433,7 @@ export function ComposeMessageScreen() {
         )}
         ListHeaderComponent={header}
         stickySectionHeadersEnabled={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={

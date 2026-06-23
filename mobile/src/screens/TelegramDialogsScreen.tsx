@@ -14,6 +14,12 @@ import { useTelegramDialogsRefresh } from './telegramChat/useTelegramDialogsRefr
 export function TelegramDialogsScreen() {
   const { colors } = useTheme();
   const listStyles = useMemo(() => createChatListStyles(colors), [colors]);
+
+  // ⚡ Bolt: Memoize ItemSeparatorComponent to prevent it from unmounting and remounting on every render
+  const renderSeparator = React.useCallback(
+    () => <View style={listStyles.separator} />,
+    [listStyles.separator]
+  );
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
   const dialogs = telegramAccountStore((s) => s.dialogs);
   const telegramReady = telegramAccountStore((s) => s.authStatus === 'ready');
@@ -70,7 +76,7 @@ export function TelegramDialogsScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
-        ItemSeparatorComponent={() => <View style={listStyles.separator} />}
+        ItemSeparatorComponent={renderSeparator}
         ListHeaderComponent={
           <ChatListSearchBar
             listStyles={listStyles}

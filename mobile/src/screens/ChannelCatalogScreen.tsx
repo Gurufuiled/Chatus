@@ -141,6 +141,12 @@ export function ChannelCatalogScreen() {
   const isLoading = channelStore((state) => state.isLoadingCatalog);
   const [loadError, setLoadError] = React.useState<string | null>(null);
 
+  // ⚡ Bolt: Memoize ItemSeparatorComponent to prevent it from unmounting and remounting on every render
+  const renderSeparator = React.useCallback(
+    () => <View style={styles.separator} />,
+    [styles.separator]
+  );
+
   const load = React.useCallback(async () => {
     channelStore.getState().setLoadingCatalog(true);
     setLoadError(null);
@@ -217,7 +223,7 @@ export function ChannelCatalogScreen() {
       renderItem={renderItem}
       refreshing={isLoading}
       onRefresh={() => void load()}
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ItemSeparatorComponent={renderSeparator}
       contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
       ListHeaderComponent={
         loadError && catalog.length > 0 ? (
