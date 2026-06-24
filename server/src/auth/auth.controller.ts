@@ -91,7 +91,10 @@ export class AuthController {
     console.log('[Auth] POST /loginus/exchange ← embed initData', {
       hasInitData: !!dto?.init_data,
     });
-    const result = await this.authService.loginWithInitData(dto.init_data, dto.profile);
+    const result = await this.authService.loginWithInitData(
+      dto.init_data,
+      dto.profile,
+    );
     console.log('[Auth] POST /loginus/exchange → success', {
       userId: result.user?.id,
     });

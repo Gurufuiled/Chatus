@@ -20,13 +20,17 @@ export class LoginusProfileClient {
     this.embeddedSecret = process.env.LOGINUS_EMBEDDED_SECRET ?? '';
   }
 
-  resolvePublicAvatarUrl(avatarUrl: string | null | undefined): string | undefined {
+  resolvePublicAvatarUrl(
+    avatarUrl: string | null | undefined,
+  ): string | undefined {
     return toPublicAbsoluteUrl(avatarUrl);
   }
 
   async syncProfileToLoginus(profile: LoginusOutboundProfile): Promise<void> {
     if (!this.embeddedSecret) {
-      this.logger.warn('LOGINUS_EMBEDDED_SECRET not set; skip outbound profile sync');
+      this.logger.warn(
+        'LOGINUS_EMBEDDED_SECRET not set; skip outbound profile sync',
+      );
       return;
     }
 

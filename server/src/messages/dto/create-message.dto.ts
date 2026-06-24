@@ -16,7 +16,14 @@ import {
   normalizeCreateMessageMedia,
 } from './create-message-media.dto';
 
-const MESSAGE_TYPES = ['text', 'image', 'voice', 'video', 'video_note', 'file'] as const;
+const MESSAGE_TYPES = [
+  'text',
+  'image',
+  'voice',
+  'video',
+  'video_note',
+  'file',
+] as const;
 export type CreateMessageType = (typeof MESSAGE_TYPES)[number];
 
 export class CreateMessageDto {

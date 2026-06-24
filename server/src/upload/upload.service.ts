@@ -25,7 +25,13 @@ export class UploadService {
     }
   }
 
-  async saveFile(file: { originalname: string; mimetype: string; size: number; path?: string; buffer?: Buffer }): Promise<{
+  async saveFile(file: {
+    originalname: string;
+    mimetype: string;
+    size: number;
+    path?: string;
+    buffer?: Buffer;
+  }): Promise<{
     url: string;
     file_name: string;
     mime_type: string;
@@ -107,7 +113,9 @@ export class UploadService {
    * Best-effort delete of a file under local `uploads/` (mailbox trim / ack).
    * Accepts `/uploads/<file>` or full URL containing that path.
    */
-  async tryDeleteServerStoredUpload(remoteUrlOrPath: string | null | undefined): Promise<void> {
+  async tryDeleteServerStoredUpload(
+    remoteUrlOrPath: string | null | undefined,
+  ): Promise<void> {
     if (!remoteUrlOrPath || typeof remoteUrlOrPath !== 'string') return;
     const trimmed = remoteUrlOrPath.trim();
     const m = trimmed.match(/\/uploads\/([^?#]+)/);

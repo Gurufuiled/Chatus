@@ -71,7 +71,9 @@ describe('AuthService.syncProfileFromInitData', () => {
       username: 'old@example.com',
     });
     (prisma.user.findUnique as jest.Mock).mockImplementation(
-      async (args: { where: { id?: string; username?: string; phone?: string } }) => {
+      async (args: {
+        where: { id?: string; username?: string; phone?: string };
+      }) => {
         if (args.where.id === 'user-1') return user;
         return null;
       },
@@ -84,11 +86,15 @@ describe('AuthService.syncProfileFromInitData', () => {
       }),
     );
 
-    const result = await service.syncProfileFromInitData('user-1', 'init-token', {
-      firstName: 'Hacker',
-      lastName: 'Evil',
-      email: 'hacker@example.com',
-    });
+    const result = await service.syncProfileFromInitData(
+      'user-1',
+      'init-token',
+      {
+        firstName: 'Hacker',
+        lastName: 'Evil',
+        email: 'hacker@example.com',
+      },
+    );
 
     expect(result.display_name).toBe('Anna');
     expect(result.last_name).toBe('Smirnova');
@@ -110,7 +116,10 @@ describe('AuthService.syncProfileFromInitData', () => {
     });
     (prisma.user.findUnique as jest.Mock).mockResolvedValue(user);
 
-    const result = await service.syncProfileFromInitData('user-1', 'init-token');
+    const result = await service.syncProfileFromInitData(
+      'user-1',
+      'init-token',
+    );
 
     expect(result.display_name).toBe('Anna');
     expect(prisma.user.update).not.toHaveBeenCalled();
@@ -132,7 +141,10 @@ describe('AuthService.syncProfileFromInitData', () => {
       },
     );
 
-    const result = await service.syncProfileFromInitData('user-1', 'init-token');
+    const result = await service.syncProfileFromInitData(
+      'user-1',
+      'init-token',
+    );
 
     expect(result.username).toBe('old@example.com');
     expect(prisma.user.update).not.toHaveBeenCalled();

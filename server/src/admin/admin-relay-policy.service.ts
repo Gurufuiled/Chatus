@@ -39,8 +39,13 @@ export class AdminRelayPolicyService {
     return result as RelayPolicyOverrides;
   }
 
-  async setOverrides(patch: RelayPolicyOverrides): Promise<RelayPolicyOverrides> {
-    const entries = Object.entries(patch) as [RelayPolicyKey, number | undefined][];
+  async setOverrides(
+    patch: RelayPolicyOverrides,
+  ): Promise<RelayPolicyOverrides> {
+    const entries = Object.entries(patch) as [
+      RelayPolicyKey,
+      number | undefined,
+    ][];
     const ops = entries
       .filter(([key]) => RELAY_POLICY_KEYS.includes(key))
       .map(([key, value]) => {

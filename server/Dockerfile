@@ -31,6 +31,10 @@ ENV PORT=4000
 
 EXPOSE 4000 4001 4002
 
+RUN useradd -m -s /bin/bash nestuser \
+  && chown -R nestuser:nestuser /app
+
 # Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
+USER nestuser
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

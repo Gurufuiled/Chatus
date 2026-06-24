@@ -1,5 +1,13 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from 'class-validator';
 
 export class GetChannelMembersQueryDto {
   @IsOptional()
@@ -11,7 +19,9 @@ export class GetChannelMembersQueryDto {
   q?: string;
 
   @IsOptional()
-  @Transform(({ value }) => (value == null || value === '' ? undefined : Number(value)))
+  @Transform(({ value }) =>
+    value == null || value === '' ? undefined : Number(value),
+  )
   @IsInt()
   @Min(1)
   @Max(100)
@@ -26,4 +36,3 @@ export class GetChannelMembersQueryDto {
   @IsBoolean()
   include_banned?: boolean;
 }
-

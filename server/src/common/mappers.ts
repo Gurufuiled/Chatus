@@ -122,7 +122,9 @@ export type MappedChatMember = {
   };
 };
 
-export function mapChatMember(member: ChatMember & { user?: User | null }): MappedChatMember {
+export function mapChatMember(
+  member: ChatMember & { user?: User | null },
+): MappedChatMember {
   return {
     chat_id: member.chatId,
     user_id: member.userId,
@@ -220,8 +222,8 @@ export function mapChat(
     description: chat.description ?? null,
     avatar_url:
       chat.chatType === 'private'
-        ? peer?.user?.avatarUrl ?? null
-        : chat.avatarUrl ?? null,
+        ? (peer?.user?.avatarUrl ?? null)
+        : (chat.avatarUrl ?? null),
     visibility: chat.visibility,
     access_type: chat.accessType,
     subscription_price_cents: chat.subscriptionPriceCents ?? null,
@@ -241,7 +243,9 @@ export function mapChat(
     subscriber_count: chat.subscriberCount,
     active_subscriber_count: chat.activeSubscriberCount,
     access_status: currentMembership?.accessStatus ?? null,
-    subscription_expires_at: dateToUnixMs(currentMembership?.subscriptionExpiresAt),
+    subscription_expires_at: dateToUnixMs(
+      currentMembership?.subscriptionExpiresAt,
+    ),
     pending_earnings_cents: chat.pendingEarningsCents,
     available_payout_cents: chat.availablePayoutCents,
     paid_out_cents: chat.paidOutCents,
@@ -321,7 +325,11 @@ type ReactionWithUser = MessageReaction & {
 };
 
 export function mapMessage(
-  message: Message & { media?: Media[]; reactions?: MessageReaction[]; sender?: User | null },
+  message: Message & {
+    media?: Media[];
+    reactions?: MessageReaction[];
+    sender?: User | null;
+  },
   opts?: {
     includeMedia?: boolean;
     includeReactions?: boolean;
@@ -353,7 +361,10 @@ export function mapMessage(
   };
   if (opts?.includeSender && message.sender) {
     base.sender_name =
-      message.sender.displayName ?? message.sender.username ?? message.sender.handle ?? null;
+      message.sender.displayName ??
+      message.sender.username ??
+      message.sender.handle ??
+      null;
     base.sender_avatar_url = message.sender.avatarUrl ?? null;
   }
   if (opts?.includeMedia && message.media) {

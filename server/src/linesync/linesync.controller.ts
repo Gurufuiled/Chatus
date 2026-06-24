@@ -15,7 +15,11 @@ export class LineSyncController {
     @CurrentUser() user: User,
     @Query('limit', new LimitPipe(1, 100, 10)) limit: number,
   ) {
-    const events = await this.lineSyncCacheService.getTailForUser(lineId, user.id, limit);
+    const events = await this.lineSyncCacheService.getTailForUser(
+      lineId,
+      user.id,
+      limit,
+    );
     return {
       line_id: lineId,
       events,

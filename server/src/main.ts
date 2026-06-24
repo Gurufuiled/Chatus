@@ -93,7 +93,10 @@ async function bootstrap() {
     }
     const apkStat = statSync(apkPath);
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="chatus-release.apk"');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="chatus-release.apk"',
+    );
     res.setHeader('Last-Modified', apkStat.mtime.toUTCString());
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.sendFile(apkPath);
@@ -117,7 +120,10 @@ async function bootstrap() {
   expressApp.get('/client-update-manifest.json', (_req, res) => {
     const manifestPath = resolveClientUpdateManifestPath();
     if (!manifestPath) {
-      res.status(404).type('text/plain').send('client-update-manifest.json not found on server');
+      res
+        .status(404)
+        .type('text/plain')
+        .send('client-update-manifest.json not found on server');
       return;
     }
     try {
@@ -152,7 +158,9 @@ async function bootstrap() {
       res
         .status(404)
         .type('text/plain')
-        .send('Embed app not deployed. Build web/ and copy dist to public/embed/');
+        .send(
+          'Embed app not deployed. Build web/ and copy dist to public/embed/',
+        );
       return;
     }
     setEmbedSecurityHeaders(res);

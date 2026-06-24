@@ -35,7 +35,10 @@ export class ChannelsController {
 
   /** Invite link (private or share token) — must stay above @Get(':id'). */
   @Get('link/invite/:token')
-  async resolveByInvite(@Param('token') token: string, @CurrentUser() user: User) {
+  async resolveByInvite(
+    @Param('token') token: string,
+    @CurrentUser() user: User,
+  ) {
     return this.channelsService.resolveChannelByInvite(token, user.id);
   }
 
@@ -91,7 +94,10 @@ export class ChannelsController {
   }
 
   @Post()
-  async createChannel(@Body() dto: CreateChannelDto, @CurrentUser() user: User) {
+  async createChannel(
+    @Body() dto: CreateChannelDto,
+    @CurrentUser() user: User,
+  ) {
     return this.channelsService.createChannel(user.id, dto);
   }
 
@@ -114,15 +120,15 @@ export class ChannelsController {
   }
 
   @Post(':id/unsubscribe')
-  async unsubscribe(
-    @Param('id') channelId: string,
-    @CurrentUser() user: User,
-  ) {
+  async unsubscribe(@Param('id') channelId: string, @CurrentUser() user: User) {
     return this.channelsService.unsubscribeFromChannel(channelId, user.id);
   }
 
   @Post(':id/checkout/mock')
-  async mockCheckout(@Param('id') channelId: string, @CurrentUser() user: User) {
+  async mockCheckout(
+    @Param('id') channelId: string,
+    @CurrentUser() user: User,
+  ) {
     return this.channelsService.mockCheckout(channelId, user.id);
   }
 
@@ -142,7 +148,12 @@ export class ChannelsController {
     @Body() dto: CreateDiscussionMessageDto,
     @CurrentUser() user: User,
   ) {
-    return this.channelsService.createDiscussionMessage(channelId, postId, user.id, dto);
+    return this.channelsService.createDiscussionMessage(
+      channelId,
+      postId,
+      user.id,
+      dto,
+    );
   }
 
   @Post(':id/posts/:postId/reactions')
@@ -152,7 +163,12 @@ export class ChannelsController {
     @Body() dto: ToggleReactionDto,
     @CurrentUser() user: User,
   ) {
-    return this.channelsService.togglePostReaction(channelId, postId, user.id, dto.emoji);
+    return this.channelsService.togglePostReaction(
+      channelId,
+      postId,
+      user.id,
+      dto.emoji,
+    );
   }
 
   @Get(':id/members')
@@ -171,7 +187,12 @@ export class ChannelsController {
     @Body() dto: UpdateChannelMemberDto,
     @CurrentUser() user: User,
   ) {
-    return this.channelsService.updateChannelMember(channelId, user.id, memberId, dto);
+    return this.channelsService.updateChannelMember(
+      channelId,
+      user.id,
+      memberId,
+      dto,
+    );
   }
 
   @Post(':id/members/:memberId/ban')
@@ -189,7 +210,11 @@ export class ChannelsController {
     @Param('memberId') memberId: string,
     @CurrentUser() user: User,
   ) {
-    return this.channelsService.unbanChannelMember(channelId, user.id, memberId);
+    return this.channelsService.unbanChannelMember(
+      channelId,
+      user.id,
+      memberId,
+    );
   }
 
   @Delete(':id/members/:memberId')
@@ -198,6 +223,10 @@ export class ChannelsController {
     @Param('memberId') memberId: string,
     @CurrentUser() user: User,
   ) {
-    return this.channelsService.removeChannelMember(channelId, user.id, memberId);
+    return this.channelsService.removeChannelMember(
+      channelId,
+      user.id,
+      memberId,
+    );
   }
 }

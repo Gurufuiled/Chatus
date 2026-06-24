@@ -70,7 +70,9 @@ export function normalizeCreateMessageMedia(
   return Array.isArray(media) ? media : [media];
 }
 
-export function assertValidMessageMediaItems(items: CreateMessageMediaDto[]): void {
+export function assertValidMessageMediaItems(
+  items: CreateMessageMediaDto[],
+): void {
   if (items.length === 0) {
     throw new Error('media must include at least one item');
   }
@@ -80,7 +82,9 @@ export function assertValidMessageMediaItems(items: CreateMessageMediaDto[]): vo
       throw new Error('media.url is required');
     }
     if (!url.startsWith('/uploads/')) {
-      throw new Error('media.url must be an /uploads/ path from POST /api/upload');
+      throw new Error(
+        'media.url must be an /uploads/ path from POST /api/upload',
+      );
     }
   }
 }

@@ -44,7 +44,8 @@ export function profileFieldsFromInitPayload(
   payload: LoginusInitDataPayload,
   profileOverride?: Partial<LoginusProfileFields>,
 ): LoginusProfileFields {
-  const loginusId = extractLoginusId(payload) ?? profileOverride?.loginusId ?? '';
+  const loginusId =
+    extractLoginusId(payload) ?? profileOverride?.loginusId ?? '';
   const fromJwt = {
     email: payload.email ?? null,
     firstName: payload.firstName ?? payload.first_name ?? null,
@@ -63,7 +64,9 @@ export function profileFieldsFromInitPayload(
   };
 }
 
-export function normalizeLoginusPhone(phone: string | null | undefined): string | null {
+export function normalizeLoginusPhone(
+  phone: string | null | undefined,
+): string | null {
   if (!phone) return null;
   const raw = phone.replace(/\D/g, '');
   if (raw.length === 0) return null;
@@ -73,7 +76,9 @@ export function normalizeLoginusPhone(phone: string | null | undefined): string 
   return `+${raw}`;
 }
 
-export function isLocalUploadAvatarUrl(url: string | null | undefined): boolean {
+export function isLocalUploadAvatarUrl(
+  url: string | null | undefined,
+): boolean {
   if (!url) return false;
   return url.startsWith('/uploads/') || url.includes('/uploads/');
 }
@@ -106,7 +111,9 @@ export function getPublicOrigin(): string | null {
   return null;
 }
 
-export function toPublicAbsoluteUrl(url: string | null | undefined): string | undefined {
+export function toPublicAbsoluteUrl(
+  url: string | null | undefined,
+): string | undefined {
   const trimmed = url?.trim();
   if (!trimmed) return undefined;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
@@ -162,7 +169,10 @@ export function buildUserUpdateFromLoginusProfile(
     }
   }
 
-  const avatarUpdate = resolveInboundAvatarUrl(existing.avatarUrl, fields.avatarUrl);
+  const avatarUpdate = resolveInboundAvatarUrl(
+    existing.avatarUrl,
+    fields.avatarUrl,
+  );
   if (avatarUpdate !== undefined) {
     data.avatarUrl = avatarUpdate;
     changed = true;
@@ -177,7 +187,9 @@ export function buildUserUpdateFromLoginusProfile(
   return { data, changed };
 }
 
-export function outboundProfileFromUser(user: User): LoginusOutboundProfile | null {
+export function outboundProfileFromUser(
+  user: User,
+): LoginusOutboundProfile | null {
   if (!user.loginusId) return null;
   const profile: LoginusOutboundProfile = { sub: user.loginusId };
   if (user.displayName?.trim()) profile.firstName = user.displayName.trim();

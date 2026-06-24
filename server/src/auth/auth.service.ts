@@ -78,11 +78,17 @@ export class AuthService {
     this.loginusClientSecret = process.env.LOGINUS_CLIENT_SECRET || '';
   }
 
-  getLoginUrl(redirectUriParam?: string): { url: string; redirect_uri: string } {
+  getLoginUrl(redirectUriParam?: string): {
+    url: string;
+    redirect_uri: string;
+  } {
     let redirectUri =
       process.env.LOGINUS_REDIRECT_URI ||
       'http://localhost:4000/api/auth/callback';
-    if (redirectUriParam === 'emulator' && process.env.LOGINUS_REDIRECT_URI_EMULATOR) {
+    if (
+      redirectUriParam === 'emulator' &&
+      process.env.LOGINUS_REDIRECT_URI_EMULATOR
+    ) {
       redirectUri = process.env.LOGINUS_REDIRECT_URI_EMULATOR;
     }
     const params = new URLSearchParams({
@@ -203,7 +209,9 @@ export class AuthService {
   verifyInitData(initData: string): LoginusInitDataPayload {
     const embeddedSecret = process.env.LOGINUS_EMBEDDED_SECRET;
     if (!embeddedSecret) {
-      throw new BadRequestException('LOGINUS_EMBEDDED_SECRET must be configured');
+      throw new BadRequestException(
+        'LOGINUS_EMBEDDED_SECRET must be configured',
+      );
     }
 
     let payload: LoginusInitDataPayload;
@@ -211,7 +219,7 @@ export class AuthService {
       payload = this.jwtService.verify(initData, {
         secret: embeddedSecret,
         algorithms: ['HS256'],
-      }) as LoginusInitDataPayload;
+      });
     } catch {
       throw new UnauthorizedException('Invalid or expired initData');
     }
@@ -270,7 +278,9 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
     if (!user.loginusId || user.loginusId !== loginusId) {
-      throw new UnauthorizedException('initData sub does not match authenticated user');
+      throw new UnauthorizedException(
+        'initData sub does not match authenticated user',
+      );
     }
 
     const refreshed = await this.applyLoginusProfileToUser(
@@ -305,8 +315,10 @@ export class AuthService {
     const user = await this.findOrCreateUser(userInfo);
     const refreshedUser = await this.applyLoginusProfileToUser(user, fields);
 
-    const { access_token, expires_at, refresh_token } =
-      await this.issueTokens(refreshedUser, randomUUID());
+    const { access_token, expires_at, refresh_token } = await this.issueTokens(
+      refreshedUser,
+      randomUUID(),
+    );
 
     return {
       access_token,
@@ -464,10 +476,7 @@ export class AuthService {
         }
       }
 
-      if (
-        Object.keys(updateData).length === 0 &&
-        !phoneUpdate
-      ) {
+      if (Object.keys(updateData).length === 0 && !phoneUpdate) {
         return existing;
       }
 
@@ -502,8 +511,13 @@ export class AuthService {
         },
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const raced = await this.prisma.user.findUnique({ where: { loginusId } });
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const raced = await this.prisma.user.findUnique({
+          where: { loginusId },
+        });
         if (raced) return raced;
 
         const target = Array.isArray(err.meta?.target)

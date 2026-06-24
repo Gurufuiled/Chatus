@@ -37,9 +37,7 @@ export class PushService implements OnModuleInit {
 
   constructor(private readonly prisma: PrismaService) {
     const accessToken = process.env.EXPO_ACCESS_TOKEN;
-    this.expo = new Expo(
-      accessToken ? { accessToken } : {},
-    );
+    this.expo = new Expo(accessToken ? { accessToken } : {});
   }
 
   onModuleInit(): void {
@@ -101,7 +99,12 @@ export class PushService implements OnModuleInit {
     const fcmTrimmed = fcmToken?.trim() || null;
     await this.prisma.pushDevice.upsert({
       where: { expoToken: trimmed },
-      create: { userId, expoToken: trimmed, fcmToken: fcmTrimmed, platform: plat },
+      create: {
+        userId,
+        expoToken: trimmed,
+        fcmToken: fcmTrimmed,
+        platform: plat,
+      },
       update: { userId, platform: plat, fcmToken: fcmTrimmed },
     });
     this.log.log(
@@ -118,7 +121,8 @@ export class PushService implements OnModuleInit {
 
   private getPublicOrigin(): string | null {
     const explicit =
-      process.env.PUBLIC_ORIGIN?.trim() || process.env.API_PUBLIC_ORIGIN?.trim();
+      process.env.PUBLIC_ORIGIN?.trim() ||
+      process.env.API_PUBLIC_ORIGIN?.trim();
     if (explicit) {
       return explicit.replace(/\/$/, '');
     }
@@ -161,11 +165,13 @@ export class PushService implements OnModuleInit {
     return url;
   }
 
-  private senderDisplayName(sender: {
-    displayName: string | null;
-    username: string | null;
-    handle: string | null;
-  } | null): string {
+  private senderDisplayName(
+    sender: {
+      displayName: string | null;
+      username: string | null;
+      handle: string | null;
+    } | null,
+  ): string {
     if (!sender) return 'Сообщение';
     return (
       sender.displayName?.trim() ||
@@ -280,8 +286,7 @@ export class PushService implements OnModuleInit {
       }
       if (!title) title = 'Chatus';
 
-      const preview =
-        chat.lastMessagePreview?.trim() || 'Новое сообщение';
+      const preview = chat.lastMessagePreview?.trim() || 'Новое сообщение';
       const senderLabel = this.senderDisplayName(sender);
       const avatarUrl = this.safePushImageUrl(
         this.absoluteMediaUrl(sender?.avatarUrl ?? null),
@@ -295,7 +300,12 @@ export class PushService implements OnModuleInit {
       const [devices, unreadRows] = await Promise.all([
         this.prisma.pushDevice.findMany({
           where: { userId: { in: recipientIds } },
-          select: { expoToken: true, fcmToken: true, userId: true, platform: true },
+          select: {
+            expoToken: true,
+            fcmToken: true,
+            userId: true,
+            platform: true,
+          },
         }),
         this.prisma.chatMember.findMany({
           where: { chatId, userId: { in: recipientIds } },
@@ -310,20 +320,28 @@ export class PushService implements OnModuleInit {
       // Separate Android FCM tokens for direct push
       const fcmDirectTokens: { token: string; userId: string }[] = [];
       // Expo tokens for iOS (and Android fallback when no FCM token)
-      const expoTokensForIos: { to: string; userId: string; platform: 'ios' | 'android' }[] = [];
+      const expoTokensForIos: {
+        to: string;
+        userId: string;
+        platform: 'ios' | 'android';
+      }[] = [];
 
       let invalidExpoTokenRows = 0;
       for (const d of devices) {
         const expoT = d.expoToken.trim();
         const fcmT = d.fcmToken?.trim() ?? '';
-        const plat = d.platform === 'ios' ? 'ios' : 'android' as const;
+        const plat = d.platform === 'ios' ? 'ios' : ('android' as const);
 
         if (plat === 'android' && fcmT) {
           // Android with FCM token → use direct Firebase Admin push
           fcmDirectTokens.push({ token: fcmT, userId: d.userId });
         } else if (Expo.isExpoPushToken(expoT)) {
           // iOS or Android without FCM token → use Expo Push
-          expoTokensForIos.push({ to: expoT, userId: d.userId, platform: plat });
+          expoTokensForIos.push({
+            to: expoT,
+            userId: d.userId,
+            platform: plat,
+          });
         } else {
           invalidExpoTokenRows += 1;
         }
@@ -349,31 +367,33 @@ export class PushService implements OnModuleInit {
 
       // --- Expo Push (iOS + Android fallback) ---
       if (expoTokensForIos.length > 0) {
-        const messages: ExpoPushMessageWithAndroid[] = expoTokensForIos.map(({ to, userId, platform }) => {
-          const unread = Math.max(1, unreadByUserId.get(userId) ?? 1);
-          const core = `${senderLabel}: ${preview}`;
-          const tail = unread > 1 ? `\nи ещё ${unread - 1}` : '';
-          const body = (core + tail).slice(0, 400);
-          const msg: ExpoPushMessageWithAndroid = {
-            to,
-            title,
-            body,
-            priority: 'high',
-            channelId: 'chatus_messages',
-            tag,
-            collapseId: tag,
-            data: { chat_id: chatId, kind: 'new_message' },
-          };
-          // Expo: `sound` is iOS-only in push API; sending it to Android can break FCM delivery.
-          if (platform === 'ios') {
-            msg.sound = 'message_notification.wav';
-          }
-          // Small icon: use manifest `default_notification_icon` from expo-notifications (omit `icon`).
-          if (avatarUrl) {
-            msg.richContent = { image: avatarUrl };
-          }
-          return msg;
-        });
+        const messages: ExpoPushMessageWithAndroid[] = expoTokensForIos.map(
+          ({ to, userId, platform }) => {
+            const unread = Math.max(1, unreadByUserId.get(userId) ?? 1);
+            const core = `${senderLabel}: ${preview}`;
+            const tail = unread > 1 ? `\nи ещё ${unread - 1}` : '';
+            const body = (core + tail).slice(0, 400);
+            const msg: ExpoPushMessageWithAndroid = {
+              to,
+              title,
+              body,
+              priority: 'high',
+              channelId: 'chatus_messages',
+              tag,
+              collapseId: tag,
+              data: { chat_id: chatId, kind: 'new_message' },
+            };
+            // Expo: `sound` is iOS-only in push API; sending it to Android can break FCM delivery.
+            if (platform === 'ios') {
+              msg.sound = 'message_notification.wav';
+            }
+            // Small icon: use manifest `default_notification_icon` from expo-notifications (omit `icon`).
+            if (avatarUrl) {
+              msg.richContent = { image: avatarUrl };
+            }
+            return msg;
+          },
+        );
 
         const chunks = this.expo.chunkPushNotifications(messages);
         let okTickets = 0;
@@ -395,7 +415,9 @@ export class PushService implements OnModuleInit {
                       `Expo push ticket details: ${JSON.stringify(errTicket.details)}`,
                     );
                   } catch {
-                    this.log.debug('Expo push ticket details: [unserializable]');
+                    this.log.debug(
+                      'Expo push ticket details: [unserializable]',
+                    );
                   }
                 }
               }

@@ -81,9 +81,14 @@ export function loadRelayPolicyFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): RelayPolicySnapshot {
   /** Default 86400 (1 day): private-chat text mailbox TTL when peer is offline; set to 0 to disable. */
-  const textCacheSeconds = parseNonNegativeInt(env, 'RELAY_TEXT_CACHE_SECONDS', 86400) ?? 86400;
+  const textCacheSeconds =
+    parseNonNegativeInt(env, 'RELAY_TEXT_CACHE_SECONDS', 86400) ?? 86400;
   return {
-    peerAttemptTimeoutMs: parsePositiveInt(env, 'P2P_PEER_ATTEMPT_TIMEOUT_MS', 2500),
+    peerAttemptTimeoutMs: parsePositiveInt(
+      env,
+      'P2P_PEER_ATTEMPT_TIMEOUT_MS',
+      2500,
+    ),
     peerMetricsEnabled: parseBoolean(env, 'P2P_PEER_METRICS_ENABLED', true),
     mode: parseRelayMode(env),
     textCacheSeconds,
@@ -93,7 +98,8 @@ export function loadRelayPolicyFromEnv(
       false,
     ),
     /** Default 86400 (1 day): mailbox fallback media TTL when peer is offline; set to 0 to disable. */
-    mediaCacheSeconds: parseNonNegativeInt(env, 'RELAY_MEDIA_CACHE_SECONDS', 86400) ?? 86400,
+    mediaCacheSeconds:
+      parseNonNegativeInt(env, 'RELAY_MEDIA_CACHE_SECONDS', 86400) ?? 86400,
     mediaRetainUntilDownload: parseBoolean(
       env,
       'RELAY_MEDIA_RETAIN_UNTIL_DOWNLOAD',
@@ -122,7 +128,11 @@ export function loadRelayPolicyFromEnv(
     ),
     lineSyncTailCount: parsePositiveInt(env, 'LINE_SYNC_TAIL_COUNT', 10),
     lineSyncTailTtlSeconds:
-      parseNonNegativeInt(env, 'LINE_SYNC_TAIL_TTL_SECONDS', textCacheSeconds) ?? textCacheSeconds,
+      parseNonNegativeInt(
+        env,
+        'LINE_SYNC_TAIL_TTL_SECONDS',
+        textCacheSeconds,
+      ) ?? textCacheSeconds,
     defaultTransport: Transport.websocket,
   };
 }
@@ -180,15 +190,18 @@ export function computeEffectiveCachePolicy(
 ): EffectiveCachePolicy {
   if (chatType === 'group') {
     return {
-      textCacheSeconds: snapshot.groupTextCacheSeconds ?? snapshot.textCacheSeconds,
+      textCacheSeconds:
+        snapshot.groupTextCacheSeconds ?? snapshot.textCacheSeconds,
       mediaCacheSeconds: snapshot.mediaCacheSeconds,
     };
   }
 
   if (chatType === 'channel' || chatType === 'discussion') {
     return {
-      textCacheSeconds: snapshot.channelPostRetentionSeconds ?? snapshot.textCacheSeconds,
-      mediaCacheSeconds: snapshot.channelMediaMinRetentionSeconds ?? snapshot.mediaCacheSeconds,
+      textCacheSeconds:
+        snapshot.channelPostRetentionSeconds ?? snapshot.textCacheSeconds,
+      mediaCacheSeconds:
+        snapshot.channelMediaMinRetentionSeconds ?? snapshot.mediaCacheSeconds,
     };
   }
 
@@ -202,7 +215,9 @@ export function hasMailboxMediaBlob(
   messageType: MailboxMessageType | string,
   mediaCount = 0,
 ): boolean {
-  return mediaCount > 0 || MEDIA_MESSAGE_TYPES.has(messageType as MailboxMessageType);
+  return (
+    mediaCount > 0 || MEDIA_MESSAGE_TYPES.has(messageType as MailboxMessageType)
+  );
 }
 
 export function computeEffectiveMessageCachePolicy(
@@ -225,7 +240,9 @@ export function computeEffectiveMessageCachePolicy(
   };
 }
 
-export function computeChannelPostPolicy(snapshot: RelayPolicySnapshot): ChannelPostPolicy {
+export function computeChannelPostPolicy(
+  snapshot: RelayPolicySnapshot,
+): ChannelPostPolicy {
   const channelPolicy = computeEffectiveCachePolicy(snapshot, 'channel');
 
   return {
@@ -235,7 +252,9 @@ export function computeChannelPostPolicy(snapshot: RelayPolicySnapshot): Channel
   };
 }
 
-export function computeLineSyncTailPolicy(snapshot: RelayPolicySnapshot): LineSyncTailPolicy {
+export function computeLineSyncTailPolicy(
+  snapshot: RelayPolicySnapshot,
+): LineSyncTailPolicy {
   return {
     retainLastN: snapshot.lineSyncTailCount,
     ttlSeconds: snapshot.lineSyncTailTtlSeconds,
@@ -263,7 +282,9 @@ export class RelayPolicyConfig {
    * Group overrides fall back to the generic private-chat policy when not set.
    * Channel/discussion share the channel retention settings.
    */
-  getEffectiveCachePolicy(chatType: MailboxChatType | string): EffectiveCachePolicy {
+  getEffectiveCachePolicy(
+    chatType: MailboxChatType | string,
+  ): EffectiveCachePolicy {
     return computeEffectiveCachePolicy(this.policy, chatType);
   }
 
@@ -272,7 +293,12 @@ export class RelayPolicyConfig {
     messageType: MailboxMessageType | string,
     mediaCount = 0,
   ): EffectiveMessageCachePolicy {
-    return computeEffectiveMessageCachePolicy(this.policy, chatType, messageType, mediaCount);
+    return computeEffectiveMessageCachePolicy(
+      this.policy,
+      chatType,
+      messageType,
+      mediaCount,
+    );
   }
 
   getChannelPostPolicy(): ChannelPostPolicy {

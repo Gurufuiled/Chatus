@@ -78,9 +78,11 @@ export class WebsocketGateway
 
       this.broadcastPresence(payload.sub, true, now);
       this.log.log(`User connected (WS) userId=${payload.sub}`);
-      void this.mailboxService.deliverPendingToUser(payload.sub).catch((err) =>
-        this.log.error(`Failed mailbox deliver userId=${payload.sub}`, err),
-      );
+      void this.mailboxService
+        .deliverPendingToUser(payload.sub)
+        .catch((err) =>
+          this.log.error(`Failed mailbox deliver userId=${payload.sub}`, err),
+        );
     } catch (err) {
       this.log.warn(
         `WS connection rejected: invalid token or DB error: ${err instanceof Error ? err.message : String(err)}`,
@@ -93,7 +95,10 @@ export class WebsocketGateway
     const userId = client.userId;
     if (!userId) return;
 
-    const disconnectedLastSocket = this.realtimeService.unregisterClient(userId, client);
+    const disconnectedLastSocket = this.realtimeService.unregisterClient(
+      userId,
+      client,
+    );
 
     if (disconnectedLastSocket) {
       const lastSeen = new Date();
@@ -113,7 +118,11 @@ export class WebsocketGateway
     this.log.log(`User disconnected (WS) userId=${userId}`);
   }
 
-  private broadcastPresence(userId: string, isOnline: boolean, lastSeen?: Date | number | null) {
+  private broadcastPresence(
+    userId: string,
+    isOnline: boolean,
+    lastSeen?: Date | number | null,
+  ) {
     const normalizedLastSeen =
       lastSeen instanceof Date
         ? lastSeen.getTime()
@@ -142,31 +151,33 @@ export class WebsocketGateway
       forwarded_from_chat_id?: string | null;
       forwarded_from_sender_id?: string | null;
       relay_mailbox?: boolean;
-      media?: {
-        media_type?: string;
-        url?: string;
-        duration_ms?: number;
-        waveform?: number[];
-        thumbnail_url?: string;
-        is_round?: boolean;
-        width?: number;
-        height?: number;
-        file_name?: string;
-        file_size?: number;
-        mime_type?: string;
-      } | {
-        media_type?: string;
-        url?: string;
-        duration_ms?: number;
-        waveform?: number[];
-        thumbnail_url?: string;
-        is_round?: boolean;
-        width?: number;
-        height?: number;
-        file_name?: string;
-        file_size?: number;
-        mime_type?: string;
-      }[];
+      media?:
+        | {
+            media_type?: string;
+            url?: string;
+            duration_ms?: number;
+            waveform?: number[];
+            thumbnail_url?: string;
+            is_round?: boolean;
+            width?: number;
+            height?: number;
+            file_name?: string;
+            file_size?: number;
+            mime_type?: string;
+          }
+        | {
+            media_type?: string;
+            url?: string;
+            duration_ms?: number;
+            waveform?: number[];
+            thumbnail_url?: string;
+            is_round?: boolean;
+            width?: number;
+            height?: number;
+            file_name?: string;
+            file_size?: number;
+            mime_type?: string;
+          }[];
     },
   ) {
     if (!client.userId) return;
@@ -243,7 +254,9 @@ export class WebsocketGateway
           messageId: message.id,
           chatId,
           memberCount: members.length,
-          previewLen: message.content ? Math.min(80, message.content.length) : 0,
+          previewLen: message.content
+            ? Math.min(80, message.content.length)
+            : 0,
         })}`,
       );
       const data = JSON.stringify({
@@ -253,13 +266,20 @@ export class WebsocketGateway
           client_temp_id: clientTempId ?? null,
         },
       });
-      members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
+      members.forEach(({ userId }) =>
+        this.realtimeService.sendToUser(userId, data),
+      );
 
-      if (effectiveMsgType === 'text' && typeof content === 'string' && content.trim()) {
-        const fatherChatId = await this.chatusFatherService.getChatIdIfChatusFather(
-          chatId,
-          client.userId,
-        );
+      if (
+        effectiveMsgType === 'text' &&
+        typeof content === 'string' &&
+        content.trim()
+      ) {
+        const fatherChatId =
+          await this.chatusFatherService.getChatIdIfChatusFather(
+            chatId,
+            client.userId,
+          );
         if (fatherChatId) {
           const replies = await this.chatusFatherService.handleUserMessage(
             fatherChatId,
@@ -267,7 +287,10 @@ export class WebsocketGateway
             content,
           );
           for (const reply of replies) {
-            const fatherPayload = JSON.stringify({ type: 'message', message: reply });
+            const fatherPayload = JSON.stringify({
+              type: 'message',
+              message: reply,
+            });
             members.forEach(({ userId }) =>
               this.realtimeService.sendToUser(userId, fatherPayload),
             );
@@ -297,37 +320,49 @@ export class WebsocketGateway
     },
   ) {
     if (!client.userId) return;
-    const lineId = typeof payload?.line_id === 'string' ? payload.line_id.trim() : '';
+    const lineId =
+      typeof payload?.line_id === 'string' ? payload.line_id.trim() : '';
     if (!lineId) {
-      client.send(JSON.stringify({
-        type: 'line_tail',
-        request_id: payload?.request_id ?? null,
-        line_id: null,
-        error: 'line_id_required',
-      }));
+      client.send(
+        JSON.stringify({
+          type: 'line_tail',
+          request_id: payload?.request_id ?? null,
+          line_id: null,
+          error: 'line_id_required',
+        }),
+      );
       return;
     }
 
-    const rawLimit = typeof payload.limit === 'number' && Number.isFinite(payload.limit)
-      ? Math.floor(payload.limit)
-      : undefined;
+    const rawLimit =
+      typeof payload.limit === 'number' && Number.isFinite(payload.limit)
+        ? Math.floor(payload.limit)
+        : undefined;
     const limit = rawLimit ? Math.max(1, Math.min(rawLimit, 100)) : undefined;
 
     try {
-      const events = await this.lineSyncCacheService.getTailForUser(lineId, client.userId, limit);
-      client.send(JSON.stringify({
-        type: 'line_tail',
-        request_id: payload?.request_id ?? null,
-        line_id: lineId,
-        events,
-      }));
+      const events = await this.lineSyncCacheService.getTailForUser(
+        lineId,
+        client.userId,
+        limit,
+      );
+      client.send(
+        JSON.stringify({
+          type: 'line_tail',
+          request_id: payload?.request_id ?? null,
+          line_id: lineId,
+          events,
+        }),
+      );
     } catch (error) {
-      client.send(JSON.stringify({
-        type: 'line_tail',
-        request_id: payload?.request_id ?? null,
-        line_id: lineId,
-        error: error instanceof Error ? error.message : 'line_tail_failed',
-      }));
+      client.send(
+        JSON.stringify({
+          type: 'line_tail',
+          request_id: payload?.request_id ?? null,
+          line_id: lineId,
+          error: error instanceof Error ? error.message : 'line_tail_failed',
+        }),
+      );
     }
   }
 
@@ -346,7 +381,8 @@ export class WebsocketGateway
         where: { id: chatId },
         select: { pinnedMessageId: true },
       });
-      const deletedPinnedMessage = chatBeforeDelete?.pinnedMessageId === messageId;
+      const deletedPinnedMessage =
+        chatBeforeDelete?.pinnedMessageId === messageId;
 
       const message = await this.messagesService.deleteMessage(
         chatId,
@@ -415,9 +451,15 @@ export class WebsocketGateway
   }
 
   @SubscribeMessage('mailbox_ack')
-  async handleMailboxAck(client: AuthenticatedSocket, payload: { message_id?: string }) {
+  async handleMailboxAck(
+    client: AuthenticatedSocket,
+    payload: { message_id?: string },
+  ) {
     if (!client.userId || !payload?.message_id) return;
-    await this.mailboxService.markMailboxDelivered(payload.message_id, client.userId);
+    await this.mailboxService.markMailboxDelivered(
+      payload.message_id,
+      client.userId,
+    );
   }
 
   @SubscribeMessage('message')
@@ -444,7 +486,8 @@ export class WebsocketGateway
         message,
       });
       members.forEach(({ userId }) => {
-        if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
+        if (userId !== client.userId)
+          this.realtimeService.sendToUser(userId, data);
       });
     } catch (err) {
       this.log.error(
@@ -478,7 +521,8 @@ export class WebsocketGateway
         is_typing: isTyping,
       });
       members.forEach(({ userId }) => {
-        if (userId !== client.userId) this.realtimeService.sendToUser(userId, data);
+        if (userId !== client.userId)
+          this.realtimeService.sendToUser(userId, data);
       });
     } catch (err) {
       this.log.error(
@@ -523,7 +567,9 @@ export class WebsocketGateway
         user_id: client.userId,
         status: effectiveStatus,
       });
-      members.forEach(({ userId }) => this.realtimeService.sendToUser(userId, data));
+      members.forEach(({ userId }) =>
+        this.realtimeService.sendToUser(userId, data),
+      );
     } catch (err) {
       this.log.error(
         `ack failed ${JSON.stringify({ wsOpId, chatId, messageId, userId: client.userId, status })}`,
