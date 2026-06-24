@@ -572,13 +572,19 @@ export function ChatListScreen() {
 
   const keyExtractor = React.useCallback((item: ChatListItem) => item.id, []);
 
+  // Performance: memoize ItemSeparatorComponent to prevent remounting every separator on re-renders
+  const renderSeparator = React.useCallback(
+    () => <ChatSeparator listStyles={listStyles} />,
+    [listStyles],
+  );
+
   return (
     <View style={listStyles.container}>
       <FlatList
         data={listItems}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        ItemSeparatorComponent={() => <ChatSeparator listStyles={listStyles} />}
+        ItemSeparatorComponent={renderSeparator}
         removeClippedSubviews={
           Platform.OS === "android" ? true : !isSearchActive
         }
