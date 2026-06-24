@@ -2,3 +2,4 @@
 
 - **Branch:** `Ui-expirience`; push targets: `origin`, `corporate`.
 - **Recent product/UI:** Channel deep links use **chatus** scheme; leave-channel confirmation modal matches custom layout (title «Отписка от канала», red/blue pill buttons). Gallery sheet without dark overlay. Mute controls in channel profile header; subscriber mute styling aligned on chat/group profiles.
+- **iOS device sideloading:** Free-team device install required local fixes in `mobile/ios`: `AppDelegate.swift` now falls back to embedded `main.jsbundle` in Debug when Metro is absent, and `.xcode.env.updates` unsets `SKIP_BUNDLING` for physical-device Debug builds so Xcode can embed JS for cable-installed builds.

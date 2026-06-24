@@ -61,5 +61,9 @@ mobile/tdlib-ios/include/
 mobile/tdlib-ios/libtdjson.xcframework/
 mobile/tdlib-ios/tdjson/
 
+# Local iOS build outputs / large pod downloads (fetch manually on CI or dev machine)
+mobile/ios/build-xcode/
+mobile/ios/WebRTC.xcframework.zip
+
 # Self-hosted APK (deployed to VPS, not in git)
 server/public/downloads/*.apk

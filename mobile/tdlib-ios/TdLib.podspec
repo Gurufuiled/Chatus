@@ -8,7 +8,7 @@ Pod::Spec.new do |s|
   s.author = { 'Telegram' => 'support@telegram.org' }
   s.platform = :ios, '15.1'
   s.source = { :path => '.' }
-  s.vendored_frameworks = 'libtdjson.xcframework'
+  s.vendored_libraries = 'libtdjson.xcframework'
   s.public_header_files = 'include/**/*.h'
   s.header_mappings_dir = 'include'
   s.libraries = 'c++'
