@@ -32,5 +32,7 @@ ENV PORT=4000
 EXPOSE 4000 4001 4002
 
 # Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
+# Run as non-root user for security (sg.run/Gbvn)
+USER node
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
