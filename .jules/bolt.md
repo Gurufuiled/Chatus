@@ -8,3 +8,6 @@
 ## 2024-10-27 - [Inline renderItem in Lists]
 **Learning:** Even if the underlying render logic (e.g. `renderRow`) is memoized using `useCallback`, wrapping it in an inline function inside the `renderItem` prop (like `renderItem={({ item }) => renderRow({ item })}`) will still cause the list to see a new function reference on every render, defeating some of the optimization benefits.
 **Action:** When using a memoized callback for list rendering, pass it directly to the prop (e.g. `renderItem={renderRow}`) instead of wrapping it in an anonymous inline function.
+## 2024-10-27 - [Dockerfile USER Directive]
+**Learning:** Security scanners like Semgrep will block the CI if a Dockerfile does not explicitly set a non-root `USER` at the end of the file. By default, containers run as root, which is a security hazard.
+**Action:** Always ensure the final `USER` directive in a Dockerfile is explicitly set to a non-root user (e.g., `USER node` for node-based images) before the `ENTRYPOINT` and `CMD` instructions.
