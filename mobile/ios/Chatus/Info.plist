@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.0.20</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -29,7 +29,7 @@
 			<array>
 				<string>messenger</string>
 				<string>chatus</string>
-				<string>com.anonymous.mobile</string>
+				<string>com.chatus.app</string>
 			</array>
 		</dict>
 	</array>
@@ -52,12 +52,21 @@
 				<key>NSIncludesSubdomains</key>
 				<true/>
 			</dict>
+			<key>messenger.startapus.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
 		</dict>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Разрешите доступ к камере для записи видеокружков и съёмки.</string>
+	<string>Разрешите доступ к камере для записи видеокружков.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Разрешите доступ к контактам для поиска друзей в Chatus и Telegram.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Разрешите доступ к микрофону для голосовых сообщений и видеокружков.</string>
+	<string>Разрешите доступ к микрофону для записи видеокружков.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Разрешите сохранять изображения в галерею.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
