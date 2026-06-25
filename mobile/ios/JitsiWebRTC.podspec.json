@@ -10,7 +10,7 @@
   },
   "authors": "The WebRTC project authors",
   "source": {
-    "http": "file:///Users/daobraztsov/Desktop/%D1%81hatus/mobile/ios/WebRTC.xcframework.zip",
+    "http": "https://github.com/jitsi/webrtc/releases/download/v124.0.2/WebRTC.xcframework.zip",
     "flatten": false
   },
   "platforms": {
