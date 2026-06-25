@@ -158,6 +158,10 @@ export function ChatListScreen() {
     () => createChatListStyles(themeColors),
     [themeColors],
   );
+  const renderSeparator = React.useCallback(
+    () => <ChatSeparator listStyles={listStyles} />,
+    [listStyles],
+  );
   const navigation = useNavigation<Nav>();
   const chats = chatStore((s) => s.chats);
   const telegramDialogs = telegramAccountStore((s) => s.dialogs);
@@ -578,7 +582,7 @@ export function ChatListScreen() {
         data={listItems}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        ItemSeparatorComponent={() => <ChatSeparator listStyles={listStyles} />}
+        ItemSeparatorComponent={renderSeparator}
         removeClippedSubviews={
           Platform.OS === "android" ? true : !isSearchActive
         }
