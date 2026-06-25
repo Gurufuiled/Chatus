@@ -209,6 +209,9 @@ export function ChannelCatalogScreen() {
     );
   }
 
+  // ⚡ Bolt: Memoize ItemSeparatorComponent to prevent separator remounting on every render
+  const renderSeparator = React.useCallback(() => <View style={styles.separator} />, [styles.separator]);
+
   return (
     <FlatList
       style={{ backgroundColor: c.chatBackground }}
@@ -217,7 +220,7 @@ export function ChannelCatalogScreen() {
       renderItem={renderItem}
       refreshing={isLoading}
       onRefresh={() => void load()}
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ItemSeparatorComponent={renderSeparator}
       contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
       ListHeaderComponent={
         loadError && catalog.length > 0 ? (
