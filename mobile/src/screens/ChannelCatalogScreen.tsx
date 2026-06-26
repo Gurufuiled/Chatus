@@ -197,6 +197,11 @@ export function ChannelCatalogScreen() {
     [navigation, styles, c]
   );
 
+  const renderItemSeparator = React.useCallback(
+    () => <View style={styles.separator} />,
+    [styles.separator],
+  );
+
   if (loadError && catalog.length === 0 && !isLoading) {
     return <LoadErrorState message={loadError} onRetry={() => void load()} />;
   }
@@ -217,7 +222,7 @@ export function ChannelCatalogScreen() {
       renderItem={renderItem}
       refreshing={isLoading}
       onRefresh={() => void load()}
-      ItemSeparatorComponent={() => <View style={styles.separator} />}
+      ItemSeparatorComponent={renderItemSeparator}
       contentContainerStyle={catalog.length === 0 ? styles.emptyContainer : undefined}
       ListHeaderComponent={
         loadError && catalog.length > 0 ? (
