@@ -77,6 +77,8 @@ export function ProfileForm({ values, onChange, error }: ProfileFormProps) {
           maxLength={DISPLAY_NAME_MAX_LENGTH}
           onChange={(e) => setField('firstName', e.target.value)}
           autoComplete="given-name"
+          required
+          aria-required="true"
         />
       </div>
 
