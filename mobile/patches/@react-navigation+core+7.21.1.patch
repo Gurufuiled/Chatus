@@ -1,0 +1,1686 @@
+diff --git a/node_modules/@react-navigation/core/lib/module/BaseNavigationContainer.js b/node_modules/@react-navigation/core/lib/module/BaseNavigationContainer.js
+index 2d8bd84..5b6bbed 100644
+--- a/node_modules/@react-navigation/core/lib/module/BaseNavigationContainer.js
++++ b/node_modules/@react-navigation/core/lib/module/BaseNavigationContainer.js
+@@ -125,7 +125,8 @@ export const BaseNavigationContainer = /*#__PURE__*/React.forwardRef(function Ba
+     }
+   });
+   const resetRoot = useLatestCallback(state => {
+-    const target = state?.key ?? keyedListeners.getState.root?.().key;
++    var _state$key, _keyedListeners$getSt, _keyedListeners$getSt2;
++    const target = (_state$key = state === null || state === void 0 ? void 0 : state.key) !== null && _state$key !== void 0 ? _state$key : (_keyedListeners$getSt = (_keyedListeners$getSt2 = keyedListeners.getState).root) === null || _keyedListeners$getSt === void 0 ? void 0 : _keyedListeners$getSt.call(_keyedListeners$getSt2).key;
+     if (target == null) {
+       console.error(NOT_INITIALIZED_ERROR);
+     } else {
+@@ -136,7 +137,8 @@ export const BaseNavigationContainer = /*#__PURE__*/React.forwardRef(function Ba
+     }
+   });
+   const getRootState = useLatestCallback(() => {
+-    return keyedListeners.getState.root?.();
++    var _keyedListeners$getSt3, _keyedListeners$getSt4;
++    return (_keyedListeners$getSt3 = (_keyedListeners$getSt4 = keyedListeners.getState).root) === null || _keyedListeners$getSt3 === void 0 ? void 0 : _keyedListeners$getSt3.call(_keyedListeners$getSt4);
+   });
+   const getCurrentRoute = useLatestCallback(() => {
+     const state = getRootState();
+@@ -236,8 +238,9 @@ export const BaseNavigationContainer = /*#__PURE__*/React.forwardRef(function Ba
+   const onReadyCalledRef = React.useRef(false);
+   React.useEffect(() => {
+     if (!onReadyCalledRef.current && isReady()) {
++      var _onReadyRef$current;
+       onReadyCalledRef.current = true;
+-      onReadyRef.current?.();
++      (_onReadyRef$current = onReadyRef.current) === null || _onReadyRef$current === void 0 || _onReadyRef$current.call(onReadyRef);
+       emitter.emit({
+         type: 'ready'
+       });
+@@ -267,7 +270,8 @@ export const BaseNavigationContainer = /*#__PURE__*/React.forwardRef(function Ba
+                 path += ' > ';
+               }
+             } else if (!params && typeof curr === 'number' && prev === 'routes') {
+-              path += pointer?.name;
++              var _pointer;
++              path += (_pointer = pointer) === null || _pointer === void 0 ? void 0 : _pointer.name;
+             } else if (!params) {
+               path += ` > ${curr}`;
+               params = true;
+@@ -321,7 +325,7 @@ export const BaseNavigationContainer = /*#__PURE__*/React.forwardRef(function Ba
+       case 'REPLACE':
+       case 'POP_TO':
+       case 'JUMP_TO':
+-        if (payload?.name) {
++        if (payload !== null && payload !== void 0 && payload.name) {
+           message += `\n\nDo you have a screen named '${payload.name}'?\n\nIf you're trying to navigate to a screen in a nested navigator, see https://reactnavigation.org/docs/nesting-navigators#navigating-to-a-screen-in-a-nested-navigator.\n\nIf you're using conditional rendering, navigation will happen automatically and you shouldn't navigate manually, see.`;
+         } else {
+           message += `\n\nYou need to pass the name of the screen to navigate to.\n\nSee https://reactnavigation.org/docs/navigation-actions for usage.`;
+@@ -350,7 +354,7 @@ export const BaseNavigationContainer = /*#__PURE__*/React.forwardRef(function Ba
+         children: /*#__PURE__*/_jsx(NavigationStateContext.Provider, {
+           value: context,
+           children: /*#__PURE__*/_jsx(UnhandledActionContext.Provider, {
+-            value: onUnhandledAction ?? defaultOnUnhandledAction,
++            value: onUnhandledAction !== null && onUnhandledAction !== void 0 ? onUnhandledAction : defaultOnUnhandledAction,
+             children: /*#__PURE__*/_jsx(DeprecatedNavigationInChildContext.Provider, {
+               value: navigationInChildEnabled,
+               children: /*#__PURE__*/_jsx(EnsureSingleNavigator, {
+@@ -366,4 +370,3 @@ export const BaseNavigationContainer = /*#__PURE__*/React.forwardRef(function Ba
+     })
+   });
+ });
+\ No newline at end of file
+-//# sourceMappingURL=BaseNavigationContainer.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/ConsumedParamsContext.js b/node_modules/@react-navigation/core/lib/module/ConsumedParamsContext.js
+index 18abd66..fff87a6 100644
+--- a/node_modules/@react-navigation/core/lib/module/ConsumedParamsContext.js
++++ b/node_modules/@react-navigation/core/lib/module/ConsumedParamsContext.js
+@@ -2,4 +2,3 @@
+ 
+ import * as React from 'react';
+ export const ConsumedParamsContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=ConsumedParamsContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/CurrentRenderContext.js b/node_modules/@react-navigation/core/lib/module/CurrentRenderContext.js
+index 9000f6f..7e11d95 100644
+--- a/node_modules/@react-navigation/core/lib/module/CurrentRenderContext.js
++++ b/node_modules/@react-navigation/core/lib/module/CurrentRenderContext.js
+@@ -7,4 +7,3 @@ import * as React from 'react';
+  * Intended for use in SSR. This is not safe to use on the client.
+  */
+ export const CurrentRenderContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=CurrentRenderContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/DeprecatedNavigationInChildContext.js b/node_modules/@react-navigation/core/lib/module/DeprecatedNavigationInChildContext.js
+index a656980..35c2fac 100644
+--- a/node_modules/@react-navigation/core/lib/module/DeprecatedNavigationInChildContext.js
++++ b/node_modules/@react-navigation/core/lib/module/DeprecatedNavigationInChildContext.js
+@@ -6,4 +6,3 @@ import * as React from 'react';
+  * Context which enables deprecated bubbling to child navigators.
+  */
+ export const DeprecatedNavigationInChildContext = /*#__PURE__*/React.createContext(false);
+\ No newline at end of file
+-//# sourceMappingURL=DeprecatedNavigationInChildContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/EnsureSingleNavigator.js b/node_modules/@react-navigation/core/lib/module/EnsureSingleNavigator.js
+index 1775b33..c9778fb 100644
+--- a/node_modules/@react-navigation/core/lib/module/EnsureSingleNavigator.js
++++ b/node_modules/@react-navigation/core/lib/module/EnsureSingleNavigator.js
+@@ -33,4 +33,3 @@ export function EnsureSingleNavigator({
+     children: children
+   });
+ }
+\ No newline at end of file
+-//# sourceMappingURL=EnsureSingleNavigator.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/Group.js b/node_modules/@react-navigation/core/lib/module/Group.js
+index efe635a..4f788e8 100644
+--- a/node_modules/@react-navigation/core/lib/module/Group.js
++++ b/node_modules/@react-navigation/core/lib/module/Group.js
+@@ -7,4 +7,3 @@ export function Group(_) {
+   /* istanbul ignore next */
+   return null;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=Group.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationBuilderContext.js b/node_modules/@react-navigation/core/lib/module/NavigationBuilderContext.js
+index dd18278..b0bc77b 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationBuilderContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationBuilderContext.js
+@@ -15,4 +15,3 @@ export const NavigationBuilderContext = /*#__PURE__*/React.createContext({
+     throw new Error("Couldn't find a context for flushing updates.");
+   }
+ });
+\ No newline at end of file
+-//# sourceMappingURL=NavigationBuilderContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationContainerRefContext.js b/node_modules/@react-navigation/core/lib/module/NavigationContainerRefContext.js
+index 222ed24..7b0a170 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationContainerRefContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationContainerRefContext.js
+@@ -5,4 +5,3 @@ import * as React from 'react';
+  * Context which holds the route prop for a screen.
+  */
+ export const NavigationContainerRefContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=NavigationContainerRefContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationContext.js b/node_modules/@react-navigation/core/lib/module/NavigationContext.js
+index aa4c4af..f36b16d 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationContext.js
+@@ -5,4 +5,3 @@ import * as React from 'react';
+  * Context which holds the navigation prop for a screen.
+  */
+ export const NavigationContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=NavigationContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationFocusedRouteStateContext.js b/node_modules/@react-navigation/core/lib/module/NavigationFocusedRouteStateContext.js
+index 9de40b3..ef7b267 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationFocusedRouteStateContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationFocusedRouteStateContext.js
+@@ -5,4 +5,3 @@ import * as React from 'react';
+  * Context for the parent route of a navigator.
+  */
+ export const NavigationFocusedRouteStateContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=NavigationFocusedRouteStateContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationHelpersContext.js b/node_modules/@react-navigation/core/lib/module/NavigationHelpersContext.js
+index 7cb47bb..643d9bc 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationHelpersContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationHelpersContext.js
+@@ -6,4 +6,3 @@ import * as React from 'react';
+  * Navigators should use this context in their view component.
+  */
+ export const NavigationHelpersContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=NavigationHelpersContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationIndependentTree.js b/node_modules/@react-navigation/core/lib/module/NavigationIndependentTree.js
+index bb5e303..6b6b81e 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationIndependentTree.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationIndependentTree.js
+@@ -13,8 +13,7 @@ import { jsx as _jsx } from "react/jsx-runtime";
+ export function NavigationIndependentTree({
+   children
+ }) {
+-  return (
+-    /*#__PURE__*/
++  return (/*#__PURE__*/
+     // We need to clear any existing contexts for nested independent container to work correctly
+     _jsx(NavigationRouteContext.Provider, {
+       value: undefined,
+@@ -31,4 +30,3 @@ export function NavigationIndependentTree({
+     })
+   );
+ }
+\ No newline at end of file
+-//# sourceMappingURL=NavigationIndependentTree.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationIndependentTreeContext.js b/node_modules/@react-navigation/core/lib/module/NavigationIndependentTreeContext.js
+index 045fde1..ad506bf 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationIndependentTreeContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationIndependentTreeContext.js
+@@ -6,4 +6,3 @@ import * as React from 'react';
+  * Context which marks the navigation tree as independent.
+  */
+ export const NavigationIndependentTreeContext = /*#__PURE__*/React.createContext(false);
+\ No newline at end of file
+-//# sourceMappingURL=NavigationIndependentTreeContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationMetaContext.js b/node_modules/@react-navigation/core/lib/module/NavigationMetaContext.js
+index c82cced..13df55b 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationMetaContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationMetaContext.js
+@@ -12,4 +12,3 @@ import * as React from 'react';
+  * This is not intended to be used by application code.
+  */
+ export const NavigationMetaContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=NavigationMetaContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationProvider.js b/node_modules/@react-navigation/core/lib/module/NavigationProvider.js
+index 6a53fc4..225d7be 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationProvider.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationProvider.js
+@@ -36,4 +36,3 @@ export function NavigationProvider({
+     })
+   });
+ }
+\ No newline at end of file
+-//# sourceMappingURL=NavigationProvider.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/NavigationStateContext.js b/node_modules/@react-navigation/core/lib/module/NavigationStateContext.js
+index 4221b52..21d96b7 100644
+--- a/node_modules/@react-navigation/core/lib/module/NavigationStateContext.js
++++ b/node_modules/@react-navigation/core/lib/module/NavigationStateContext.js
+@@ -20,4 +20,3 @@ export const NavigationStateContext = /*#__PURE__*/React.createContext({
+     throw new Error(MISSING_CONTEXT_ERROR);
+   }
+ });
+\ No newline at end of file
+-//# sourceMappingURL=NavigationStateContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/PreventRemoveContext.js b/node_modules/@react-navigation/core/lib/module/PreventRemoveContext.js
+index 98f2c95..59d31cc 100644
+--- a/node_modules/@react-navigation/core/lib/module/PreventRemoveContext.js
++++ b/node_modules/@react-navigation/core/lib/module/PreventRemoveContext.js
+@@ -8,4 +8,3 @@ import * as React from 'react';
+  */
+ 
+ export const PreventRemoveContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=PreventRemoveContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/PreventRemoveProvider.js b/node_modules/@react-navigation/core/lib/module/PreventRemoveProvider.js
+index 1d4942d..667e6bf 100644
+--- a/node_modules/@react-navigation/core/lib/module/PreventRemoveProvider.js
++++ b/node_modules/@react-navigation/core/lib/module/PreventRemoveProvider.js
+@@ -16,8 +16,9 @@ const transformPreventedRoutes = preventedRoutesMap => {
+     routeKey,
+     preventRemove
+   }) => {
++    var _acc$routeKey;
+     acc[routeKey] = {
+-      preventRemove: acc[routeKey]?.preventRemove || preventRemove
++      preventRemove: ((_acc$routeKey = acc[routeKey]) === null || _acc$routeKey === void 0 ? void 0 : _acc$routeKey.preventRemove) || preventRemove
+     };
+     return acc;
+   }, {});
+@@ -36,14 +37,15 @@ export function PreventRemoveProvider({
+   const route = React.useContext(NavigationRouteContext);
+   const preventRemoveContextValue = React.useContext(PreventRemoveContext);
+   // take `setPreventRemove` from parent context - if exist it means we're in a nested context
+-  const setParentPrevented = preventRemoveContextValue?.setPreventRemove;
++  const setParentPrevented = preventRemoveContextValue === null || preventRemoveContextValue === void 0 ? void 0 : preventRemoveContextValue.setPreventRemove;
+   const setPreventRemove = useLatestCallback((id, routeKey, preventRemove) => {
+-    if (preventRemove && (navigation == null || navigation?.getState().routes.every(route => route.key !== routeKey))) {
++    if (preventRemove && (navigation == null || navigation !== null && navigation !== void 0 && navigation.getState().routes.every(route => route.key !== routeKey))) {
+       throw new Error(`Couldn't find a route with the key ${routeKey}. Is your component inside NavigationContent?`);
+     }
+     setPreventedRoutesMap(prevPrevented => {
++      var _prevPrevented$get, _prevPrevented$get2;
+       // values haven't changed - do nothing
+-      if (routeKey === prevPrevented.get(id)?.routeKey && preventRemove === prevPrevented.get(id)?.preventRemove) {
++      if (routeKey === ((_prevPrevented$get = prevPrevented.get(id)) === null || _prevPrevented$get === void 0 ? void 0 : _prevPrevented$get.routeKey) && preventRemove === ((_prevPrevented$get2 = prevPrevented.get(id)) === null || _prevPrevented$get2 === void 0 ? void 0 : _prevPrevented$get2.preventRemove)) {
+         return prevPrevented;
+       }
+       const nextPrevented = new Map(prevPrevented);
+@@ -62,7 +64,7 @@ export function PreventRemoveProvider({
+     preventRemove
+   }) => preventRemove);
+   React.useEffect(() => {
+-    if (route?.key !== undefined && setParentPrevented !== undefined) {
++    if ((route === null || route === void 0 ? void 0 : route.key) !== undefined && setParentPrevented !== undefined) {
+       // when route is defined (and setParentPrevented) it means we're in a nested stack
+       // route.key then will be the route key of parent
+       setParentPrevented(parentId, route.key, isPrevented);
+@@ -71,7 +73,7 @@ export function PreventRemoveProvider({
+       };
+     }
+     return;
+-  }, [parentId, isPrevented, route?.key, setParentPrevented]);
++  }, [parentId, isPrevented, route === null || route === void 0 ? void 0 : route.key, setParentPrevented]);
+   const value = React.useMemo(() => ({
+     setPreventRemove,
+     preventedRoutes: transformPreventedRoutes(preventedRoutesMap)
+@@ -81,4 +83,3 @@ export function PreventRemoveProvider({
+     children: children
+   });
+ }
+\ No newline at end of file
+-//# sourceMappingURL=PreventRemoveProvider.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/SceneView.js b/node_modules/@react-navigation/core/lib/module/SceneView.js
+index 6d6f48c..3247576 100644
+--- a/node_modules/@react-navigation/core/lib/module/SceneView.js
++++ b/node_modules/@react-navigation/core/lib/module/SceneView.js
+@@ -101,7 +101,7 @@ export function SceneView({
+ 
+     // Add our state to the innermost route of the parent state
+     const addState = parent => {
+-      const parentRoute = parent?.routes[0];
++      const parentRoute = parent === null || parent === void 0 ? void 0 : parent.routes[0];
+       if (parentRoute) {
+         return {
+           routes: [{
+@@ -149,4 +149,3 @@ export function SceneView({
+     })
+   });
+ }
+\ No newline at end of file
+-//# sourceMappingURL=SceneView.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/Screen.js b/node_modules/@react-navigation/core/lib/module/Screen.js
+index 019d77b..2e2dd0f 100644
+--- a/node_modules/@react-navigation/core/lib/module/Screen.js
++++ b/node_modules/@react-navigation/core/lib/module/Screen.js
+@@ -7,4 +7,3 @@ export function Screen(_) {
+   /* istanbul ignore next */
+   return null;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=Screen.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/StaticContainer.js b/node_modules/@react-navigation/core/lib/module/StaticContainer.js
+index e0cb4af..918c7c1 100644
+--- a/node_modules/@react-navigation/core/lib/module/StaticContainer.js
++++ b/node_modules/@react-navigation/core/lib/module/StaticContainer.js
+@@ -23,4 +23,3 @@ export const StaticContainer = /*#__PURE__*/React.memo(function StaticContainer(
+   }
+   return true;
+ });
+\ No newline at end of file
+-//# sourceMappingURL=StaticContainer.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/StaticNavigation.js b/node_modules/@react-navigation/core/lib/module/StaticNavigation.js
+index 264d97e..11bd88d 100644
+--- a/node_modules/@react-navigation/core/lib/module/StaticNavigation.js
++++ b/node_modules/@react-navigation/core/lib/module/StaticNavigation.js
+@@ -187,10 +187,13 @@ export function createPathConfigForStaticNavigation(tree, options, auto) {
+   let initialScreenConfig;
+   let hasEmptyPath = false;
+   const createPathConfigForTree = (t, o, skipInitialDetection, allowAutoEmptyPath) => {
+-    const initialRouteName = o?.initialRouteName ?? t.config.initialRouteName;
++    var _o$initialRouteName;
++    const initialRouteName = (_o$initialRouteName = o === null || o === void 0 ? void 0 : o.initialRouteName) !== null && _o$initialRouteName !== void 0 ? _o$initialRouteName : t.config.initialRouteName;
+     if (initialRouteName != null) {
+-      const routeNames = new Set(Object.keys(t.config.screens ?? {}));
+-      for (const group of Object.values(t.config.groups ?? {})) {
++      var _t$config$screens;
++      const routeNames = new Set(Object.keys((_t$config$screens = t.config.screens) !== null && _t$config$screens !== void 0 ? _t$config$screens : {}));
++      for (const group of Object.values((_t$config$groups = t.config.groups) !== null && _t$config$groups !== void 0 ? _t$config$groups : {})) {
++        var _t$config$groups;
+         Object.keys(group.screens).forEach(name => routeNames.add(name));
+       }
+       if (!routeNames.has(initialRouteName)) {
+@@ -210,6 +213,7 @@ export function createPathConfigForStaticNavigation(tree, options, auto) {
+         }
+         return 0;
+       }).map(([key, item]) => {
++        var _screenConfig$screens;
+         const screenConfig = {};
+         const normalizePath = path => path.replace(/^\/+|\/+$/g, '');
+         if ('linking' in item && item.linking !== undefined) {
+@@ -242,7 +246,7 @@ export function createPathConfigForStaticNavigation(tree, options, auto) {
+         const childOptions = 'initialRouteName' in screenConfig && typeof screenConfig.initialRouteName === 'string' ? {
+           initialRouteName: screenConfig.initialRouteName
+         } : undefined;
+-        if (hasExplicitScreens && childOptions != null && !Object.keys(screenConfig.screens ?? {}).includes(childOptions.initialRouteName)) {
++        if (hasExplicitScreens && childOptions != null && !Object.keys((_screenConfig$screens = screenConfig.screens) !== null && _screenConfig$screens !== void 0 ? _screenConfig$screens : {}).includes(childOptions.initialRouteName)) {
+           throw new Error(`Couldn't find a screen named '${childOptions.initialRouteName}' to use as 'initialRouteName'.`);
+         }
+         const skipInitialDetectionInChild = skipInitialDetection || screenConfig.path != null && screenConfig.path !== '';
+@@ -291,11 +295,13 @@ export function createPathConfigForStaticNavigation(tree, options, auto) {
+     // So we add the screens and groups in the same order as they are defined
+     for (const key in t.config) {
+       if (key === 'screens' && t.config.screens) {
+-        Object.assign(screens, createPathConfigForScreens(t.config.screens, o?.initialRouteName ?? t.config.initialRouteName));
++        var _o$initialRouteName2;
++        Object.assign(screens, createPathConfigForScreens(t.config.screens, (_o$initialRouteName2 = o === null || o === void 0 ? void 0 : o.initialRouteName) !== null && _o$initialRouteName2 !== void 0 ? _o$initialRouteName2 : t.config.initialRouteName));
+       }
+       if (key === 'groups' && t.config.groups) {
+         Object.entries(t.config.groups).forEach(([, group]) => {
+-          Object.assign(screens, createPathConfigForScreens(group.screens, o?.initialRouteName ?? t.config.initialRouteName));
++          var _o$initialRouteName3;
++          Object.assign(screens, createPathConfigForScreens(group.screens, (_o$initialRouteName3 = o === null || o === void 0 ? void 0 : o.initialRouteName) !== null && _o$initialRouteName3 !== void 0 ? _o$initialRouteName3 : t.config.initialRouteName));
+         });
+       }
+     }
+@@ -310,4 +316,3 @@ export function createPathConfigForStaticNavigation(tree, options, auto) {
+   }
+   return screens;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=StaticNavigation.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/UnhandledActionContext.js b/node_modules/@react-navigation/core/lib/module/UnhandledActionContext.js
+index 168e3b1..a8493a1 100644
+--- a/node_modules/@react-navigation/core/lib/module/UnhandledActionContext.js
++++ b/node_modules/@react-navigation/core/lib/module/UnhandledActionContext.js
+@@ -2,4 +2,3 @@
+ 
+ import * as React from 'react';
+ export const UnhandledActionContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=UnhandledActionContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/arrayStartsWith.js b/node_modules/@react-navigation/core/lib/module/arrayStartsWith.js
+index 65f48a9..0c55fd0 100644
+--- a/node_modules/@react-navigation/core/lib/module/arrayStartsWith.js
++++ b/node_modules/@react-navigation/core/lib/module/arrayStartsWith.js
+@@ -9,4 +9,3 @@ export function arrayStartsWith(array, start) {
+   }
+   return start.every((it, index) => it === array[index]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=arrayStartsWith.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/checkDuplicateRouteNames.js b/node_modules/@react-navigation/core/lib/module/checkDuplicateRouteNames.js
+index 30be94d..a9e153f 100644
+--- a/node_modules/@react-navigation/core/lib/module/checkDuplicateRouteNames.js
++++ b/node_modules/@react-navigation/core/lib/module/checkDuplicateRouteNames.js
+@@ -4,8 +4,9 @@ export function checkDuplicateRouteNames(state) {
+   const duplicates = [];
+   const getRouteNames = (location, state) => {
+     state.routes.forEach(route => {
++      var _route$state;
+       const currentLocation = location ? `${location} > ${route.name}` : route.name;
+-      route.state?.routeNames?.forEach(routeName => {
++      (_route$state = route.state) === null || _route$state === void 0 || (_route$state = _route$state.routeNames) === null || _route$state === void 0 || _route$state.forEach(routeName => {
+         if (routeName === route.name) {
+           duplicates.push([currentLocation, `${currentLocation} > ${route.name}`]);
+         }
+@@ -18,4 +19,3 @@ export function checkDuplicateRouteNames(state) {
+   getRouteNames('', state);
+   return duplicates;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=checkDuplicateRouteNames.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/checkSerializable.js b/node_modules/@react-navigation/core/lib/module/checkSerializable.js
+index 52a07b2..7f98458 100644
+--- a/node_modules/@react-navigation/core/lib/module/checkSerializable.js
++++ b/node_modules/@react-navigation/core/lib/module/checkSerializable.js
+@@ -50,4 +50,3 @@ const checkSerializableWithoutCircularReference = (o, seen, location) => {
+ export function checkSerializable(o) {
+   return checkSerializableWithoutCircularReference(o, new Set(), []);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=checkSerializable.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/createNavigationContainerRef.js b/node_modules/@react-navigation/core/lib/module/createNavigationContainerRef.js
+index ea4ee25..0cae86b 100644
+--- a/node_modules/@react-navigation/core/lib/module/createNavigationContainerRef.js
++++ b/node_modules/@react-navigation/core/lib/module/createNavigationContainerRef.js
+@@ -61,4 +61,3 @@ export function createNavigationContainerRef() {
+   };
+   return ref;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=createNavigationContainerRef.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/createNavigatorFactory.js b/node_modules/@react-navigation/core/lib/module/createNavigatorFactory.js
+index 7cb2701..61cde32 100644
+--- a/node_modules/@react-navigation/core/lib/module/createNavigatorFactory.js
++++ b/node_modules/@react-navigation/core/lib/module/createNavigatorFactory.js
+@@ -13,7 +13,8 @@ import { createComponentForStaticNavigation } from "./StaticNavigation.js";
+  * @returns Factory method to create a `Navigator` and `Screen` pair.
+  */
+ export function createNavigatorFactory(Navigator) {
+-  const displayName = Navigator.displayName ?? Navigator.name ?? 'Navigator';
++  var _ref, _Navigator$displayNam;
++  const displayName = (_ref = (_Navigator$displayNam = Navigator.displayName) !== null && _Navigator$displayNam !== void 0 ? _Navigator$displayNam : Navigator.name) !== null && _ref !== void 0 ? _ref : 'Navigator';
+   function createNavigator(config) {
+     if (config != null) {
+       const NavigatorComponent = createComponentForStaticNavigation({
+@@ -49,4 +50,3 @@ export function createNavigatorFactory(Navigator) {
+   }
+   return createNavigator;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=createNavigatorFactory.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/deepFreeze.js b/node_modules/@react-navigation/core/lib/module/deepFreeze.js
+index f5afb5c..626081e 100644
+--- a/node_modules/@react-navigation/core/lib/module/deepFreeze.js
++++ b/node_modules/@react-navigation/core/lib/module/deepFreeze.js
+@@ -23,7 +23,8 @@ export const deepFreeze = object => {
+   for (const key in object) {
+     // Don't freeze objects in params since they are passed by the user
+     if (key !== 'params') {
+-      if (Object.getOwnPropertyDescriptor(object, key)?.configurable) {
++      var _Object$getOwnPropert;
++      if ((_Object$getOwnPropert = Object.getOwnPropertyDescriptor(object, key)) !== null && _Object$getOwnPropert !== void 0 && _Object$getOwnPropert.configurable) {
+         const value = object[key];
+         deepFreeze(value);
+       }
+@@ -31,4 +32,3 @@ export const deepFreeze = object => {
+   }
+   return Object.freeze(object);
+ };
+\ No newline at end of file
+-//# sourceMappingURL=deepFreeze.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/findFocusedRoute.js b/node_modules/@react-navigation/core/lib/module/findFocusedRoute.js
+index 0468c4e..ddf8f2f 100644
+--- a/node_modules/@react-navigation/core/lib/module/findFocusedRoute.js
++++ b/node_modules/@react-navigation/core/lib/module/findFocusedRoute.js
+@@ -1,11 +1,12 @@
+ "use strict";
+ 
+ export function findFocusedRoute(state) {
++  var _current2, _current$index3, _current3;
+   let current = state;
+-  while (current?.routes[current.index ?? 0].state != null) {
+-    current = current.routes[current.index ?? 0].state;
++  while (((_current = current) === null || _current === void 0 ? void 0 : _current.routes[(_current$index = current.index) !== null && _current$index !== void 0 ? _current$index : 0].state) != null) {
++    var _current, _current$index, _current$index2;
++    current = current.routes[(_current$index2 = current.index) !== null && _current$index2 !== void 0 ? _current$index2 : 0].state;
+   }
+-  const route = current?.routes[current?.index ?? 0];
++  const route = (_current2 = current) === null || _current2 === void 0 ? void 0 : _current2.routes[(_current$index3 = (_current3 = current) === null || _current3 === void 0 ? void 0 : _current3.index) !== null && _current$index3 !== void 0 ? _current$index3 : 0];
+   return route;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=findFocusedRoute.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/getActionFromState.js b/node_modules/@react-navigation/core/lib/module/getActionFromState.js
+index 8707c7d..84e798b 100644
+--- a/node_modules/@react-navigation/core/lib/module/getActionFromState.js
++++ b/node_modules/@react-navigation/core/lib/module/getActionFromState.js
+@@ -4,6 +4,7 @@
+ // so we don't re-walk the config tree on every action conversion.
+ const cachedNormalizedConfig = new WeakMap();
+ export function getActionFromState(state, options) {
++  var _normalizedConfig, _state$index, _normalizedConfig2, _config;
+   let normalizedConfig;
+   if (options) {
+     const cached = cachedNormalizedConfig.get(options);
+@@ -20,15 +21,15 @@ export function getActionFromState(state, options) {
+   if (routes.length === 0) {
+     return undefined;
+   }
+-  if (!(routes.length === 1 && routes[0].key === undefined || routes.length === 2 && routes[0].key === undefined && routes[0].name === normalizedConfig?.initialRouteName && routes[1].key === undefined)) {
++  if (!(routes.length === 1 && routes[0].key === undefined || routes.length === 2 && routes[0].key === undefined && routes[0].name === ((_normalizedConfig = normalizedConfig) === null || _normalizedConfig === void 0 ? void 0 : _normalizedConfig.initialRouteName) && routes[1].key === undefined)) {
+     return {
+       type: 'RESET',
+       payload: state
+     };
+   }
+-  const route = state.routes[state.index ?? state.routes.length - 1];
+-  let current = route?.state;
+-  let config = normalizedConfig?.screens?.[route?.name];
++  const route = state.routes[(_state$index = state.index) !== null && _state$index !== void 0 ? _state$index : state.routes.length - 1];
++  let current = route === null || route === void 0 ? void 0 : route.state;
++  let config = (_normalizedConfig2 = normalizedConfig) === null || _normalizedConfig2 === void 0 || (_normalizedConfig2 = _normalizedConfig2.screens) === null || _normalizedConfig2 === void 0 ? void 0 : _normalizedConfig2[route === null || route === void 0 ? void 0 : route.name];
+   let params = {
+     ...route.params
+   };
+@@ -52,10 +53,11 @@ export function getActionFromState(state, options) {
+   // There are 2 ways we can detect if a screen contains a navigator:
+   // - The route contains nested state in `route.state`
+   // - Nested screens are defined in the config
+-  if (payload && config?.screens && Object.keys(config.screens).length) {
++  if (payload && (_config = config) !== null && _config !== void 0 && _config.screens && Object.keys(config.screens).length) {
+     payload.pop = true;
+   }
+   while (current) {
++    var _config2, _config3, _config4;
+     if (current.routes.length === 0) {
+       return undefined;
+     }
+@@ -72,7 +74,7 @@ export function getActionFromState(state, options) {
+     if (routes.length === 1 && routes[0].key === undefined) {
+       params.initial = true;
+       params.screen = route.name;
+-    } else if (routes.length === 2 && routes[0].key === undefined && routes[0].name === config?.initialRouteName && routes[1].key === undefined) {
++    } else if (routes.length === 2 && routes[0].key === undefined && routes[0].name === ((_config2 = config) === null || _config2 === void 0 ? void 0 : _config2.initialRouteName) && routes[1].key === undefined) {
+       params.initial = false;
+       params.screen = route.name;
+     } else {
+@@ -90,12 +92,12 @@ export function getActionFromState(state, options) {
+       params.params = route.params;
+     }
+     current = route.state;
+-    config = config?.screens?.[route.name];
+-    if (config?.screens && Object.keys(config.screens).length) {
++    config = (_config3 = config) === null || _config3 === void 0 || (_config3 = _config3.screens) === null || _config3 === void 0 ? void 0 : _config3[route.name];
++    if ((_config4 = config) !== null && _config4 !== void 0 && _config4.screens && Object.keys(config.screens).length) {
+       params.pop = true;
+     }
+   }
+-  if (payload?.params.screen || payload?.params.state) {
++  if (payload !== null && payload !== void 0 && payload.params.screen || payload !== null && payload !== void 0 && payload.params.state) {
+     payload.pop = true;
+   }
+   if (!payload) {
+@@ -117,4 +119,3 @@ const createNormalizedConfigs = options => Object.entries(options).reduce((acc,
+   acc[k] = createNormalizedConfigItem(v);
+   return acc;
+ }, {});
+\ No newline at end of file
+-//# sourceMappingURL=getActionFromState.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/getFocusedRouteNameFromRoute.js b/node_modules/@react-navigation/core/lib/module/getFocusedRouteNameFromRoute.js
+index d6f69bf..a870caa 100644
+--- a/node_modules/@react-navigation/core/lib/module/getFocusedRouteNameFromRoute.js
++++ b/node_modules/@react-navigation/core/lib/module/getFocusedRouteNameFromRoute.js
+@@ -2,17 +2,16 @@
+ 
+ import { CHILD_STATE } from "./useRouteCache.js";
+ export function getFocusedRouteNameFromRoute(route) {
++  var _route$CHILD_STATE, _state$index;
+   // @ts-expect-error: this isn't in type definitions coz we want this private
+-  const state = route[CHILD_STATE] ?? route.state;
++  const state = (_route$CHILD_STATE = route[CHILD_STATE]) !== null && _route$CHILD_STATE !== void 0 ? _route$CHILD_STATE : route.state;
+   const params = route.params;
+   const routeName = state ?
+   // Get the currently active route name in the nested navigator
+-  state.routes[
+-  // If we have a partial state without index, for tab/drawer, first screen will be focused one, and last for stack
++  state.routes[// If we have a partial state without index, for tab/drawer, first screen will be focused one, and last for stack
+   // The type property will only exist for rehydrated state and not for state from deep link
+-  state.index ?? (typeof state.type === 'string' && state.type !== 'stack' ? 0 : state.routes.length - 1)].name :
++  (_state$index = state.index) !== null && _state$index !== void 0 ? _state$index : typeof state.type === 'string' && state.type !== 'stack' ? 0 : state.routes.length - 1].name :
+   // If state doesn't exist, we need to default to `screen` param if available
+-  typeof params?.screen === 'string' ? params.screen : undefined;
++  typeof (params === null || params === void 0 ? void 0 : params.screen) === 'string' ? params.screen : undefined;
+   return routeName;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=getFocusedRouteNameFromRoute.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/getPathFromState.js b/node_modules/@react-navigation/core/lib/module/getPathFromState.js
+index ef4e3af..a1aa047 100644
+--- a/node_modules/@react-navigation/core/lib/module/getPathFromState.js
++++ b/node_modules/@react-navigation/core/lib/module/getPathFromState.js
+@@ -12,8 +12,8 @@ const getActiveRoute = state => {
+ };
+ const cachedNormalizedConfigs = new WeakMap();
+ const getNormalizedConfigs = options => {
+-  if (!options?.screens) return {};
+-  const cached = cachedNormalizedConfigs.get(options?.screens);
++  if (!(options !== null && options !== void 0 && options.screens)) return {};
++  const cached = cachedNormalizedConfigs.get(options === null || options === void 0 ? void 0 : options.screens);
+   if (cached) return cached;
+   const normalizedConfigs = createNormalizedConfigs(options.screens);
+   cachedNormalizedConfigs.set(options.screens, normalizedConfigs);
+@@ -75,11 +75,14 @@ export function getPathFromState(state, options) {
+       parts = currentOptions[route.name].parts;
+       nestedRouteNames.push(route.name);
+       if (route.params) {
++        var _parts;
+         const options = currentOptions[route.name];
+         const currentParams = Object.fromEntries(Object.entries(route.params).map(([key, value]) => {
++          var _options$stringify$ke, _options$stringify;
+           if (value === undefined) {
+             if (options) {
+-              const optional = options.parts?.find(part => part.param === key)?.optional;
++              var _options$parts;
++              const optional = (_options$parts = options.parts) === null || _options$parts === void 0 || (_options$parts = _options$parts.find(part => part.param === key)) === null || _options$parts === void 0 ? void 0 : _options$parts.optional;
+               if (optional) {
+                 return null;
+               }
+@@ -87,21 +90,22 @@ export function getPathFromState(state, options) {
+               return null;
+             }
+           }
+-          const stringify = options?.stringify?.[key] ?? String;
++          const stringify = (_options$stringify$ke = options === null || options === void 0 || (_options$stringify = options.stringify) === null || _options$stringify === void 0 ? void 0 : _options$stringify[key]) !== null && _options$stringify$ke !== void 0 ? _options$stringify$ke : String;
+           return [key, stringify(value)];
+         }).filter(entry => entry != null));
+-        if (parts?.length) {
++        if ((_parts = parts) !== null && _parts !== void 0 && _parts.length) {
+           Object.assign(allParams, currentParams);
+         }
+         if (focusedRoute === route) {
++          var _parts2;
+           // If this is the focused route, keep the params for later use
+           // We save it here since it's been stringified already
+           focusedParams = {
+             ...currentParams
+           };
+-          parts
++          (_parts2 = parts
+           // eslint-disable-next-line no-loop-func
+-          ?.forEach(({
++          ) === null || _parts2 === void 0 || _parts2.forEach(({
+             param
+           }) => {
+             if (param) {
+@@ -134,7 +138,8 @@ export function getPathFromState(state, options) {
+       }
+     }
+     if (currentOptions[route.name] !== undefined) {
+-      path += parts?.map(({
++      var _parts3;
++      path += (_parts3 = parts) === null || _parts3 === void 0 ? void 0 : _parts3.map(({
+         segment,
+         param,
+         optional
+@@ -186,7 +191,7 @@ export function getPathFromState(state, options) {
+   }
+ 
+   // Include the root path if specified
+-  if (options?.path) {
++  if (options !== null && options !== void 0 && options.path) {
+     path = `${options.path}/${path}`;
+   }
+ 
+@@ -232,4 +237,3 @@ const createNormalizedConfigs = (options, parts) => Object.fromEntries(Object.en
+   const result = createConfigItem(c, parts);
+   return [name, result];
+ }));
+\ No newline at end of file
+-//# sourceMappingURL=getPathFromState.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/getPatternParts.js b/node_modules/@react-navigation/core/lib/module/getPatternParts.js
+index 59b8008..892cee4 100644
+--- a/node_modules/@react-navigation/core/lib/module/getPatternParts.js
++++ b/node_modules/@react-navigation/core/lib/module/getPatternParts.js
+@@ -98,4 +98,3 @@ export function getPatternParts(path) {
+   }
+   return parts;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=getPatternParts.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/getStateFromPath.js b/node_modules/@react-navigation/core/lib/module/getStateFromPath.js
+index b3aa9c2..45aa541 100644
+--- a/node_modules/@react-navigation/core/lib/module/getStateFromPath.js
++++ b/node_modules/@react-navigation/core/lib/module/getStateFromPath.js
+@@ -9,7 +9,7 @@ import { isArrayEqual } from "./isArrayEqual.js";
+ import { validatePathConfig } from "./validatePathConfig.js";
+ const NESTED_SCREEN_PARAM_NAMES = ['screen', 'params', 'initial', 'path', 'merge', 'pop'];
+ const getExplicitParamNames = parse => {
+-  const names = Object.entries(parse ?? {}).map(([name]) => name);
++  const names = Object.entries(parse !== null && parse !== void 0 ? parse : {}).map(([name]) => name);
+   return names.length ? new Set(names) : undefined;
+ };
+ 
+@@ -35,19 +35,20 @@ const getExplicitParamNames = parse => {
+  * @param options Extra options to fine-tune how to parse the path.
+  */
+ export function getStateFromPath(path, options) {
++  var _options$path;
+   const {
+     initialRoutes,
+     configs,
+     configsByScreen
+   } = getConfigResources(options);
+-  const screens = options?.screens;
++  const screens = options === null || options === void 0 ? void 0 : options.screens;
+   let remaining = path.replace(/\/+/g, '/') // Replace multiple slash (//) with single ones
+   .replace(/^\//, '') // Remove extra leading slash
+   .replace(/\?.*$/, ''); // Remove query params which we will handle later
+ 
+   // Make sure there is a trailing slash
+   remaining = remaining.endsWith('/') ? remaining : `${remaining}/`;
+-  const prefix = options?.path?.replace(/^\//, ''); // Remove extra leading slash
++  const prefix = options === null || options === void 0 || (_options$path = options.path) === null || _options$path === void 0 ? void 0 : _options$path.replace(/^\//, ''); // Remove extra leading slash
+ 
+   if (prefix) {
+     // Make sure there is a trailing slash
+@@ -123,7 +124,7 @@ function prepareConfigResources(options) {
+     validatePathConfig(options);
+   }
+   const initialRoutes = getInitialRoutes(options);
+-  const configs = getSortedNormalizedConfigs(initialRoutes, options?.screens);
++  const configs = getSortedNormalizedConfigs(initialRoutes, options === null || options === void 0 ? void 0 : options.screens);
+   checkForDuplicatedConfigs(configs);
+   const configsByScreen = {};
+   for (const c of configs) {
+@@ -137,7 +138,7 @@ function prepareConfigResources(options) {
+ }
+ function getInitialRoutes(options) {
+   const initialRoutes = [];
+-  if (options?.initialRouteName) {
++  if (options !== null && options !== void 0 && options.initialRouteName) {
+     initialRoutes.push({
+       initialRouteName: options.initialRouteName,
+       parentScreens: []
+@@ -261,15 +262,17 @@ const matchAgainstConfigs = (remaining, configs, configsByScreen) => {
+       routes = [];
+       matchingConfig = config;
+       for (const routeName of config.routeNames) {
++        var _configsByScreen$rout;
+         // Check matching name AND pattern in case same screen is used at different levels in config
+-        const routeConfig = configsByScreen[routeName]?.find(c => arrayStartsWith(config.segments, c.segments));
++        const routeConfig = (_configsByScreen$rout = configsByScreen[routeName]) === null || _configsByScreen$rout === void 0 ? void 0 : _configsByScreen$rout.find(c => arrayStartsWith(config.segments, c.segments));
+         let params;
+         if (routeConfig && match.groups) {
+           const paramEntries = [];
+           for (const [key, value] of Object.entries(match.groups)) {
++            var _routeConfig$parse;
+             const index = Number(key.replace('param_', ''));
+             const param = routeConfig.params.find(it => it.index === index);
+-            if (param?.screen !== routeName || !param.name) {
++            if ((param === null || param === void 0 ? void 0 : param.screen) !== routeName || !param.name) {
+               continue;
+             }
+             if (value == null) {
+@@ -285,7 +288,7 @@ const matchAgainstConfigs = (remaining, configs, configsByScreen) => {
+                 remainingPath
+               };
+             }
+-            const parser = routeConfig.parse?.[param.name];
++            const parser = (_routeConfig$parse = routeConfig.parse) === null || _routeConfig$parse === void 0 ? void 0 : _routeConfig$parse[param.name];
+             paramEntries.push([param.name, parser ? parser(decoded) : decoded]);
+           }
+           if (paramEntries.length) {
+@@ -325,6 +328,7 @@ const createNormalizedConfigs = (screen, routeConfig, initials, paths, parentScr
+     });
+     configs.push(createConfigItem(screen, [...routeNames], [...paths]));
+   } else if (typeof config === 'object') {
++    var _config$alias;
+     // if an object is specified as the value (e.g. Foo: { ... }),
+     // it can have `path` property and
+     // it could have `screens` prop which has nested configs
+@@ -368,7 +372,7 @@ const createNormalizedConfigs = (screen, routeConfig, initials, paths, parentScr
+       configs.push(createConfigItem(screen, [...routeNames], [...paths], config.parse, hasNestedScreens));
+       configs.push(...aliasConfigs);
+     }
+-    if (typeof config !== 'string' && typeof config.path !== 'string' && config.alias?.length) {
++    if (typeof config !== 'string' && typeof config.path !== 'string' && (_config$alias = config.alias) !== null && _config$alias !== void 0 && _config$alias.length) {
+       throw new Error(`Screen '${screen}' doesn't specify a 'path'. A 'path' needs to be specified in order to use 'alias'.`);
+     }
+     if (nestedScreens) {
+@@ -506,7 +510,7 @@ const createNestedStateObject = (path, routes, initialRoutes, routeConfig) => {
+   }
+   route = findFocusedRoute(state);
+   route.path = path.replace(/\/$/, '');
+-  const params = parseQueryParams(path, routeConfig?.parse, routeConfig?.explicitParamNames, routeConfig?.hasNestedScreens, route.params);
++  const params = parseQueryParams(path, routeConfig === null || routeConfig === void 0 ? void 0 : routeConfig.parse, routeConfig === null || routeConfig === void 0 ? void 0 : routeConfig.explicitParamNames, routeConfig === null || routeConfig === void 0 ? void 0 : routeConfig.hasNestedScreens, route.params);
+   if (params) {
+     route.params = {
+       ...route.params,
+@@ -525,9 +529,9 @@ const parseQueryParams = (path, parseConfig, explicitParamNames, hasNestedScreen
+       }
+     });
+   }
+-  if (hasNestedScreens && !explicitParamNames?.has('screen') && (typeof params.screen === 'string' || typeof routeParams?.screen === 'string')) {
++  if (hasNestedScreens && !(explicitParamNames !== null && explicitParamNames !== void 0 && explicitParamNames.has('screen')) && (typeof params.screen === 'string' || typeof (routeParams === null || routeParams === void 0 ? void 0 : routeParams.screen) === 'string')) {
+     for (const name of NESTED_SCREEN_PARAM_NAMES) {
+-      if (!explicitParamNames?.has(name)) {
++      if (!(explicitParamNames !== null && explicitParamNames !== void 0 && explicitParamNames.has(name))) {
+         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+         delete params[name];
+       }
+@@ -535,4 +539,3 @@ const parseQueryParams = (path, parseConfig, explicitParamNames, hasNestedScreen
+   }
+   return Object.keys(params).length ? params : undefined;
+ };
+\ No newline at end of file
+-//# sourceMappingURL=getStateFromPath.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/index.js b/node_modules/@react-navigation/core/lib/module/index.js
+index 0b79344..519b19b 100644
+--- a/node_modules/@react-navigation/core/lib/module/index.js
++++ b/node_modules/@react-navigation/core/lib/module/index.js
+@@ -35,4 +35,3 @@ export { useRoute } from "./useRoute.js";
+ export { useStateForPath } from "./useStateForPath.js";
+ export { validatePathConfig } from "./validatePathConfig.js";
+ export * from '@react-navigation/routers';
+\ No newline at end of file
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/isArrayEqual.js b/node_modules/@react-navigation/core/lib/module/isArrayEqual.js
+index aa5aaa1..0f3d37f 100644
+--- a/node_modules/@react-navigation/core/lib/module/isArrayEqual.js
++++ b/node_modules/@react-navigation/core/lib/module/isArrayEqual.js
+@@ -13,4 +13,3 @@ export function isArrayEqual(a, b) {
+   }
+   return a.every((it, index) => Object.is(it, b[index]));
+ }
+\ No newline at end of file
+-//# sourceMappingURL=isArrayEqual.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/isRecordEqual.js b/node_modules/@react-navigation/core/lib/module/isRecordEqual.js
+index 0563d53..828b76b 100644
+--- a/node_modules/@react-navigation/core/lib/module/isRecordEqual.js
++++ b/node_modules/@react-navigation/core/lib/module/isRecordEqual.js
+@@ -14,4 +14,3 @@ export function isRecordEqual(a, b) {
+   }
+   return aKeys.every(key => Object.is(a[key], b[key]));
+ }
+\ No newline at end of file
+-//# sourceMappingURL=isRecordEqual.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/types.js b/node_modules/@react-navigation/core/lib/module/types.js
+index 120e6b6..3e4b6b3 100644
+--- a/node_modules/@react-navigation/core/lib/module/types.js
++++ b/node_modules/@react-navigation/core/lib/module/types.js
+@@ -54,6 +54,4 @@
+  * ```
+  */
+ // eslint-disable-next-line @typescript-eslint/no-empty-interface
+-
+ export class PrivateValueStore {}
+\ No newline at end of file
+-//# sourceMappingURL=types.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useChildListeners.js b/node_modules/@react-navigation/core/lib/module/useChildListeners.js
+index fc53b80..700d85e 100644
+--- a/node_modules/@react-navigation/core/lib/module/useChildListeners.js
++++ b/node_modules/@react-navigation/core/lib/module/useChildListeners.js
+@@ -27,4 +27,3 @@ export function useChildListeners() {
+     addListener
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useChildListeners.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useClientLayoutEffect.js b/node_modules/@react-navigation/core/lib/module/useClientLayoutEffect.js
+index 716ef82..fe3c53d 100644
+--- a/node_modules/@react-navigation/core/lib/module/useClientLayoutEffect.js
++++ b/node_modules/@react-navigation/core/lib/module/useClientLayoutEffect.js
+@@ -6,4 +6,3 @@ import * as React from 'react';
+  * Use `useEffect` during SSR and `useLayoutEffect` in the Browser & React Native to avoid warnings.
+  */
+ export const useClientLayoutEffect = typeof document !== 'undefined' || typeof navigator !== 'undefined' && navigator.product === 'ReactNative' ? React.useLayoutEffect : React.useEffect;
+\ No newline at end of file
+-//# sourceMappingURL=useClientLayoutEffect.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useComponent.js b/node_modules/@react-navigation/core/lib/module/useComponent.js
+index ff65a4d..32d0878 100644
+--- a/node_modules/@react-navigation/core/lib/module/useComponent.js
++++ b/node_modules/@react-navigation/core/lib/module/useComponent.js
+@@ -31,4 +31,3 @@ export function useComponent(render) {
+     });
+   }).current;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useComponent.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useCurrentRender.js b/node_modules/@react-navigation/core/lib/module/useCurrentRender.js
+index 5feae51..040d2ec 100644
+--- a/node_modules/@react-navigation/core/lib/module/useCurrentRender.js
++++ b/node_modules/@react-navigation/core/lib/module/useCurrentRender.js
+@@ -16,4 +16,3 @@ export function useCurrentRender({
+     current.options = descriptors[state.routes[state.index].key].options;
+   }
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useCurrentRender.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useDescriptors.js b/node_modules/@react-navigation/core/lib/module/useDescriptors.js
+index 222c4d1..259035a 100644
+--- a/node_modules/@react-navigation/core/lib/module/useDescriptors.js
++++ b/node_modules/@react-navigation/core/lib/module/useDescriptors.js
+@@ -87,6 +87,7 @@ export function useDescriptors({
+     })), {});
+   };
+   const render = (route, navigation, customOptions, routeState) => {
++    var _ref, _screen$layout;
+     const config = screens[route.name];
+     const screen = config.props;
+     const clearOptions = () => setOptions(o => {
+@@ -100,11 +101,10 @@ export function useDescriptors({
+       }
+       return o;
+     });
+-    const layout =
+-    // The `layout` prop passed to `Screen` elements,
+-    screen.layout ??
++    const layout = // The `layout` prop passed to `Screen` elements,
++    (_ref = (_screen$layout = screen.layout) !== null && _screen$layout !== void 0 ? _screen$layout :
+     // The `screenLayout` props passed to `Group` elements
+-    config.layout ??
++    config.layout) !== null && _ref !== void 0 ? _ref :
+     // The default `screenLayout` passed to the navigator
+     screenLayout;
+     let element = /*#__PURE__*/_jsx(SceneView, {
+@@ -183,4 +183,3 @@ export function useDescriptors({
+     descriptors
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useDescriptors.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useEventEmitter.js b/node_modules/@react-navigation/core/lib/module/useEventEmitter.js
+index 5dd9851..4c3814d 100644
+--- a/node_modules/@react-navigation/core/lib/module/useEventEmitter.js
++++ b/node_modules/@react-navigation/core/lib/module/useEventEmitter.js
+@@ -47,12 +47,14 @@ export function useEventEmitter(listen, onPostEmit) {
+     target,
+     canPreventDefault
+   }) => {
++    var _listenRef$current, _callbacks, _onPostEmitRef$curren;
+     const items = listeners.current[type];
+ 
+     // Copy the current list of callbacks in case they are mutated during execution
+     let callbacks;
+     if (items !== undefined) {
+-      callbacks = target !== undefined ? items[target]?.slice() : [].concat(...Object.keys(items).map(t => items[t])).filter((cb, i, self) => self.lastIndexOf(cb) === i);
++      var _items$target;
++      callbacks = target !== undefined ? (_items$target = items[target]) === null || _items$target === void 0 ? void 0 : _items$target.slice() : [].concat(...Object.keys(items).map(t => items[t])).filter((cb, i, self) => self.lastIndexOf(cb) === i);
+     }
+     const descriptors = {
+       type: {
+@@ -88,9 +90,9 @@ export function useEventEmitter(listen, onPostEmit) {
+       };
+     }
+     const event = Object.defineProperties({}, descriptors);
+-    listenRef.current?.(event);
+-    callbacks?.forEach(cb => cb(event));
+-    onPostEmitRef.current?.(event);
++    (_listenRef$current = listenRef.current) === null || _listenRef$current === void 0 || _listenRef$current.call(listenRef, event);
++    (_callbacks = callbacks) === null || _callbacks === void 0 || _callbacks.forEach(cb => cb(event));
++    (_onPostEmitRef$curren = onPostEmitRef.current) === null || _onPostEmitRef$curren === void 0 || _onPostEmitRef$curren.call(onPostEmitRef, event);
+     return event;
+   }, []);
+   return React.useMemo(() => ({
+@@ -98,4 +100,3 @@ export function useEventEmitter(listen, onPostEmit) {
+     emit
+   }), [create, emit]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useEventEmitter.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useFocusEffect.js b/node_modules/@react-navigation/core/lib/module/useFocusEffect.js
+index af5cca1..852ee92 100644
+--- a/node_modules/@react-navigation/core/lib/module/useFocusEffect.js
++++ b/node_modules/@react-navigation/core/lib/module/useFocusEffect.js
+@@ -71,4 +71,3 @@ export function useFocusEffect(effect) {
+     };
+   }, [effect, navigation]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useFocusEffect.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useFocusEvents.js b/node_modules/@react-navigation/core/lib/module/useFocusEvents.js
+index 70670e6..bcd57b3 100644
+--- a/node_modules/@react-navigation/core/lib/module/useFocusEvents.js
++++ b/node_modules/@react-navigation/core/lib/module/useFocusEvents.js
+@@ -15,14 +15,14 @@ export function useFocusEvents({
+ 
+   // When the parent screen changes its focus state, we also need to change child's focus
+   // Coz the child screen can't be focused if the parent screen is out of focus
+-  React.useEffect(() => navigation?.addListener('focus', () => {
++  React.useEffect(() => navigation === null || navigation === void 0 ? void 0 : navigation.addListener('focus', () => {
+     lastFocusedKeyRef.current = currentFocusedKey;
+     emitter.emit({
+       type: 'focus',
+       target: currentFocusedKey
+     });
+   }), [currentFocusedKey, emitter, navigation]);
+-  React.useEffect(() => navigation?.addListener('blur', () => {
++  React.useEffect(() => navigation === null || navigation === void 0 ? void 0 : navigation.addListener('blur', () => {
+     lastFocusedKeyRef.current = undefined;
+     emitter.emit({
+       type: 'blur',
+@@ -61,4 +61,3 @@ export function useFocusEvents({
+     });
+   }, [currentFocusedKey, emitter, navigation]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useFocusEvents.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useFocusedListenersChildrenAdapter.js b/node_modules/@react-navigation/core/lib/module/useFocusedListenersChildrenAdapter.js
+index a38889f..cc79993 100644
+--- a/node_modules/@react-navigation/core/lib/module/useFocusedListenersChildrenAdapter.js
++++ b/node_modules/@react-navigation/core/lib/module/useFocusedListenersChildrenAdapter.js
+@@ -37,6 +37,5 @@ export function useFocusedListenersChildrenAdapter({
+       };
+     }
+   }, [focusedListeners, navigation]);
+-  React.useEffect(() => addListener?.('focus', listener), [addListener, listener]);
++  React.useEffect(() => addListener === null || addListener === void 0 ? void 0 : addListener('focus', listener), [addListener, listener]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useFocusedListenersChildrenAdapter.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useIsFocused.js b/node_modules/@react-navigation/core/lib/module/useIsFocused.js
+index 029edfe..eba2d21 100644
+--- a/node_modules/@react-navigation/core/lib/module/useIsFocused.js
++++ b/node_modules/@react-navigation/core/lib/module/useIsFocused.js
+@@ -30,6 +30,5 @@ export function useIsFocused() {
+   // isFocused from context only works with NavigationProvider
+   // So this is kept for backward compatibility
+   const value = React.useSyncExternalStore(subscribe, navigation.isFocused, navigation.isFocused);
+-  return isFocused ?? value;
++  return isFocused !== null && isFocused !== void 0 ? isFocused : value;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useIsFocused.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useKeyedChildListeners.js b/node_modules/@react-navigation/core/lib/module/useKeyedChildListeners.js
+index 3d9de11..e36fc1d 100644
+--- a/node_modules/@react-navigation/core/lib/module/useKeyedChildListeners.js
++++ b/node_modules/@react-navigation/core/lib/module/useKeyedChildListeners.js
+@@ -24,4 +24,3 @@ export function useKeyedChildListeners() {
+     addKeyedListener
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useKeyedChildListeners.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useLazyValue.js b/node_modules/@react-navigation/core/lib/module/useLazyValue.js
+index 565a554..3089f1d 100644
+--- a/node_modules/@react-navigation/core/lib/module/useLazyValue.js
++++ b/node_modules/@react-navigation/core/lib/module/useLazyValue.js
+@@ -8,4 +8,3 @@ export function useLazyValue(create) {
+   }
+   return lazyRef.current;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useLazyValue.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useNavigation.js b/node_modules/@react-navigation/core/lib/module/useNavigation.js
+index ee7916d..7da840e 100644
+--- a/node_modules/@react-navigation/core/lib/module/useNavigation.js
++++ b/node_modules/@react-navigation/core/lib/module/useNavigation.js
+@@ -16,6 +16,5 @@ export function useNavigation() {
+   }
+ 
+   // FIXME: Figure out a better way to do this
+-  return navigation ?? root;
++  return navigation !== null && navigation !== void 0 ? navigation : root;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useNavigation.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useNavigationBuilder.js b/node_modules/@react-navigation/core/lib/module/useNavigationBuilder.js
+index 6bb1139..7c601fc 100644
+--- a/node_modules/@react-navigation/core/lib/module/useNavigationBuilder.js
++++ b/node_modules/@react-navigation/core/lib/module/useNavigationBuilder.js
+@@ -58,6 +58,7 @@ const isValidKey = key => key === undefined || typeof key === 'string' && key !=
+  */
+ const getRouteConfigsFromChildren = (children, groupKey, groupOptions, groupLayout) => {
+   const configs = React.Children.toArray(children).reduce((acc, child) => {
++    var _child$type, _child$props;
+     if (/*#__PURE__*/React.isValidElement(child)) {
+       if (isScreen(child)) {
+         // We can only extract the config from `Screen` elements
+@@ -94,7 +95,7 @@ const getRouteConfigsFromChildren = (children, groupKey, groupOptions, groupLayo
+         return acc;
+       }
+     }
+-    throw new Error(`A navigator can only contain 'Screen', 'Group' or 'React.Fragment' as its direct children (found ${ /*#__PURE__*/React.isValidElement(child) ? `'${typeof child.type === 'string' ? child.type : child.type?.name}'${child.props != null && typeof child.props === 'object' && 'name' in child.props && child.props?.name ? ` for the screen '${child.props.name}'` : ''}` : typeof child === 'object' ? JSON.stringify(child) : `'${String(child)}'`}). To render this component in the navigator, pass it in the 'component' prop to 'Screen'.`);
++    throw new Error(`A navigator can only contain 'Screen', 'Group' or 'React.Fragment' as its direct children (found ${ /*#__PURE__*/React.isValidElement(child) ? `'${typeof child.type === 'string' ? child.type : (_child$type = child.type) === null || _child$type === void 0 ? void 0 : _child$type.name}'${child.props != null && typeof child.props === 'object' && 'name' in child.props && (_child$props = child.props) !== null && _child$props !== void 0 && _child$props.name ? ` for the screen '${child.props.name}'` : ''}` : typeof child === 'object' ? JSON.stringify(child) : `'${String(child)}'`}). To render this component in the navigator, pass it in the 'component' prop to 'Screen'.`);
+   }, []);
+   if (process.env.NODE_ENV !== 'production') {
+     configs.forEach(config => {
+@@ -141,10 +142,10 @@ const getRouteConfigsFromChildren = (children, groupKey, groupOptions, groupLayo
+   return configs;
+ };
+ const getStateFromParams = params => {
+-  const state = params?.state;
++  const state = params === null || params === void 0 ? void 0 : params.state;
+   if (isNavigationState(state)) {
+     return state;
+-  } else if (typeof params?.screen === 'string' && params?.initial !== false) {
++  } else if (typeof (params === null || params === void 0 ? void 0 : params.screen) === 'string' && (params === null || params === void 0 ? void 0 : params.initial) !== false) {
+     return {
+       routes: [{
+         name: params.screen,
+@@ -164,10 +165,11 @@ const getStateFromParams = params => {
+  * @returns An object containing `state`, `navigation`, `descriptors` objects.
+  */
+ export function useNavigationBuilder(createRouter, options) {
++  var _state;
+   const navigatorKey = useRegisterNavigator();
+   const route = React.useContext(NavigationRouteContext);
+   const consumedParams = React.useContext(ConsumedParamsContext);
+-  const isNestedParamsConsumed = typeof route?.params === 'object' && route.params != null ? consumedParams?.isConsumed(route.params) : false;
++  const isNestedParamsConsumed = typeof (route === null || route === void 0 ? void 0 : route.params) === 'object' && route.params != null ? consumedParams === null || consumedParams === void 0 ? void 0 : consumedParams.isConsumed(route.params) : false;
+   const {
+     children,
+     layout,
+@@ -206,7 +208,7 @@ export function useNavigationBuilder(createRouter, options) {
+       throw new Error(`A navigator cannot contain multiple 'Screen' components with the same name (found duplicate screen named '${name}')`);
+     }
+     screens[name] = config;
+-    routeKeyList[name] = config.keys.map(key => key ?? '').join(':');
++    routeKeyList[name] = config.keys.map(key => key !== null && key !== void 0 ? key : '').join(':');
+     routeParamList[name] = config.props.initialParams;
+     Object.assign(routeGetIdList, {
+       [name]: config.props.getId
+@@ -238,6 +240,7 @@ export function useNavigationBuilder(createRouter, options) {
+     setCurrentState(state);
+   });
+   const [stateBeforeInitialization, initializedState, isFirstStateInitialization, paramsUsedForInitialization] = React.useMemo(() => {
++    var _route$params4, _route$params5, _route$params6;
+     // If the state was already cleaned up, but we have it stored in ref,
+     // It likely got cleaned up due to `<Activity mode="hidden">`
+     // We should reuse this state to avoid remounting screens
+@@ -250,10 +253,11 @@ export function useNavigationBuilder(createRouter, options) {
+       return [undefined, state, false, undefined];
+     }
+     const initialRouteParamList = routeNames.reduce((acc, curr) => {
++      var _route$params, _route$params2, _route$params3;
+       const {
+         initialParams
+       } = screens[curr].props;
+-      const initialParamsFromParams = route?.params?.state == null && route?.params?.initial !== false && route?.params?.screen === curr ? route.params.params : undefined;
++      const initialParamsFromParams = (route === null || route === void 0 || (_route$params = route.params) === null || _route$params === void 0 ? void 0 : _route$params.state) == null && (route === null || route === void 0 || (_route$params2 = route.params) === null || _route$params2 === void 0 ? void 0 : _route$params2.initial) !== false && (route === null || route === void 0 || (_route$params3 = route.params) === null || _route$params3 === void 0 ? void 0 : _route$params3.screen) === curr ? route.params.params : undefined;
+       acc[curr] = initialParams !== undefined || initialParamsFromParams !== undefined ? {
+         ...initialParams,
+         ...initialParamsFromParams
+@@ -265,16 +269,16 @@ export function useNavigationBuilder(createRouter, options) {
+     // We also need to re-initialize it if the state passed from parent was changed (maybe due to reset)
+     // Otherwise assume that the state was provided as initial state
+     // So we need to rehydrate it to make it usable
+-    if ((currentState === undefined || !isStateValid(currentState)) && route?.params?.state == null && !(typeof route?.params?.screen === 'string' && route?.params?.initial !== false) && !isNestedParamsConsumed) {
++    if ((currentState === undefined || !isStateValid(currentState)) && (route === null || route === void 0 || (_route$params4 = route.params) === null || _route$params4 === void 0 ? void 0 : _route$params4.state) == null && !(typeof (route === null || route === void 0 || (_route$params5 = route.params) === null || _route$params5 === void 0 ? void 0 : _route$params5.screen) === 'string' && (route === null || route === void 0 || (_route$params6 = route.params) === null || _route$params6 === void 0 ? void 0 : _route$params6.initial) !== false) && !isNestedParamsConsumed) {
+       return [undefined, router.getInitialState({
+         routeNames,
+         routeParamList: initialRouteParamList,
+         routeGetIdList
+       }), true, undefined];
+     } else {
+-      const paramsForState = isNestedParamsConsumed ? undefined : route?.params;
++      const paramsForState = isNestedParamsConsumed ? undefined : route === null || route === void 0 ? void 0 : route.params;
+       const stateFromParams = paramsForState ? getStateFromParams(paramsForState) : undefined;
+-      const stateBeforeInitialization = stateFromParams ?? currentState;
++      const stateBeforeInitialization = stateFromParams !== null && stateFromParams !== void 0 ? stateFromParams : currentState;
+       const hydratedState = stateBeforeInitialization == null ? router.getInitialState({
+         routeNames,
+         routeParamList: initialRouteParamList,
+@@ -321,7 +325,7 @@ export function useNavigationBuilder(createRouter, options) {
+   // Previously unhandled state is now valid again
+   // And current state no longer has any valid routes
+   // We should reuse the unhandled state instead of re-calculating the state
+-  if (unhandledState?.routes.every(r => routeNames.includes(r.name)) && state?.routes.every(r => !routeNames.includes(r.name))) {
++  if (unhandledState !== null && unhandledState !== void 0 && unhandledState.routes.every(r => routeNames.includes(r.name)) && (_state = state) !== null && _state !== void 0 && _state.routes.every(r => !routeNames.includes(r.name))) {
+     shouldClearUnhandledState = true;
+     nextState = router.getRehydratedState(unhandledState, {
+       routeNames,
+@@ -337,8 +341,8 @@ export function useNavigationBuilder(createRouter, options) {
+       routeKeyChanges: Object.keys(routeKeyList).filter(name => name in previousRouteKeyList && routeKeyList[name] !== previousRouteKeyList[name])
+     });
+   }
+-  let didConsumeNestedParams = route?.params === paramsUsedForInitialization;
+-  if (route?.params && !didConsumeNestedParams) {
++  let didConsumeNestedParams = (route === null || route === void 0 ? void 0 : route.params) === paramsUsedForInitialization;
++  if (route !== null && route !== void 0 && route.params && !didConsumeNestedParams) {
+     let action;
+     const stateFromParams = route.params.state;
+     if (isNavigationState(stateFromParams) && !isNestedParamsConsumed) {
+@@ -385,12 +389,12 @@ export function useNavigationBuilder(createRouter, options) {
+       routeGetIdList
+     }) : nextState;
+   }
+-  const setConsumedParams = consumedParams?.setConsumed;
++  const setConsumedParams = consumedParams === null || consumedParams === void 0 ? void 0 : consumedParams.setConsumed;
+   React.useEffect(() => {
+-    if (setConsumedParams && didConsumeNestedParams && typeof route?.params === 'object' && route.params != null) {
++    if (setConsumedParams && didConsumeNestedParams && typeof (route === null || route === void 0 ? void 0 : route.params) === 'object' && route.params != null) {
+       setConsumedParams(route.params);
+     }
+-  }, [didConsumeNestedParams, route?.params, setConsumedParams]);
++  }, [didConsumeNestedParams, route === null || route === void 0 ? void 0 : route.params, setConsumedParams]);
+   const shouldUpdate = state !== nextState;
+   useScheduleUpdate(() => {
+     if (shouldUpdate) {
+@@ -462,13 +466,17 @@ export function useNavigationBuilder(createRouter, options) {
+     const routeNames = [];
+     let route;
+     if (e.target) {
++      var _route;
+       route = state.routes.find(route => route.key === e.target);
+-      if (route?.name) {
++      if ((_route = route) !== null && _route !== void 0 && _route.name) {
+         routeNames.push(route.name);
+       }
+     } else {
+       route = state.routes[state.index];
+-      routeNames.push(...Object.keys(screens).filter(name => route?.name === name));
++      routeNames.push(...Object.keys(screens).filter(name => {
++        var _route2;
++        return ((_route2 = route) === null || _route2 === void 0 ? void 0 : _route2.name) === name;
++      }));
+     }
+     if (route == null) {
+       return;
+@@ -488,12 +496,12 @@ export function useNavigationBuilder(createRouter, options) {
+           route: route,
+           navigation
+         }) : listeners;
+-        return map ? Object.keys(map).filter(type => type === e.type).map(type => map?.[type]) : undefined;
++        return map ? Object.keys(map).filter(type => type === e.type).map(type => map === null || map === void 0 ? void 0 : map[type]) : undefined;
+       }))
+       // We don't want same listener to be called multiple times for same event
+       // So we remove any duplicate functions from the array
+       .filter((cb, i, self) => cb && self.lastIndexOf(cb) === i);
+-      listeners.forEach(listener => listener?.(e));
++      listeners.forEach(listener => listener === null || listener === void 0 ? void 0 : listener(e));
+     }
+   }, onEmitEvent);
+   useFocusEvents({
+@@ -520,7 +528,7 @@ export function useNavigationBuilder(createRouter, options) {
+     router,
+     getState,
+     setState,
+-    key: route?.key,
++    key: route === null || route === void 0 ? void 0 : route.key,
+     actionListeners: childListeners.action,
+     beforeRemoveListeners: keyedListeners.beforeRemove,
+     routerConfigOptions: {
+@@ -532,7 +540,7 @@ export function useNavigationBuilder(createRouter, options) {
+   });
+   const onRouteFocus = useOnRouteFocus({
+     router,
+-    key: route?.key,
++    key: route === null || route === void 0 ? void 0 : route.key,
+     getState,
+     setState
+   });
+@@ -548,7 +556,7 @@ export function useNavigationBuilder(createRouter, options) {
+       };
+       setUnhandledState(state);
+     }
+-    onUnhandledActionParent?.(action);
++    onUnhandledActionParent === null || onUnhandledActionParent === void 0 || onUnhandledActionParent(action);
+   });
+   const navigation = useNavigationHelpers({
+     id: options.id,
+@@ -622,4 +630,3 @@ export function useNavigationBuilder(createRouter, options) {
+     NavigationContent
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useNavigationBuilder.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useNavigationCache.js b/node_modules/@react-navigation/core/lib/module/useNavigationCache.js
+index d8b43bb..5a2ca1e 100644
+--- a/node_modules/@react-navigation/core/lib/module/useNavigationCache.js
++++ b/node_modules/@react-navigation/core/lib/module/useNavigationCache.js
+@@ -153,4 +153,3 @@ export function useNavigationCache({
+     navigations: cache.current
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useNavigationCache.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useNavigationContainerRef.js b/node_modules/@react-navigation/core/lib/module/useNavigationContainerRef.js
+index 8b5e96c..7722a5d 100644
+--- a/node_modules/@react-navigation/core/lib/module/useNavigationContainerRef.js
++++ b/node_modules/@react-navigation/core/lib/module/useNavigationContainerRef.js
+@@ -9,4 +9,3 @@ export function useNavigationContainerRef() {
+   }
+   return navigation.current;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useNavigationContainerRef.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useNavigationHelpers.js b/node_modules/@react-navigation/core/lib/module/useNavigationHelpers.js
+index f697f9d..1e7749d 100644
+--- a/node_modules/@react-navigation/core/lib/module/useNavigationHelpers.js
++++ b/node_modules/@react-navigation/core/lib/module/useNavigationHelpers.js
+@@ -26,7 +26,7 @@ export function useNavigationHelpers({
+       const action = typeof op === 'function' ? op(getState()) : op;
+       const handled = onAction(action);
+       if (!handled) {
+-        onUnhandledAction?.(action);
++        onUnhandledAction === null || onUnhandledAction === void 0 || onUnhandledAction(action);
+       }
+     };
+     const actions = {
+@@ -50,7 +50,7 @@ export function useNavigationHelpers({
+           routeNames: state.routeNames,
+           routeParamList: {},
+           routeGetIdList: {}
+-        }) !== null || parentNavigationHelpers?.canGoBack() || false;
++        }) !== null || (parentNavigationHelpers === null || parentNavigationHelpers === void 0 ? void 0 : parentNavigationHelpers.canGoBack()) || false;
+       },
+       getId: () => navigatorId,
+       getParent: id => {
+@@ -78,4 +78,3 @@ export function useNavigationHelpers({
+     return navigationHelpers;
+   }, [router, parentNavigationHelpers, emitter.emit, getState, onAction, onUnhandledAction, navigatorId, stateRef]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useNavigationHelpers.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useNavigationIndependentTree.js b/node_modules/@react-navigation/core/lib/module/useNavigationIndependentTree.js
+index b5dcb7f..bb6fb81 100644
+--- a/node_modules/@react-navigation/core/lib/module/useNavigationIndependentTree.js
++++ b/node_modules/@react-navigation/core/lib/module/useNavigationIndependentTree.js
+@@ -5,4 +5,3 @@ import { NavigationIndependentTreeContext } from "./NavigationIndependentTreeCon
+ export function useNavigationIndependentTree() {
+   return React.useContext(NavigationIndependentTreeContext);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useNavigationIndependentTree.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useNavigationState.js b/node_modules/@react-navigation/core/lib/module/useNavigationState.js
+index 02a70f8..e117f55 100644
+--- a/node_modules/@react-navigation/core/lib/module/useNavigationState.js
++++ b/node_modules/@react-navigation/core/lib/module/useNavigationState.js
+@@ -46,4 +46,3 @@ export function NavigationStateListenerProvider({
+   });
+ }
+ const NavigationStateListenerContext = /*#__PURE__*/React.createContext(undefined);
+\ No newline at end of file
+-//# sourceMappingURL=useNavigationState.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useOnAction.js b/node_modules/@react-navigation/core/lib/module/useOnAction.js
+index 77c65d2..6991589 100644
+--- a/node_modules/@react-navigation/core/lib/module/useOnAction.js
++++ b/node_modules/@react-navigation/core/lib/module/useOnAction.js
+@@ -97,7 +97,6 @@ export function useOnAction({
+     emitter,
+     beforeRemoveListeners
+   });
+-  React.useEffect(() => addListenerParent?.('action', onAction), [addListenerParent, onAction]);
++  React.useEffect(() => addListenerParent === null || addListenerParent === void 0 ? void 0 : addListenerParent('action', onAction), [addListenerParent, onAction]);
+   return onAction;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useOnAction.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useOnGetState.js b/node_modules/@react-navigation/core/lib/module/useOnGetState.js
+index 4218f27..5bc1614 100644
+--- a/node_modules/@react-navigation/core/lib/module/useOnGetState.js
++++ b/node_modules/@react-navigation/core/lib/module/useOnGetState.js
+@@ -18,7 +18,8 @@ export function useOnGetState({
+ 
+     // Avoid returning new route objects if we don't need to
+     const routes = state.routes.map(route => {
+-      const childState = getStateListeners[route.key]?.();
++      var _getStateListeners$ro;
++      const childState = (_getStateListeners$ro = getStateListeners[route.key]) === null || _getStateListeners$ro === void 0 ? void 0 : _getStateListeners$ro.call(getStateListeners);
+       if (route.state === childState) {
+         return route;
+       }
+@@ -36,7 +37,6 @@ export function useOnGetState({
+     };
+   }, [getState, getStateListeners]);
+   React.useEffect(() => {
+-    return addKeyedListener?.('getState', key, getRehydratedState);
++    return addKeyedListener === null || addKeyedListener === void 0 ? void 0 : addKeyedListener('getState', key, getRehydratedState);
+   }, [addKeyedListener, getRehydratedState, key]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useOnGetState.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useOnPreventRemove.js b/node_modules/@react-navigation/core/lib/module/useOnPreventRemove.js
+index 5f6044e..9dd9b68 100644
+--- a/node_modules/@react-navigation/core/lib/module/useOnPreventRemove.js
++++ b/node_modules/@react-navigation/core/lib/module/useOnPreventRemove.js
+@@ -5,25 +5,26 @@ import { NavigationBuilderContext } from "./NavigationBuilderContext.js";
+ import { NavigationRouteContext } from "./NavigationProvider.js";
+ const VISITED_ROUTE_KEYS = Symbol('VISITED_ROUTE_KEYS');
+ export const shouldPreventRemove = (emitter, beforeRemoveListeners, currentRoutes, nextRoutes, action) => {
++  var _action$VISITED_ROUTE;
+   const nextRouteKeys = nextRoutes.map(route => route.key);
+ 
+   // Call these in reverse order so last screens handle the event first
+   const removedRoutes = currentRoutes.filter(route => !nextRouteKeys.includes(route.key)).reverse();
+-  const visitedRouteKeys =
+-  // @ts-expect-error: add this property to mark that we've already emitted this action
+-  action[VISITED_ROUTE_KEYS] ?? new Set();
++  const visitedRouteKeys = // @ts-expect-error: add this property to mark that we've already emitted this action
++  (_action$VISITED_ROUTE = action[VISITED_ROUTE_KEYS]) !== null && _action$VISITED_ROUTE !== void 0 ? _action$VISITED_ROUTE : new Set();
+   const beforeRemoveAction = {
+     ...action,
+     [VISITED_ROUTE_KEYS]: visitedRouteKeys
+   };
+   for (const route of removedRoutes) {
++    var _beforeRemoveListener;
+     if (visitedRouteKeys.has(route.key)) {
+       // Skip if we've already emitted this action for this screen
+       continue;
+     }
+ 
+     // First, we need to check if any child screens want to prevent it
+-    const isPrevented = beforeRemoveListeners[route.key]?.(beforeRemoveAction);
++    const isPrevented = (_beforeRemoveListener = beforeRemoveListeners[route.key]) === null || _beforeRemoveListener === void 0 ? void 0 : _beforeRemoveListener.call(beforeRemoveListeners, beforeRemoveAction);
+     if (isPrevented) {
+       return true;
+     }
+@@ -51,14 +52,13 @@ export function useOnPreventRemove({
+     addKeyedListener
+   } = React.useContext(NavigationBuilderContext);
+   const route = React.useContext(NavigationRouteContext);
+-  const routeKey = route?.key;
++  const routeKey = route === null || route === void 0 ? void 0 : route.key;
+   React.useEffect(() => {
+     if (routeKey) {
+-      return addKeyedListener?.('beforeRemove', routeKey, action => {
++      return addKeyedListener === null || addKeyedListener === void 0 ? void 0 : addKeyedListener('beforeRemove', routeKey, action => {
+         const state = getState();
+         return shouldPreventRemove(emitter, beforeRemoveListeners, state.routes, [], action);
+       });
+     }
+   }, [addKeyedListener, beforeRemoveListeners, emitter, getState, routeKey]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useOnPreventRemove.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useOnRouteFocus.js b/node_modules/@react-navigation/core/lib/module/useOnRouteFocus.js
+index 549550a..a2ea3a6 100644
+--- a/node_modules/@react-navigation/core/lib/module/useOnRouteFocus.js
++++ b/node_modules/@react-navigation/core/lib/module/useOnRouteFocus.js
+@@ -27,4 +27,3 @@ export function useOnRouteFocus({
+     }
+   }, [getState, onRouteFocusParent, router, setState, sourceRouteKey]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useOnRouteFocus.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useOptionsGetters.js b/node_modules/@react-navigation/core/lib/module/useOptionsGetters.js
+index 091f4de..98271ec 100644
+--- a/node_modules/@react-navigation/core/lib/module/useOptionsGetters.js
++++ b/node_modules/@react-navigation/core/lib/module/useOptionsGetters.js
+@@ -17,21 +17,24 @@ export function useOptionsGetters({
+     addOptionsGetter: parentAddOptionsGetter
+   } = React.useContext(NavigationStateContext);
+   const optionsChangeListener = React.useCallback(() => {
+-    const isFocused = navigation?.isFocused() ?? true;
++    var _navigation$isFocused;
++    const isFocused = (_navigation$isFocused = navigation === null || navigation === void 0 ? void 0 : navigation.isFocused()) !== null && _navigation$isFocused !== void 0 ? _navigation$isFocused : true;
+     const hasChildren = Object.keys(optionsGettersFromChildRef.current).length;
+     if (isFocused && !hasChildren) {
+-      onOptionsChange(optionsRef.current ?? {});
++      var _optionsRef$current;
++      onOptionsChange((_optionsRef$current = optionsRef.current) !== null && _optionsRef$current !== void 0 ? _optionsRef$current : {});
+     }
+   }, [navigation, onOptionsChange]);
+   React.useEffect(() => {
+     optionsRef.current = options;
+     optionsChangeListener();
+-    return navigation?.addListener('focus', optionsChangeListener);
++    return navigation === null || navigation === void 0 ? void 0 : navigation.addListener('focus', optionsChangeListener);
+   }, [navigation, options, optionsChangeListener]);
+   const getOptionsFromListener = React.useCallback(() => {
+     for (const key in optionsGettersFromChildRef.current) {
+       if (key in optionsGettersFromChildRef.current) {
+-        const result = optionsGettersFromChildRef.current[key]?.();
++        var _optionsGettersFromCh, _optionsGettersFromCh2;
++        const result = (_optionsGettersFromCh = (_optionsGettersFromCh2 = optionsGettersFromChildRef.current)[key]) === null || _optionsGettersFromCh === void 0 ? void 0 : _optionsGettersFromCh.call(_optionsGettersFromCh2);
+ 
+         // null means unfocused route
+         if (result !== null) {
+@@ -42,7 +45,8 @@ export function useOptionsGetters({
+     return null;
+   }, []);
+   const getCurrentOptions = React.useCallback(() => {
+-    const isFocused = navigation?.isFocused() ?? true;
++    var _navigation$isFocused2;
++    const isFocused = (_navigation$isFocused2 = navigation === null || navigation === void 0 ? void 0 : navigation.isFocused()) !== null && _navigation$isFocused2 !== void 0 ? _navigation$isFocused2 : true;
+     if (!isFocused) {
+       return null;
+     }
+@@ -53,7 +57,7 @@ export function useOptionsGetters({
+     return optionsRef.current;
+   }, [navigation, getOptionsFromListener]);
+   React.useEffect(() => {
+-    return parentAddOptionsGetter?.(key, getCurrentOptions);
++    return parentAddOptionsGetter === null || parentAddOptionsGetter === void 0 ? void 0 : parentAddOptionsGetter(key, getCurrentOptions);
+   }, [getCurrentOptions, parentAddOptionsGetter, key]);
+   const addOptionsGetter = React.useCallback((key, getter) => {
+     optionsGettersFromChildRef.current[key] = getter;
+@@ -69,4 +73,3 @@ export function useOptionsGetters({
+     getCurrentOptions
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useOptionsGetters.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/usePreventRemove.js b/node_modules/@react-navigation/core/lib/module/usePreventRemove.js
+index 51d9444..edff41d 100644
+--- a/node_modules/@react-navigation/core/lib/module/usePreventRemove.js
++++ b/node_modules/@react-navigation/core/lib/module/usePreventRemove.js
+@@ -37,6 +37,5 @@ export function usePreventRemove(preventRemove, callback) {
+       data: e.data
+     });
+   });
+-  React.useEffect(() => navigation?.addListener('beforeRemove', beforeRemoveListener), [navigation, beforeRemoveListener]);
++  React.useEffect(() => navigation === null || navigation === void 0 ? void 0 : navigation.addListener('beforeRemove', beforeRemoveListener), [navigation, beforeRemoveListener]);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=usePreventRemove.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/usePreventRemoveContext.js b/node_modules/@react-navigation/core/lib/module/usePreventRemoveContext.js
+index 93780d5..9108df9 100644
+--- a/node_modules/@react-navigation/core/lib/module/usePreventRemoveContext.js
++++ b/node_modules/@react-navigation/core/lib/module/usePreventRemoveContext.js
+@@ -9,4 +9,3 @@ export function usePreventRemoveContext() {
+   }
+   return value;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=usePreventRemoveContext.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useRegisterNavigator.js b/node_modules/@react-navigation/core/lib/module/useRegisterNavigator.js
+index 987f9a3..7a1c6ee 100644
+--- a/node_modules/@react-navigation/core/lib/module/useRegisterNavigator.js
++++ b/node_modules/@react-navigation/core/lib/module/useRegisterNavigator.js
+@@ -24,4 +24,3 @@ export function useRegisterNavigator() {
+   }, [container, key]);
+   return key;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useRegisterNavigator.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useRoute.js b/node_modules/@react-navigation/core/lib/module/useRoute.js
+index 9f62685..47e4d1f 100644
+--- a/node_modules/@react-navigation/core/lib/module/useRoute.js
++++ b/node_modules/@react-navigation/core/lib/module/useRoute.js
+@@ -14,4 +14,3 @@ export function useRoute() {
+   }
+   return route;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useRoute.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useRouteCache.js b/node_modules/@react-navigation/core/lib/module/useRouteCache.js
+index a016b25..cb82140 100644
+--- a/node_modules/@react-navigation/core/lib/module/useRouteCache.js
++++ b/node_modules/@react-navigation/core/lib/module/useRouteCache.js
+@@ -56,4 +56,3 @@ export function useRouteCache(routes) {
+   }, new Map());
+   return Array.from(cache.current.values());
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useRouteCache.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useScheduleUpdate.js b/node_modules/@react-navigation/core/lib/module/useScheduleUpdate.js
+index 057baf5..964adce 100644
+--- a/node_modules/@react-navigation/core/lib/module/useScheduleUpdate.js
++++ b/node_modules/@react-navigation/core/lib/module/useScheduleUpdate.js
+@@ -22,4 +22,3 @@ export function useScheduleUpdate(callback) {
+   scheduleUpdate(callback);
+   useClientLayoutEffect(flushUpdates);
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useScheduleUpdate.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useStateForPath.js b/node_modules/@react-navigation/core/lib/module/useStateForPath.js
+index 577a0f5..49f9579 100644
+--- a/node_modules/@react-navigation/core/lib/module/useStateForPath.js
++++ b/node_modules/@react-navigation/core/lib/module/useStateForPath.js
+@@ -13,4 +13,3 @@ export function useStateForPath() {
+   const state = React.useContext(NavigationFocusedRouteStateContext);
+   return state;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useStateForPath.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/useSyncState.js b/node_modules/@react-navigation/core/lib/module/useSyncState.js
+index 4998d9b..426ff67 100644
+--- a/node_modules/@react-navigation/core/lib/module/useSyncState.js
++++ b/node_modules/@react-navigation/core/lib/module/useSyncState.js
+@@ -77,4 +77,3 @@ export function useSyncState(getInitialState) {
+     flushUpdates
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=useSyncState.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/core/lib/module/validatePathConfig.js b/node_modules/@react-navigation/core/lib/module/validatePathConfig.js
+index 1af1990..2158b12 100644
+--- a/node_modules/@react-navigation/core/lib/module/validatePathConfig.js
++++ b/node_modules/@react-navigation/core/lib/module/validatePathConfig.js
+@@ -49,4 +49,3 @@ export function validatePathConfig(config, root = true) {
+     });
+   }
+ }
+\ No newline at end of file
+-//# sourceMappingURL=validatePathConfig.js.map
+\ No newline at end of file

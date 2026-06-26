@@ -1,0 +1,374 @@
+diff --git a/node_modules/@react-navigation/routers/lib/module/BaseRouter.js b/node_modules/@react-navigation/routers/lib/module/BaseRouter.js
+index 5967638..a4e2005 100644
+--- a/node_modules/@react-navigation/routers/lib/module/BaseRouter.js
++++ b/node_modules/@react-navigation/routers/lib/module/BaseRouter.js
+@@ -55,4 +55,3 @@ export const BaseRouter = {
+     return action.type === 'NAVIGATE' || action.type === 'NAVIGATE_DEPRECATED';
+   }
+ };
+\ No newline at end of file
+-//# sourceMappingURL=BaseRouter.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/CommonActions.js b/node_modules/@react-navigation/routers/lib/module/CommonActions.js
+index 305ac51..c181394 100644
+--- a/node_modules/@react-navigation/routers/lib/module/CommonActions.js
++++ b/node_modules/@react-navigation/routers/lib/module/CommonActions.js
+@@ -21,8 +21,8 @@ export function navigate(...args) {
+       payload: {
+         name,
+         params,
+-        merge: typeof options === 'boolean' ? options : options?.merge,
+-        pop: options?.pop
++        merge: typeof options === 'boolean' ? options : options === null || options === void 0 ? void 0 : options.merge,
++        pop: options === null || options === void 0 ? void 0 : options.pop
+       }
+     };
+   } else {
+@@ -88,4 +88,3 @@ export function preload(name, params) {
+     }
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=CommonActions.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/DrawerRouter.js b/node_modules/@react-navigation/routers/lib/module/DrawerRouter.js
+index 967abd4..337cb18 100644
+--- a/node_modules/@react-navigation/routers/lib/module/DrawerRouter.js
++++ b/node_modules/@react-navigation/routers/lib/module/DrawerRouter.js
+@@ -25,7 +25,10 @@ export function DrawerRouter({
+   ...rest
+ }) {
+   const router = TabRouter(rest);
+-  const isDrawerInHistory = state => Boolean(state.history?.some(it => it.type === 'drawer'));
++  const isDrawerInHistory = state => {
++    var _state$history;
++    return Boolean((_state$history = state.history) === null || _state$history === void 0 ? void 0 : _state$history.some(it => it.type === 'drawer'));
++  };
+   const addDrawerToHistory = state => {
+     if (isDrawerInHistory(state)) {
+       return state;
+@@ -142,4 +145,3 @@ export function DrawerRouter({
+     actionCreators: DrawerActions
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=DrawerRouter.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/StackRouter.js b/node_modules/@react-navigation/routers/lib/module/StackRouter.js
+index 4edaf11..a3a5386 100644
+--- a/node_modules/@react-navigation/routers/lib/module/StackRouter.js
++++ b/node_modules/@react-navigation/routers/lib/module/StackRouter.js
+@@ -45,7 +45,7 @@ export const StackActions = {
+       payload: {
+         name,
+         params,
+-        merge: typeof options === 'boolean' ? options : options?.merge
++        merge: typeof options === 'boolean' ? options : options === null || options === void 0 ? void 0 : options.merge
+       }
+     };
+   }
+@@ -77,6 +77,7 @@ export function StackRouter(options) {
+       routeNames,
+       routeParamList
+     }) {
++      var _state$preloadedRoute, _state$preloadedRoute2;
+       const state = partialState;
+       if (state.stale === false) {
+         return state;
+@@ -89,14 +90,14 @@ export function StackRouter(options) {
+           ...route.params
+         } : route.params
+       }));
+-      const preloadedRoutes = state.preloadedRoutes?.filter(route => routeNames.includes(route.name)).map(route => ({
++      const preloadedRoutes = (_state$preloadedRoute = (_state$preloadedRoute2 = state.preloadedRoutes) === null || _state$preloadedRoute2 === void 0 ? void 0 : _state$preloadedRoute2.filter(route => routeNames.includes(route.name)).map(route => ({
+         ...route,
+         key: route.key || `${route.name}-${nanoid()}`,
+         params: routeParamList[route.name] !== undefined ? {
+           ...routeParamList[route.name],
+           ...route.params
+         } : route.params
+-      })) ?? [];
++      }))) !== null && _state$preloadedRoute !== void 0 ? _state$preloadedRoute : [];
+       if (routes.length === 0) {
+         const initialRouteName = options.initialRouteName !== undefined ? options.initialRouteName : routeNames[0];
+         routes.push({
+@@ -162,14 +163,14 @@ export function StackRouter(options) {
+               return null;
+             }
+             const getId = options.routeGetIdList[action.payload.name];
+-            const id = getId?.({
++            const id = getId === null || getId === void 0 ? void 0 : getId({
+               params: action.payload.params
+             });
+ 
+             // Re-use preloaded route if available
+-            let route = state.preloadedRoutes.find(route => route.name === action.payload.name && id === getId?.({
++            let route = state.preloadedRoutes.find(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+               params: route.params
+-            }));
++            })));
+             if (!route) {
+               route = createRouteFromAction({
+                 action,
+@@ -200,14 +201,14 @@ export function StackRouter(options) {
+               return null;
+             }
+             const getId = options.routeGetIdList[action.payload.name];
+-            const id = getId?.({
++            const id = getId === null || getId === void 0 ? void 0 : getId({
+               params: action.payload.params
+             });
+             let route;
+             if (id !== undefined) {
+-              route = state.routes.findLast(route => route.name === action.payload.name && id === getId?.({
++              route = state.routes.findLast(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+                 params: route.params
+-              }));
++              })));
+             } else if (action.type === 'NAVIGATE') {
+               const currentRoute = state.routes[state.index];
+ 
+@@ -219,9 +220,9 @@ export function StackRouter(options) {
+               }
+             }
+             if (!route) {
+-              route = state.preloadedRoutes.find(route => route.name === action.payload.name && id === getId?.({
++              route = state.preloadedRoutes.find(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+                 params: route.params
+-              }));
++              })));
+             }
+             let params;
+             if (action.type === 'NAVIGATE' && action.payload.merge && route) {
+@@ -281,22 +282,22 @@ export function StackRouter(options) {
+             if (!state.routeNames.includes(action.payload.name)) {
+               return null;
+             }
+-            if (state.preloadedRoutes.find(route => route.name === action.payload.name && id === getId?.({
++            if (state.preloadedRoutes.find(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+               params: route.params
+-            }))) {
++            })))) {
+               return null;
+             }
+ 
+             // If the route already exists, navigate to that
+             let index = -1;
+             const getId = options.routeGetIdList[action.payload.name];
+-            const id = getId?.({
++            const id = getId === null || getId === void 0 ? void 0 : getId({
+               params: action.payload.params
+             });
+             if (id !== undefined) {
+-              index = state.routes.findIndex(route => route.name === action.payload.name && id === getId?.({
++              index = state.routes.findIndex(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+                 params: route.params
+-              }));
++              })));
+             } else if (state.routes[state.index].name === action.payload.name) {
+               index = state.index;
+             } else {
+@@ -373,13 +374,13 @@ export function StackRouter(options) {
+             // If the route already exists, navigate to it
+             let index = -1;
+             const getId = options.routeGetIdList[action.payload.name];
+-            const id = getId?.({
++            const id = getId === null || getId === void 0 ? void 0 : getId({
+               params: action.payload.params
+             });
+             if (id !== undefined) {
+-              index = state.routes.findIndex(route => route.name === action.payload.name && id === getId?.({
++              index = state.routes.findIndex(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+                 params: route.params
+-              }));
++              })));
+             } else if (state.routes[currentIndex].name === action.payload.name) {
+               index = currentIndex;
+             } else {
+@@ -394,9 +395,9 @@ export function StackRouter(options) {
+             // If the route doesn't exist, remove the current route and add the new one
+             if (index === -1) {
+               // Re-use preloaded route if available
+-              let route = state.preloadedRoutes.find(route => route.name === action.payload.name && id === getId?.({
++              let route = state.preloadedRoutes.find(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+                 params: route.params
+-              }));
++              })));
+               if (!route) {
+                 route = createRouteFromAction({
+                   action,
+@@ -463,20 +464,21 @@ export function StackRouter(options) {
+               return null;
+             }
+             const getId = options.routeGetIdList[action.payload.name];
+-            const id = getId?.({
++            const id = getId === null || getId === void 0 ? void 0 : getId({
+               params: action.payload.params
+             });
+             let route;
+             if (id !== undefined) {
+-              route = state.routes.find(route => route.name === action.payload.name && id === getId?.({
++              route = state.routes.find(route => route.name === action.payload.name && id === (getId === null || getId === void 0 ? void 0 : getId({
+                 params: route.params
+-              }));
++              })));
+             }
+             if (route) {
+               return {
+                 ...state,
+                 routes: state.routes.map(r => {
+-                  if (r.key !== route?.key) {
++                  var _route;
++                  if (r.key !== ((_route = route) === null || _route === void 0 ? void 0 : _route.key)) {
+                     return r;
+                   }
+                   return {
+@@ -491,9 +493,9 @@ export function StackRouter(options) {
+             } else {
+               return {
+                 ...state,
+-                preloadedRoutes: state.preloadedRoutes.filter(r => r.name !== action.payload.name || id !== getId?.({
++                preloadedRoutes: state.preloadedRoutes.filter(r => r.name !== action.payload.name || id !== (getId === null || getId === void 0 ? void 0 : getId({
+                   params: r.params
+-                })).concat(createRouteFromAction({
++                }))).concat(createRouteFromAction({
+                   action,
+                   routeParamList
+                 }))
+@@ -508,4 +510,3 @@ export function StackRouter(options) {
+   };
+   return router;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=StackRouter.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/TabRouter.js b/node_modules/@react-navigation/routers/lib/module/TabRouter.js
+index f3b26a9..8534796 100644
+--- a/node_modules/@react-navigation/routers/lib/module/TabRouter.js
++++ b/node_modules/@react-navigation/routers/lib/module/TabRouter.js
+@@ -63,8 +63,9 @@ const changeIndex = (state, index, backBehavior, initialRouteName) => {
+       // Remove the existing key from the history to de-duplicate it
+       history = history.filter(it => it.type === 'route' ? it.key !== currentRoute.key : false);
+     } else if (backBehavior === 'fullHistory') {
++      var _history$lastHistoryR;
+       const lastHistoryRouteItemIndex = history.findLastIndex(item => item.type === 'route');
+-      if (currentRoute.key === history[lastHistoryRouteItemIndex]?.key) {
++      if (currentRoute.key === ((_history$lastHistoryR = history[lastHistoryRouteItemIndex]) === null || _history$lastHistoryR === void 0 ? void 0 : _history$lastHistoryR.key)) {
+         // For full-history, only remove if it matches the last route
+         // Useful for drawer, if current route was in history, then drawer state changed
+         // Then we only need to move the route to the front
+@@ -118,6 +119,7 @@ export function TabRouter({
+       routeNames,
+       routeParamList
+     }) {
++      var _state$routes, _state$index, _state$history$filter, _state$history, _state$preloadedRoute, _state$preloadedRoute2;
+       const state = partialState;
+       if (state.stale === false) {
+         return state;
+@@ -134,9 +136,9 @@ export function TabRouter({
+           } : route ? route.params : undefined
+         };
+       });
+-      const index = Math.min(Math.max(routeNames.indexOf(state.routes[state?.index ?? 0]?.name), 0), routes.length - 1);
++      const index = Math.min(Math.max(routeNames.indexOf((_state$routes = state.routes[(_state$index = state === null || state === void 0 ? void 0 : state.index) !== null && _state$index !== void 0 ? _state$index : 0]) === null || _state$routes === void 0 ? void 0 : _state$routes.name), 0), routes.length - 1);
+       const routeKeys = routes.map(route => route.key);
+-      const history = state.history?.filter(it => routeKeys.includes(it.key)) ?? [];
++      const history = (_state$history$filter = (_state$history = state.history) === null || _state$history === void 0 ? void 0 : _state$history.filter(it => routeKeys.includes(it.key))) !== null && _state$history$filter !== void 0 ? _state$history$filter : [];
+       return changeIndex({
+         stale: false,
+         type: 'tab',
+@@ -145,7 +147,7 @@ export function TabRouter({
+         routeNames,
+         history,
+         routes,
+-        preloadedRouteKeys: state.preloadedRouteKeys?.filter(key => routeKeys.includes(key)) ?? []
++        preloadedRouteKeys: (_state$preloadedRoute = (_state$preloadedRoute2 = state.preloadedRouteKeys) === null || _state$preloadedRoute2 === void 0 ? void 0 : _state$preloadedRoute2.filter(key => routeKeys.includes(key))) !== null && _state$preloadedRoute !== void 0 ? _state$preloadedRoute : []
+       }, index, backBehavior, initialRouteName);
+     },
+     getStateForRouteNamesChange(state, {
+@@ -200,10 +202,10 @@ export function TabRouter({
+                   return route;
+                 }
+                 const getId = routeGetIdList[route.name];
+-                const currentId = getId?.({
++                const currentId = getId === null || getId === void 0 ? void 0 : getId({
+                   params: route.params
+                 });
+-                const nextId = getId?.({
++                const nextId = getId === null || getId === void 0 ? void 0 : getId({
+                   params: action.payload.params
+                 });
+                 const key = currentId === nextId ? route.key : `${route.name}-${nanoid()}`;
+@@ -265,7 +267,7 @@ export function TabRouter({
+               return null;
+             }
+             const previousHistoryItem = state.history[state.history.length - 2];
+-            const previousKey = previousHistoryItem?.key;
++            const previousKey = previousHistoryItem === null || previousHistoryItem === void 0 ? void 0 : previousHistoryItem.key;
+             const index = state.routes.findLastIndex(route => route.key === previousKey);
+             if (index === -1) {
+               return null;
+@@ -294,10 +296,10 @@ export function TabRouter({
+             }
+             const route = state.routes[routeIndex];
+             const getId = routeGetIdList[route.name];
+-            const currentId = getId?.({
++            const currentId = getId === null || getId === void 0 ? void 0 : getId({
+               params: route.params
+             });
+-            const nextId = getId?.({
++            const nextId = getId === null || getId === void 0 ? void 0 : getId({
+               params: action.payload.params
+             });
+             const key = currentId === nextId ? route.key : `${route.name}-${nanoid()}`;
+@@ -325,4 +327,3 @@ export function TabRouter({
+   };
+   return router;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=TabRouter.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/createParamsFromAction.js b/node_modules/@react-navigation/routers/lib/module/createParamsFromAction.js
+index be4c07c..7662908 100644
+--- a/node_modules/@react-navigation/routers/lib/module/createParamsFromAction.js
++++ b/node_modules/@react-navigation/routers/lib/module/createParamsFromAction.js
+@@ -13,4 +13,3 @@ export function createParamsFromAction({
+     ...params
+   } : params;
+ }
+\ No newline at end of file
+-//# sourceMappingURL=createParamsFromAction.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/createRouteFromAction.js b/node_modules/@react-navigation/routers/lib/module/createRouteFromAction.js
+index 5918a11..3fcd05d 100644
+--- a/node_modules/@react-navigation/routers/lib/module/createRouteFromAction.js
++++ b/node_modules/@react-navigation/routers/lib/module/createRouteFromAction.js
+@@ -18,4 +18,3 @@ export function createRouteFromAction({
+     })
+   };
+ }
+\ No newline at end of file
+-//# sourceMappingURL=createRouteFromAction.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/index.js b/node_modules/@react-navigation/routers/lib/module/index.js
+index e6b43d2..be9fb71 100644
+--- a/node_modules/@react-navigation/routers/lib/module/index.js
++++ b/node_modules/@react-navigation/routers/lib/module/index.js
+@@ -7,4 +7,3 @@ export { DrawerActions, DrawerRouter } from "./DrawerRouter.js";
+ export { StackActions, StackRouter } from "./StackRouter.js";
+ export { TabActions, TabRouter } from "./TabRouter.js";
+ export * from "./types.js";
+\ No newline at end of file
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@react-navigation/routers/lib/module/types.js b/node_modules/@react-navigation/routers/lib/module/types.js
+index 049b69b..6adac9a 100644
+--- a/node_modules/@react-navigation/routers/lib/module/types.js
++++ b/node_modules/@react-navigation/routers/lib/module/types.js
+@@ -1,4 +1,3 @@
+ "use strict";
+ 
+ export {};
+\ No newline at end of file
+-//# sourceMappingURL=types.js.map
+\ No newline at end of file

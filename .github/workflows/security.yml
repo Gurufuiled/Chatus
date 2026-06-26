@@ -147,3 +147,5 @@ jobs:
           severity: CRITICAL
           exit-code: '1'
           format: table
+          # Bookworm ships zlib CVE-2023-45853 as will_not_fix; skip unfixed OS CVEs.
+          ignore-unfixed: true

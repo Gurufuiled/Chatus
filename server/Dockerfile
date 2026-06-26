@@ -8,6 +8,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV CI=1
 
 RUN apt-get update -y \
+  && apt-get upgrade -y \
   && apt-get install -y --no-install-recommends openssl ca-certificates gosu \
   && rm -rf /var/lib/apt/lists/*
 
@@ -26,10 +27,14 @@ COPY config/client-update-manifest.json ./client-update-manifest.json
 
 RUN npx prisma generate && npm run build
 
+RUN chown -R node:node /app
+
 ENV NODE_ENV=production
 ENV PORT=4000
 
 EXPOSE 4000 4001 4002
+
+USER node
 
 # Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
 ENTRYPOINT ["/docker-entrypoint.sh"]

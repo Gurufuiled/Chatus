@@ -2,6 +2,10 @@
 set -e
 
 mkdir -p /app/uploads
-chown -R node:node /app/uploads
 
-exec gosu node "$@"
+if [ "$(id -u)" = "0" ]; then
+  chown -R node:node /app/uploads
+  exec gosu node "$@"
+fi
+
+exec "$@"
