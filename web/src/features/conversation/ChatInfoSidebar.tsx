@@ -337,6 +337,7 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
                       key={msg.id}
                       type="button"
                       className="chat-info-sidebar__media-item"
+                      aria-label="Открыть медиа"
                       onClick={() => {
                         if (!isVideo) setLightboxSrc(fullUrl);
                       }}
