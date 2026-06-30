@@ -62,7 +62,7 @@ describe('ChatInfoSidebar', () => {
     render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
 
     expect(screen.getByText('Информация')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Медиа' })).toHaveClass('chat-info-sidebar__tab-btn--active');
+    expect(screen.getByRole('tab', { name: 'Медиа' })).toHaveClass('chat-info-sidebar__tab-btn--active');
     const grid = document.querySelector('.chat-info-sidebar__media-grid');
     expect(grid).toBeTruthy();
     expect(within(grid as HTMLElement).getAllByRole('button')).toHaveLength(2);
@@ -84,7 +84,7 @@ describe('ChatInfoSidebar', () => {
     const chat = makeChat();
     render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Файлы' }));
+    await user.click(screen.getByRole('tab', { name: 'Файлы' }));
     expect(screen.getByText('doc.pdf')).toBeInTheDocument();
     expect(screen.getByText('2.0 KB')).toBeInTheDocument();
   });
@@ -94,7 +94,7 @@ describe('ChatInfoSidebar', () => {
     const chat = makeChat();
     render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Ссылки' }));
+    await user.click(screen.getByRole('tab', { name: 'Ссылки' }));
     expect(screen.getByText('https://example.com/page')).toBeInTheDocument();
   });
 
@@ -103,7 +103,7 @@ describe('ChatInfoSidebar', () => {
     const chat = makeChat();
     render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
 
-    await user.click(screen.getByRole('button', { name: 'Голосовые' }));
+    await user.click(screen.getByRole('tab', { name: 'Голосовые' }));
     expect(screen.getByText('Голосовое сообщение')).toBeInTheDocument();
     expect(screen.getByText(/1:05/)).toBeInTheDocument();
   });
