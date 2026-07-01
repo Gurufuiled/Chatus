@@ -1,2 +1,18 @@
-
+#if __has_include(<td/telegram/td_json_client.h>)
 #import <td/telegram/td_json_client.h>
+#endif
+
+// Swift needs these declarations at compile time. Keep them here as a fallback
+// because TDLib headers are generated/downloaded outside git before pod install.
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void *td_json_client_create(void);
+void td_json_client_send(void *client, const char *request);
+const char *td_json_client_receive(void *client, double timeout);
+void td_json_client_destroy(void *client);
+
+#ifdef __cplusplus
+}
+#endif

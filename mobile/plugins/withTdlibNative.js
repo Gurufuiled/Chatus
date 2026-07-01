@@ -21,28 +21,50 @@ const {
 const JAVA_REL = path.join('app', 'src', 'main', 'java');
 const IOS_TDLIB_POD_LINE = "  pod 'TdLib', :path => '../tdlib-ios'";
 const IOS_TDLIB_HEADER_IMPORT = '#import <td/telegram/td_json_client.h>';
+const IOS_TDLIB_FALLBACK_DECLARATIONS = `
+// Swift needs these declarations at compile time. Keep them here as a fallback
+// because TDLib headers are generated/downloaded outside git before pod install.
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-async function copyIosNativeBridge(mobileRoot, iosProjectRoot) {
+void *td_json_client_create(void);
+void td_json_client_send(void *client, const char *request);
+const char *td_json_client_receive(void *client, double timeout);
+void td_json_client_destroy(void *client);
+
+#ifdef __cplusplus
+}
+#endif
+`;
+
+async function copyIosNativeBridge(mobileRoot, iosProjectRoot, appGroupName) {
   const nativeRoot = path.join(mobileRoot, 'tdlib-ios', 'native');
-  const appRoot = path.join(iosProjectRoot, 'mobile');
-  await fs.promises.mkdir(appRoot, { recursive: true });
+  const sourceRoot = path.join(iosProjectRoot, 'mobile');
+  const headerRoot = path.join(iosProjectRoot, appGroupName);
+  await fs.promises.mkdir(sourceRoot, { recursive: true });
+  await fs.promises.mkdir(headerRoot, { recursive: true });
   for (const file of ['Tdlib.swift', 'TdlibBridge.m']) {
     const from = path.join(nativeRoot, file);
-    const to = path.join(appRoot, file);
+    const to = path.join(sourceRoot, file);
     if (!fs.existsSync(from)) {
       throw new Error(`withTdlibNative: missing ${from}`);
     }
     await fs.promises.copyFile(from, to);
   }
 
-  const bridgingHeader = path.join(appRoot, 'mobile-Bridging-Header.h');
+  const bridgingHeader = path.join(headerRoot, `${appGroupName}-Bridging-Header.h`);
   let header = '';
   if (fs.existsSync(bridgingHeader)) {
     header = await fs.promises.readFile(bridgingHeader, 'utf8');
   }
   if (!header.includes(IOS_TDLIB_HEADER_IMPORT)) {
-    const next = `${header.trimEnd()}\n${IOS_TDLIB_HEADER_IMPORT}\n`;
+    const next = `${header.trimEnd()}\n#if __has_include(<td/telegram/td_json_client.h>)\n${IOS_TDLIB_HEADER_IMPORT}\n#endif\n`;
     await fs.promises.writeFile(bridgingHeader, next);
+    header = next;
+  }
+  if (!header.includes('td_json_client_create')) {
+    await fs.promises.writeFile(bridgingHeader, `${header.trimEnd()}\n${IOS_TDLIB_FALLBACK_DECLARATIONS}`);
   }
 }
 
@@ -80,7 +102,12 @@ function withTdlibNative(config) {
   config = withDangerousMod(config, [
     'ios',
     async (cfg) => {
-      await copyIosNativeBridge(mobileRoot, cfg.modRequest.platformProjectRoot);
+      const appGroupName =
+        IOSConfig.XcodeUtils.getProjectName(cfg.modRequest.projectRoot) ||
+        cfg.modRequest.projectName ||
+        config.name ||
+        'mobile';
+      await copyIosNativeBridge(mobileRoot, cfg.modRequest.platformProjectRoot, appGroupName);
       return cfg;
     },
   ]);
@@ -117,8 +144,18 @@ function withTdlibNative(config) {
       const entry = configs[key];
       if (!entry || typeof entry !== 'object' || !entry.buildSettings) continue;
       const infoPlist = String(entry.buildSettings.INFOPLIST_FILE || '').replace(/"/g, '');
-      if (infoPlist !== 'mobile/Info.plist') continue;
-      entry.buildSettings.SWIFT_OBJC_BRIDGING_HEADER = '"mobile/mobile-Bridging-Header.h"';
+      if (infoPlist !== `${projectName}/Info.plist`) continue;
+      entry.buildSettings.SWIFT_OBJC_BRIDGING_HEADER = `"${projectName}/${projectName}-Bridging-Header.h"`;
+      const existingHeaderSearchPaths = Array.isArray(entry.buildSettings.HEADER_SEARCH_PATHS)
+        ? entry.buildSettings.HEADER_SEARCH_PATHS
+        : entry.buildSettings.HEADER_SEARCH_PATHS
+          ? [entry.buildSettings.HEADER_SEARCH_PATHS]
+          : [];
+      entry.buildSettings.HEADER_SEARCH_PATHS = [
+        ...existingHeaderSearchPaths,
+        '"$(inherited)"',
+        '"$(SRCROOT)/../tdlib-ios/include"',
+      ].filter((value, index, values) => values.indexOf(value) === index);
     }
     return mod;
   });
