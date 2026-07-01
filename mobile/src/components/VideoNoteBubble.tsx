@@ -61,6 +61,7 @@ const SCRUB_RING_INSET = 8;
 const PLAYBACK_UI_TICK_MS = 180;
 const SCRUB_THUMB_SIZE = 18;
 const CENTER_PLAY_TAP_EXCLUSION_RADIUS = 44;
+const PLAYBACK_TAP_MAX_DISTANCE = 14;
 /** Тонкое кольцо экранного градиента вокруг кружка (тёмная тема), без квадратной обёртки MeBubbleChrome. */
 const OUTGOING_SCREEN_GRADIENT_RING_PX = 3;
 const generatedThumbnailCache = new Map<string, string>();
@@ -1302,9 +1303,36 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     [didActivateThumbScrub, finalizeThumbScrub, scrubRingCenter, scrubRingRadius, showPausedPlayOverlay, updateScrubProgress]
   );
 
+  const playbackTapGesture = React.useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(Boolean(normalizedUri))
+        .maxDistance(PLAYBACK_TAP_MAX_DISTANCE)
+        .onEnd((_event, success) => {
+          if (success) {
+            runOnJS(handlePress)();
+          }
+        }),
+    [handlePress, normalizedUri]
+  );
+
   const composedGesture = React.useMemo(
-    () => Gesture.Exclusive(scrubGesture, replyGesture),
-    [replyGesture, scrubGesture]
+    () => {
+      if (showPausedPlayOverlay && replySwipeEnabled) {
+        return Gesture.Exclusive(scrubGesture, replyGesture, playbackTapGesture);
+      }
+
+      if (showPausedPlayOverlay) {
+        return Gesture.Exclusive(scrubGesture, playbackTapGesture);
+      }
+
+      if (replySwipeEnabled) {
+        return Gesture.Exclusive(replyGesture, playbackTapGesture);
+      }
+
+      return playbackTapGesture;
+    },
+    [playbackTapGesture, replyGesture, replySwipeEnabled, scrubGesture, showPausedPlayOverlay]
   );
 
   const posterUri = normalizedThumbnailUri || generatedThumbnailUri;
@@ -1330,12 +1358,11 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       ) : null}
 
       {/* 
-        On some Android devices (e.g. Samsung), expo-video's VideoView swallows 
-        touches even if pointerEvents='none' or nativeControls={false}.
-        An invisible view over it guarantees the touch bubbles up to the Pressable. 
+        On some Android devices, expo-video's native surface can still interfere
+        with touches. Playback tap is handled by RNGH above this renderer.
       */}
       {Platform.OS === 'android' ? (
-        <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'transparent' }} />
+        <View pointerEvents="none" style={styles.videoTouchShield} />
       ) : null}
 
       <Reanimated.View pointerEvents="none" style={[styles.centerBadge, centerBadgeStyle]}>
@@ -1404,7 +1431,13 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       <ReanimatedPressable
         accessibilityRole="button"
         accessibilityLabel={isExpanded ? 'Toggle video note playback' : 'Open video note'}
-        onPress={handlePress}
+        accessibilityActions={[{ name: 'activate' }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'activate') {
+            handlePress();
+          }
+        }}
+        onPress={undefined}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         android_ripple={circleAndroidRipple}
         style={styles.pressableCircleHost}
@@ -1451,8 +1484,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
       <View style={[styles.noteSlotShell, isMe ? styles.slotMe : styles.slotOther]}>
         <Reanimated.View style={[styles.slot, slotStyle]}>
-          {enableReplySwipe && onReplySwipe ? (
-            <GestureDetector gesture={composedGesture}>
+          <GestureDetector gesture={composedGesture}>
+            {enableReplySwipe && onReplySwipe ? (
               <View style={styles.replyGestureContainer}>
                 <Reanimated.View style={[styles.replySwipeAction, replyIconStyle]}>
                   <View style={styles.replySwipeIconWrap}>
@@ -1463,12 +1496,10 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
                   {pressableContent}
                 </Reanimated.View>
               </View>
-            </GestureDetector>
-          ) : showPausedPlayOverlay ? (
-            <GestureDetector gesture={composedGesture}>{pressableContent}</GestureDetector>
-          ) : (
-            pressableContent
-          )}
+            ) : (
+              pressableContent
+            )}
+          </GestureDetector>
         </Reanimated.View>
 
         {inlineReactions?.length ? (
@@ -1572,6 +1603,10 @@ const styles = StyleSheet.create({
   },
   video: {
     ...StyleSheet.absoluteFillObject,
+  },
+  videoTouchShield: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
   },
   centerBadge: {
     ...StyleSheet.absoluteFillObject,
