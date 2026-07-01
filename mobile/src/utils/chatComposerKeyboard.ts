@@ -19,6 +19,11 @@ export type ChatComposerAnimatedKeyboard = {
   height: SharedValue<number>;
 };
 
+type ChatComposerKeyboardLiftOptions = {
+  /** Some absolute-composer screens do not get Android root resize reliably; keep latest rows above IME. */
+  applyListKeyboardOffsetOnAndroid?: boolean;
+};
+
 /**
  * Когда `true`, док смещается вверх на `useAnimatedKeyboard().height`, а список получает
  * столько же `marginBottom` — нужно там, где корень **не** сжимается под IME (типичный iOS
@@ -42,8 +47,11 @@ export const CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT = Platform.OS === 'a
  */
 export function useChatComposerKeyboardLiftStyles(
   animatedKeyboard: ChatComposerAnimatedKeyboard,
-  isVoiceRecordingShared?: SharedValue<boolean>
+  isVoiceRecordingShared?: SharedValue<boolean>,
+  options?: ChatComposerKeyboardLiftOptions,
 ) {
+  const applyListKeyboardOffsetOnAndroid = options?.applyListKeyboardOffsetOnAndroid === true;
+
   const dockAnimatedStyle = useAnimatedStyle(() => {
     if (isVoiceRecordingShared?.value) return { transform: [{ translateY: 0 }] };
     const kb = Math.max(animatedKeyboard.height.value, 0);
@@ -57,7 +65,10 @@ export function useChatComposerKeyboardLiftStyles(
   const listWrapAnimatedStyle = useAnimatedStyle(() => {
     if (isVoiceRecordingShared?.value) return { marginBottom: 0 };
     const kb = Math.max(animatedKeyboard.height.value, 0);
-    const margin = CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET ? kb : 0;
+    const shouldApplyListOffset =
+      CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET ||
+      (Platform.OS === 'android' && applyListKeyboardOffsetOnAndroid);
+    const margin = shouldApplyListOffset ? kb : 0;
     return { marginBottom: margin };
   });
 

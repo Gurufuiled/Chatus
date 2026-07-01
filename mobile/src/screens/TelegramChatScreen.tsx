@@ -181,7 +181,9 @@ export function TelegramChatScreen() {
   const isVoiceRecordingShared = useSharedValue(false);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const { dockAnimatedStyle: inputDockAnimatedStyle, listWrapAnimatedStyle: listKeyboardAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), isVoiceRecordingShared);
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), isVoiceRecordingShared, {
+      applyListKeyboardOffsetOnAndroid: true,
+    });
   const blurTargetRef = useRef<View>(null);
   const { colors, resolvedScheme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -2232,6 +2234,10 @@ export function TelegramChatScreen() {
             footer={discussionFooter}
             incomingChannelPost={channelIncoming}
             channelAlbumWidth={channelIncoming ? channelMediaClamp.maxWidth : undefined}
+            inlineReactions={item.reactions}
+            allowMessageReactions={true}
+            onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+            reactionAccentColor={chatTheme.bubbleMeAccent}
             onTilePress={(messageId) =>
               openTelegramAlbumViewer(item.albumMedia ?? [], messageId, item.text)
             }
@@ -2250,7 +2256,6 @@ export function TelegramChatScreen() {
               style={measureShellStyle}
             >
               {channelIncoming ? albumBubble : wrapTelegramMediaBubble(albumBubble)}
-              {reactionsNode}
             </View>
           </Pressable>,
         );
@@ -2275,6 +2280,7 @@ export function TelegramChatScreen() {
                 />
               }
             />
+            {reactionsNode}
           </>
         );
         return wrapSelectionShell(
@@ -2304,7 +2310,6 @@ export function TelegramChatScreen() {
               ) : (
                 <View style={[styles.bubble, textBubbleColorStyle]}>{placeholderBody}</View>
               )}
-              {reactionsNode}
             </View>
           </Pressable>,
         );
@@ -2339,6 +2344,10 @@ export function TelegramChatScreen() {
               footer={discussionFooter}
               incomingChannelPost
               channelAlbumWidth={channelMediaClamp.maxWidth}
+              inlineReactions={item.reactions}
+              allowMessageReactions={true}
+              onToggleInlineReaction={(emoji) => void handleToggleReaction(item, emoji)}
+              reactionAccentColor={chatTheme.bubbleMeAccent}
               onTilePress={(messageId) =>
                 openTelegramAlbumViewer(
                   [
@@ -2370,7 +2379,6 @@ export function TelegramChatScreen() {
                 style={measureShellStyle}
               >
                 {channelSinglePhoto}
-                {reactionsNode}
               </View>
             </Pressable>,
           );
@@ -2673,12 +2681,14 @@ export function TelegramChatScreen() {
               {bubbleHeader}
               {textBubbleContent}
               {webPageNode}
+              {reactionsNode}
             </View>
           ) : (
             <>
               {bubbleHeader}
               {textBubbleContent}
               {webPageNode}
+              {reactionsNode}
             </>
           )}
           {discussionFooter}
@@ -2708,7 +2718,6 @@ export function TelegramChatScreen() {
             ) : (
               <View style={incomingTextBubbleSolidStyle}>{textBubbleBody}</View>
             )}
-            {reactionsNode}
           </View>
         </Pressable>,
       );

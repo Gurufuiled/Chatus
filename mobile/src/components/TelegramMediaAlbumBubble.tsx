@@ -10,6 +10,7 @@ import type { ChatTheme } from '../theme/chatThemes';
 import type { TelegramAlbumMediaItem } from '../screens/telegramChat/types';
 import type { TelegramChatStyles } from '../screens/telegramChat/telegramChatStyles';
 import { formatMediaDuration } from '../utils/mediaDuration';
+import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const ALBUM_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);
@@ -32,6 +33,10 @@ export type TelegramMediaAlbumBubbleProps = {
   /** Channel incoming post: full-width card, footer attached to album. */
   incomingChannelPost?: boolean;
   channelAlbumWidth?: number;
+  inlineReactions?: InlineReactionItem[];
+  allowMessageReactions?: boolean;
+  onToggleInlineReaction?: (emoji: string) => void;
+  reactionAccentColor?: string;
   /** Tap on tile — `messageId` of the album part. */
   onTilePress?: (messageId: number) => void;
 };
@@ -58,6 +63,10 @@ export function TelegramMediaAlbumBubble({
   footer,
   incomingChannelPost = false,
   channelAlbumWidth,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
+  reactionAccentColor,
   onTilePress,
 }: TelegramMediaAlbumBubbleProps) {
   const media = useMemo(() => items.slice(0, 10), [items]);
@@ -264,6 +273,15 @@ export function TelegramMediaAlbumBubble({
             iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
           />
         </View>
+      ) : null}
+      {inlineReactions?.length ? (
+        <MessageReactionInline
+          reactions={inlineReactions}
+          isMe={isMe}
+          allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+          onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+          accentColor={reactionAccentColor}
+        />
       ) : null}
       {footer}
     </>
