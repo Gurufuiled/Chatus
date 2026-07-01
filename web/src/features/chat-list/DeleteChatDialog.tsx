@@ -28,7 +28,7 @@ export function DeleteChatDialog({ chat, onClose, onConfirm, isPending = false }
     : `УДАЛИТЬ ДЛЯ ВСЕХ`;
 
   return (
-    <div className="delete-chat-dialog" role="dialog" aria-modal="true" aria-label="Удалить чат">
+    <div className="delete-chat-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-chat-title" aria-describedby="delete-chat-desc">
       <button 
         type="button" 
         className="delete-chat-dialog__backdrop" 
@@ -39,10 +39,10 @@ export function DeleteChatDialog({ chat, onClose, onConfirm, isPending = false }
       <div className="delete-chat-dialog__panel">
         <div className="delete-chat-dialog__header">
           <Avatar name={displayName} imageUrl={chat.avatar_url} size={36} />
-          <h2 className="delete-chat-dialog__title">Удалить чат</h2>
+          <h2 id="delete-chat-title" className="delete-chat-dialog__title">Удалить чат</h2>
         </div>
         <div className="delete-chat-dialog__body">
-          <p className="delete-chat-dialog__description">
+          <p id="delete-chat-desc" className="delete-chat-dialog__description">
             {isPrivate
               ? `Удалить чат с ${displayName} без возможности восстановления?`
               : `Удалить чат ${displayName} без возможности восстановления?`}
