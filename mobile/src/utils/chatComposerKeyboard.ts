@@ -24,21 +24,19 @@ export type ChatComposerAnimatedKeyboard = {
  * столько же `marginBottom` — нужно там, где корень **не** сжимается под IME (типичный iOS
  * с абсолютным доком, либо Android с `adjustPan`).
  *
- * На Android с `adjustResize` корень уже поднимается над клавиатурой; повторный `marginBottom`
- * у списка даёт двойной зазор — поэтому здесь `false` на Android.
- * Подъём только дока на Android — {@link CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT}.
+ * On Android, the base resize path is handled separately by
+ * CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT.
  */
 export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = Platform.OS !== 'android';
 
 /**
- * Android: абсолютный док не всегда поднимается с `adjustResize` (MIUI / gesture nav).
- * Поднимаем только док по `useAnimatedKeyboard`, без `marginBottom` у списка — иначе двойной зазор.
+ * Android: absolute docks do not always move with `adjustResize` (MIUI / gesture nav).
+ * When the dock is translated, the list reserves the same space.
  */
 export const CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT = Platform.OS === 'android';
 
 /**
  * Стили смещения абсолютного дока и нижнего отступа списка относительно клавиатуры.
- * Логика завязана на {@link CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET}.
  */
 export function useChatComposerKeyboardLiftStyles(
   animatedKeyboard: ChatComposerAnimatedKeyboard,
@@ -57,7 +55,10 @@ export function useChatComposerKeyboardLiftStyles(
   const listWrapAnimatedStyle = useAnimatedStyle(() => {
     if (isVoiceRecordingShared?.value) return { marginBottom: 0 };
     const kb = Math.max(animatedKeyboard.height.value, 0);
-    const margin = CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET ? kb : 0;
+    const margin =
+      CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET || CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT
+        ? kb
+        : 0;
     return { marginBottom: margin };
   });
 

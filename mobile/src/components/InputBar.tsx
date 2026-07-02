@@ -1730,8 +1730,6 @@ export function InputBar({
                   >
                     {onSendChannelChange && sendChannel === 'telegram' ? (
                       <PlatformSourceIcon source="telegram" size={20} />
-                    ) : onSendChannelChange && sendChannel === 'chatus' ? (
-                      <PlatformSourceIcon source="chatus" size={20} />
                     ) : (
                       <SendIcon />
                     )}
