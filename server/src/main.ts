@@ -43,6 +43,10 @@ async function bootstrap() {
     bufferLogs: true,
     rawBody: true,
   });
+  // LiveKit webhooks use Content-Type: application/webhook+json (not application/json).
+  app.useBodyParser('json', {
+    type: 'application/webhook+json',
+  });
   app.useLogger(app.get(Logger));
   app.useWebSocketAdapter(new WsAdapter(app));
 

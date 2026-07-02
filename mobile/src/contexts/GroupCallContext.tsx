@@ -198,6 +198,16 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       isCreator: boolean;
       phase: 'creating' | 'joining';
     }) => {
+      const currentUserId = authStore.getState().user?.id;
+      if (!currentUserId) {
+        throw new Error('Not authenticated');
+      }
+
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        throw new Error('Microphone permission denied');
+      }
+
       await detachRoom();
       await Audio.setAudioModeAsync(buildCallAudioMode(true));
       await AudioSession.startAudioSession();
@@ -250,7 +260,12 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       await room.connect(params.livekitUrl, params.token, {
         autoSubscribe: true,
       });
-      await room.localParticipant.setMicrophoneEnabled(true);
+      try {
+        await room.localParticipant.setMicrophoneEnabled(true);
+      } catch (micErr) {
+        await detachRoom();
+        throw micErr instanceof Error ? micErr : new Error(String(micErr));
+      }
 
       syncParticipantsFromRoom(room);
       setState({
@@ -259,7 +274,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         chatId: params.chatId,
         chatTitle: params.chatTitle,
         participants: room.localParticipant
-          ? [mapLiveKitParticipant(room.localParticipant, authStore.getState().user!.id)]
+          ? [mapLiveKitParticipant(room.localParticipant, currentUserId)]
           : [],
         isMuted: false,
         isSpeakerOn: true,

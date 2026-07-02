@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ChatType, Prisma } from '@prisma/client';
 import {
@@ -472,9 +474,26 @@ export class GroupCallsService {
     await this.broadcastEnded(room);
   }
 
-  async handleWebhook(rawBody: Buffer, authHeader: string | undefined) {
+           async handleWebhook(rawBody: Buffer, authHeader: string | undefined) {
     const receiver = this.getWebhookReceiver();
-    const event = await receiver.receive(rawBody.toString('utf8'), authHeader);
+    let event;
+    try {
+      event = await receiver.receive(rawBody.toString('utf8'), authHeader);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('authorization header is empty')) {
+        throw new UnauthorizedException(message);
+      }
+      if (
+        message.includes('sha256 checksum') ||
+        message.includes('invalid token') ||
+        message.includes('signature')
+      ) {
+        throw new BadRequestException(message);
+      }
+      this.log.warn(`LiveKit webhook verification failed: ${message}`);
+      throw new BadRequestException('Invalid LiveKit webhook payload');
+    }
 
     const roomName = event.room?.name;
     if (!roomName) return { ok: true };
