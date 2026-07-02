@@ -7,11 +7,13 @@ import {
   Easing,
   GestureResponderEvent,
   Linking,
+  Pressable,
   StatusBar,
   StyleSheet,
+  Text,
   View,
 } from 'react-native';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -40,6 +42,8 @@ import type {
   GroupVoiceItem,
 } from '../components/group-profile/groupProfile.types';
 import { getDisplayNameFromMember } from '../components/group-profile/groupProfile.utils';
+import { useGroupCall } from '../contexts/GroupCallContext';
+import { GroupCallStartSheet } from '../components/group-call/GroupCallStartSheet';
 import { resolveAvatarUrl } from '../config';
 import type { ChatsStackParamList } from '../navigation/types';
 import { apiUpload } from '../services/apiClient';
@@ -382,6 +386,15 @@ export function GroupProfileScreen() {
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
+  const [groupCallSheetVisible, setGroupCallSheetVisible] = useState(false);
+  const {
+    activeRoomByChatId,
+    refreshActiveRoom,
+    startGroupCall,
+    joinGroupCall,
+    expand,
+    isInCallForChat,
+  } = useGroupCall();
   const [memberMenu, setMemberMenu] = useState<MemberContextMenuState>(null);
   const [actionMenu, setActionMenu] = useState<ProfileActionMenuState>(null);
   const [tagEditorMember, setTagEditorMember] = useState<GroupMember | null>(null);
@@ -428,6 +441,33 @@ export function GroupProfileScreen() {
   const isMuted = (chat?.is_muted ?? 0) === 1;
   const expandedHeroWidth = GROUP_PROFILE_SCREEN_WIDTH - 28;
   const expandedHeroHeight = Math.min(Math.max(expandedHeroWidth * 1.02, 300), 420);
+  const activeGroupCallRoom = activeRoomByChatId[chatId] ?? null;
+  const isUserInGroupCall = isInCallForChat(chatId);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshActiveRoom(chatId);
+    }, [chatId, refreshActiveRoom]),
+  );
+
+  const handleGroupVoicePress = useCallback(() => {
+    if (activeGroupCallRoom && !isUserInGroupCall) {
+      void joinGroupCall(activeGroupCallRoom.id, chatId, displayName);
+      return;
+    }
+    if (isUserInGroupCall) {
+      expand();
+      return;
+    }
+    setGroupCallSheetVisible(true);
+  }, [
+    activeGroupCallRoom,
+    chatId,
+    displayName,
+    expand,
+    isUserInGroupCall,
+    joinGroupCall,
+  ]);
   const selectedUserIds = useMemo(
     () => new Set(selectedUsers.map((user) => user.id)),
     [selectedUsers]
@@ -1367,6 +1407,30 @@ export function GroupProfileScreen() {
         />
 
         {!isEditMode ? (
+          <View style={{ paddingHorizontal: 4, paddingBottom: 8, gap: 8 }}>
+            <Pressable
+              onPress={handleGroupVoicePress}
+              style={({ pressed }) => ({
+                borderRadius: 14,
+                backgroundColor: themeColors.inputBackgroundSolid,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                opacity: pressed ? 0.88 : 1,
+              })}
+            >
+              <Text style={{ color: themeColors.textPrimary, fontWeight: '700', fontSize: 15 }}>
+                🔊 {isUserInGroupCall ? 'Открыть голосовой чат' : 'Начать голосовой чат'}
+              </Text>
+            </Pressable>
+            {activeGroupCallRoom ? (
+              <Text style={{ color: themeColors.textSecondary, fontSize: 13, paddingHorizontal: 4 }}>
+                {`Сейчас в звонке: ${activeGroupCallRoom.participant_count} участник(ов)`}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {!isEditMode ? (
           <GroupProfileStickyTabs
             activeTab={activeTab}
             tabs={GROUP_TAB_ITEMS}
@@ -1481,6 +1545,14 @@ export function GroupProfileScreen() {
         onClose={() => setAvatarSheetVisible(false)}
         onPick={(pick) => void handleAvatarPicked(pick)}
         subtitle="Фото группы"
+      />
+
+      <GroupCallStartSheet
+        visible={groupCallSheetVisible}
+        onClose={() => setGroupCallSheetVisible(false)}
+        onStartVoice={() => {
+          void startGroupCall(chatId, displayName);
+        }}
       />
     </View>
   );

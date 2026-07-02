@@ -28,7 +28,9 @@ type PublicEnvKey =
   /** Если задан — кнопка «Обновить» открывает этот URL вместо android.apkUrl из манифеста (удобно для Google Drive без коммита id в репо). */
   | 'EXPO_PUBLIC_CLIENT_UPDATE_APK_URL'
   /** Публичная политика конфиденциальности (экран входа, RuStore). */
-  | 'EXPO_PUBLIC_PRIVACY_POLICY_URL';
+  | 'EXPO_PUBLIC_PRIVACY_POLICY_URL'
+  /** LiveKit WSS URL for group voice calls (e.g. ws://127.0.0.1:7880 or wss://host/livekit). */
+  | 'EXPO_PUBLIC_LIVEKIT_URL';
 
 function readExpoPublic(key: PublicEnvKey): string | undefined {
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined;
@@ -221,6 +223,9 @@ export const CLIENT_UPDATE_APK_URL_OVERRIDE = (
 ).trim();
 
 export const OAUTH_REDIRECT_URI = 'messenger://auth/callback';
+
+/** LiveKit client URL for group calls (Phase 1 audio MVP). */
+export const LIVEKIT_URL = readExpoPublic('EXPO_PUBLIC_LIVEKIT_URL') || 'ws://127.0.0.1:7880';
 
 /** Схема ссылок на каналы (slug / invite). OAuth остаётся на `messenger://`. */
 export const CHANNEL_LINK_SCHEME = 'chatus';

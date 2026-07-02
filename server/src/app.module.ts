@@ -19,6 +19,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { MailboxModule } from './mailbox/mailbox.module';
 import { AdminModule } from './admin/admin.module';
 import { LineSyncModule } from './linesync/linesync.module';
+import { GroupCallsModule } from './group-calls/group-calls.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { LineSyncModule } from './linesync/linesync.module';
     MailboxModule,
     AdminModule,
     LineSyncModule,
+    GroupCallsModule,
     WebsocketModule,
     SignalingModule,
   ],

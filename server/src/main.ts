@@ -41,6 +41,7 @@ async function bootstrap() {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    rawBody: true,
   });
   app.useLogger(app.get(Logger));
   app.useWebSocketAdapter(new WsAdapter(app));

@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { CallProvider } from './src/contexts/CallContext';
+import { GroupCallProvider } from './src/contexts/GroupCallContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { VoicePlayerProvider } from './src/contexts/VoicePlayerContext';
 import { WebSocketProvider } from './src/contexts/WebSocketProvider';
@@ -90,13 +91,15 @@ export default function App() {
               <WebSocketProvider>
                 <VoicePlayerProvider>
                   <CallProvider>
-                    <ThemedNavigationContainer>
-                      <ThemedStatusBar />
-                      <RootNavigator />
-                      <InAppPushNotification />
-                      <TelegramTdlibNotificationListener />
-                      <AppUpdateGate />
-                    </ThemedNavigationContainer>
+                    <GroupCallProvider>
+                      <ThemedNavigationContainer>
+                        <ThemedStatusBar />
+                        <RootNavigator />
+                        <InAppPushNotification />
+                        <TelegramTdlibNotificationListener />
+                        <AppUpdateGate />
+                      </ThemedNavigationContainer>
+                    </GroupCallProvider>
                   </CallProvider>
                 </VoicePlayerProvider>
               </WebSocketProvider>

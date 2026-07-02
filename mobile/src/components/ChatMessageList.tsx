@@ -92,6 +92,8 @@ import {
   getCompositeTextBody,
   tryParseCompositeMessage,
 } from '../stickers/chatusCompositePayload';
+import { GroupCallSystemMessage } from './group-call/GroupCallSystemMessage';
+import { parseGroupCallSystemContent } from '../utils/groupCallSystemMessage';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -138,6 +140,9 @@ type ChatMessageListProps = {
   activeVideoNoteVisible: boolean;
   scrollFabBottomOffset: number;
   enableScrollFab?: boolean;
+  activeGroupCallRoomId?: string | null;
+  isUserInGroupCall?: boolean;
+  onJoinGroupCall?: (roomId: string) => void;
 };
 
 function getChatListRowDateMs(row: ChatListRow): number {
@@ -585,6 +590,9 @@ type MessageRowProps = {
   groupNewerAdjacent: Message | undefined;
   showDaySeparator: boolean;
   dayLabel: string;
+  activeGroupCallRoomId?: string | null;
+  isUserInGroupCall?: boolean;
+  onJoinGroupCall?: (roomId: string) => void;
 };
 
 function wrapChatRowWithDaySeparator(
@@ -1127,6 +1135,9 @@ const MessageRow = React.memo(function MessageRow({
   groupNewerAdjacent,
   showDaySeparator,
   dayLabel,
+  activeGroupCallRoomId,
+  isUserInGroupCall = false,
+  onJoinGroupCall,
 }: MessageRowProps) {
   const lastTapAtRef = useRef(0);
   const { colors: themeColors } = useTheme();
@@ -1330,6 +1341,23 @@ const MessageRow = React.memo(function MessageRow({
           />
         </View>
       );
+    }
+
+    if (bodyItem.msg_type === 'system') {
+      const payload = parseGroupCallSystemContent(bodyItem.content);
+      if (payload) {
+        const canJoin =
+          payload.action === 'started' &&
+          Boolean(activeGroupCallRoomId && activeGroupCallRoomId === payload.room_id) &&
+          !isUserInGroupCall;
+        return (
+          <GroupCallSystemMessage
+            payload={payload}
+            canJoin={canJoin}
+            onJoin={canJoin && onJoinGroupCall ? () => onJoinGroupCall(payload.room_id) : undefined}
+          />
+        );
+      }
     }
 
     const bubbleCore = () => {
@@ -2557,6 +2585,9 @@ export const ChatMessageList = React.memo(function ChatMessageList({
   activeVideoNoteVisible,
   scrollFabBottomOffset,
   enableScrollFab = true,
+  activeGroupCallRoomId = null,
+  isUserInGroupCall = false,
+  onJoinGroupCall,
 }: ChatMessageListProps) {
   const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
   const { resolvedScheme } = useTheme();
@@ -2746,10 +2777,14 @@ export const ChatMessageList = React.memo(function ChatMessageList({
           groupNewerAdjacent={groupNewer}
           showDaySeparator={showDaySeparator}
           dayLabel={dayLabel}
+          activeGroupCallRoomId={activeGroupCallRoomId}
+          isUserInGroupCall={isUserInGroupCall}
+          onJoinGroupCall={onJoinGroupCall}
         />
       );
     },
     [
+      activeGroupCallRoomId,
       allowReactions,
       canSwipeReply,
       chatId,
@@ -2765,8 +2800,10 @@ export const ChatMessageList = React.memo(function ChatMessageList({
       messageIndexById,
       searchHighlightQuery,
       isGroupChat,
+      isUserInGroupCall,
       messages,
       navigation,
+      onJoinGroupCall,
       onMessageLongPress,
       onForwardHeaderPress,
       onToggleReaction,

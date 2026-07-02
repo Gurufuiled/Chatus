@@ -25,6 +25,9 @@ export type WebSocketEventHandlers = {
   onLineTail?: (payload: WebSocketMessage) => void;
   onTyping?: (payload: WebSocketMessage) => void;
   onPresence?: (payload: WebSocketMessage) => void;
+  onGroupCallStarted?: (payload: WebSocketMessage) => void;
+  onGroupCallEnded?: (payload: WebSocketMessage) => void;
+  onGroupCallParticipants?: (payload: WebSocketMessage) => void;
   onError?: (payload: WebSocketMessage) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
@@ -173,6 +176,15 @@ class WebSocketServiceClass {
         break;
       case 'presence':
         this.handlers.onPresence?.(msg);
+        break;
+      case 'group_call_started':
+        this.handlers.onGroupCallStarted?.(msg);
+        break;
+      case 'group_call_ended':
+        this.handlers.onGroupCallEnded?.(msg);
+        break;
+      case 'group_call_participants':
+        this.handlers.onGroupCallParticipants?.(msg);
         break;
       case 'error':
         this.handlers.onError?.(msg);

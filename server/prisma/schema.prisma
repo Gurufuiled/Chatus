@@ -114,6 +114,7 @@ model User {
   addressBookContacts AddressBookContact[] @relation("AddressBookOwner")
   addressBookLinks    AddressBookContact[] @relation("AddressBookLinkedUser")
   phoneChangeSessions PhoneChangeSession[]
+  startedGroupCalls   GroupCallRoom[] @relation("GroupCallStarter")
 
   @@map("users")
 }
@@ -275,10 +276,26 @@ model Chat {
   pinnedMessage Message?  @relation("ChatPinnedMessage", fields: [pinnedMessageId], references: [id], onDelete: SetNull)
   members     ChatMember[]
   messages    Message[]
+  groupCallRooms GroupCallRoom[]
 
   @@index([createdById])
   @@index([lastMessageAt])
   @@map("chats")
+}
+
+model GroupCallRoom {
+  id              String    @id @default(uuid())
+  chatId          String    @map("chat_id")
+  livekitRoomName String    @unique @map("livekit_room_name")
+  startedByUserId String    @map("started_by_user_id")
+  startedAt       DateTime  @default(now()) @map("started_at")
+  endedAt         DateTime? @map("ended_at")
+
+  chat      Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  startedBy User @relation("GroupCallStarter", fields: [startedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, endedAt])
+  @@map("group_call_rooms")
 }
 
 model ChatMember {

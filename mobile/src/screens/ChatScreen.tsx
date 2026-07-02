@@ -148,6 +148,11 @@ import { bubbleRadius } from '../theme/stylePrimitives';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
 import { hideOthersMessageOnlyOnDevice } from '../services/locallyHiddenMessages';
+import { useGroupCall } from '../contexts/GroupCallContext';
+import { GroupCallBanner } from '../components/group-call/GroupCallBanner';
+import { GroupCallMinimizedBar } from '../components/group-call/GroupCallMinimizedBar';
+import { GroupCallStartSheet } from '../components/group-call/GroupCallStartSheet';
+import { formatGroupCallParticipantNames } from '../utils/groupCallSystemMessage';
 import {
   PeerFirstAlbumImage,
   PeerFirstFileBubble,
@@ -449,6 +454,7 @@ export function ChatScreen() {
   const route = useRoute<ChatRoute>();
   const isFocused = useIsFocused();
   const { chatId, focusMessageId, startSearch } = route.params;
+  const chatTitle = route.params.chatTitle ?? 'Чат';
   const { colors: themeColors, resolvedScheme } = useTheme();
   const styles = useMemo(() => buildChatScreenStyles(themeColors), [themeColors]);
   const authorOpts = useMemo(() => ({ accentColor: themeColors.accent }), [themeColors.accent]);
@@ -484,6 +490,16 @@ export function ChatScreen() {
   const [forwardFromSelection, setForwardFromSelection] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [isSearchMode, setIsSearchMode] = useState(false);
+  const [groupCallSheetVisible, setGroupCallSheetVisible] = useState(false);
+  const {
+    state: groupCallState,
+    activeRoomByChatId,
+    refreshActiveRoom,
+    startGroupCall,
+    joinGroupCall,
+    expand,
+    isInCallForChat,
+  } = useGroupCall();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchActiveMatchIndex, setSearchActiveMatchIndex] = useState(0);
   const matchedMessageIdsRef = useRef<string[]>([]);
@@ -839,6 +855,48 @@ export function ChatScreen() {
       };
     }
   }, [chatId, messageById, pinnedMessageId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (currentChat?.chat_type !== 'group') return;
+      void refreshActiveRoom(chatId);
+    }, [chatId, currentChat?.chat_type, refreshActiveRoom]),
+  );
+
+  const activeGroupCallRoom = activeRoomByChatId[chatId] ?? null;
+  const isUserInGroupCall = isInCallForChat(chatId);
+  const groupCallParticipantPreview = useMemo(
+    () => formatGroupCallParticipantNames(groupCallState.participants),
+    [groupCallState.participants],
+  );
+
+  const handleOpenGroupCallSheet = useCallback(() => {
+    if (activeGroupCallRoom && !isUserInGroupCall) {
+      void joinGroupCall(activeGroupCallRoom.id, chatId, chatTitle);
+      return;
+    }
+    if (isUserInGroupCall) {
+      expand();
+      return;
+    }
+    setGroupCallSheetVisible(true);
+  }, [
+    activeGroupCallRoom,
+    chatId,
+    expand,
+    isUserInGroupCall,
+    joinGroupCall,
+    chatTitle,
+  ]);
+
+  const handleStartGroupVoiceCall = useCallback(() => {
+    void startGroupCall(chatId, chatTitle);
+  }, [chatId, startGroupCall, chatTitle]);
+
+  const handleJoinActiveGroupCall = useCallback(() => {
+    if (!activeGroupCallRoom) return;
+    void joinGroupCall(activeGroupCallRoom.id, chatId, chatTitle);
+  }, [activeGroupCallRoom, chatId, joinGroupCall, chatTitle]);
 
   useFocusEffect(
     useCallback(() => {
@@ -2882,6 +2940,9 @@ export function ChatScreen() {
             chatId={chatId}
             navigation={navigation}
             floating
+            showGroupCallButton={isGroupChat}
+            onGroupCallPress={isGroupChat ? handleOpenGroupCallSheet : undefined}
+            onSearchPress={() => setIsSearchMode(true)}
           />
         ) : null}
 
@@ -2933,6 +2994,17 @@ export function ChatScreen() {
           searchInputRef={searchInputRef}
         />
 
+        {isGroupChat ? (
+          <GroupCallBanner
+            chatId={chatId}
+            activeRoom={activeGroupCallRoom}
+            isUserInCall={isUserInGroupCall}
+            participantPreview={groupCallParticipantPreview}
+            onJoin={handleJoinActiveGroupCall}
+            onOpen={expand}
+          />
+        ) : null}
+
         {showMessagesSkeleton ? (
           <ChatMessagesSkeleton
             style={styles.messagesSkeletonOverlay}
@@ -2975,6 +3047,11 @@ export function ChatScreen() {
             12
           }
           enableScrollFab={!selectionMode && !isSearchMode && !isVoiceRecording}
+          activeGroupCallRoomId={activeGroupCallRoom?.id ?? null}
+          isUserInGroupCall={isUserInGroupCall}
+          onJoinGroupCall={(roomId) => {
+            void joinGroupCall(roomId, chatId, chatTitle);
+          }}
         />
 
         {isSearchMode && normalizedSearchQuery.length > 0 && matchedMessageIds.length > 0 ? (
@@ -3166,8 +3243,21 @@ export function ChatScreen() {
             composerFocusRef={composerFocusRef}
           />
         )}
+        {isGroupChat ? (
+          <GroupCallMinimizedBar
+            bottomOffset={
+              (selectionMode ? selectionActionBarHeight : inputBarHeight) + composerDockPaddingBottom
+            }
+          />
+        ) : null}
       </BlurTargetView>
       </InteractiveChatBackShell>
+
+      <GroupCallStartSheet
+        visible={groupCallSheetVisible}
+        onClose={() => setGroupCallSheetVisible(false)}
+        onStartVoice={handleStartGroupVoiceCall}
+      />
 
       {sendChannelMenu.anchor ? (
         <SendChannelSelector

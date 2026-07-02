@@ -45,11 +45,15 @@ services:
     environment:
       # Внутри сети compose хост БД — db (не localhost)
       DATABASE_URL: postgresql://messenger:${POSTGRES_PASSWORD:-messenger_local_only_change_me}@db:5432/messenger
+      LIVEKIT_HTTP_URL: http://livekit:7880
+      LIVEKIT_URL: ws://livekit:7880
       # Firebase Admin SDK (FCM direct push). Файл монтируется с хоста (см. volumes).
       FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/app/firebase-service-account.json}
     depends_on:
       db:
         condition: service_healthy
+      livekit:
+        condition: service_started
     volumes:
       - chatus_uploads:/app/uploads
       # APK на лендинге /downloads/chatus-release.apk — заливай через scripts/deploy-apk-prod.mjs без пересборки образа
@@ -85,6 +89,30 @@ services:
     networks:
       - default
       - traefik-public # Подключение к общей сети Traefik для проксирования и выписки SSL
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml --dev
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - '127.0.0.1:7880:7880'
+      - '7881:7881'
+      - '50000-50100:50000-50100/udp'
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.chatus-livekit.rule=Host(`messenger.startapus.com`) && PathPrefix(`/livekit`)"
+      - "traefik.http.routers.chatus-livekit.entrypoints=websecure"
+      - "traefik.http.routers.chatus-livekit.tls=true"
+      - "traefik.http.routers.chatus-livekit.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.chatus-livekit.service=chatus-livekit-service"
+      - "traefik.http.middlewares.chatus-livekit-strip.stripprefix.prefixes=/livekit"
+      - "traefik.http.routers.chatus-livekit.middlewares=chatus-livekit-strip"
+      - "traefik.http.services.chatus-livekit-service.loadbalancer.server.port=7880"
+    networks:
+      - default
+      - traefik-public
 
 volumes:
   chatus_pgdata:
