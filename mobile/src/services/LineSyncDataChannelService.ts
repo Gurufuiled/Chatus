@@ -9,7 +9,7 @@ import {
   RTCIceCandidate,
   RTCPeerConnection,
   RTCSessionDescription,
-} from 'react-native-webrtc';
+} from '@livekit/react-native-webrtc';
 import { getWebRtcIceServers } from '../config';
 import { SignalingService } from './SignalingService';
 import { recordLineSyncDcEnsureOpen, recordLineSyncDcIncomingOpen } from './LineSyncTelemetry';

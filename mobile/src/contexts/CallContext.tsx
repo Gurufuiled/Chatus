@@ -17,7 +17,7 @@ import {
   RTCView,
   type RTCRtpSender,
   mediaDevices,
-} from 'react-native-webrtc';
+} from '@livekit/react-native-webrtc';
 import {
   Alert,
   Modal,
