@@ -134,9 +134,12 @@ export class AuthService {
     clearTimeout(timeoutId);
 
     if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { message?: string };
+      const err = (await res.json().catch(() => ({}))) as { message?: string | string[] };
       console.error('[Auth] loginWithCode: failed', res.status, err);
-      throw new Error(err.message || `Login failed: ${res.status}`);
+      const msg = Array.isArray(err.message)
+        ? err.message.join(', ')
+        : err.message;
+      throw new Error(msg || `Login failed: ${res.status}`);
     }
 
     const data = (await res.json()) as {

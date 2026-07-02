@@ -43,9 +43,10 @@ async function bootstrap() {
     bufferLogs: true,
     rawBody: true,
   });
-  // LiveKit webhooks use Content-Type: application/webhook+json (not application/json).
+  // rawBody: true disables the default JSON parser unless re-registered via useBodyParser.
+  // Must include application/json (mobile auth, API) and application/webhook+json (LiveKit).
   app.useBodyParser('json', {
-    type: 'application/webhook+json',
+    type: ['application/json', 'application/webhook+json'],
   });
   app.useLogger(app.get(Logger));
   app.useWebSocketAdapter(new WsAdapter(app));
