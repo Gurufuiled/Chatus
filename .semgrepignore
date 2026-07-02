@@ -14,4 +14,3 @@ server/dist/
 **/.env.example
 **/.env.*.example
 mobile/eas.json
-.github/
