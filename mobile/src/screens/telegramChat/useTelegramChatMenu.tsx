@@ -20,9 +20,10 @@ import {
   tdlibRemoveMessageReaction,
   tdlibUnpinChatMessage,
   toTelegramReactionEmoji,
+  applyTelegramReactionToggle,
 } from './tdlibChatActions';
 import type { TelegramChatStyles } from './telegramChatStyles';
-import { getTelegramRowTdMessageIds } from './telegramAlbumRows';
+import { findTelegramRowIndexByTdMessageId, getTelegramRowTdMessageIds } from './telegramAlbumRows';
 import type { TelegramMessageMenuState, TelegramMessageRow } from './types';
 import type { ChatTheme } from '../../theme/chatThemes';
 
@@ -54,6 +55,7 @@ type UseTelegramChatMenuParams = {
   pinnedMessageId: number | null;
   setPinnedMessageId: React.Dispatch<React.SetStateAction<number | null>>;
   ensureReady: () => Promise<void>;
+  setMessages: React.Dispatch<React.SetStateAction<TelegramMessageRow[]>>;
   showMenuReactions?: boolean;
   onEnterSelection: (rowId: string) => void;
   onStartForward: (messageIds: number[]) => void;
@@ -77,6 +79,7 @@ export function useTelegramChatMenu({
   pinnedMessageId,
   setPinnedMessageId,
   ensureReady,
+  setMessages,
   showMenuReactions = true,
   onEnterSelection,
   onStartForward,
@@ -423,6 +426,21 @@ export function useTelegramChatMenu({
       const alreadyMine = row.reactions?.some(
         (r) => toTelegramReactionEmoji(r.emoji) === normalized && r.reacted_by_me === true,
       );
+      const previousReactions = row.reactions;
+      const nextReactions = applyTelegramReactionToggle(
+        row.reactions,
+        emoji,
+        !alreadyMine,
+      );
+
+      setMessages((prev) => {
+        const index = findTelegramRowIndexByTdMessageId(prev, row.messageId);
+        if (index === -1) return prev;
+        const next = [...prev];
+        next[index] = { ...next[index], reactions: nextReactions };
+        return next;
+      });
+
       try {
         await ensureReady();
         if (alreadyMine) {
@@ -432,11 +450,18 @@ export function useTelegramChatMenu({
         }
         closeMenu();
       } catch (err) {
+        setMessages((prev) => {
+          const index = findTelegramRowIndexByTdMessageId(prev, row.messageId);
+          if (index === -1) return prev;
+          const next = [...prev];
+          next[index] = { ...next[index], reactions: previousReactions };
+          return next;
+        });
         const msg = err instanceof Error ? err.message : String(err);
         Alert.alert('Реакция', msg);
       }
     },
-    [chatId, closeMenu, ensureReady, menuState, messagesRef],
+    [chatId, closeMenu, ensureReady, menuState, messagesRef, setMessages],
   );
 
   const renderTelegramMenuPreviewBody = useCallback(

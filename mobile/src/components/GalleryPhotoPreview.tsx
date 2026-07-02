@@ -29,6 +29,7 @@ import Reanimated, {
 import { Image } from "expo-image";
 import { useTheme } from "../contexts/ThemeContext";
 import type { GalleryItem } from "./InputAttachmentSheet";
+import { useModalKeyboardHeight } from "../utils/useModalKeyboardHeight";
 import { CropOverlay } from "./CropOverlay";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -99,8 +100,13 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
 
   /* keyboard-aware bottom offset */
   const keyboard = useAnimatedKeyboard();
+  const modalKeyboardHeight = useModalKeyboardHeight(visible);
   const bottomLiftStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -keyboard.height.value }],
+    transform: [
+      {
+        translateY: -Math.max(keyboard.height.value, modalKeyboardHeight.value, 0),
+      },
+    ],
   }));
 
   /* reset when opening */

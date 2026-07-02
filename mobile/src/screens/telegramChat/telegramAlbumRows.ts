@@ -149,3 +149,11 @@ export function getTelegramRowTdMessageIds(row: TelegramMessageRow): number[] {
   }
   return row.messageId > 0 ? [row.messageId] : [];
 }
+
+/** Find feed row index for a TDLib `message_id` (including album members). */
+export function findTelegramRowIndexByTdMessageId(
+  rows: TelegramMessageRow[],
+  messageId: number,
+): number {
+  return rows.findIndex((row) => getTelegramRowTdMessageIds(row).includes(messageId));
+}

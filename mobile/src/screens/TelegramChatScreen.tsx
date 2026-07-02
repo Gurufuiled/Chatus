@@ -128,6 +128,7 @@ import {
 } from './telegramChat/telegramFileUpdates';
 import {
   getTelegramRowTdMessageIds,
+  findTelegramRowIndexByTdMessageId,
   mergeTelegramFeedRows,
   normalizeTelegramFeedRows,
 } from './telegramChat/telegramAlbumRows';
@@ -139,6 +140,7 @@ import {
   tdlibAddMessageReaction,
   tdlibRemoveMessageReaction,
   toTelegramReactionEmoji,
+  applyTelegramReactionToggle,
 } from './telegramChat/tdlibChatActions';
 import {
   deleteTelegramMessagesFromCache,
@@ -431,6 +433,31 @@ export function TelegramChatScreen() {
     }
   }, []);
 
+  /** TDLib шлёт updateMessageInteractionInfo только для открытого чата. */
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void (async () => {
+        if (!Number.isFinite(chatId)) return;
+        try {
+          await ensureReady();
+          if (cancelled) return;
+          await tdlibClient.send({ '@type': 'openChat', chat_id: chatId });
+          if (cancelled) {
+            void tdlibClient.send({ '@type': 'closeChat', chat_id: chatId }).catch(() => {});
+          }
+        } catch {
+          /* ignore openChat errors */
+        }
+      })();
+      return () => {
+        cancelled = true;
+        if (!Number.isFinite(chatId)) return;
+        void tdlibClient.send({ '@type': 'closeChat', chat_id: chatId }).catch(() => {});
+      };
+    }, [chatId, ensureReady]),
+  );
+
   const handleOpenDiscussion = useCallback(
     (item: TelegramMessageRow) => {
       const cid =
@@ -598,6 +625,7 @@ export function TelegramChatScreen() {
     pinnedMessageId,
     setPinnedMessageId,
     ensureReady,
+    setMessages,
     showMenuReactions: true,
     onEnterSelection: enterTelegramSelection,
     onStartForward: handleStartForward,
@@ -610,12 +638,25 @@ export function TelegramChatScreen() {
     async (item: TelegramMessageRow, emoji: string) => {
       if (item.messageId <= 0) return;
 
-      /** TDLib присылает реакции без U+FE0F — сравниваем в нормализованном виде. */
       const normalized = toTelegramReactionEmoji(emoji);
       const existing = item.reactions?.find(
         (r) => toTelegramReactionEmoji(r.emoji) === normalized,
       );
       const isChosenByMe = existing?.reacted_by_me === true;
+      const previousReactions = item.reactions;
+      const nextReactions = applyTelegramReactionToggle(
+        item.reactions,
+        emoji,
+        !isChosenByMe,
+      );
+
+      setMessages((prev) => {
+        const index = findTelegramRowIndexByTdMessageId(prev, item.messageId);
+        if (index === -1) return prev;
+        const next = [...prev];
+        next[index] = { ...next[index], reactions: nextReactions };
+        return next;
+      });
 
       try {
         await ensureReady();
@@ -625,6 +666,13 @@ export function TelegramChatScreen() {
           await tdlibAddMessageReaction(chatId, item.messageId, emoji, false);
         }
       } catch (err) {
+        setMessages((prev) => {
+          const index = findTelegramRowIndexByTdMessageId(prev, item.messageId);
+          if (index === -1) return prev;
+          const next = [...prev];
+          next[index] = { ...next[index], reactions: previousReactions };
+          return next;
+        });
         const msg = err instanceof Error ? err.message : String(err);
         Alert.alert('Реакция', msg);
       }
@@ -1322,7 +1370,7 @@ export function TelegramChatScreen() {
                 : 0;
 
             setMessages((prev) => {
-              const index = prev.findIndex((m) => m.messageId === messageId);
+              const index = findTelegramRowIndexByTdMessageId(prev, messageId);
               if (index === -1) return prev;
               const next = [...prev];
               const updatedRow = {

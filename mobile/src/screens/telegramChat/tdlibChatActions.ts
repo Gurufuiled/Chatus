@@ -1,5 +1,6 @@
 import { tdlibClient } from '../../services/tdlib/TdlibClient';
 import { throwIfTdError } from '../../services/tdlib/tdlibErrors';
+import type { TelegramMessageRow } from './types';
 
 export async function tdlibPinChatMessage(chatId: number, messageId: number): Promise<void> {
   const res = (await tdlibClient.send({
@@ -78,6 +79,42 @@ export async function tdlibDeleteMessages(chatId: number, messageIds: number[], 
  */
 export function toTelegramReactionEmoji(emoji: string): string {
   return emoji.replace(/\uFE0F/g, '');
+}
+
+/** Optimistic toggle for inline reaction chips before TDLib pushes interaction_info. */
+export function applyTelegramReactionToggle(
+  reactions: TelegramMessageRow['reactions'],
+  emoji: string,
+  shouldHaveReaction: boolean,
+): TelegramMessageRow['reactions'] {
+  const normalized = toTelegramReactionEmoji(emoji);
+  const displayEmoji = emoji.trim() || normalized;
+  const list = [...(reactions ?? [])];
+  const index = list.findIndex((r) => toTelegramReactionEmoji(r.emoji) === normalized);
+
+  if (shouldHaveReaction) {
+    if (index >= 0) {
+      const prev = list[index]!;
+      list[index] = {
+        ...prev,
+        emoji: prev.emoji || displayEmoji,
+        count: prev.reacted_by_me ? prev.count : prev.count + 1,
+        reacted_by_me: true,
+      };
+    } else {
+      list.push({ emoji: displayEmoji, count: 1, reacted_by_me: true });
+    }
+  } else if (index >= 0) {
+    const prev = list[index]!;
+    const nextCount = prev.count - 1;
+    if (nextCount <= 0) {
+      list.splice(index, 1);
+    } else {
+      list[index] = { ...prev, count: nextCount, reacted_by_me: false };
+    }
+  }
+
+  return list.length > 0 ? list : undefined;
 }
 
 export async function tdlibAddMessageReaction(
