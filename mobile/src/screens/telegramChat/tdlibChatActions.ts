@@ -72,6 +72,14 @@ export async function tdlibDeleteMessages(chatId: number, messageIds: number[], 
   throwIfTdError(res);
 }
 
+/**
+ * Telegram хранит эмодзи реакций без вариационного селектора U+FE0F
+ * («❤️» из UI → «❤» в TDLib); с FE0F сервер отвечает REACTION_INVALID.
+ */
+export function toTelegramReactionEmoji(emoji: string): string {
+  return emoji.replace(/\uFE0F/g, '');
+}
+
 export async function tdlibAddMessageReaction(
   chatId: number,
   messageId: number,
@@ -84,7 +92,7 @@ export async function tdlibAddMessageReaction(
     message_id: messageId,
     reaction_type: {
       '@type': 'reactionTypeEmoji',
-      emoji,
+      emoji: toTelegramReactionEmoji(emoji),
     },
     is_big: isBig,
   })) as Record<string, unknown>;
@@ -102,7 +110,7 @@ export async function tdlibRemoveMessageReaction(
     message_id: messageId,
     reaction_type: {
       '@type': 'reactionTypeEmoji',
-      emoji,
+      emoji: toTelegramReactionEmoji(emoji),
     },
   })) as Record<string, unknown>;
   throwIfTdError(res);

@@ -23,6 +23,7 @@ import Reanimated, {
   interpolate,
   runOnJS,
   scrollTo,
+  useAnimatedKeyboard,
   useAnimatedProps,
   useAnimatedReaction,
   useAnimatedRef,
@@ -782,10 +783,14 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
     };
   });
 
+  /** Плашка подписи поднимается поверх клавиатуры (как в GalleryPhotoPreview). */
+  const animatedKeyboard = useAnimatedKeyboard();
+
   const bottomAccessoryStyle = useAnimatedStyle(() => {
     const correction = Math.min(sheetTranslateY.value, snapCollapsedY.value);
+    const keyboardLift = Math.max(animatedKeyboard.height.value, 0);
     return {
-      transform: [{ translateY: -correction }],
+      transform: [{ translateY: -(correction + keyboardLift) }],
     };
   });
 

@@ -29,6 +29,8 @@ export type TelegramMediaAlbumBubbleProps = {
   incomingCaptionText?: string;
   incomingCaptionMeta?: string;
   footer?: React.ReactNode;
+  /** Реакции внутри карточки сообщения (как в баблах Chatus). */
+  reactionsNode?: React.ReactNode;
   /** Channel incoming post: full-width card, footer attached to album. */
   incomingChannelPost?: boolean;
   channelAlbumWidth?: number;
@@ -56,6 +58,7 @@ export function TelegramMediaAlbumBubble({
   incomingCaptionText,
   incomingCaptionMeta,
   footer,
+  reactionsNode,
   incomingChannelPost = false,
   channelAlbumWidth,
   onTilePress,
@@ -69,8 +72,9 @@ export function TelegramMediaAlbumBubble({
   const gap = 1.5;
   const trimmedCaption = caption?.trim();
   const hasFooter = Boolean(footer);
+  const hasReactions = Boolean(reactionsNode);
   const gridClipStyle = incomingChannelPost
-    ? hasFooter || trimmedCaption
+    ? hasFooter || trimmedCaption || hasReactions
       ? st.albumChannelGridClip
       : st.albumChannelGridClipSolo
     : st.albumGridClip;
@@ -263,6 +267,23 @@ export function TelegramMediaAlbumBubble({
             timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
             iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
           />
+        </View>
+      ) : null}
+      {reactionsNode ? (
+        <View
+          style={[
+            st.albumCaptionWrap,
+            isMe
+              ? viewportOutgoingGradient
+                ? { backgroundColor: 'transparent' }
+                : { backgroundColor: chatTheme.bubbleMe }
+              : incomingCaptionBg
+                ? { backgroundColor: incomingCaptionBg }
+                : st.albumCaptionOther,
+            trimmedCaption ? { paddingTop: 0 } : null,
+          ]}
+        >
+          {reactionsNode}
         </View>
       ) : null}
       {footer}

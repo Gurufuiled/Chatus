@@ -17,7 +17,9 @@ import {
   tdlibAddMessageReaction,
   tdlibDeleteMessages,
   tdlibPinChatMessage,
+  tdlibRemoveMessageReaction,
   tdlibUnpinChatMessage,
+  toTelegramReactionEmoji,
 } from './tdlibChatActions';
 import type { TelegramChatStyles } from './telegramChatStyles';
 import { getTelegramRowTdMessageIds } from './telegramAlbumRows';
@@ -29,7 +31,8 @@ const REACTION_BAR_HEIGHT = 42;
 const REACTION_ABOVE_GAP = 6;
 const MENU_REACTION_STACK = REACTION_BAR_HEIGHT + REACTION_ABOVE_GAP;
 const TELEGRAM_MENU_ACTION_COUNT = 6;
-const MENU_LAYOUT_GAP = 8;
+/** Совпадает с `menuGap` в основном чате (`ChatScreen.openMessageMenu`). */
+const MENU_LAYOUT_GAP = 4;
 
 type EdgeInsets = { top: number; bottom: number; left: number; right: number };
 type TelegramMenuMode = 'actions' | 'deleteConfirm';
@@ -242,7 +245,12 @@ export function useTelegramChatMenu({
           Math.min(pageX, SCREEN_WIDTH - previewWidth - MENU_EDGE_GAP),
         );
         const reactionReserve = showMenuReactions ? MENU_REACTION_STACK : 0;
-        const minPreviewTop = Math.max(insets.top + 12, MENU_EDGE_GAP) + reactionReserve;
+        /**
+         * Как в основном чате: резерв под плашку реакций не суммируем с safe-area,
+         * а берём максимум — иначе превью уезжает вниз от исходного сообщения
+         * и плашка визуально накрывает бабл.
+         */
+        const minPreviewTop = Math.max(insets.top + 12, MENU_EDGE_GAP + reactionReserve);
         const spaceForPreview =
           effectiveBottom - minPreviewTop - MENU_LAYOUT_GAP - menuCardHeight;
         const previewDisplayHeight = Math.min(height, Math.max(0, spaceForPreview));
@@ -411,9 +419,17 @@ export function useTelegramChatMenu({
       if (!menuState) return;
       const row = messagesRef.current.find((r) => r.id === menuState.messageId);
       if (!row || row.messageId <= 0) return;
+      const normalized = toTelegramReactionEmoji(emoji);
+      const alreadyMine = row.reactions?.some(
+        (r) => toTelegramReactionEmoji(r.emoji) === normalized && r.reacted_by_me === true,
+      );
       try {
         await ensureReady();
-        await tdlibAddMessageReaction(chatId, row.messageId, emoji, false);
+        if (alreadyMine) {
+          await tdlibRemoveMessageReaction(chatId, row.messageId, emoji);
+        } else {
+          await tdlibAddMessageReaction(chatId, row.messageId, emoji, false);
+        }
         closeMenu();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

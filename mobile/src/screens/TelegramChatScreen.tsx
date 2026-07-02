@@ -138,6 +138,7 @@ import {
   tdlibUnpinChatMessage,
   tdlibAddMessageReaction,
   tdlibRemoveMessageReaction,
+  toTelegramReactionEmoji,
 } from './telegramChat/tdlibChatActions';
 import {
   deleteTelegramMessagesFromCache,
@@ -609,7 +610,11 @@ export function TelegramChatScreen() {
     async (item: TelegramMessageRow, emoji: string) => {
       if (item.messageId <= 0) return;
 
-      const existing = item.reactions?.find((r) => r.emoji === emoji);
+      /** TDLib присылает реакции без U+FE0F — сравниваем в нормализованном виде. */
+      const normalized = toTelegramReactionEmoji(emoji);
+      const existing = item.reactions?.find(
+        (r) => toTelegramReactionEmoji(r.emoji) === normalized,
+      );
       const isChosenByMe = existing?.reacted_by_me === true;
 
       try {
@@ -2230,6 +2235,7 @@ export function TelegramChatScreen() {
             incomingCaptionText={isMe ? undefined : colors.textPrimary}
             incomingCaptionMeta={isMe ? undefined : colors.textSecondary}
             footer={discussionFooter}
+            reactionsNode={reactionsNode}
             incomingChannelPost={channelIncoming}
             channelAlbumWidth={channelIncoming ? channelMediaClamp.maxWidth : undefined}
             onTilePress={(messageId) =>
@@ -2250,7 +2256,6 @@ export function TelegramChatScreen() {
               style={measureShellStyle}
             >
               {channelIncoming ? albumBubble : wrapTelegramMediaBubble(albumBubble)}
-              {reactionsNode}
             </View>
           </Pressable>,
         );
@@ -2275,6 +2280,7 @@ export function TelegramChatScreen() {
                 />
               }
             />
+            {reactionsNode}
           </>
         );
         return wrapSelectionShell(
@@ -2304,7 +2310,6 @@ export function TelegramChatScreen() {
               ) : (
                 <View style={[styles.bubble, textBubbleColorStyle]}>{placeholderBody}</View>
               )}
-              {reactionsNode}
             </View>
           </Pressable>,
         );
@@ -2337,6 +2342,7 @@ export function TelegramChatScreen() {
               incomingCaptionText={colors.textPrimary}
               incomingCaptionMeta={colors.textSecondary}
               footer={discussionFooter}
+              reactionsNode={reactionsNode}
               incomingChannelPost
               channelAlbumWidth={channelMediaClamp.maxWidth}
               onTilePress={(messageId) =>
@@ -2370,7 +2376,6 @@ export function TelegramChatScreen() {
                 style={measureShellStyle}
               >
                 {channelSinglePhoto}
-                {reactionsNode}
               </View>
             </Pressable>,
           );
@@ -2673,12 +2678,14 @@ export function TelegramChatScreen() {
               {bubbleHeader}
               {textBubbleContent}
               {webPageNode}
+              {reactionsNode}
             </View>
           ) : (
             <>
               {bubbleHeader}
               {textBubbleContent}
               {webPageNode}
+              {reactionsNode}
             </>
           )}
           {discussionFooter}
@@ -2708,7 +2715,6 @@ export function TelegramChatScreen() {
             ) : (
               <View style={incomingTextBubbleSolidStyle}>{textBubbleBody}</View>
             )}
-            {reactionsNode}
           </View>
         </Pressable>,
       );
