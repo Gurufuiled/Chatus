@@ -16,8 +16,8 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+      - uses: actions/setup-node@8f152de45cc393f58c3f25ee224641d8e137b018
         with:
           node-version: '22'
           cache: npm
