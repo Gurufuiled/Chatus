@@ -51,7 +51,7 @@ jobs:
 
       - name: Deploy over SSH
         if: steps.gate.outputs.deploy == 'true'
-        uses: appleboy/ssh-action@v1.2.5
+        uses: appleboy/ssh-action@dce9d565de8987d60e7fbe2b1ad624f2b1a8d05a
         env:
           REPO_DIR: ${{ vars.DEPLOY_REPO_DIR || '/root/chatus' }}
           COMPOSE_DIR: ${{ vars.DEPLOY_COMPOSE_DIR || '/root/chatus/server' }}
