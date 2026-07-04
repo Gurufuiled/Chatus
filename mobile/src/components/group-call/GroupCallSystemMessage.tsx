@@ -96,7 +96,7 @@ export function GroupCallSystemMessage({
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
   },

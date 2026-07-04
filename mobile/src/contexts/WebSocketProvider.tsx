@@ -421,11 +421,29 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   useEffect(() => {
     const unsub = PeerDeliveryService.onDmDeliver((payload) => {
       void (async () => {
-        const chatType = await resolveChatType(payload.chat_id);
+        let chatType = await resolveChatType(payload.chat_id);
         // Group text is always relayed via server WS; ignore parallel P2P fanout copies.
         if (chatType === 'group') {
           PeerDeliveryService.sendDmAck(payload.ack_key);
           return;
+        }
+        if (chatType === null) {
+          try {
+            await SyncService.refreshChats();
+          } catch {
+            // best-effort before re-checking chat type
+          }
+          chatType = await resolveChatType(payload.chat_id);
+          if (chatType === 'group') {
+            PeerDeliveryService.sendDmAck(payload.ack_key);
+            return;
+          }
+          if (chatType === null) {
+            console.warn('[dm_deliver] chat type unknown after refresh; applying dedupe only', {
+              chat_id: payload.chat_id,
+              temp_id: payload.temp_id,
+            });
+          }
         }
 
         const existing = messageStore.getState().messagesByChatId[payload.chat_id] ?? [];
@@ -637,8 +655,12 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             const messageDao = new MessageDao();
             try {
               await messageDao.replaceId(inboundPeerByTempId.id, mapped);
-            } catch {
-              /* duplicate or missing row */
+            } catch (err) {
+              console.warn('[WS onNewMessage] replaceId failed', {
+                oldId: inboundPeerByTempId.id,
+                newId: mapped.id,
+                err,
+              });
             }
             if (clientTempId) {
               void new LineSyncEventDao()

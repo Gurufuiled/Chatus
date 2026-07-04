@@ -2980,7 +2980,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   messageWrapService: {
-    alignItems: 'flex-end',
+    alignItems: 'center',
   },
   groupIncomingRow: {
     flexDirection: 'row',

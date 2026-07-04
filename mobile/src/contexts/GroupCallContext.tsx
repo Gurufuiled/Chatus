@@ -212,11 +212,20 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const syncParticipantsFromRoom = useCallback((room: Room) => {
     const currentUserId = authStore.getState().user?.id;
     if (!currentUserId) return;
-    const participants = buildParticipantsFromRoom(room, currentUserId);
-    setState((prev) => ({
-      ...prev,
-      participants,
-    }));
+    setState((prev) => {
+      const fromRoom = buildParticipantsFromRoom(room, currentUserId);
+      const priorByUserId = new Map(prev.participants.map((p) => [p.userId, p]));
+      const participants = fromRoom.map((p) => {
+        const prior = priorByUserId.get(p.userId);
+        if (!prior) return p;
+        return {
+          ...p,
+          displayName: prior.displayName || p.displayName,
+          avatarUrl: prior.avatarUrl ?? p.avatarUrl,
+        };
+      });
+      return { ...prev, participants };
+    });
   }, []);
 
   const connectToRoom = useCallback(
@@ -347,6 +356,31 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       if (!currentUserId) return;
       setState((prev) => {
         if (prev.chatId !== chatId || prev.roomId !== roomId) return prev;
+
+        const isLiveKitActive =
+          (prev.phase === 'active' || prev.phase === 'minimized') &&
+          prev.connectionState === ConnectionState.Connected;
+
+        if (isLiveKitActive) {
+          const apiByUserId = new Map(participants.map((p) => [p.user_id, p]));
+          const merged = prev.participants.map((live) => {
+            const api = apiByUserId.get(live.userId);
+            if (!api) return live;
+            return {
+              ...live,
+              displayName: api.display_name || live.displayName,
+              avatarUrl: resolveAvatarUrl(api.avatar_url) ?? live.avatarUrl,
+              isMuted: live.isLocal ? live.isMuted : api.is_muted,
+            };
+          });
+          for (const api of participants) {
+            if (!merged.some((m) => m.userId === api.user_id)) {
+              merged.push(mapApiParticipant(api, currentUserId));
+            }
+          }
+          return { ...prev, participants: merged };
+        }
+
         return {
           ...prev,
           participants: participants.map((p) => mapApiParticipant(p, currentUserId)),
