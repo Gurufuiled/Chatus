@@ -1,0 +1,3 @@
+## 2023-10-27 - [Dynamic disabled placeholder in Composer]
+**Learning:** In a message composer input, the disabled state can be caused by various concurrent async activities (sending text, sending media, recording voice). A static placeholder combined with a disabled state lacks context, but by linking the placeholder to the specific boolean flag triggering the disabled state (e.g. `isSending`), you can provide instant, in-context feedback.
+**Action:** Always investigate the compound conditions that drive a `disabled` prop and map them to descriptive `placeholder` states when possible to explain *why* an interaction is temporarily blocked.
