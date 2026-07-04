@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -7,33 +13,33 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import type { CompositeNavigationProp } from '@react-navigation/native';
-import type { MaterialTopTabNavigationProp } from '@react-navigation/material-top-tabs';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { MainTabParamList } from '../navigation/types';
-import type { ChatsStackParamList } from '../navigation/types';
-import { resolveAvatarUrl } from '../config';
-import { searchUsers } from '../services/profileService';
-import { createOrFindChat } from '../services/chatService';
-import { authStore } from '../stores/authStore';
-import { chatStore } from '../stores/chatStore';
-import { uiStore } from '../stores/uiStore';
-import type { ApiUser } from '../services/AuthService';
-import type { Chat } from '../stores/types';
-import { TelegramGlyph } from '../icons/telegram';
-import { TELEGRAM_PROFILE_GLYPHS } from '../icons/telegram/profilePaths';
-import { useTheme } from '../contexts/ThemeContext';
-import { createContactsScreenStyles } from './contactsScreen.styles';
-import { formatContactPresenceSubtitle } from '../utils/presenceFormat';
-import { contactsStore, type PhoneBookContact } from '../stores/contactsStore';
+} from "react-native";
+import { Image } from "expo-image";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import type { CompositeNavigationProp } from "@react-navigation/native";
+import type { MaterialTopTabNavigationProp } from "@react-navigation/material-top-tabs";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { MainTabParamList } from "../navigation/types";
+import type { ChatsStackParamList } from "../navigation/types";
+import { resolveAvatarUrl } from "../config";
+import { searchUsers } from "../services/profileService";
+import { createOrFindChat } from "../services/chatService";
+import { authStore } from "../stores/authStore";
+import { chatStore } from "../stores/chatStore";
+import { uiStore } from "../stores/uiStore";
+import type { ApiUser } from "../services/AuthService";
+import type { Chat } from "../stores/types";
+import { TelegramGlyph } from "../icons/telegram";
+import { TELEGRAM_PROFILE_GLYPHS } from "../icons/telegram/profilePaths";
+import { useTheme } from "../contexts/ThemeContext";
+import { createContactsScreenStyles } from "./contactsScreen.styles";
+import { formatContactPresenceSubtitle } from "../utils/presenceFormat";
+import { contactsStore, type PhoneBookContact } from "../stores/contactsStore";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
 type Nav = CompositeNavigationProp<
-  MaterialTopTabNavigationProp<MainTabParamList, 'Contacts'>,
+  MaterialTopTabNavigationProp<MainTabParamList, "Contacts">,
   NativeStackNavigationProp<ChatsStackParamList>
 >;
 
@@ -45,11 +51,14 @@ type ContactFromChatRow = {
   sortTime: number;
 };
 
-function buildContactsFromChats(chats: Chat[], currentUserId: string | null): ContactFromChatRow[] {
+function buildContactsFromChats(
+  chats: Chat[],
+  currentUserId: string | null,
+): ContactFromChatRow[] {
   if (!currentUserId) return [];
   const rows: ContactFromChatRow[] = [];
   for (const chat of chats) {
-    if (chat.chat_type !== 'private') continue;
+    if (chat.chat_type !== "private") continue;
     const peerMember = chat.members?.find((m) => m.user_id !== currentUserId);
     const peerId = peerMember?.user_id;
     if (!peerId) continue;
@@ -61,7 +70,7 @@ function buildContactsFromChats(chats: Chat[], currentUserId: string | null): Co
       user?.display_name?.trim() ||
       (user?.handle ? `@${user.handle}` : null) ||
       user?.username?.trim() ||
-      'Контакт';
+      "Контакт";
     const avatarUrl = user?.avatar_url ?? chat.avatar_url;
     rows.push({ chat, peerId, title, avatarUrl, sortTime });
   }
@@ -71,12 +80,17 @@ function buildContactsFromChats(chats: Chat[], currentUserId: string | null): Co
 
 export function ContactsScreen() {
   const { colors: themeColors } = useTheme();
-  const styles = useMemo(() => createContactsScreenStyles(themeColors), [themeColors]);
+  const styles = useMemo(
+    () => createContactsScreenStyles(themeColors),
+    [themeColors],
+  );
   const navigation = useNavigation<Nav>();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [results, setResults] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(false);
-  const [creatingChatUserIds, setCreatingChatUserIds] = useState<Set<string>>(new Set());
+  const [creatingChatUserIds, setCreatingChatUserIds] = useState<Set<string>>(
+    new Set(),
+  );
   const searchIdRef = useRef(0);
 
   const currentUserId = authStore((s) => s.user?.id ?? null);
@@ -94,15 +108,15 @@ export function ContactsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (contactsStore.getState().permissionStatus === 'granted') {
+      if (contactsStore.getState().permissionStatus === "granted") {
         void contactsStore.getState().syncContacts();
       }
-    }, [])
+    }, []),
   );
 
   const chatusPhoneContacts = useMemo(
     () => phoneBookContacts.filter((c) => c.hasChatus),
-    [phoneBookContacts]
+    [phoneBookContacts],
   );
 
   const handleRequestPermission = useCallback(async () => {
@@ -111,19 +125,20 @@ export function ContactsScreen() {
 
   const contactsFromChats = useMemo(
     () => buildContactsFromChats(chats, currentUserId),
-    [chats, currentUserId]
+    [chats, currentUserId],
   );
 
   const filteredResults = useMemo(
-    () => (currentUserId ? results.filter((u) => u.id !== currentUserId) : results),
-    [results, currentUserId]
+    () =>
+      currentUserId ? results.filter((u) => u.id !== currentUserId) : results,
+    [results, currentUserId],
   );
 
   const isSearchMode = query.trim().length > 0;
 
   const performSearch = useCallback(async (q: string) => {
     const trimmed = q.trim();
-    const normalized = trimmed.replace(/^@+/, '');
+    const normalized = trimmed.replace(/^@+/, "");
     if (!normalized) {
       setResults([]);
       setLoading(false);
@@ -149,7 +164,7 @@ export function ContactsScreen() {
 
   useEffect(() => {
     const trimmed = query.trim();
-    const normalized = trimmed.replace(/^@+/, '');
+    const normalized = trimmed.replace(/^@+/, "");
     if (!normalized) {
       setResults([]);
       setLoading(false);
@@ -161,12 +176,12 @@ export function ContactsScreen() {
 
   const openChat = useCallback(
     (chatId: string, chatTitle: string) => {
-      navigation.navigate('Chats', {
-        screen: 'Chat',
+      navigation.navigate("Chats", {
+        screen: "Chat",
         params: { chatId, chatTitle },
       });
     },
-    [navigation]
+    [navigation],
   );
 
   const handleStartChat = useCallback(
@@ -176,16 +191,16 @@ export function ContactsScreen() {
       try {
         const chat = await createOrFindChat(user.id);
         chatStore.getState().addOrUpdateChat(chat);
-        navigation.navigate('Chats', {
-          screen: 'Chat',
+        navigation.navigate("Chats", {
+          screen: "Chat",
           params: {
             chatId: chat.id,
-            chatTitle: chat.peer_display_name || chat.name || 'Chat',
+            chatTitle: chat.peer_display_name || chat.name || "Chat",
           },
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        Alert.alert('Error', msg);
+        Alert.alert("Error", msg);
       } finally {
         setCreatingChatUserIds((prev) => {
           const next = new Set(prev);
@@ -194,93 +209,105 @@ export function ContactsScreen() {
         });
       }
     },
-    [navigation]
+    [navigation],
   );
 
-  const renderSearchItem = ({ item }: { item: ApiUser }) => {
-    const avatarUrl = resolveAvatarUrl(item.avatar_url);
-    const displayName = item.display_name || item.username || 'Unknown';
-    const handle = item.handle ? `@${item.handle}` : '';
-    const isCreating = creatingChatUserIds.has(item.id);
+  const renderSearchItem = useCallback(
+    ({ item }: { item: ApiUser }) => {
+      const avatarUrl = resolveAvatarUrl(item.avatar_url);
+      const displayName = item.display_name || item.username || "Unknown";
+      const handle = item.handle ? `@${item.handle}` : "";
+      const isCreating = creatingChatUserIds.has(item.id);
 
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={() => handleStartChat(item)}
-        disabled={isCreating}
-      >
-        {avatarUrl ? (
-          <Image
-            source={{ uri: avatarUrl }}
-            style={styles.avatar}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarPlaceholderText}>
-              {(displayName || '?')[0].toUpperCase()}
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => handleStartChat(item)}
+          disabled={isCreating}
+        >
+          {avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>
+                {(displayName || "?")[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.info}>
+            <Text style={styles.displayName} numberOfLines={1}>
+              {displayName}
+            </Text>
+            {handle ? (
+              <Text style={styles.handle} numberOfLines={1}>
+                {handle}
+              </Text>
+            ) : null}
+          </View>
+          {isCreating && (
+            <ActivityIndicator
+              size="small"
+              color={themeColors.accent}
+              style={styles.rowLoader}
+            />
+          )}
+        </Pressable>
+      );
+    },
+    [creatingChatUserIds, handleStartChat, styles, themeColors.accent],
+  );
+
+  const renderContactFromChat = useCallback(
+    ({ item }: { item: ContactFromChatRow }) => {
+      const { chat, peerId, title, avatarUrl: rawAvatar } = item;
+      const peerMember = chat.members?.find((m) => m.user_id === peerId);
+      const presence = presenceByUserId[peerId] ?? {
+        is_online: peerMember?.user?.is_online ?? false,
+        last_seen: peerMember?.user?.last_seen ?? undefined,
+      };
+      const subtitle = formatContactPresenceSubtitle(
+        Boolean(presence.is_online),
+        presence.last_seen ?? peerMember?.user?.last_seen ?? null,
+      );
+      const resolvedAvatar = resolveAvatarUrl(rawAvatar ?? null);
+
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => openChat(chat.id, title)}
+        >
+          {resolvedAvatar ? (
+            <Image
+              source={{ uri: resolvedAvatar }}
+              style={styles.avatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>
+                {(title || "?")[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.info}>
+            <Text style={styles.displayName} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={styles.presenceSubtitle} numberOfLines={1}>
+              {subtitle}
             </Text>
           </View>
-        )}
-        <View style={styles.info}>
-          <Text style={styles.displayName} numberOfLines={1}>
-            {displayName}
-          </Text>
-          {handle ? (
-            <Text style={styles.handle} numberOfLines={1}>
-              {handle}
-            </Text>
-          ) : null}
-        </View>
-        {isCreating && (
-          <ActivityIndicator size="small" color={themeColors.accent} style={styles.rowLoader} />
-        )}
-      </Pressable>
-    );
-  };
-
-  const renderContactFromChat = ({ item }: { item: ContactFromChatRow }) => {
-    const { chat, peerId, title, avatarUrl: rawAvatar } = item;
-    const peerMember = chat.members?.find((m) => m.user_id === peerId);
-    const presence = presenceByUserId[peerId] ?? {
-      is_online: peerMember?.user?.is_online ?? false,
-      last_seen: peerMember?.user?.last_seen ?? undefined,
-    };
-    const subtitle = formatContactPresenceSubtitle(
-      Boolean(presence.is_online),
-      presence.last_seen ?? peerMember?.user?.last_seen ?? null
-    );
-    const resolvedAvatar = resolveAvatarUrl(rawAvatar ?? null);
-
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={() => openChat(chat.id, title)}
-      >
-        {resolvedAvatar ? (
-          <Image
-            source={{ uri: resolvedAvatar }}
-            style={styles.avatar}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarPlaceholderText}>{(title || '?')[0].toUpperCase()}</Text>
-          </View>
-        )}
-        <View style={styles.info}>
-          <Text style={styles.displayName} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={styles.presenceSubtitle} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        </View>
-      </Pressable>
-    );
-  };
+        </Pressable>
+      );
+    },
+    [openChat, presenceByUserId, styles],
+  );
 
   const renderPhoneBookContact = useCallback(
     ({ item }: { item: PhoneBookContact }) => {
@@ -290,22 +317,26 @@ export function ContactsScreen() {
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
             if (item.chatusUserId) {
-              void handleStartChat({ id: item.chatusUserId, display_name: item.deviceName, handle: item.chatusHandle ?? null } as ApiUser);
+              void handleStartChat({
+                id: item.chatusUserId,
+                display_name: item.deviceName,
+                handle: item.chatusHandle ?? null,
+              } as ApiUser);
             }
           }}
           disabled={!item.chatusUserId}
         >
           {avatarUrl ? (
             <Image
-            source={{ uri: avatarUrl }}
-            style={styles.avatar}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
+              source={{ uri: avatarUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
           ) : (
             <View style={styles.avatarPlaceholder}>
               <Text style={styles.avatarPlaceholderText}>
-                {(item.deviceName || '?')[0].toUpperCase()}
+                {(item.deviceName || "?")[0].toUpperCase()}
               </Text>
             </View>
           )}
@@ -320,7 +351,29 @@ export function ContactsScreen() {
         </Pressable>
       );
     },
-    [handleStartChat, styles]
+    [handleStartChat, styles],
+  );
+
+  const renderMainListItem = useCallback(
+    ({ item }: { item: any }) => {
+      if (item.type === "sectionHeader") {
+        return (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>В телефонной книге</Text>
+          </View>
+        );
+      }
+      if (item.type === "phonebook") {
+        return renderPhoneBookContact({ item: item.data as PhoneBookContact });
+      }
+      return renderContactFromChat({ item: item.data as ContactFromChatRow });
+    },
+    [
+      renderContactFromChat,
+      renderPhoneBookContact,
+      styles.sectionHeader,
+      styles.sectionHeaderText,
+    ],
   );
 
   const searchG = TELEGRAM_PROFILE_GLYPHS.search;
@@ -331,7 +384,9 @@ export function ContactsScreen() {
     </View>
   ) : (
     <View style={styles.empty}>
-      <Text style={styles.emptyText}>Нет личных чатов. Найдите человека по имени или @нику.</Text>
+      <Text style={styles.emptyText}>
+        Нет личных чатов. Найдите человека по имени или @нику.
+      </Text>
     </View>
   );
 
@@ -370,32 +425,35 @@ export function ContactsScreen() {
       ) : (
         <FlatList
           data={[
-            ...contactsFromChats.map((item) => ({ type: 'chat' as const, key: item.chat.id, data: item })),
+            ...contactsFromChats.map((item) => ({
+              type: "chat" as const,
+              key: item.chat.id,
+              data: item,
+            })),
             ...(chatusPhoneContacts.length > 0
               ? [
-                  { type: 'sectionHeader' as const, key: 'header:phonebook', data: null },
-                  ...chatusPhoneContacts.map((item) => ({ type: 'phonebook' as const, key: `pb:${item.phoneNumber}`, data: item })),
+                  {
+                    type: "sectionHeader" as const,
+                    key: "header:phonebook",
+                    data: null,
+                  },
+                  ...chatusPhoneContacts.map((item) => ({
+                    type: "phonebook" as const,
+                    key: `pb:${item.phoneNumber}`,
+                    data: item,
+                  })),
                 ]
               : []),
           ]}
           keyExtractor={(item) => item.key}
-          renderItem={({ item }) => {
-            if (item.type === 'sectionHeader') {
-              return (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionHeaderText}>В телефонной книге</Text>
-                </View>
-              );
-            }
-            if (item.type === 'phonebook') {
-              return renderPhoneBookContact({ item: item.data as PhoneBookContact });
-            }
-            return renderContactFromChat({ item: item.data as ContactFromChatRow });
-          }}
+          renderItem={renderMainListItem}
           ListHeaderComponent={
-            permissionStatus !== 'granted' ? (
+            permissionStatus !== "granted" ? (
               <Pressable
-                style={({ pressed }) => [styles.permissionBanner, pressed && { opacity: 0.85 }]}
+                style={({ pressed }) => [
+                  styles.permissionBanner,
+                  pressed && { opacity: 0.85 },
+                ]}
                 onPress={() => void handleRequestPermission()}
               >
                 <Text style={styles.permissionBannerText}>
@@ -405,9 +463,7 @@ export function ContactsScreen() {
               </Pressable>
             ) : null
           }
-          ListEmptyComponent={
-            permissionStatus !== 'granted' ? null : listEmpty
-          }
+          ListEmptyComponent={permissionStatus !== "granted" ? null : listEmpty}
         />
       )}
     </View>
