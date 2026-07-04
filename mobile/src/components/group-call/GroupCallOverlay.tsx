@@ -13,9 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConnectionState } from 'livekit-client';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS } from '../../icons/telegram';
 import { useGroupCall } from '../../contexts/GroupCallContext';
-import { useTheme } from '../../contexts/ThemeContext';
 import { colors, withAlpha } from '../../theme/colors';
-import { ParticipantList } from './ParticipantList';
+import { ParticipantStage } from './ParticipantStage';
 
 function formatDuration(startedAt?: number, now = Date.now()) {
   if (!startedAt) return 'Подключение...';
@@ -26,22 +25,36 @@ function formatDuration(startedAt?: number, now = Date.now()) {
 }
 
 type ActionButtonProps = {
-  label: string;
+  accessibilityLabel: string;
   icon: keyof typeof TELEGRAM_CALL_GLYPHS;
-  tone?: 'neutral' | 'danger';
+  tone?: 'neutral' | 'danger' | 'disabled';
   onPress: () => void;
   onLongPress?: () => void;
 };
 
-function ActionButton({ label, icon, tone = 'neutral', onPress, onLongPress }: ActionButtonProps) {
+function ActionButton({
+  accessibilityLabel,
+  icon,
+  tone = 'neutral',
+  onPress,
+  onLongPress,
+}: ActionButtonProps) {
   const bg =
-    tone === 'danger' ? '#E53935' : withAlpha(colors.textPrimary, 0.14);
+    tone === 'danger'
+      ? '#E53935'
+      : tone === 'disabled'
+        ? withAlpha(colors.textPrimary, 0.08)
+        : withAlpha(colors.textPrimary, 0.14);
   return (
     <Pressable
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       onLongPress={onLongPress}
-      style={({ pressed }) => [styles.actionButton, { backgroundColor: bg }, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.actionButton,
+        { backgroundColor: bg, opacity: tone === 'disabled' ? 0.55 : 1 },
+        pressed && styles.pressed,
+      ]}
     >
       <TelegramGlyph
         d={TELEGRAM_CALL_GLYPHS[icon].d}
@@ -50,14 +63,12 @@ function ActionButton({ label, icon, tone = 'neutral', onPress, onLongPress }: A
         size={26}
         color="#fff"
       />
-      <Text style={styles.actionLabel}>{label}</Text>
     </Pressable>
   );
 }
 
 export function GroupCallOverlay() {
   const insets = useSafeAreaInsets();
-  const { colors: themeColors } = useTheme();
   const {
     state,
     minimize,
@@ -65,7 +76,6 @@ export function GroupCallOverlay() {
     endGroupCallForAll,
     toggleMute,
     toggleSpeaker,
-    setInviteSheetVisible,
   } = useGroupCall();
   const [now, setNow] = useState(Date.now());
 
@@ -76,12 +86,20 @@ export function GroupCallOverlay() {
 
   useEffect(() => {
     if (!visible || !state.startedAt) return;
+    const isConnected =
+      state.phase === 'active' ||
+      state.phase === 'minimized' ||
+      state.connectionState === ConnectionState.Connected;
+    if (!isConnected) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [visible, state.startedAt]);
+  }, [visible, state.connectionState, state.phase, state.startedAt]);
 
   const statusLine = useMemo(() => {
-    if (state.phase === 'creating' || state.phase === 'joining') {
+    const isConnecting =
+      (state.phase === 'creating' || state.phase === 'joining') &&
+      state.connectionState !== ConnectionState.Connected;
+    if (isConnecting) {
       return 'Подключение...';
     }
     if (state.connectionState !== ConnectionState.Connected) {
@@ -126,6 +144,10 @@ export function GroupCallOverlay() {
     ]);
   };
 
+  const showVideoComingSoon = () => {
+    Alert.alert('Видеозвонок', 'Групповой видеозвонок скоро будет доступен.');
+  };
+
   if (!visible) return null;
 
   return (
@@ -136,36 +158,37 @@ export function GroupCallOverlay() {
         </Pressable>
 
         <View style={styles.header}>
-          <Text style={[styles.title, { color: themeColors.textPrimary }]} numberOfLines={2}>
+          <Text style={styles.title} numberOfLines={2}>
             {state.chatTitle}
           </Text>
-          <Text style={[styles.subtitle, { color: themeColors.textSecondary }]}>{statusLine}</Text>
+          <Text style={styles.subtitle}>{statusLine}</Text>
         </View>
 
-        <ParticipantList participants={state.participants} />
+        <ParticipantStage participants={state.participants} />
 
         <View style={styles.controls}>
           <ActionButton
-            label="mute"
+            accessibilityLabel={state.isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
             icon={state.isMuted ? 'unmute' : 'mute'}
             onPress={() => {
               void toggleMute();
             }}
           />
           <ActionButton
-            label="spkr"
+            accessibilityLabel={state.isSpeakerOn ? 'Выключить динамик' : 'Включить динамик'}
             icon="speaker"
             onPress={() => {
               void toggleSpeaker();
             }}
           />
           <ActionButton
-            label="inv."
-            icon="phone"
-            onPress={() => setInviteSheetVisible(true)}
+            accessibilityLabel="Видеозвонок (скоро)"
+            icon="video"
+            tone="disabled"
+            onPress={showVideoComingSoon}
           />
           <ActionButton
-            label="end"
+            accessibilityLabel="Завершить звонок"
             icon="hangup"
             tone="danger"
             onPress={confirmLeave}
@@ -181,6 +204,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#0E1116',
+    overflow: 'visible',
   },
   minimizeButton: {
     alignSelf: 'flex-start',
@@ -221,12 +245,6 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-  },
-  actionLabel: {
-    color: '#fff',
-    fontSize: 11,
-    opacity: 0.85,
   },
   pressed: {
     opacity: 0.8,

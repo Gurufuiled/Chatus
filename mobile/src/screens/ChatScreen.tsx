@@ -151,7 +151,6 @@ import { hideOthersMessageOnlyOnDevice } from '../services/locallyHiddenMessages
 import { useGroupCall } from '../contexts/GroupCallContext';
 import { GroupCallBanner } from '../components/group-call/GroupCallBanner';
 import { GroupCallMinimizedBar } from '../components/group-call/GroupCallMinimizedBar';
-import { GroupCallStartSheet } from '../components/group-call/GroupCallStartSheet';
 import { formatGroupCallParticipantNames } from '../utils/groupCallSystemMessage';
 import {
   PeerFirstAlbumImage,
@@ -490,7 +489,6 @@ export function ChatScreen() {
   const [forwardFromSelection, setForwardFromSelection] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [isSearchMode, setIsSearchMode] = useState(false);
-  const [groupCallSheetVisible, setGroupCallSheetVisible] = useState(false);
   const {
     state: groupCallState,
     activeRoomByChatId,
@@ -870,7 +868,7 @@ export function ChatScreen() {
     [groupCallState.participants],
   );
 
-  const handleOpenGroupCallSheet = useCallback(() => {
+  const handleGroupVoicePress = useCallback(() => {
     if (activeGroupCallRoom && !isUserInGroupCall) {
       void joinGroupCall(activeGroupCallRoom.id, chatId, chatTitle);
       return;
@@ -879,7 +877,7 @@ export function ChatScreen() {
       expand();
       return;
     }
-    setGroupCallSheetVisible(true);
+    void startGroupCall(chatId, chatTitle);
   }, [
     activeGroupCallRoom,
     chatId,
@@ -887,11 +885,8 @@ export function ChatScreen() {
     isUserInGroupCall,
     joinGroupCall,
     chatTitle,
+    startGroupCall,
   ]);
-
-  const handleStartGroupVoiceCall = useCallback(() => {
-    void startGroupCall(chatId, chatTitle);
-  }, [chatId, startGroupCall, chatTitle]);
 
   const handleJoinActiveGroupCall = useCallback(() => {
     if (!activeGroupCallRoom) return;
@@ -2941,7 +2936,7 @@ export function ChatScreen() {
             navigation={navigation}
             floating
             showGroupCallButton={isGroupChat}
-            onGroupCallPress={isGroupChat ? handleOpenGroupCallSheet : undefined}
+            onGroupCallPress={isGroupChat ? handleGroupVoicePress : undefined}
             onSearchPress={() => setIsSearchMode(true)}
           />
         ) : null}
@@ -3252,12 +3247,6 @@ export function ChatScreen() {
         ) : null}
       </BlurTargetView>
       </InteractiveChatBackShell>
-
-      <GroupCallStartSheet
-        visible={groupCallSheetVisible}
-        onClose={() => setGroupCallSheetVisible(false)}
-        onStartVoice={handleStartGroupVoiceCall}
-      />
 
       {sendChannelMenu.anchor ? (
         <SendChannelSelector

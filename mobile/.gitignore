@@ -32,9 +32,14 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env.lan
 
 # typescript
 *.tsbuildinfo
 
 # generated native folders (ios tracked for Podfile/signing fixes; Pods ignored in ios/.gitignore)
 /android
+!/android/app/src/main/java/com/chatus/app/MainApplication.kt
+
+# React Native MCP
+/results/

@@ -191,6 +191,24 @@ function warnLineSyncLocalInsert(reason: string, detail?: unknown): void {
   else console.warn(`[LineSync] ${reason}`);
 }
 
+async function resolveChatType(
+  chatId: string,
+): Promise<'private' | 'group' | 'channel' | 'discussion' | null> {
+  const fromStore = chatStore.getState().chats.find((c) => c.id === chatId);
+  if (fromStore?.chat_type) return fromStore.chat_type;
+  const row = await new ChatDao().getById(chatId);
+  const chatType = row?.chat_type;
+  if (
+    chatType === 'private' ||
+    chatType === 'group' ||
+    chatType === 'channel' ||
+    chatType === 'discussion'
+  ) {
+    return chatType;
+  }
+  return null;
+}
+
 /** Incoming text-only; skips non-text. Caller enforces sender policy (avoid own echoes vs optimistic msg:<tempId>). */
 function scheduleInboundTextLineSyncFromMappedMessage(mapped: Message): void {
   const row = buildPendingLineSyncRowForText({
@@ -403,7 +421,29 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
   useEffect(() => {
     const unsub = PeerDeliveryService.onDmDeliver((payload) => {
       void (async () => {
+        const chatType = await resolveChatType(payload.chat_id);
+        // Group text is always relayed via server WS; ignore parallel P2P fanout copies.
+        if (chatType === 'group') {
+          PeerDeliveryService.sendDmAck(payload.ack_key);
+          return;
+        }
+
+        const existing = messageStore.getState().messagesByChatId[payload.chat_id] ?? [];
         const ts = normalizeTimestampRequired(payload.sent_at);
+        const isDuplicate =
+          existing.some((m) => m.id === payload.temp_id) ||
+          existing.some(
+            (m) =>
+              m.sender_id === payload.from_user_id &&
+              m.msg_type === 'text' &&
+              m.content === payload.content &&
+              Math.abs(m.created_at - ts) < 60_000,
+          );
+        if (isDuplicate) {
+          PeerDeliveryService.sendDmAck(payload.ack_key);
+          return;
+        }
+
         const mapped: Message = {
           id: payload.temp_id,
           chat_id: payload.chat_id,
@@ -530,6 +570,7 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           // Deduplication and optimistic match in a single pass
           const existing = messageStore.getState().messagesByChatId[msg.chat_id] ?? [];
           let sendingByTempId;
+          let inboundPeerByTempId;
           let oldestSendingCandidate;
           const currentUserId = authStore.getState().user?.id ?? null;
           
@@ -545,13 +586,17 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
             if (
               clientTempId &&
               m.id === clientTempId &&
-              m.sender_id === currentUserId &&
-              msg.sender_id === currentUserId
+              m.sender_id === msg.sender_id &&
+              (msg.sender_id === currentUserId || m.transport === 'p2p')
             ) {
-              // Video note: TransportService pre-fills the bubble and sets status to "sent" after
-              // upload+WS send, before the server echoes the final id — it is no longer "sending",
-              // so we must still match by client_temp_id or we prepend a duplicate row.
-              sendingByTempId = m;
+              if (msg.sender_id === currentUserId) {
+                // Video note: TransportService pre-fills the bubble and sets status to "sent" after
+                // upload+WS send, before the server echoes the final id — it is no longer "sending",
+                // so we must still match by client_temp_id or we prepend a duplicate row.
+                sendingByTempId = m;
+              } else {
+                inboundPeerByTempId = m;
+              }
               continue;
             }
 
@@ -575,7 +620,34 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           }
           const mapped = mapServerMessageToMessage(msg);
           const sending = sendingByTempId ?? oldestSendingCandidate;
-          if (sending) {
+          const mergedInboundPeer = !!inboundPeerByTempId;
+          if (inboundPeerByTempId) {
+            messageStore.getState().updateMessage(msg.chat_id, inboundPeerByTempId.id, {
+              id: mapped.id,
+              content: mapped.content ?? null,
+              reply_to_id: mapped.reply_to_id,
+              is_edited: mapped.is_edited,
+              is_deleted: mapped.is_deleted,
+              status: mapped.status,
+              transport: mapped.transport,
+              server_id: mapped.server_id,
+              created_at: mapped.created_at,
+              updated_at: mapped.updated_at,
+            });
+            const messageDao = new MessageDao();
+            try {
+              await messageDao.replaceId(inboundPeerByTempId.id, mapped);
+            } catch {
+              /* duplicate or missing row */
+            }
+            if (clientTempId) {
+              void new LineSyncEventDao()
+                .linkServerMessageIdForOptimisticTemp(clientTempId, mapped.id)
+                .catch((err) => {
+                  warnLineSyncLocalInsert('inbound peer→server LineSync link failed', err);
+                });
+            }
+          } else if (sending) {
             const mergedMedia = mergeMediaOnOptimisticAck(sending, mapped);
             const media =
               mergedMedia ??
@@ -625,7 +697,9 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
           }
           const lastMsgOutcome = await updateChatLastMessage(msg.chat_id, mapped);
           if (currentUserId && msg.sender_id !== currentUserId) {
-            scheduleInboundTextLineSyncFromMappedMessage(mapped);
+            if (!mergedInboundPeer) {
+              scheduleInboundTextLineSyncFromMappedMessage(mapped);
+            }
             const messageChat = chatStore
               .getState()
               .chats.find((item) => item.id === msg.chat_id);
@@ -636,18 +710,20 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               sendMessageAck(msg.chat_id, msg.id, 'delivered');
             }
 
-            bumpInboundUnreadAfterLastMessage(msg.chat_id, mapped, lastMsgOutcome);
+            if (!mergedInboundPeer) {
+              bumpInboundUnreadAfterLastMessage(msg.chat_id, mapped, lastMsgOutcome);
 
-            if (chatStore.getState().selectedChatId !== msg.chat_id) {
-              const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
+              if (chatStore.getState().selectedChatId !== msg.chat_id) {
+                const chatTitle = messageChat ? getChatListTitle(messageChat) : 'Chat';
 
-              void notifyChatusInboundMessagePreview({
-                chatId: msg.chat_id,
-                title: chatTitle,
-                messagePreview: buildMessagePreview(mapped),
-                avatarUrl: messageChat?.avatar_url || mapped.sender_avatar_url || undefined,
-                messageType: mapped.msg_type,
-              });
+                void notifyChatusInboundMessagePreview({
+                  chatId: msg.chat_id,
+                  title: chatTitle,
+                  messagePreview: buildMessagePreview(mapped),
+                  avatarUrl: messageChat?.avatar_url || mapped.sender_avatar_url || undefined,
+                  messageType: mapped.msg_type,
+                });
+              }
             }
           }
           })();

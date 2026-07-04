@@ -1143,6 +1143,9 @@ const MessageRow = React.memo(function MessageRow({
   const { colors: themeColors } = useTheme();
   const isMe = item.sender_id === currentUserId;
   const bodyItem = item;
+  const groupCallPayload =
+    bodyItem.msg_type === 'system' ? parseGroupCallSystemContent(bodyItem.content) : null;
+  const isGroupCallSystem = groupCallPayload != null;
   /** Как в Telegram: на сообщении только из одного стикера реакции не ставятся. */
   const isPureChatusStickerOnly =
     bodyItem.msg_type === 'text' &&
@@ -1344,17 +1347,19 @@ const MessageRow = React.memo(function MessageRow({
     }
 
     if (bodyItem.msg_type === 'system') {
-      const payload = parseGroupCallSystemContent(bodyItem.content);
-      if (payload) {
+      if (groupCallPayload) {
         const canJoin =
-          payload.action === 'started' &&
-          Boolean(activeGroupCallRoomId && activeGroupCallRoomId === payload.room_id) &&
+          groupCallPayload.action === 'started' &&
+          Boolean(activeGroupCallRoomId && activeGroupCallRoomId === groupCallPayload.room_id) &&
           !isUserInGroupCall;
         return (
           <GroupCallSystemMessage
-            payload={payload}
+            payload={groupCallPayload}
             canJoin={canJoin}
-            onJoin={canJoin && onJoinGroupCall ? () => onJoinGroupCall(payload.room_id) : undefined}
+            onJoin={canJoin && onJoinGroupCall ? () => onJoinGroupCall(groupCallPayload.room_id) : undefined}
+            time={formatTime(bodyItem.created_at)}
+            status={bodyItem.status}
+            isMe={isMe}
           />
         );
       }
@@ -2417,7 +2422,22 @@ const MessageRow = React.memo(function MessageRow({
       </View>
     );
 
-  const card = (
+  const card = isGroupCallSystem ? (
+    <View style={styles.messagePressable}>
+      <View style={[styles.messageWrap, styles.messageWrapService]}>
+        <View
+          ref={(node) => setContentRef(item.id, node)}
+          collapsable={false}
+          style={[
+            styles.messageContentMeasure,
+            isHighlighted && styles.messageContentHighlighted,
+          ]}
+        >
+          {renderBody()}
+        </View>
+      </View>
+    </View>
+  ) : (
     <View style={styles.messagePressable}>
       <View style={styles.messageRowShell}>
         {selectionMode ? (
@@ -2958,6 +2978,9 @@ const styles = StyleSheet.create({
   },
   messageWrapOther: {
     alignItems: 'flex-start',
+  },
+  messageWrapService: {
+    alignItems: 'flex-end',
   },
   groupIncomingRow: {
     flexDirection: 'row',

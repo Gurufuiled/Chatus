@@ -72,6 +72,7 @@ export function createComposeMessageStyles(colors: ThemeColors) {
       flex: 1,
       fontSize: 16,
       fontWeight: '600',
+      color: colors.textPrimary,
     },
     sectionHeader: {
       paddingHorizontal: 16,

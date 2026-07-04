@@ -36,7 +36,7 @@ import {
   InteractiveChatBackShell,
   LoadErrorState,
 } from '../components';
-import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import { CustomAndroidChatHeader, ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT } from '../components/CustomAndroidChatHeader';
 import {
   PeerFirstFileBubble,
   PeerFirstImageBubble,
@@ -2156,11 +2156,15 @@ export function ChannelFeedScreen() {
             chatId={channelId}
             navigation={navigation}
             onTitlePress={openChannelProfile}
+            floating
           />
         ) : null}
 
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={[styles.container, { backgroundColor: c.chatBackground }]}>
       <ChatBackgroundPattern />
+      {Platform.OS === 'android' ? (
+        <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
+      ) : null}
       {feedError && sortedFeed.length === 0 ? (
         <LoadErrorState message={feedError} onRetry={() => void load()} />
       ) : loading && feed.length === 0 ? (

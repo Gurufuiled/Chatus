@@ -21,6 +21,7 @@ import { ProfileActionIcon } from '../ProfileActionIcon';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { ThemeColors } from '../../theme/palettes';
 import { withAlpha } from '../../theme/stylePrimitives';
+import { formatParticipantCount } from '../../utils/groupCallSystemMessage';
 
 type GroupProfileHeaderSectionProps = {
   isOwner: boolean;
@@ -49,6 +50,10 @@ type GroupProfileHeaderSectionProps = {
   onToggleMute: () => void;
   onSearch: () => void;
   onOpenMoreMenu: () => void;
+  onGroupVoicePress?: () => void;
+  isUserInGroupCall?: boolean;
+  hasActiveGroupCall?: boolean;
+  activeGroupCallParticipantCount?: number | null;
 };
 
 const HERO_COLLAPSED_SIZE = 116;
@@ -80,6 +85,10 @@ export function GroupProfileHeaderSection({
   onToggleMute,
   onSearch,
   onOpenMoreMenu,
+  onGroupVoicePress,
+  isUserInGroupCall = false,
+  hasActiveGroupCall = false,
+  activeGroupCallParticipantCount = null,
 }: GroupProfileHeaderSectionProps) {
   const { colors: themeColors } = useTheme();
   const styles = useMemo(() => createGroupProfileHeaderStyles(themeColors), [themeColors]);
@@ -233,6 +242,35 @@ export function GroupProfileHeaderSection({
 
             <View style={styles.actionsSlot}>
               <View style={styles.actionsRow}>
+                {onGroupVoicePress ? (
+                  <Pressable
+                    onPress={onGroupVoicePress}
+                    style={({ pressed }) => [
+                      styles.actionButton,
+                      isUserInGroupCall && styles.actionButtonActive,
+                      pressed && styles.cardPressed,
+                    ]}
+                  >
+                    <ProfileActionIcon
+                      name="call"
+                      size={20}
+                      color={isUserInGroupCall ? '#FFFFFF' : themeColors.accent}
+                    />
+                    <Text
+                      style={[
+                        styles.actionButtonLabel,
+                        isUserInGroupCall && styles.actionButtonLabelActive,
+                      ]}
+                    >
+                      {isUserInGroupCall
+                        ? 'Открыть'
+                        : hasActiveGroupCall
+                          ? 'Войти'
+                          : 'Голос'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+
                 <Pressable
                   onPress={onToggleMute}
                   style={({ pressed }) => [
@@ -274,6 +312,11 @@ export function GroupProfileHeaderSection({
                   <Text style={styles.actionButtonLabel}>Ещё</Text>
                 </Pressable>
               </View>
+              {activeGroupCallParticipantCount && activeGroupCallParticipantCount > 0 ? (
+                <Text style={styles.activeCallHint}>
+                  {`Сейчас в звонке: ${formatParticipantCount(activeGroupCallParticipantCount)}`}
+                </Text>
+              ) : null}
             </View>
           </>
         )}
@@ -444,6 +487,20 @@ function createGroupProfileHeaderStyles(c: ThemeColors) {
     fontSize: 13,
     fontWeight: '600',
     color: c.accent,
+  },
+  actionButtonActive: {
+    backgroundColor: c.accent,
+    borderColor: c.accent,
+  },
+  actionButtonLabelActive: {
+    color: '#FFFFFF',
+  },
+  activeCallHint: {
+    marginTop: 8,
+    fontSize: 13,
+    textAlign: 'center',
+    color: c.textSecondary,
+    paddingHorizontal: 8,
   },
   descriptionCard: {
     marginTop: 16,

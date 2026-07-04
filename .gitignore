@@ -6,6 +6,7 @@
 **/.env.*
 !**/.env.example
 !**/.env.production.example
+!**/.env.lan.example
 
 # Dependencies
 node_modules/
@@ -19,8 +20,9 @@ mobile/metro-*.bundle.js
 mobile/metro-*.hbc
 mobile/dist-*/
 
-# Cursor / Obsidian / docs — локально, не в git
-.cursor/
+# Cursor / Obsidian / docs — локально, не в git (mcp.json — исключение, без секретов)
+.cursor/*
+!.cursor/mcp.json
 obsidian-vault/
 docs/
 

@@ -1,8 +1,16 @@
+const mcpPreset =
+  process.env.NODE_ENV === 'development' || process.env.REACT_NATIVE_MCP_ENABLED === '1'
+    ? require.resolve('@ohah/react-native-mcp-server/babel-preset')
+    : null;
+
 module.exports = function (api) {
   api.cache(true);
 
   return {
-    presets: [require.resolve('expo/node_modules/babel-preset-expo')],
+    presets: [
+      require.resolve('expo/node_modules/babel-preset-expo'),
+      ...(mcpPreset ? [mcpPreset] : []),
+    ],
     plugins: [
       '@babel/plugin-transform-arrow-functions',
       '@babel/plugin-transform-parameters',

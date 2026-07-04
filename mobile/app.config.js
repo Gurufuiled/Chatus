@@ -30,12 +30,18 @@ function loadDotEnv(filePath) {
 
 const envPath = path.join(__dirname, '.env');
 const envProductionPath = path.join(__dirname, '.env.production');
+const envLanPath = path.join(__dirname, '.env.lan');
 
 let envFile = loadDotEnv(envPath);
+const mergeLanEnv = process.env.MOBILE_ENV === 'lan';
 const mergeProdEnv =
   process.env.MOBILE_ENV === 'production' ||
   process.env.NODE_ENV === 'production';
-if (mergeProdEnv && fs.existsSync(envProductionPath)) {
+if (mergeLanEnv) {
+  if (fs.existsSync(envLanPath)) {
+    envFile = { ...envFile, ...loadDotEnv(envLanPath) };
+  }
+} else if (mergeProdEnv && fs.existsSync(envProductionPath)) {
   envFile = { ...envFile, ...loadDotEnv(envProductionPath) };
 }
 
@@ -85,6 +91,7 @@ module.exports = ({ config }) => {
       EXPO_PUBLIC_CLIENT_UPDATE_APK_URL: env('EXPO_PUBLIC_CLIENT_UPDATE_APK_URL'),
       EXPO_PUBLIC_PRIVACY_POLICY_URL: env('EXPO_PUBLIC_PRIVACY_POLICY_URL'),
       EXPO_PUBLIC_WEBRTC_ICE_SERVERS_JSON: env('EXPO_PUBLIC_WEBRTC_ICE_SERVERS_JSON'),
+      EXPO_PUBLIC_LIVEKIT_URL: env('EXPO_PUBLIC_LIVEKIT_URL'),
       /** Не EXPO_PUBLIC_: не вшивать api_hash в открытый бандл без EAS Secrets. */
       TELEGRAM_API_ID: env('TELEGRAM_API_ID'),
       TELEGRAM_API_HASH: env('TELEGRAM_API_HASH'),

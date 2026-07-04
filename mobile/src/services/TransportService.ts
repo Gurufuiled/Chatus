@@ -29,7 +29,6 @@ import type { BlobRef } from './lineSyncProtocol';
 import { LineSyncService, LINE_SYNC_MVP_NODE_ID, type PeerPatchDeliveryResult } from './LineSyncService';
 import { MediaCacheService } from './MediaCacheService';
 import { calculateFileSha256 } from './MediaHashService';
-import { getOtherGroupMemberUserIds } from '../utils/groupLineSyncPeer';
 
 function queueToSyncQueue(
   dao: SyncQueueDao,
@@ -290,8 +289,7 @@ class TransportServiceClass {
       | 'peer_skipped'
       | 'peer_success'
       | 'peer_failed'
-      | 'server_fallback'
-      | 'group_peer_fanout',
+      | 'server_fallback',
     payload: Record<string, unknown>,
   ): void {
     if (__DEV__) {
@@ -795,34 +793,6 @@ class TransportServiceClass {
         tempId,
         path: WebSocketService.isConnected() ? 'websocket' : 'offline_queue',
       });
-
-      if (P2P_FIRST_ENABLED) {
-        const groupChat = chatStore.getState().getChatById(chatId);
-        const uid = authStore.getState().user?.id ?? null;
-        if (groupChat?.chat_type === 'group' && uid) {
-          const recipients = getOtherGroupMemberUserIds(groupChat, uid);
-          if (recipients.length > 0) {
-            void Promise.allSettled(
-              recipients.map((recipientUserId) =>
-                this.attemptPeerTextMessage(chatId, recipientUserId, content, tempId, replyToId),
-              ),
-            ).then((results) => {
-              const delivered = results.filter(
-                (r): r is PromiseFulfilledResult<PeerDeliveryResult> =>
-                  r.status === 'fulfilled' && r.value.ok === true,
-              ).length;
-              if (delivered > 0) {
-                this.logP2PDecision('group_peer_fanout', {
-                  chatId,
-                  tempId,
-                  delivered,
-                  targets: recipients.length,
-                });
-              }
-            });
-          }
-        }
-      }
     }
 
     this.sendTextViaServerOrQueue(chatId, content, msgType, tempId, replyToId);

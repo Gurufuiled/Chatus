@@ -174,6 +174,13 @@ function createChannelProfileStyles(c: ThemeColors) {
     },
     rowPressed: { backgroundColor: c.rowPressed },
     rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    iconBubble: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     rowTitle: { color: c.textPrimary, fontSize: 18 },
     rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     rowValue: { color: c.textSecondary, fontSize: 16, fontWeight: '500' },
@@ -261,17 +268,17 @@ type ChannelProfileStyles = ReturnType<typeof createChannelProfileStyles>;
 
 function Row({
   st,
-  accent,
   muted,
   icon,
+  iconBgColor,
   title,
   value,
   onPress,
 }: {
   st: ChannelProfileStyles;
-  accent: string;
   muted: string;
   icon: React.ComponentProps<typeof Feather>['name'];
+  iconBgColor: string;
   title: string;
   value?: string;
   onPress: () => void;
@@ -279,7 +286,9 @@ function Row({
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [st.row, pressed && st.rowPressed]}>
       <View style={st.rowLeft}>
-        <Feather name={icon} size={18} color={accent} />
+        <View style={[st.iconBubble, { backgroundColor: iconBgColor }]}>
+          <Feather name={icon} size={16} color="#FFFFFF" />
+        </View>
         <Text style={st.rowTitle}>{title}</Text>
       </View>
       <View style={st.rowRight}>
@@ -691,7 +700,7 @@ export function ChannelProfileScreen() {
           <View style={styles.menuCard}>
             <Row
               st={styles}
-              accent={c.accent}
+              iconBgColor="#1E88E5"
               muted={c.textSecondary}
               icon="shield"
               title="Администраторы"
@@ -706,7 +715,7 @@ export function ChannelProfileScreen() {
             <View style={styles.divider} />
             <Row
               st={styles}
-              accent={c.accent}
+              iconBgColor="#34C759"
               muted={c.textSecondary}
               icon="users"
               title="Подписчики"
@@ -721,7 +730,7 @@ export function ChannelProfileScreen() {
             <View style={styles.divider} />
             <Row
               st={styles}
-              accent={c.accent}
+              iconBgColor="#F2994A"
               muted={c.textSecondary}
               icon="sliders"
               title="Настройки канала"

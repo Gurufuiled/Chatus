@@ -3,6 +3,7 @@ import type { Chat } from '../stores/types';
 import type { Message } from '../stores/types';
 import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
 import { getCompositeTextBody, tryParseCompositeMessage } from '../stickers/chatusCompositePayload';
+import { groupCallSystemPreviewText, isGroupCallPreviewText } from './groupCallSystemMessage';
 
 const DIALOG_PREVIEW_TEXT_MAX = 80;
 
@@ -109,6 +110,18 @@ function textPreviewFromContent(msg: Message): ChatusDialogPreview | null {
   };
 }
 
+function groupCallDialogPreview(
+  content: string | null | undefined,
+): ChatusDialogPreview | null {
+  const text = groupCallSystemPreviewText(content);
+  if (!text) return null;
+  return {
+    text: excerptDialogPreviewText(text),
+    thumbnailUris: [],
+    accentLabel: true,
+  };
+}
+
 /** Превью последнего сообщения Chatus для строки списка чатов (как Telegram). */
 export function buildChatusDialogPreviewFromMessage(
   msg: Message | null | undefined,
@@ -116,6 +129,9 @@ export function buildChatusDialogPreviewFromMessage(
   if (!msg || msg.is_deleted === 1) {
     return { text: '', thumbnailUris: [], accentLabel: false };
   }
+
+  const groupCallPreview = groupCallDialogPreview(msg.content);
+  if (groupCallPreview) return groupCallPreview;
 
   const textOnly = textPreviewFromContent(msg);
   if (textOnly) return textOnly;
@@ -208,9 +224,12 @@ export function buildChatusDialogPreviewForChat(
     chat.last_message_preview?.trim() ||
     (chat.chat_type === 'channel' ? chat.description?.trim() || 'Канал' : '');
 
+  const groupCallPreview = groupCallDialogPreview(fallback);
+  if (groupCallPreview) return groupCallPreview;
+
   return {
     text: fallback,
     thumbnailUris: [],
-    accentLabel: false,
+    accentLabel: isGroupCallPreviewText(fallback),
   };
 }

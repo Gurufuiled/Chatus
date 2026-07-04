@@ -42,3 +42,30 @@ export function formatGroupCallParticipantNames(
   if (rest <= 0) return names.join(', ');
   return `${names.join(', ')} и ещё ${rest}`;
 }
+
+/** Human-readable chat-list preview for group_call system messages. */
+export function groupCallSystemPreviewText(
+  content: string | null | undefined,
+): string | null {
+  return parseGroupCallSystemContent(content)?.display ?? null;
+}
+
+/** Detects stored preview strings emitted for group-call system messages. */
+export function isGroupCallPreviewText(text: string | null | undefined): boolean {
+  const trimmed = text?.trim();
+  if (!trimmed) return false;
+  if (parseGroupCallSystemContent(trimmed)) return true;
+  return trimmed.toLowerCase().includes('голосовой чат');
+}
+
+export function formatParticipantCount(count: number): string {
+  if (count % 10 === 1 && count % 100 !== 11) return `${count} участник`;
+  if (
+    count % 10 >= 2 &&
+    count % 10 <= 4 &&
+    (count % 100 < 10 || count % 100 >= 20)
+  ) {
+    return `${count} участника`;
+  }
+  return `${count} участников`;
+}

@@ -20,7 +20,7 @@ RUN npm ci \
 
 COPY server/tsconfig.json server/tsconfig.build.json server/nest-cli.json ./
 COPY server/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+RUN sed -i 's/\r$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 COPY server/src ./src/
 COPY server/public ./public/
 COPY config/client-update-manifest.json ./client-update-manifest.json

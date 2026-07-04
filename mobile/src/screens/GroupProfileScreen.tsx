@@ -43,7 +43,6 @@ import type {
 } from '../components/group-profile/groupProfile.types';
 import { getDisplayNameFromMember } from '../components/group-profile/groupProfile.utils';
 import { useGroupCall } from '../contexts/GroupCallContext';
-import { GroupCallStartSheet } from '../components/group-call/GroupCallStartSheet';
 import { resolveAvatarUrl } from '../config';
 import type { ChatsStackParamList } from '../navigation/types';
 import { apiUpload } from '../services/apiClient';
@@ -386,7 +385,6 @@ export function GroupProfileScreen() {
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
-  const [groupCallSheetVisible, setGroupCallSheetVisible] = useState(false);
   const {
     activeRoomByChatId,
     refreshActiveRoom,
@@ -459,7 +457,7 @@ export function GroupProfileScreen() {
       expand();
       return;
     }
-    setGroupCallSheetVisible(true);
+    void startGroupCall(chatId, displayName);
   }, [
     activeGroupCallRoom,
     chatId,
@@ -467,6 +465,7 @@ export function GroupProfileScreen() {
     expand,
     isUserInGroupCall,
     joinGroupCall,
+    startGroupCall,
   ]);
   const selectedUserIds = useMemo(
     () => new Set(selectedUsers.map((user) => user.id)),
@@ -1404,31 +1403,11 @@ export function GroupProfileScreen() {
           onToggleMute={handleToggleMute}
           onSearch={handleSearchPress}
           onOpenMoreMenu={openMoreMenu}
+          onGroupVoicePress={handleGroupVoicePress}
+          isUserInGroupCall={isUserInGroupCall}
+          hasActiveGroupCall={Boolean(activeGroupCallRoom)}
+          activeGroupCallParticipantCount={activeGroupCallRoom?.participant_count ?? null}
         />
-
-        {!isEditMode ? (
-          <View style={{ paddingHorizontal: 4, paddingBottom: 8, gap: 8 }}>
-            <Pressable
-              onPress={handleGroupVoicePress}
-              style={({ pressed }) => ({
-                borderRadius: 14,
-                backgroundColor: themeColors.inputBackgroundSolid,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                opacity: pressed ? 0.88 : 1,
-              })}
-            >
-              <Text style={{ color: themeColors.textPrimary, fontWeight: '700', fontSize: 15 }}>
-                🔊 {isUserInGroupCall ? 'Открыть голосовой чат' : 'Начать голосовой чат'}
-              </Text>
-            </Pressable>
-            {activeGroupCallRoom ? (
-              <Text style={{ color: themeColors.textSecondary, fontSize: 13, paddingHorizontal: 4 }}>
-                {`Сейчас в звонке: ${activeGroupCallRoom.participant_count} участник(ов)`}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
 
         {!isEditMode ? (
           <GroupProfileStickyTabs
@@ -1547,13 +1526,6 @@ export function GroupProfileScreen() {
         subtitle="Фото группы"
       />
 
-      <GroupCallStartSheet
-        visible={groupCallSheetVisible}
-        onClose={() => setGroupCallSheetVisible(false)}
-        onStartVoice={() => {
-          void startGroupCall(chatId, displayName);
-        }}
-      />
     </View>
   );
 }

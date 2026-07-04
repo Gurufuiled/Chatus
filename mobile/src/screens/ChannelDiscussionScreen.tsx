@@ -61,7 +61,7 @@ import {
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from '../components';
-import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import { CustomAndroidChatHeader, ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT } from '../components/CustomAndroidChatHeader';
 import {
   PeerFirstFileBubble,
   PeerFirstImageBubble,
@@ -1277,6 +1277,7 @@ export function ChannelDiscussionScreen() {
             peerId={null}
             chatId={channelId}
             navigation={navigation as any}
+            floating
           />
         ) : null}
 
@@ -1286,6 +1287,9 @@ export function ChannelDiscussionScreen() {
         style={[styles.container, { backgroundColor: c.chatBackground }]}
       >
         <ChatBackgroundPattern />
+        {Platform.OS === 'android' ? (
+          <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
+        ) : null}
 
         {loading && !thread && !loadError ? (
           <View style={styles.loading}><ActivityIndicator size="large" color={c.accent} /></View>

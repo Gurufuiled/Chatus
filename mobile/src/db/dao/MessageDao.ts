@@ -94,6 +94,33 @@ export class MessageDao {
     await this.db.runAsync('DELETE FROM messages WHERE id = ?', id);
   }
 
+  async replaceId(oldId: string, row: MessageRow): Promise<void> {
+    await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync('DELETE FROM messages WHERE id = ?', oldId);
+      await this.db.runAsync(
+        `INSERT INTO messages (id, chat_id, sender_id, msg_type, content, reply_to_id, thread_root_message_id, is_channel_post, view_count, comment_count, is_edited, is_deleted, status, transport, server_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        row.id,
+        row.chat_id,
+        row.sender_id,
+        row.msg_type,
+        row.content ?? null,
+        row.reply_to_id ?? null,
+        row.thread_root_message_id ?? null,
+        row.is_channel_post ?? 0,
+        row.view_count ?? 0,
+        row.comment_count ?? 0,
+        row.is_edited ?? 0,
+        row.is_deleted ?? 0,
+        row.status ?? 'sending',
+        normalizeMessageTransport(row.transport),
+        row.server_id ?? null,
+        row.created_at,
+        row.updated_at,
+      );
+    });
+  }
+
   async getByChatId(chatId: string, limit?: number): Promise<MessageRow[]> {
     const sql = limit
       ? 'SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?'

@@ -16,7 +16,7 @@ import {
   Track,
   type Participant,
 } from 'livekit-client';
-import { AudioSession } from '@livekit/react-native';
+import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import { authStore } from '../stores/authStore';
 import { useCall } from './CallContext';
 import { resolveAvatarUrl } from '../config';
@@ -30,7 +30,6 @@ import {
   type ApiGroupCallRoom,
 } from '../services/groupCallService';
 import { GroupCallOverlay } from '../components/group-call/GroupCallOverlay';
-import { GroupCallInviteSheet } from '../components/group-call/GroupCallInviteSheet';
 import { WebSocketService } from '../services/WebSocketService';
 
 export type GroupCallPhase =
@@ -65,8 +64,6 @@ type GroupCallState = {
 type GroupCallContextType = {
   state: GroupCallState;
   activeRoomByChatId: Record<string, ApiGroupCallRoom | null>;
-  inviteSheetVisible: boolean;
-  setInviteSheetVisible: (visible: boolean) => void;
   refreshActiveRoom: (chatId: string) => Promise<ApiGroupCallRoom | null>;
   applyActiveRoomSnapshot: (chatId: string, room: ApiGroupCallRoom | null) => void;
   applyParticipantsSnapshot: (
@@ -128,6 +125,23 @@ function mapLiveKitParticipant(
   };
 }
 
+function buildParticipantsFromRoom(room: Room, currentUserId: string): GroupCallParticipant[] {
+  const remote = [...room.remoteParticipants.values()].map((p) =>
+    mapLiveKitParticipant(p, currentUserId),
+  );
+  const local = room.localParticipant
+    ? [mapLiveKitParticipant(room.localParticipant, currentUserId)]
+    : [];
+  return [...local, ...remote];
+}
+
+function normalizeStartedAt(startedAt: number | undefined): number {
+  if (typeof startedAt === 'number' && Number.isFinite(startedAt) && startedAt > 0) {
+    return startedAt;
+  }
+  return Date.now();
+}
+
 function buildCallAudioMode(isSpeakerOn: boolean) {
   return {
     allowsRecordingIOS: true,
@@ -138,13 +152,37 @@ function buildCallAudioMode(isSpeakerOn: boolean) {
   } satisfies Parameters<typeof Audio.setAudioModeAsync>[0];
 }
 
+/** LiveKit owns Android audio focus; expo-av setAudioModeAsync conflicts with WebRTC there. */
+async function prepareGroupCallAudio(isSpeakerOn: boolean): Promise<void> {
+  if (Platform.OS === 'android') {
+    await AudioSession.configureAudio({
+      android: {
+        preferredOutputList: ['speaker', 'earpiece', 'bluetooth', 'headset'],
+        audioTypeOptions: AndroidAudioTypePresets.communication,
+      },
+    });
+    await AudioSession.startAudioSession();
+    await AudioSession.selectAudioOutput(isSpeakerOn ? 'speaker' : 'earpiece');
+    return;
+  }
+  await Audio.setAudioModeAsync(buildCallAudioMode(isSpeakerOn));
+  await AudioSession.startAudioSession();
+}
+
+async function applyGroupCallSpeaker(isSpeakerOn: boolean): Promise<void> {
+  if (Platform.OS === 'android') {
+    await AudioSession.selectAudioOutput(isSpeakerOn ? 'speaker' : 'earpiece');
+    return;
+  }
+  await Audio.setAudioModeAsync(buildCallAudioMode(isSpeakerOn));
+}
+
 export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const { callState } = useCall();
   const [state, setState] = useState<GroupCallState>(initialState);
   const [activeRoomByChatId, setActiveRoomByChatId] = useState<
     Record<string, ApiGroupCallRoom | null>
   >({});
-  const [inviteSheetVisible, setInviteSheetVisible] = useState(false);
   const roomRef = useRef<Room | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -174,15 +212,10 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const syncParticipantsFromRoom = useCallback((room: Room) => {
     const currentUserId = authStore.getState().user?.id;
     if (!currentUserId) return;
-    const remote = [...room.remoteParticipants.values()].map((p) =>
-      mapLiveKitParticipant(p, currentUserId),
-    );
-    const local = room.localParticipant
-      ? [mapLiveKitParticipant(room.localParticipant, currentUserId)]
-      : [];
+    const participants = buildParticipantsFromRoom(room, currentUserId);
     setState((prev) => ({
       ...prev,
-      participants: [...local, ...remote],
+      participants,
     }));
   }, []);
 
@@ -209,8 +242,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       }
 
       await detachRoom();
-      await Audio.setAudioModeAsync(buildCallAudioMode(true));
-      await AudioSession.startAudioSession();
+      await prepareGroupCallAudio(true);
 
       const room = new Room({
         adaptiveStream: true,
@@ -222,6 +254,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       room.on(RoomEvent.ParticipantDisconnected, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackMuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackUnmuted, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.TrackPublished, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.TrackSubscribed, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         const speakingIds = new Set(speakers.map((s) => s.identity));
         setState((prev) => ({
@@ -233,6 +267,9 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         }));
       });
       room.on(RoomEvent.ConnectionStateChanged, (connectionState) => {
+        if (connectionState === ConnectionState.Connected) {
+          syncParticipantsFromRoom(room);
+        }
         setState((prev) => ({
           ...prev,
           connectionState,
@@ -267,21 +304,23 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         throw micErr instanceof Error ? micErr : new Error(String(micErr));
       }
 
-      syncParticipantsFromRoom(room);
-      setState({
-        phase: room.state === ConnectionState.Connected ? 'active' : params.phase,
+      const participants = buildParticipantsFromRoom(room, currentUserId);
+      const startedAt = normalizeStartedAt(params.startedAt);
+      const isConnected = room.state === ConnectionState.Connected;
+
+      setState((prev) => ({
+        ...prev,
+        phase: isConnected ? 'active' : params.phase,
         roomId: params.roomId,
         chatId: params.chatId,
         chatTitle: params.chatTitle,
-        participants: room.localParticipant
-          ? [mapLiveKitParticipant(room.localParticipant, currentUserId)]
-          : [],
+        participants,
         isMuted: false,
         isSpeakerOn: true,
-        startedAt: params.startedAt,
+        startedAt,
         isCreator: params.isCreator,
         connectionState: room.state,
-      });
+      }));
     },
     [detachRoom, resetCallState, syncParticipantsFromRoom],
   );
@@ -469,8 +508,15 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
 
   const toggleSpeaker = useCallback(async () => {
     const nextSpeakerOn = !stateRef.current.isSpeakerOn;
-    await Audio.setAudioModeAsync(buildCallAudioMode(nextSpeakerOn));
-    setState((prev) => ({ ...prev, isSpeakerOn: nextSpeakerOn }));
+    try {
+      await applyGroupCallSpeaker(nextSpeakerOn);
+      setState((prev) => ({ ...prev, isSpeakerOn: nextSpeakerOn }));
+    } catch (err) {
+      Alert.alert(
+        'Динамик',
+        err instanceof Error ? err.message : 'Не удалось переключить аудиовыход',
+      );
+    }
   }, []);
 
   const isInCallForChat = useCallback(
@@ -535,8 +581,6 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     () => ({
       state,
       activeRoomByChatId,
-      inviteSheetVisible,
-      setInviteSheetVisible,
       refreshActiveRoom,
       applyActiveRoomSnapshot,
       applyParticipantsSnapshot,
@@ -553,7 +597,6 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     [
       state,
       activeRoomByChatId,
-      inviteSheetVisible,
       refreshActiveRoom,
       applyActiveRoomSnapshot,
       applyParticipantsSnapshot,
@@ -573,7 +616,6 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     <GroupCallContext.Provider value={contextValue}>
       {children}
       <GroupCallOverlay />
-      <GroupCallInviteSheet />
     </GroupCallContext.Provider>
   );
 }
