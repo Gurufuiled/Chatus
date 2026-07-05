@@ -42,7 +42,17 @@ const HIDDEN_TAB_BAR = StyleSheet.create({
 /** Показываем tab bar только на корневом списке чатов; все вложенные экраны — без панели (как в Telegram). */
 const CHAT_STACK_SHOW_TAB_ROUTES = new Set(['ChatList']);
 
-const SETTINGS_HIDE_TAB_ROUTES = new Set(['MiniApp', 'Services', 'EditProfile', 'MyProfile']);
+const SETTINGS_HIDE_TAB_ROUTES = new Set([
+  'MiniApp',
+  'Services',
+  'EditProfile',
+  'MyProfile',
+  'Appearance',
+  'ChatSettings',
+  'FeedbackList',
+  'FeedbackCompose',
+  'TelegramAuth',
+]);
 
 export function MainTabs() {
   return (
