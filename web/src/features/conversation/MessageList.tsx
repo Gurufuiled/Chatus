@@ -1,39 +1,51 @@
-import { useEffect, useRef, useState } from 'react';
-import { useMessagesQuery } from '@/queries/messages.queries';
-import { useMeQuery } from '@/queries/auth.queries';
-import { useMessageContextStore } from '@/stores/messageContextStore';
-import { useSelectionStore } from '@/stores/selectionStore';
-import { MessageBubble } from './MessageBubble';
-import { Spinner } from '@/components/ui/Spinner';
-import { EmptyState } from '@/components/ui/EmptyState';
+import { useEffect, useRef, useState } from "react";
+import { useMessagesQuery } from "@/queries/messages.queries";
+import { useMeQuery } from "@/queries/auth.queries";
+import { useMessageContextStore } from "@/stores/messageContextStore";
+import { useSelectionStore } from "@/stores/selectionStore";
+import { MessageBubble } from "./MessageBubble";
+import { Spinner } from "@/components/ui/Spinner";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 interface MessageListProps {
   chatId: string;
 }
 
 export function MessageList({ chatId }: MessageListProps) {
-  const { data: messages, isLoading, isError, error } = useMessagesQuery(chatId);
+  const {
+    data: messages,
+    isLoading,
+    isError,
+    error,
+  } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
   const closeMessageMenu = useMessageContextStore((s) => s.closeMessageMenu);
   const openMessageMenu = useMessageContextStore((s) => s.openMessageMenu);
-  const selectionActive = useSelectionStore((s) => s.isActive && s.chatId === chatId);
+  const selectionActive = useSelectionStore(
+    (s) => s.isActive && s.chatId === chatId,
+  );
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const toggleMessage = useSelectionStore((s) => s.toggleMessage);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const lastChatIdRef = useRef(chatId);
 
   const triggerHighlight = (id: string) => {
     setHighlightedId(id);
     if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
-    highlightTimeoutRef.current = setTimeout(() => setHighlightedId(null), 1500);
+    highlightTimeoutRef.current = setTimeout(
+      () => setHighlightedId(null),
+      1500,
+    );
   };
 
   useEffect(() => {
-    const behavior = lastChatIdRef.current === chatId ? 'smooth' : 'auto';
+    const behavior = lastChatIdRef.current === chatId ? "smooth" : "auto";
     lastChatIdRef.current = chatId;
     bottomRef.current?.scrollIntoView({ behavior });
   }, [chatId, messages?.length]);
@@ -42,13 +54,14 @@ export function MessageList({ chatId }: MessageListProps) {
     const container = containerRef.current;
     if (!container) return;
     const onScroll = () => closeMessageMenu();
-    container.addEventListener('scroll', onScroll, { passive: true });
-    return () => container.removeEventListener('scroll', onScroll);
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
   }, [closeMessageMenu]);
 
   useEffect(() => {
     return () => {
-      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+      if (highlightTimeoutRef.current)
+        clearTimeout(highlightTimeoutRef.current);
     };
   }, []);
 
@@ -76,7 +89,9 @@ export function MessageList({ chatId }: MessageListProps) {
       <div className="message-list message-list--centered">
         <EmptyState
           title="Не удалось загрузить сообщения"
-          description={error instanceof Error ? error.message : 'Неизвестная ошибка'}
+          description={
+            error instanceof Error ? error.message : "Неизвестная ошибка"
+          }
         />
       </div>
     );
@@ -94,7 +109,12 @@ export function MessageList({ chatId }: MessageListProps) {
   }
 
   return (
-    <div className="message-list" ref={containerRef}>
+    <div
+      className="message-list"
+      ref={containerRef}
+      role="log"
+      aria-relevant="additions"
+    >
       <div className="message-list__inner">
         {messages.map((message) => {
           const isOutgoing = !!me?.id && message.sender_id === me.id;
@@ -103,7 +123,7 @@ export function MessageList({ chatId }: MessageListProps) {
             <div
               key={message.id}
               id={`msg-${message.id}`}
-              className={`message-list__row${isOutgoing ? ' message-list__row--outgoing' : ' message-list__row--incoming'}${selectionActive ? ' message-list__row--selectable' : ''}${isSelected ? ' message-list__row--selected' : ''}${highlightedId === message.id ? ' message-list__row--highlighted' : ''}`}
+              className={`message-list__row${isOutgoing ? " message-list__row--outgoing" : " message-list__row--incoming"}${selectionActive ? " message-list__row--selectable" : ""}${isSelected ? " message-list__row--selected" : ""}${highlightedId === message.id ? " message-list__row--highlighted" : ""}`}
               onClick={() => handleRowClick(message.id)}
             >
               {selectionActive ? (
