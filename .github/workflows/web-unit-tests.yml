@@ -16,8 +16,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+      - uses: actions/setup-node@8f152de45cc393f58c3f25c7e141a0210eb7042a
         with:
           node-version: '22'
           cache: npm
