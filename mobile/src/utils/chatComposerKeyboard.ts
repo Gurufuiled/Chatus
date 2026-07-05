@@ -10,7 +10,7 @@ const CHAT_COMPOSER_DOCK_PADDING_MIN = 8;
  * При открытой клавиатуре нижний safe-area inset не дублируем в padding дока
  * (композер плотно к панели IME на iOS и Android).
  */
-export const CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN = CHAT_COMPOSER_DOCK_PADDING_MIN;
+export const CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN = 0;
 
 /** @deprecated Use {@link CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN}. */
 export const CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_ANDROID = CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN;
