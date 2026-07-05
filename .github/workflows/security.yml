@@ -31,12 +31,12 @@ jobs:
     name: Secret scan (Gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+      - uses: actions/checkout@v4.0.0
         with:
           fetch-depth: 0
 
       - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@2ea09c3132bfbc3de8e88e28080bc235f11cc5d3
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
@@ -45,9 +45,9 @@ jobs:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+      - uses: actions/checkout@v4.0.0
 
-      - uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f
+      - uses: actions/setup-python@v5.0.0
         with:
           python-version: '3.12'
 
@@ -85,9 +85,9 @@ jobs:
       run:
         working-directory: ${{ matrix.dir }}
     steps:
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+      - uses: actions/checkout@v4.0.0
 
-      - uses: actions/setup-node@39370e3970a6d050c480ff24fc8c2ee15b408ce8
+      - uses: actions/setup-node@v4.0.0
         with:
           node-version: '22'
           cache: npm
@@ -118,10 +118,10 @@ jobs:
     name: Trivy filesystem (server/)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+      - uses: actions/checkout@v4.0.0
 
       - name: Scan server tree
-        uses: aquasecurity/trivy-action@a11da62073708815958ea6d84f5650c78a3ef85b
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: server/
@@ -134,13 +134,13 @@ jobs:
     if: github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+      - uses: actions/checkout@v4.0.0
 
       - name: Build API image (prod Dockerfile)
         run: docker build -f server/Dockerfile -t chatus-api:ci .
 
       - name: Scan API image
-        uses: aquasecurity/trivy-action@a11da62073708815958ea6d84f5650c78a3ef85b
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: image
           image-ref: chatus-api:ci
