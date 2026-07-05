@@ -47,7 +47,6 @@ export function MessageComposer({
   const sendPendingMutation = useSendPendingAttachmentsMutation();
   const { data: me } = useMeQuery();
 
-  const isSending = sendMutation.isPending || sendPendingMutation.isPending;
   const voiceDisabled = disabled || !me?.id;
   const voice = useVoiceRecorder(chatId, voiceDisabled);
 
