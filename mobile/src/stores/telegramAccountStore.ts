@@ -45,6 +45,8 @@ export type TelegramDialogRow = {
   memberCount?: number;
   /** Whether the chat is pinned in the main chat list. */
   isPinned?: boolean;
+  /** Whether the chat has notifications muted. */
+  isMuted?: boolean;
 };
 
 type TelegramAccountState = {

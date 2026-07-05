@@ -793,11 +793,6 @@ export function TelegramChatProfileScreen() {
         iconImage: WALLPAPER_MENU_ICON,
       },
       {
-        key: 'toggle-pin',
-        label: isPinned ? 'Открепить' : 'Закрепить',
-        icon: 'pin' as any,
-      },
-      {
         key: 'delete-chat',
         label: isBroadcastChannel ? 'Покинуть канал' : isGroupPeer ? 'Выйти из чата' : 'Удалить чат',
         icon: 'trash-2',
@@ -833,14 +828,6 @@ export function TelegramChatProfileScreen() {
     (key: string) => {
       if (key === 'change-wallpaper') {
         openThemePicker();
-        return;
-      }
-      if (key === 'toggle-pin') {
-        closeMoreMenu(() => {
-          const nextPinned = !isPinned;
-          setIsPinned(nextPinned);
-          tdlibToggleChatIsPinned(chatId, nextPinned).catch(() => setIsPinned(isPinned));
-        });
         return;
       }
       if (key === 'toggle-block') {
