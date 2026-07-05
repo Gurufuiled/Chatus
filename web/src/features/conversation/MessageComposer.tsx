@@ -1,26 +1,34 @@
-import { useCallback, useEffect, useRef } from 'react';
-import { IconButton } from '@/components/buttons/IconButton';
-import { useComposerStore, EMPTY_PENDING_ATTACHMENTS } from '@/stores/composerStore';
-import { useSendMessageMutation } from '@/queries/messages.queries';
-import { useSendPendingAttachmentsMutation } from '@/queries/media.queries';
-import { useMeQuery } from '@/queries/auth.queries';
-import { StickerPicker } from './StickerPicker';
-import { AttachmentPicker } from './AttachmentPicker';
-import { ComposerVoiceControls } from './ComposerVoiceControls';
-import { ComposerReplyPreview } from './ComposerReplyPreview';
-import { ComposerErrorBanner } from './ComposerErrorBanner';
-import { ComposerAttachmentPreview } from './ComposerAttachmentPreview';
-import { useVoiceRecorder } from './useVoiceRecorder';
+import { useCallback, useEffect, useRef } from "react";
+import { IconButton } from "@/components/buttons/IconButton";
+import {
+  useComposerStore,
+  EMPTY_PENDING_ATTACHMENTS,
+} from "@/stores/composerStore";
+import { useSendMessageMutation } from "@/queries/messages.queries";
+import { useSendPendingAttachmentsMutation } from "@/queries/media.queries";
+import { useMeQuery } from "@/queries/auth.queries";
+import { StickerPicker } from "./StickerPicker";
+import { AttachmentPicker } from "./AttachmentPicker";
+import { ComposerVoiceControls } from "./ComposerVoiceControls";
+import { ComposerReplyPreview } from "./ComposerReplyPreview";
+import { ComposerErrorBanner } from "./ComposerErrorBanner";
+import { ComposerAttachmentPreview } from "./ComposerAttachmentPreview";
+import { useVoiceRecorder } from "./useVoiceRecorder";
 
 interface MessageComposerProps {
   chatId: string;
   disabled?: boolean;
 }
 
-export function MessageComposer({ chatId, disabled = false }: MessageComposerProps) {
+export function MessageComposer({
+  chatId,
+  disabled = false,
+}: MessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const draft = useComposerStore((s) => s.drafts[chatId] ?? '');
-  const pendingAttachments = useComposerStore((s) => s.pendingAttachments[chatId]);
+  const draft = useComposerStore((s) => s.drafts[chatId] ?? "");
+  const pendingAttachments = useComposerStore(
+    (s) => s.pendingAttachments[chatId],
+  );
   const attachments = pendingAttachments ?? EMPTY_PENDING_ATTACHMENTS;
   const setDraft = useComposerStore((s) => s.setDraft);
   const clearDraft = useComposerStore((s) => s.clearDraft);
@@ -30,7 +38,9 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   );
   const isStickerPickerOpen = useComposerStore((s) => s.isStickerPickerOpen);
   const setStickerPickerOpen = useComposerStore((s) => s.setStickerPickerOpen);
-  const setAttachmentPickerOpen = useComposerStore((s) => s.setAttachmentPickerOpen);
+  const setAttachmentPickerOpen = useComposerStore(
+    (s) => s.setAttachmentPickerOpen,
+  );
   const requestComposerFocus = useComposerStore((s) => s.requestComposerFocus);
   const composerFocusNonce = useComposerStore((s) => s.composerFocusNonce);
   const sendMutation = useSendMessageMutation();
@@ -38,13 +48,13 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const { data: me } = useMeQuery();
 
   const isSending = sendMutation.isPending || sendPendingMutation.isPending;
-  const voiceDisabled = disabled || isSending || !me?.id;
+  const voiceDisabled = disabled || !me?.id;
   const voice = useVoiceRecorder(chatId, voiceDisabled);
 
   const resetTextareaHeight = () => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
   };
 
   useEffect(() => {
@@ -58,7 +68,13 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   }, [composerFocusNonce]);
 
   const send = useCallback(() => {
-    if (sendMutation.isPending || sendPendingMutation.isPending || disabled || !me?.id) return;
+    if (
+      sendMutation.isPending ||
+      sendPendingMutation.isPending ||
+      disabled ||
+      !me?.id
+    )
+      return;
 
     const text = draft.trim();
     const hasAttachments = attachments.length > 0;
@@ -118,7 +134,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
     }
@@ -127,12 +143,12 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setDraft(chatId, e.target.value);
     const el = e.target;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   };
 
   const isRecording = voice.isRecording || voice.isProcessing;
-  const isDisabled = disabled || isSending || !me?.id || isRecording;
+  const isDisabled = disabled || !me?.id || isRecording;
   const hasText = draft.trim().length > 0;
   const hasAttachments = attachments.length > 0;
   const canSend = hasText || hasAttachments;
@@ -142,9 +158,11 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
       <ComposerErrorBanner chatId={chatId} />
       <StickerPicker chatId={chatId} disabled={isDisabled} />
       <AttachmentPicker chatId={chatId} disabled={isDisabled} />
-      <footer className={`message-composer${isRecording ? ' message-composer--recording' : ''}`}>
+      <footer
+        className={`message-composer${isRecording ? " message-composer--recording" : ""}`}
+      >
         <div
-          className={`message-composer__panel${replyToMessageId ? ' message-composer__panel--with-reply' : ''}${hasAttachments && !isRecording ? ' message-composer__panel--with-attachments' : ''}${isRecording ? ' message-composer__panel--recording' : ''}`}
+          className={`message-composer__panel${replyToMessageId ? " message-composer__panel--with-reply" : ""}${hasAttachments && !isRecording ? " message-composer__panel--with-attachments" : ""}${isRecording ? " message-composer__panel--recording" : ""}`}
         >
           {!isRecording ? <ComposerReplyPreview chatId={chatId} /> : null}
           {!isRecording ? (
@@ -153,12 +171,19 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
               <div className="message-composer__row">
                 <IconButton
                   label="Стикеры"
-                  className={`message-composer__icon${isStickerPickerOpen ? ' message-composer__icon--active' : ''}`}
+                  className={`message-composer__icon${isStickerPickerOpen ? " message-composer__icon--active" : ""}`}
                   disabled={isDisabled}
                   onClick={() => setStickerPickerOpen(!isStickerPickerOpen)}
                 >
                   <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden>
-                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="9"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
                     <path
                       d="M8.5 9.5h.01M15.5 9.5h.01M8.5 14.5c1.2 1.4 2.4 2 3.5 2s2.3-.6 3.5-2"
                       fill="none"
@@ -171,8 +196,8 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
                 <textarea
                   ref={textareaRef}
                   className="message-composer__input"
-                  placeholder={hasAttachments ? 'Подпись' : 'Сообщение'}
-                  aria-label={hasAttachments ? 'Подпись к медиа' : 'Сообщение'}
+                  placeholder={hasAttachments ? "Подпись" : "Сообщение"}
+                  aria-label={hasAttachments ? "Подпись к медиа" : "Сообщение"}
                   rows={1}
                   value={draft}
                   disabled={isDisabled}
