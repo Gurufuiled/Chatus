@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+        uses: actions/checkout@v4
 
       - name: Check Expo token
         run: |
@@ -62,7 +62,7 @@ jobs:
           fi
 
       - name: Setup Node
-        uses: actions/setup-node@8f152de45cc393f58c3f25c7e141a0210eb7042a
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
