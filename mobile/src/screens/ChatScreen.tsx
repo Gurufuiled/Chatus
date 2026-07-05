@@ -1039,7 +1039,10 @@ export function ChatScreen() {
 
       if (message.status === 'read' || sentReadReceiptIdsRef.current.has(message.id)) {
         sentReadReceiptIdsRef.current.add(message.id);
-        continue;
+        // Messages are sorted newest-first. Once we find a message that is already read
+        // or already acknowledged, we can safely assume all older messages have also been processed.
+        // This turns an O(N) operation on every render into O(1) amortized.
+        break;
       }
 
       WebSocketService.sendEvent('ack', {
