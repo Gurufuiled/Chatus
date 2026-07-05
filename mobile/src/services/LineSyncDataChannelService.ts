@@ -22,10 +22,10 @@ type DataChannelLike = {
   readyState?: string;
   send: (data: string) => void;
   close?: () => void;
-  onopen?: (() => void) | null;
-  onclose?: (() => void) | null;
-  onerror?: (() => void) | null;
-  onmessage?: ((event: { data?: unknown }) => void) | null;
+  onopen?: (((event?: any) => void) | null) | any;
+  onclose?: (((event?: any) => void) | null) | any;
+  onerror?: (((event?: any) => void) | null) | any;
+  onmessage?: (((event: { data?: unknown }) => void) | null) | any;
 };
 
 type PeerConnectionLike = RTCPeerConnection & {
