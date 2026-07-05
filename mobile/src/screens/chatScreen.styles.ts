@@ -121,6 +121,7 @@ export function buildChatScreenStyles(themeColors: ThemeColors) {
       bottom: 0,
       paddingHorizontal: 14,
       paddingTop: 8,
+      backgroundColor: themeColors.composerSurface,
     },
     selectionDockRow: {
       flexDirection: 'row',
