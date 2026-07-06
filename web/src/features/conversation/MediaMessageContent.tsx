@@ -116,7 +116,7 @@ export function VideoMessageContent({ url, poster, round = false }: VideoMessage
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const handleTogglePlay = (e: React.MouseEvent) => {
+  const handleTogglePlay = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     if (!round) return;
     const video = videoRef.current;
@@ -134,6 +134,15 @@ export function VideoMessageContent({ url, poster, round = false }: VideoMessage
     <div
       className={`video-message-container${round ? ' video-message-container--round' : ''}`}
       onClick={handleTogglePlay}
+      role={round ? 'button' : undefined}
+      tabIndex={round ? 0 : undefined}
+      aria-label={round ? (isPlaying ? 'Пауза' : 'Воспроизвести видеосообщение') : undefined}
+      onKeyDown={round ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleTogglePlay(e);
+        }
+      } : undefined}
     >
       <video
         ref={videoRef}
