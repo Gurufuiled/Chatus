@@ -167,6 +167,40 @@ async function bootstrap() {
     res.sendFile(embedIndexPath);
   });
 
+  const standaloneAppDir = join(publicDir, 'app');
+  const standaloneAppIndexPath = join(standaloneAppDir, 'app.html');
+
+  function setStandaloneAppHeaders(res: Response) {
+    res.setHeader('Permissions-Policy', 'microphone=(self)');
+  }
+
+  expressApp.use('/app', (_req, res, next) => {
+    setStandaloneAppHeaders(res);
+    next();
+  });
+
+  expressApp.use(
+    '/app',
+    express.static(standaloneAppDir, {
+      index: false,
+      maxAge: '1h',
+    }),
+  );
+
+  expressApp.get(['/app', '/app/*path'], (_req, res) => {
+    if (!existsSync(standaloneAppIndexPath)) {
+      res
+        .status(404)
+        .type('text/plain')
+        .send('Standalone app not deployed. Run npm run build:app in web/');
+      return;
+    }
+    setStandaloneAppHeaders(res);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.sendFile(standaloneAppIndexPath);
+  });
+
   app.setGlobalPrefix('api');
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads/' });
   app.useGlobalPipes(

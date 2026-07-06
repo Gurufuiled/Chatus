@@ -1,5 +1,6 @@
 import type { ChatSummary } from '@/types/chat';
 import type { MappedMessage } from '@/types/message';
+import { groupCallSystemPreviewText } from '@/utils/groupCallSystemMessage';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 
 export function getChatDisplayName(chat: ChatSummary): string {
@@ -43,6 +44,10 @@ export function formatMessagePreview(
 
   if (lastMessage?.msg_type === 'text' && isChatusStickerMessage(lastMessage.content)) {
     return 'Sticker';
+  }
+
+  if (lastMessage?.msg_type === 'system') {
+    return groupCallSystemPreviewText(lastMessage.content) ?? 'Системное сообщение';
   }
 
   switch (lastMessage?.msg_type) {

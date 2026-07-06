@@ -78,22 +78,31 @@ export class AuthService {
     this.loginusClientSecret = process.env.LOGINUS_CLIENT_SECRET || '';
   }
 
-  getLoginUrl(redirectUriParam?: string): { url: string; redirect_uri: string } {
+  getLoginUrl(
+    redirectUriParam?: string,
+    platform?: string,
+  ): { url: string; redirect_uri: string; oauth_state?: string } {
     let redirectUri =
       process.env.LOGINUS_REDIRECT_URI ||
       'http://localhost:4000/api/auth/callback';
     if (redirectUriParam === 'emulator' && process.env.LOGINUS_REDIRECT_URI_EMULATOR) {
       redirectUri = process.env.LOGINUS_REDIRECT_URI_EMULATOR;
     }
+    const statePrefix = platform === 'web' ? 'web:' : '';
+    const state = `${statePrefix}${randomUUID()}`;
     const params = new URLSearchParams({
       client_id: this.loginusClientId || 'messenger',
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'openid email profile organizations roles permissions',
-      state: randomUUID(),
+      state,
     });
     const url = `${this.loginusBaseUrl}/ru/auth?${params.toString()}`;
-    return { url, redirect_uri: redirectUri };
+    return {
+      url,
+      redirect_uri: redirectUri,
+      oauth_state: platform === 'web' ? state : undefined,
+    };
   }
 
   async logout(

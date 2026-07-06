@@ -4,6 +4,9 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   base: '/embed/',
+  define: {
+    'import.meta.env.VITE_APP_MODE': JSON.stringify('embed'),
+  },
   build: {
     outDir: resolve(__dirname, '../server/public/embed'),
     emptyOutDir: true,

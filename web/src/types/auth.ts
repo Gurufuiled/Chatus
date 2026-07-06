@@ -1,4 +1,9 @@
-export type EmbedStatus = 'waiting_init' | 'exchanging' | 'ready' | 'error';
+export type EmbedStatus =
+  | 'waiting_init'
+  | 'needs_login'
+  | 'exchanging'
+  | 'ready'
+  | 'error';
 
 export interface AuthUser {
   id: string;

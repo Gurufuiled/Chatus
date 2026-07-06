@@ -22,6 +22,31 @@ export async function exchangeLoginusInitData(
   });
 }
 
+export async function getOAuthLoginUrl(
+  platform: 'web' = 'web',
+): Promise<{ url: string; redirect_uri: string }> {
+  const base = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  const apiBase = base?.replace(/\/$/, '') ?? '';
+  const response = await fetch(`${apiBase}/api/auth/login-url?platform=${platform}`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error(`Login URL request failed (${response.status})`);
+  }
+  return response.json() as Promise<{ url: string; redirect_uri: string }>;
+}
+
+export async function exchangeOAuthCode(
+  code: string,
+  redirectUri: string,
+): Promise<AuthResponse> {
+  return apiRequest<AuthResponse>('/auth/loginus', {
+    method: 'POST',
+    body: JSON.stringify({ code, redirect_uri: redirectUri }),
+    skipAuth: true,
+  });
+}
+
 export async function refreshAccessToken(refreshToken: string): Promise<RefreshTokenResponse> {
   const base = import.meta.env.VITE_API_BASE_URL as string | undefined;
   const apiBase = base?.replace(/\/$/, '') ?? '';

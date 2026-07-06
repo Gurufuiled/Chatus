@@ -1,8 +1,8 @@
 import {
-  clearEmbedSession,
-  loadEmbedSession,
-  updateStoredTokens,
-} from '@/embed/authSessionStorage';
+  clearStoredSession,
+  loadStoredSession,
+  updateStoredSessionTokens,
+} from '@/auth/sessionBridge';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import type { RefreshTokenResponse } from '@/services/authService';
 
@@ -80,7 +80,7 @@ async function tryRefreshAccessToken(): Promise<string> {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
-    const stored = loadEmbedSession();
+    const stored = loadStoredSession();
     if (!stored?.refresh_token) {
       throw new ApiError('No refresh token', 401);
     }
@@ -89,7 +89,7 @@ async function tryRefreshAccessToken(): Promise<string> {
     setAccessToken(tokens.access_token);
     useAuthUiStore.getState().setAccessToken(tokens.access_token);
     if (tokens.refresh_token) {
-      updateStoredTokens(tokens.expires_at, tokens.refresh_token);
+      updateStoredSessionTokens(tokens.expires_at, tokens.refresh_token, tokens.access_token);
     }
     return tokens.access_token;
   })().finally(() => {
@@ -135,7 +135,7 @@ export async function apiRequest<T>(
       if (authFailureHandler) {
         authFailureHandler();
       } else {
-        clearEmbedSession();
+        clearStoredSession();
         setAccessToken(null);
         const store = useAuthUiStore.getState();
         store.setAccessToken(null);

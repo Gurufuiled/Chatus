@@ -1,4 +1,5 @@
 import type { MappedMessage } from '@/types/message';
+import { groupCallSystemPreviewText } from '@/utils/groupCallSystemMessage';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 
 export function formatMessageTime(timestamp: number): string {
@@ -31,6 +32,9 @@ export function getMessageStatusRank(status: string): number {
 export function getOutgoingMessagePreview(
   message: Pick<MappedMessage, 'msg_type' | 'content'>,
 ): string {
+  if (message.msg_type === 'system') {
+    return groupCallSystemPreviewText(message.content) ?? 'Системное сообщение';
+  }
   if (message.msg_type === 'image') return 'Photo';
   if (message.msg_type === 'voice') return 'Voice message';
   if (message.msg_type === 'video' || message.msg_type === 'video_note') return 'Video';

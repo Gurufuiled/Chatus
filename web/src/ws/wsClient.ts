@@ -9,6 +9,9 @@ type WsHandlers = {
   onNewMessage?: WsEventHandler;
   onMessageAck?: WsEventHandler;
   onMessageReactionsUpdated?: WsEventHandler;
+  onGroupCallStarted?: WsEventHandler;
+  onGroupCallEnded?: WsEventHandler;
+  onGroupCallParticipants?: WsEventHandler;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onConnecting?: () => void;
@@ -255,6 +258,15 @@ class WsClient {
         this.handlers.onMessageReactionsUpdated?.(msg);
         break;
       }
+      case 'group_call_started':
+        this.handlers.onGroupCallStarted?.(msg);
+        break;
+      case 'group_call_ended':
+        this.handlers.onGroupCallEnded?.(msg);
+        break;
+      case 'group_call_participants':
+        this.handlers.onGroupCallParticipants?.(msg);
+        break;
       default:
         break;
     }

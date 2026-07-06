@@ -7,6 +7,7 @@ import {
 import { AuthGate } from '@/features/shell/AuthGate';
 import { EmbedShell } from '@/features/shell/EmbedShell';
 import { MessengerLayout } from '@/features/shell/MessengerLayout';
+import { createMessengerChildRoutes } from './messengerRoutes';
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
@@ -24,37 +25,8 @@ const embedRoute = createRoute({
   ),
 });
 
-const embedIndexRoute = createRoute({
-  getParentRoute: () => embedRoute,
-  path: '/',
-  component: MessengerLayout,
-});
-
-const embedChatRoute = createRoute({
-  getParentRoute: () => embedRoute,
-  path: '/chat/$chatId',
-  component: MessengerLayout,
-});
-
-const embedSettingsProfileRoute = createRoute({
-  getParentRoute: () => embedRoute,
-  path: '/settings/profile',
-  component: MessengerLayout,
-});
-
-const embedSettingsProfileEditRoute = createRoute({
-  getParentRoute: () => embedRoute,
-  path: '/settings/profile/edit',
-  component: MessengerLayout,
-});
-
 const routeTree = rootRoute.addChildren([
-  embedRoute.addChildren([
-    embedIndexRoute,
-    embedChatRoute,
-    embedSettingsProfileRoute,
-    embedSettingsProfileEditRoute,
-  ]),
+  embedRoute.addChildren(createMessengerChildRoutes(embedRoute, MessengerLayout)),
 ]);
 
 export const router = createRouter({

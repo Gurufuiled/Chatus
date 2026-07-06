@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_LOGINUS_ORIGINS?: string;
   readonly VITE_DEV_SKIP_EMBED_AUTH?: string;
   readonly VITE_DEV_ACCESS_TOKEN?: string;
+  readonly VITE_APP_MODE?: 'embed' | 'standalone';
 }
 
 interface ImportMeta {
