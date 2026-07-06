@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   base: '/app/',
+  publicDir: resolve(__dirname, 'public-app'),
   define: {
     'import.meta.env.VITE_APP_MODE': JSON.stringify('standalone'),
   },

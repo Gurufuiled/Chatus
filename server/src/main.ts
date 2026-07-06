@@ -184,6 +184,11 @@ async function bootstrap() {
     express.static(standaloneAppDir, {
       index: false,
       maxAge: '1h',
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.webmanifest')) {
+          res.setHeader('Content-Type', 'application/manifest+json');
+        }
+      },
     }),
   );
 

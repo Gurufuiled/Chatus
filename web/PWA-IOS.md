@@ -1,8 +1,33 @@
-# ChatUs Standalone PWA (iPhone) — Phase 1
+# ChatUs Standalone PWA (iPhone)
 
-**Status:** Phase 1 implemented  
-**URL:** `https://messenger.startapus.com/app`  
+**Status:** Phase 2 implemented (Add to Home Screen polish)  
+**URL:** `https://messenger.startapus.com/app/`  
 **Embed (`/embed`) is unchanged** — Loginus iframe + `loginus:init` postMessage flow.
+
+---
+
+## What Phase 2 includes
+
+- `manifest.webmanifest` at `/app/manifest.webmanifest` (`display: standalone`, theme `#3390ec`)
+- App icons in `/app/icons/` (180×180 apple-touch-icon, 192/512 manifest icons, 32×32 favicon)
+- iOS meta tags in `app.html`: `apple-mobile-web-app-title`, `theme-color`, `apple-touch-icon`
+- **No service worker** yet — iOS Add to Home Screen works without it
+- **No Web Push** yet (Phase 3+)
+- **No WebRTC calls** in standalone yet
+
+## Add to Home Screen (iPhone)
+
+1. Open **Safari** → `https://messenger.startapus.com/app/`
+2. Log in with Loginus if needed
+3. Tap **Поделиться** (Share) at the bottom
+4. Scroll and tap **На экран «Домой»** (Add to Home Screen)
+5. Confirm name **ChatUs** → **Добавить**
+
+The icon launches ChatUs full-screen without Safari chrome. Session is kept in `sessionStorage` (same as in-browser).
+
+**Verify after deploy:**
+- `https://messenger.startapus.com/app/manifest.webmanifest`
+- `https://messenger.startapus.com/app/icons/apple-touch-icon.png`
 
 ---
 
@@ -19,11 +44,10 @@
 
 **UI source:** `web/src/app-mobile/` — CSS/components mirroring `mobile/src/screens/` and `mobile/src/components/`. Reuses web auth (`publicAuth`), API client, WebSocket, and React Query only.
 
-## Not in Phase 1
+## Not in Phase 1 / 2
 
-- Web Push notifications
-- WebRTC calls
-- `manifest.json` / app icons / “Add to Home Screen” polish (Phase 2)
+- Web Push notifications (service worker + server subscription endpoints)
+- WebRTC group/1:1 calls in standalone context
 - Changes to `/embed`
 
 ---
@@ -138,16 +162,15 @@ After deploy, test on iPhone Safari:
 | **Mobile UI (standalone)** | `web/src/app-mobile/` (`MobileAuthGate`, `MobileAppLayout`, screens, `mobile-app.css`) |
 | OAuth client | `web/src/auth/publicAuth.ts`, `webSessionStorage.ts` |
 | Embed auth gate (unchanged) | `web/src/features/shell/PublicAuthGate.tsx` |
-| Build | `web/vite.app.config.ts`, `web/app.html`, `npm run build:app` |
+| Build | `web/vite.app.config.ts`, `web/app.html`, `web/public-app/`, `npm run build:app` |
 | Server static | `server/src/main.ts` (`/app` routes) |
 | OAuth callback | `server/src/auth/auth.controller.ts` (`state` starts with `web:`) |
 
 ---
 
-## Phase 2 (next)
+## Phase 3+ (next)
 
-- `manifest.webmanifest` + icons for iOS “Add to Home Screen”
-- `apple-touch-icon`, theme color, splash screens
 - Web Push (service worker + server subscription endpoints)
 - WebRTC group/1:1 calls in standalone context
 - Optional: dedicated logout UX for standalone (SLO via Loginus)
+- Optional: iOS splash screens (`apple-touch-startup-image`)
