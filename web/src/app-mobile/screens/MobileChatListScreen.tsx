@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useChatsQuery } from '@/queries/chats.queries';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useMobileUiStore } from '@/stores/mobileUiStore';
 import { MobileChatListRow } from '../components/MobileChatListRow';
 import type { ChatSummary } from '@/types/chat';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
@@ -16,16 +17,18 @@ function sortChats(chats: ChatSummary[]): ChatSummary[] {
 
 export function MobileChatListScreen() {
   const { data: chats, isLoading, isError, error } = useChatsQuery();
+  const chatListFilter = useMobileUiStore((s) => s.chatListFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedQuery = useDebouncedValue(searchQuery.trim(), SEARCH_DEBOUNCE_MS);
 
   const filteredChats = useMemo(() => {
     if (!chats) return [];
+    if (chatListFilter === 'telegram_only') return [];
     const sorted = sortChats(chats.filter((c) => !c.is_archived));
     if (!debouncedQuery) return sorted;
     const q = debouncedQuery.toLowerCase();
     return sorted.filter((chat) => getChatDisplayName(chat).toLowerCase().includes(q));
-  }, [chats, debouncedQuery]);
+  }, [chats, debouncedQuery, chatListFilter]);
 
   return (
     <div className="mobile-chat-list">

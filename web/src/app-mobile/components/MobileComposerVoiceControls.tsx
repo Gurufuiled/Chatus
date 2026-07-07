@@ -53,16 +53,11 @@ export function MobileComposerVoiceControls({
     voiceHold.syncRecordingMode();
   }, [isRecording, isProcessing, voiceHold.syncRecordingMode]);
 
-  const {
-    gesture,
-    onMicPointerDown,
-    onMicPointerMove,
-    onMicPointerUp,
-    onMicPointerCancel,
-  } = voiceHold;
+  const { gesture, onMicPointerDown } = voiceHold;
   const isLocked = gesture.mode === 'locked';
   const showRecordingUi = isRecording || isProcessing || gesture.mode !== 'idle';
   const cancelActive = gesture.cancelProgress >= CANCEL_TRIGGER;
+  const showSendAction = isLocked;
 
   if (showRecordingUi) {
     return (
@@ -70,6 +65,10 @@ export function MobileComposerVoiceControls({
         className={`mobile-composer__recording-stage${isLocked ? ' mobile-composer__recording-stage--locked' : ''}${cancelActive ? ' mobile-composer__recording-stage--cancel' : ''}`}
         aria-live="polite"
       >
+        {gesture.touchTracking && !isLocked ? (
+          <div className="mobile-composer__recording-gesture-layer" aria-hidden />
+        ) : null}
+
         {!isLocked && gesture.touchTracking ? (
           <div
             className="mobile-composer__recording-lock-hint"
@@ -130,10 +129,10 @@ export function MobileComposerVoiceControls({
             </span>
           </div>
 
-          {isLocked ? (
+          {showSendAction ? (
             <button
               type="button"
-              className="mobile-composer__send"
+              className="mobile-composer__send mobile-composer__recording-send"
               aria-label="Отправить голосовое"
               disabled={isProcessing}
               onClick={() => onFinishRecording(true)}
@@ -184,9 +183,6 @@ export function MobileComposerVoiceControls({
       aria-label="Удерживайте для записи голосового"
       disabled={isBusy}
       onPointerDown={onMicPointerDown}
-      onPointerMove={onMicPointerMove}
-      onPointerUp={onMicPointerUp}
-      onPointerCancel={onMicPointerCancel}
     >
       <svg viewBox="0 0 24 24" fill="currentColor">
         <rect x="9" y="4" width="6" height="11" rx="3" />

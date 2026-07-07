@@ -141,6 +141,18 @@ export function MobileMessageComposer({
       ? composerPaddingBottom
       : undefined;
 
+  const composerStyle =
+    paddingBottom !== undefined
+      ? { paddingBottom: `${paddingBottom}px` }
+      : undefined;
+
+  const dockStyle =
+    hasReply && paddingBottom !== undefined
+      ? {
+          paddingBottom: `max(${paddingBottom}px, calc(10px + var(--m-safe-bottom)))`,
+        }
+      : undefined;
+
   return (
     <div
       className={`mobile-composer-wrap${isRecording ? ' mobile-composer-wrap--recording' : ''}`}
@@ -150,15 +162,14 @@ export function MobileMessageComposer({
     >
       <ComposerErrorBanner chatId={chatId} />
       <AttachmentPicker chatId={chatId} disabled={isDisabled} />
-      <div className={`mobile-composer-dock${hasReply ? ' mobile-composer-dock--reply' : ''}`}>
+      <div
+        className={`mobile-composer-dock${hasReply ? ' mobile-composer-dock--reply' : ''}`}
+        style={dockStyle}
+      >
         <MobileComposerReplyPreview chatId={chatId} />
         <div
           className="mobile-composer"
-          style={
-            paddingBottom !== undefined
-              ? { paddingBottom: `${paddingBottom}px` }
-              : undefined
-          }
+          style={hasReply ? undefined : composerStyle}
         >
         {isRecording ? (
           <MobileComposerVoiceControls

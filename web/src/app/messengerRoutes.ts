@@ -43,6 +43,57 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
+  const settingsAppearanceRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/settings/appearance',
+    component: Layout,
+  });
+
+  const settingsChatRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/settings/chat',
+    component: Layout,
+  });
+
+  const settingsServicesRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/settings/services',
+    component: Layout,
+  });
+
+  const settingsFeedbackBugRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/settings/feedback/bug',
+    component: Layout,
+  });
+
+  const settingsFeedbackSuggestionRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/settings/feedback/suggestion',
+    component: Layout,
+  });
+
+  const settingsFeedbackComposeRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/settings/feedback/compose',
+    component: Layout,
+    validateSearch: (search: Record<string, unknown>) => ({
+      kind: search.kind === 'suggestion' ? 'suggestion' : 'bug',
+    }),
+  });
+
+  const settingsComingSoonRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/settings/coming-soon',
+    component: Layout,
+    validateSearch: (search: Record<string, unknown>) => ({
+      title:
+        typeof search.title === 'string'
+          ? search.title.trim().slice(0, 80) || 'Скоро'
+          : 'Скоро',
+    }),
+  });
+
   return [
     indexRoute,
     chatRoute,
@@ -51,5 +102,12 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     settingsRoute,
     settingsProfileRoute,
     settingsProfileEditRoute,
+    settingsAppearanceRoute,
+    settingsChatRoute,
+    settingsServicesRoute,
+    settingsFeedbackBugRoute,
+    settingsFeedbackSuggestionRoute,
+    settingsFeedbackComposeRoute,
+    settingsComingSoonRoute,
   ];
 }

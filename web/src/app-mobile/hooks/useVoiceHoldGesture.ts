@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const HOLD_TO_RECORD_MS = 170;
 const LOCK_THRESHOLD = 88;
@@ -152,7 +152,7 @@ export function useVoiceHoldGesture({
   }, [clearHoldTimer, isRecording, onCancelRecording, onFinishRecording, resetVisuals]);
 
   const onMicPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e: React.PointerEvent<HTMLElement>) => {
       if (disabled || canSend || isProcessing || isRecording) return;
       if (e.button !== 0) return;
 
@@ -161,7 +161,6 @@ export function useVoiceHoldGesture({
       holdActivatedRef.current = false;
       pointerIdRef.current = e.pointerId;
       startPointRef.current = { x: e.clientX, y: e.clientY };
-      e.currentTarget.setPointerCapture(e.pointerId);
 
       setGesture({
         mode: 'idle',
@@ -186,7 +185,7 @@ export function useVoiceHoldGesture({
   );
 
   const onMicPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e: React.PointerEvent<HTMLElement> | PointerEvent) => {
       if (!gestureActiveRef.current || pointerIdRef.current !== e.pointerId) return;
       if (!holdActivatedRef.current) return;
       updateDrag(e.clientX - startPointRef.current.x, e.clientY - startPointRef.current.y);
@@ -195,21 +194,16 @@ export function useVoiceHoldGesture({
   );
 
   const onMicPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e: React.PointerEvent<HTMLElement> | PointerEvent) => {
       if (pointerIdRef.current !== e.pointerId) return;
       pointerIdRef.current = null;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
       handleRelease();
     },
     [handleRelease],
   );
 
   const onMicPointerCancel = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e: React.PointerEvent<HTMLElement> | PointerEvent) => {
       if (pointerIdRef.current !== e.pointerId) return;
       pointerIdRef.current = null;
       clearHoldTimer();
@@ -221,6 +215,24 @@ export function useVoiceHoldGesture({
     },
     [clearHoldTimer, isRecording, onCancelRecording, resetVisuals],
   );
+
+  useEffect(() => {
+    if (!gesture.touchTracking || modeRef.current === 'locked') return;
+
+    const onMove = (e: PointerEvent) => onMicPointerMove(e);
+    const onUp = (e: PointerEvent) => onMicPointerUp(e);
+    const onCancel = (e: PointerEvent) => onMicPointerCancel(e);
+
+    window.addEventListener('pointermove', onMove, { passive: false });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+    };
+  }, [gesture.touchTracking, onMicPointerCancel, onMicPointerMove, onMicPointerUp]);
 
   const syncRecordingMode = useCallback(() => {
     if (isRecording && modeRef.current === 'idle') {
