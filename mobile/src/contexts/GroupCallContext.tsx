@@ -722,11 +722,14 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       await room.localParticipant.setCameraEnabled(nextEnabled);
       if (!roomRef.current || stateRef.current.phase === 'idle') return;
       syncVideoTracksFromRoom(room);
+      const localParticipant = room.localParticipant;
       setState((prev) => ({
         ...prev,
-        isVideoEnabled: nextEnabled,
+        isVideoEnabled: isCameraTrackEnabled(localParticipant),
         participants: prev.participants.map((p) =>
-          p.isLocal ? { ...p, isVideoEnabled: nextEnabled } : p,
+          p.isLocal
+            ? { ...p, isVideoEnabled: isVideoTrackEnabled(localParticipant) }
+            : p,
         ),
       }));
     } catch (err) {

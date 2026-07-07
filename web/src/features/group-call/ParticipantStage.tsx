@@ -109,10 +109,11 @@ export function ParticipantStage({ participants, renderVideoSlot }: ParticipantS
     if (!el) return;
 
     const updateSize = () => {
-      setContainerSize({
-        width: el.clientWidth,
-        height: el.clientHeight,
-      });
+      const width = el.clientWidth;
+      const height = el.clientHeight;
+      setContainerSize((prev) =>
+        prev.width === width && prev.height === height ? prev : { width, height },
+      );
     };
 
     updateSize();
