@@ -8,6 +8,7 @@ import { MobileContactsScreen } from './screens/MobileContactsScreen';
 import { MobileSettingsHomeScreen } from './screens/MobileSettingsHomeScreen';
 import { MobileProfileScreen } from './screens/MobileProfileScreen';
 import { MobileProfileEditScreen } from './screens/MobileProfileEditScreen';
+import { MobileChatProfileScreen } from './screens/MobileChatProfileScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 
 export function MobileAppLayout() {
@@ -35,6 +36,9 @@ export function MobileAppLayout() {
     }
     if (pathname === '/settings') {
       return <MobileSettingsHomeScreen />;
+    }
+    if (chatId && pathname.endsWith('/profile')) {
+      return <MobileChatProfileScreen chatId={chatId} />;
     }
     if (chatId) {
       return <MobileChatScreen chatId={chatId} />;

@@ -1,8 +1,15 @@
 import { formatMessageTime } from '@/features/conversation/messageFormatters';
+import { ChatStatusChecks } from '@/features/chat-list/ChatStatusChecks';
 import { VoiceMessagePlayer } from '@/features/conversation/VoiceMessagePlayer';
+import {
+  ImageMessageContent,
+  VideoMessageContent,
+} from '@/features/conversation/MediaMessageContent';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { parseGroupCallSystemContent } from '@/utils/groupCallSystemMessage';
-import { isChatusStickerMessage } from '@/utils/stickerPayload';
+import { isChatusStickerMessage, tryDecodeStickerPayload } from '@/utils/stickerPayload';
+import { getStickerImageUrl } from '@/data/stickerCatalog';
+import { isAlbumCaption } from '@/utils/albumCaption';
 import type { MappedMessage } from '@/types/message';
 
 interface MobileMessageBubbleProps {
@@ -10,13 +17,37 @@ interface MobileMessageBubbleProps {
   isOutgoing: boolean;
 }
 
-function StatusChecks({ status }: { status: string }) {
-  const className = 'mobile-bubble__checks';
-  if (status === 'sending') return <span className={className}>◷</span>;
-  if (status === 'failed' || status === 'error') return <span className={className}>!</span>;
-  if (status === 'read') return <span className={className}>✓✓</span>;
-  if (status === 'delivered') return <span className={className}>✓✓</span>;
-  return <span className={className}>✓</span>;
+function BubbleMeta({
+  message,
+  isOutgoing,
+  overlay = false,
+}: {
+  message: MappedMessage;
+  isOutgoing: boolean;
+  overlay?: boolean;
+}) {
+  const showChecks = isOutgoing && message.status !== 'error' && message.status !== 'sending';
+
+  return (
+    <span
+      className={`mobile-bubble__meta${overlay ? ' mobile-bubble__meta--overlay' : ''}${isOutgoing ? ' mobile-bubble__meta--out' : ''}`}
+    >
+      {message.status === 'error' ? (
+        <span className="mobile-bubble__error" title="Не отправлено">
+          !
+        </span>
+      ) : null}
+      {message.status === 'sending' ? (
+        <span className="mobile-bubble__sending" aria-hidden>
+          ◷
+        </span>
+      ) : null}
+      <time className="mobile-bubble__time" dateTime={new Date(message.created_at).toISOString()}>
+        {formatMessageTime(message.created_at)}
+      </time>
+      {showChecks ? <ChatStatusChecks status={message.status} /> : null}
+    </span>
+  );
 }
 
 function mediaLabel(msgType: string, content: string | null): string {
@@ -41,7 +72,9 @@ export function MobileMessageBubble({ message, isOutgoing }: MobileMessageBubble
   if (message.is_deleted) {
     return (
       <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
-        <div className={`mobile-bubble mobile-bubble--${isOutgoing ? 'out' : 'in'} mobile-bubble--deleted`}>
+        <div
+          className={`mobile-bubble mobile-bubble--${isOutgoing ? 'out' : 'in'} mobile-bubble--deleted`}
+        >
           <p className="mobile-bubble__text">Сообщение удалено</p>
         </div>
       </div>
@@ -59,60 +92,134 @@ export function MobileMessageBubble({ message, isOutgoing }: MobileMessageBubble
           ? 'Групповой звонок завершён'
           : message.content?.trim() || 'Системное сообщение';
     return (
-      <div className="mobile-bubble mobile-bubble--system">
-        <p className="mobile-bubble__text">{text}</p>
+      <div className="mobile-bubble-row mobile-bubble-row--system">
+        <div className="mobile-bubble mobile-bubble--system">
+          <p className="mobile-bubble__text">{text}</p>
+        </div>
       </div>
     );
   }
 
-  const isText =
-    message.msg_type === 'text' &&
-    message.content &&
-    !isChatusStickerMessage(message.content);
-
   const firstMedia = message.media?.[0];
-  const imageUrl =
-    message.msg_type === 'image' && firstMedia?.remote_url
-      ? resolveMediaUrl(firstMedia.remote_url)
-      : null;
-  const voiceUrl =
-    message.msg_type === 'voice' && firstMedia?.remote_url
-      ? resolveMediaUrl(firstMedia.remote_url)
-      : null;
+  const mediaUrl = firstMedia?.remote_url ? resolveMediaUrl(firstMedia.remote_url) : null;
+  const isSticker =
+    message.msg_type === 'text' && isChatusStickerMessage(message.content);
+  const stickerRef = isSticker ? tryDecodeStickerPayload(message.content) : null;
+  const stickerUrl = stickerRef ? getStickerImageUrl(stickerRef) : null;
+  const caption =
+    message.content && isAlbumCaption(message.content) ? message.content.trim() : null;
+  const isRoundVideo =
+    message.msg_type === 'video_note' || Boolean(firstMedia?.is_round);
 
-  return (
-    <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
-      <div className={`mobile-bubble mobile-bubble--${isOutgoing ? 'out' : 'in'}`}>
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt=""
-            style={{ maxWidth: '100%', borderRadius: 10, marginBottom: 4, display: 'block' }}
-          />
-        ) : null}
-        {voiceUrl ? (
+  const bubbleClass = `mobile-bubble mobile-bubble--${isOutgoing ? 'out' : 'in'}${
+    message.status === 'sending' ? ' mobile-bubble--sending' : ''
+  }${message.status === 'error' ? ' mobile-bubble--error' : ''}`;
+
+  if (stickerUrl) {
+    return (
+      <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
+        <div className={`${bubbleClass} mobile-bubble--sticker`}>
+          <img className="mobile-bubble__sticker" src={stickerUrl} alt="Стикер" />
+          <BubbleMeta message={message} isOutgoing={isOutgoing} />
+        </div>
+      </div>
+    );
+  }
+
+  if (message.msg_type === 'image' && mediaUrl) {
+    return (
+      <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
+        <div className={`${bubbleClass} mobile-bubble--media`}>
+          <div className="mobile-bubble__media">
+            <ImageMessageContent url={firstMedia!.remote_url!} />
+            {!caption ? (
+              <div className="mobile-bubble__media-overlay">
+                <BubbleMeta message={message} isOutgoing={isOutgoing} overlay />
+              </div>
+            ) : null}
+          </div>
+          {caption ? (
+            <div className="mobile-bubble__text-row">
+              <p className="mobile-bubble__text">{caption}</p>
+              <BubbleMeta message={message} isOutgoing={isOutgoing} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if ((message.msg_type === 'video' || message.msg_type === 'video_note') && mediaUrl) {
+    return (
+      <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
+        <div
+          className={`${bubbleClass} mobile-bubble--media${isRoundVideo ? ' mobile-bubble--video-note' : ''}`}
+        >
+          <div className="mobile-bubble__media">
+            <VideoMessageContent
+              url={firstMedia!.remote_url!}
+              poster={firstMedia?.thumbnail_url}
+              round={isRoundVideo}
+            />
+            {!caption ? (
+              <div className="mobile-bubble__media-overlay">
+                <BubbleMeta message={message} isOutgoing={isOutgoing} overlay />
+              </div>
+            ) : null}
+          </div>
+          {caption ? (
+            <div className="mobile-bubble__text-row">
+              <p className="mobile-bubble__text">{caption}</p>
+              <BubbleMeta message={message} isOutgoing={isOutgoing} />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (message.msg_type === 'voice' && mediaUrl) {
+    return (
+      <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
+        <div className={`${bubbleClass} mobile-bubble--voice`}>
           <div className="mobile-bubble__voice">
             <VoiceMessagePlayer
-              src={voiceUrl}
+              src={mediaUrl}
               durationMs={firstMedia?.duration_ms ?? 1000}
               waveformBase64={firstMedia?.waveform}
               isOutgoing={isOutgoing}
             />
           </div>
-        ) : null}
-        {isText ? (
-          <p className="mobile-bubble__text">{message.content}</p>
-        ) : message.msg_type === 'text' && isChatusStickerMessage(message.content) ? (
-          <p className="mobile-bubble__media-label">Стикер</p>
-        ) : !voiceUrl && message.msg_type !== 'text' && message.msg_type !== 'image' ? (
-          <p className="mobile-bubble__media-label">
-            {mediaLabel(message.msg_type, message.content)}
-          </p>
-        ) : null}
-        <div className="mobile-bubble__meta">
-          <time className="mobile-bubble__time">{formatMessageTime(message.created_at)}</time>
-          {isOutgoing ? <StatusChecks status={message.status} /> : null}
+          <BubbleMeta message={message} isOutgoing={isOutgoing} />
         </div>
+      </div>
+    );
+  }
+
+  const text =
+    message.msg_type === 'text' && message.content && !isSticker ? message.content : null;
+
+  return (
+    <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
+      <div className={bubbleClass}>
+        {text ? (
+          <div className="mobile-bubble__text-row">
+            <p className="mobile-bubble__text">{text}</p>
+            <BubbleMeta message={message} isOutgoing={isOutgoing} />
+          </div>
+        ) : isSticker ? (
+          <div className="mobile-bubble__text-row">
+            <p className="mobile-bubble__media-label">Стикер</p>
+            <BubbleMeta message={message} isOutgoing={isOutgoing} />
+          </div>
+        ) : (
+          <div className="mobile-bubble__text-row">
+            <p className="mobile-bubble__media-label">
+              {mediaLabel(message.msg_type, message.content)}
+            </p>
+            <BubbleMeta message={message} isOutgoing={isOutgoing} />
+          </div>
+        )}
       </div>
     </div>
   );

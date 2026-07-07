@@ -36,6 +36,9 @@ export function MobileChatHeader({ chat }: MobileChatHeaderProps) {
           title={title}
           subtitle={subtitle || undefined}
           avatarUrl={chat.avatar_url}
+          onClick={() =>
+            navigate({ to: '/chat/$chatId/profile', params: { chatId: chat.id } })
+          }
         />
       </div>
       <div className="mobile-chat__header-slot mobile-chat__header-slot--right" aria-hidden />
