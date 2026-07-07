@@ -197,90 +197,96 @@ export function ContactsScreen() {
     [navigation]
   );
 
-  const renderSearchItem = ({ item }: { item: ApiUser }) => {
-    const avatarUrl = resolveAvatarUrl(item.avatar_url);
-    const displayName = item.display_name || item.username || 'Unknown';
-    const handle = item.handle ? `@${item.handle}` : '';
-    const isCreating = creatingChatUserIds.has(item.id);
+  const renderSearchItem = useCallback(
+    ({ item }: { item: ApiUser }) => {
+      const avatarUrl = resolveAvatarUrl(item.avatar_url);
+      const displayName = item.display_name || item.username || 'Unknown';
+      const handle = item.handle ? `@${item.handle}` : '';
+      const isCreating = creatingChatUserIds.has(item.id);
 
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={() => handleStartChat(item)}
-        disabled={isCreating}
-      >
-        {avatarUrl ? (
-          <Image
-            source={{ uri: avatarUrl }}
-            style={styles.avatar}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarPlaceholderText}>
-              {(displayName || '?')[0].toUpperCase()}
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => handleStartChat(item)}
+          disabled={isCreating}
+        >
+          {avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>
+                {(displayName || '?')[0].toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.info}>
+            <Text style={styles.displayName} numberOfLines={1}>
+              {displayName}
+            </Text>
+            {handle ? (
+              <Text style={styles.handle} numberOfLines={1}>
+                {handle}
+              </Text>
+            ) : null}
+          </View>
+          {isCreating && (
+            <ActivityIndicator size="small" color={themeColors.accent} style={styles.rowLoader} />
+          )}
+        </Pressable>
+      );
+    },
+    [creatingChatUserIds, handleStartChat, styles, themeColors.accent]
+  );
+
+  const renderContactFromChat = useCallback(
+    ({ item }: { item: ContactFromChatRow }) => {
+      const { chat, peerId, title, avatarUrl: rawAvatar } = item;
+      const peerMember = chat.members?.find((m) => m.user_id === peerId);
+      const presence = presenceByUserId[peerId] ?? {
+        is_online: peerMember?.user?.is_online ?? false,
+        last_seen: peerMember?.user?.last_seen ?? undefined,
+      };
+      const subtitle = formatContactPresenceSubtitle(
+        Boolean(presence.is_online),
+        presence.last_seen ?? peerMember?.user?.last_seen ?? null
+      );
+      const resolvedAvatar = resolveAvatarUrl(rawAvatar ?? null);
+
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => openChat(chat.id, title)}
+        >
+          {resolvedAvatar ? (
+            <Image
+              source={{ uri: resolvedAvatar }}
+              style={styles.avatar}
+              contentFit="cover"
+              cachePolicy="disk"
+            />
+          ) : (
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarPlaceholderText}>{(title || '?')[0].toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={styles.info}>
+            <Text style={styles.displayName} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={styles.presenceSubtitle} numberOfLines={1}>
+              {subtitle}
             </Text>
           </View>
-        )}
-        <View style={styles.info}>
-          <Text style={styles.displayName} numberOfLines={1}>
-            {displayName}
-          </Text>
-          {handle ? (
-            <Text style={styles.handle} numberOfLines={1}>
-              {handle}
-            </Text>
-          ) : null}
-        </View>
-        {isCreating && (
-          <ActivityIndicator size="small" color={themeColors.accent} style={styles.rowLoader} />
-        )}
-      </Pressable>
-    );
-  };
-
-  const renderContactFromChat = ({ item }: { item: ContactFromChatRow }) => {
-    const { chat, peerId, title, avatarUrl: rawAvatar } = item;
-    const peerMember = chat.members?.find((m) => m.user_id === peerId);
-    const presence = presenceByUserId[peerId] ?? {
-      is_online: peerMember?.user?.is_online ?? false,
-      last_seen: peerMember?.user?.last_seen ?? undefined,
-    };
-    const subtitle = formatContactPresenceSubtitle(
-      Boolean(presence.is_online),
-      presence.last_seen ?? peerMember?.user?.last_seen ?? null
-    );
-    const resolvedAvatar = resolveAvatarUrl(rawAvatar ?? null);
-
-    return (
-      <Pressable
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={() => openChat(chat.id, title)}
-      >
-        {resolvedAvatar ? (
-          <Image
-            source={{ uri: resolvedAvatar }}
-            style={styles.avatar}
-            contentFit="cover"
-            cachePolicy="disk"
-          />
-        ) : (
-          <View style={styles.avatarPlaceholder}>
-            <Text style={styles.avatarPlaceholderText}>{(title || '?')[0].toUpperCase()}</Text>
-          </View>
-        )}
-        <View style={styles.info}>
-          <Text style={styles.displayName} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={styles.presenceSubtitle} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        </View>
-      </Pressable>
-    );
-  };
+        </Pressable>
+      );
+    },
+    [openChat, presenceByUserId, styles]
+  );
 
   const renderPhoneBookContact = useCallback(
     ({ item }: { item: PhoneBookContact }) => {
@@ -335,6 +341,56 @@ export function ContactsScreen() {
     </View>
   );
 
+  const listData = useMemo(() => {
+    return [
+      ...contactsFromChats.map((item) => ({ type: 'chat' as const, key: item.chat.id, data: item })),
+      ...(chatusPhoneContacts.length > 0
+        ? [
+            { type: 'sectionHeader' as const, key: 'header:phonebook', data: null },
+            ...chatusPhoneContacts.map((item) => ({ type: 'phonebook' as const, key: `pb:${item.phoneNumber}`, data: item })),
+          ]
+        : []),
+    ];
+  }, [contactsFromChats, chatusPhoneContacts]);
+
+  const searchKeyExtractor = useCallback((item: ApiUser) => item.id, []);
+
+  const keyExtractor = useCallback((item: any) => item.key, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: any }) => {
+      if (item.type === 'sectionHeader') {
+        return (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>В телефонной книге</Text>
+          </View>
+        );
+      }
+      if (item.type === 'phonebook') {
+        return renderPhoneBookContact({ item: item.data as PhoneBookContact });
+      }
+      return renderContactFromChat({ item: item.data as ContactFromChatRow });
+    },
+    [renderContactFromChat, renderPhoneBookContact, styles]
+  );
+
+  const listHeaderComponent = useMemo(() => {
+    if (permissionStatus !== 'granted') {
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.permissionBanner, pressed && { opacity: 0.85 }]}
+          onPress={() => void handleRequestPermission()}
+        >
+          <Text style={styles.permissionBannerText}>
+            Разрешите доступ к контактам, чтобы найти друзей в Chatus
+          </Text>
+          <Text style={styles.permissionBannerButton}>Разрешить</Text>
+        </Pressable>
+      );
+    }
+    return null;
+  }, [permissionStatus, handleRequestPermission, styles]);
+
   return (
     <View style={styles.container}>
       <View style={styles.searchRow}>
@@ -363,48 +419,16 @@ export function ContactsScreen() {
       ) : isSearchMode ? (
         <FlatList<ApiUser>
           data={filteredResults}
-          keyExtractor={(item) => item.id}
+          keyExtractor={searchKeyExtractor}
           renderItem={renderSearchItem}
           ListEmptyComponent={listEmpty}
         />
       ) : (
         <FlatList
-          data={[
-            ...contactsFromChats.map((item) => ({ type: 'chat' as const, key: item.chat.id, data: item })),
-            ...(chatusPhoneContacts.length > 0
-              ? [
-                  { type: 'sectionHeader' as const, key: 'header:phonebook', data: null },
-                  ...chatusPhoneContacts.map((item) => ({ type: 'phonebook' as const, key: `pb:${item.phoneNumber}`, data: item })),
-                ]
-              : []),
-          ]}
-          keyExtractor={(item) => item.key}
-          renderItem={({ item }) => {
-            if (item.type === 'sectionHeader') {
-              return (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionHeaderText}>В телефонной книге</Text>
-                </View>
-              );
-            }
-            if (item.type === 'phonebook') {
-              return renderPhoneBookContact({ item: item.data as PhoneBookContact });
-            }
-            return renderContactFromChat({ item: item.data as ContactFromChatRow });
-          }}
-          ListHeaderComponent={
-            permissionStatus !== 'granted' ? (
-              <Pressable
-                style={({ pressed }) => [styles.permissionBanner, pressed && { opacity: 0.85 }]}
-                onPress={() => void handleRequestPermission()}
-              >
-                <Text style={styles.permissionBannerText}>
-                  Разрешите доступ к контактам, чтобы найти друзей в Chatus
-                </Text>
-                <Text style={styles.permissionBannerButton}>Разрешить</Text>
-              </Pressable>
-            ) : null
-          }
+          data={listData}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          ListHeaderComponent={listHeaderComponent}
           ListEmptyComponent={
             permissionStatus !== 'granted' ? null : listEmpty
           }
