@@ -2,16 +2,20 @@ import { create } from 'zustand';
 
 export type MessageMenuMode = 'actions' | 'delete';
 
+export interface MessageMenuAnchor {
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  isOutgoing?: boolean;
+}
+
 interface MessageContextState {
   chatId: string | null;
   messageId: string | null;
-  position: { x: number; y: number } | null;
+  position: MessageMenuAnchor | null;
   mode: MessageMenuMode;
-  openMessageMenu: (
-    chatId: string,
-    messageId: string,
-    position: { x: number; y: number },
-  ) => void;
+  openMessageMenu: (chatId: string, messageId: string, position: MessageMenuAnchor) => void;
   setMenuMode: (mode: MessageMenuMode) => void;
   closeMessageMenu: () => void;
 }

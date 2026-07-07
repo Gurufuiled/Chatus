@@ -188,9 +188,9 @@ export function MobileMessageBubble({ message, isOutgoing }: MobileMessageBubble
               durationMs={firstMedia?.duration_ms ?? 1000}
               waveformBase64={firstMedia?.waveform}
               isOutgoing={isOutgoing}
+              meta={<BubbleMeta message={message} isOutgoing={isOutgoing} />}
             />
           </div>
-          <BubbleMeta message={message} isOutgoing={isOutgoing} />
         </div>
       </div>
     );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { buildDecorativeWaveform, decodeWaveformBase64 } from '@/utils/waveform';
 import { formatVoiceDuration } from '@/utils/formatFileSize';
 
@@ -7,6 +7,7 @@ interface VoiceMessagePlayerProps {
   durationMs: number;
   waveformBase64?: string | null;
   isOutgoing: boolean;
+  meta?: ReactNode;
 }
 
 const BAR_COUNT = 48;
@@ -29,6 +30,7 @@ export function VoiceMessagePlayer({
   durationMs,
   waveformBase64,
   isOutgoing,
+  meta,
 }: VoiceMessagePlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -181,7 +183,10 @@ export function VoiceMessagePlayer({
             />
           ))}
         </div>
-        <span className="voice-message-player__duration">{durationLabel}</span>
+        <div className="voice-message-player__meta-row">
+          <span className="voice-message-player__duration">{durationLabel}</span>
+          {meta ? <div className="voice-message-player__meta">{meta}</div> : null}
+        </div>
       </div>
     </div>
   );

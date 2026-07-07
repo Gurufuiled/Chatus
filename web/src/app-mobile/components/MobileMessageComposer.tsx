@@ -6,7 +6,7 @@ import { useMeQuery } from '@/queries/auth.queries';
 import { AttachmentPicker } from '@/features/conversation/AttachmentPicker';
 import { ComposerAttachmentPreview } from '@/features/conversation/ComposerAttachmentPreview';
 import { ComposerErrorBanner } from '@/features/conversation/ComposerErrorBanner';
-import { ComposerReplyPreview } from '@/features/conversation/ComposerReplyPreview';
+import { MobileComposerReplyPreview } from './MobileComposerReplyPreview';
 import { useVoiceRecorder } from '@/features/conversation/useVoiceRecorder';
 import { MobileComposerVoiceControls } from './MobileComposerVoiceControls';
 
@@ -30,6 +30,12 @@ export function MobileMessageComposer({
   const setDraft = useComposerStore((s) => s.setDraft);
   const clearDraft = useComposerStore((s) => s.clearDraft);
   const setAttachmentPickerOpen = useComposerStore((s) => s.setAttachmentPickerOpen);
+  const replyToMessageId = useComposerStore((s) =>
+    s.replyChatId === chatId ? s.replyToMessageId : null,
+  );
+  const clearReply = useComposerStore((s) => s.clearReply);
+  const composerFocusNonce = useComposerStore((s) => s.composerFocusNonce);
+  const hasReply = !!replyToMessageId;
   const sendMutation = useSendMessageMutation();
   const sendPendingMutation = useSendPendingAttachmentsMutation();
   const { data: me } = useMeQuery();
@@ -47,6 +53,10 @@ export function MobileMessageComposer({
     if (!draft) resetHeight();
   }, [draft]);
 
+  useEffect(() => {
+    if (composerFocusNonce > 0) textareaRef.current?.focus();
+  }, [composerFocusNonce]);
+
   const send = useCallback(() => {
     if (sendMutation.isPending || sendPendingMutation.isPending || disabled || !me?.id) return;
 
@@ -60,10 +70,12 @@ export function MobileMessageComposer({
           attachments,
           caption: text || undefined,
           clientTempId: crypto.randomUUID(),
+          replyToId: replyToMessageId ?? undefined,
         },
         {
           onSuccess: () => {
             clearDraft(chatId);
+            clearReply();
             resetHeight();
             textareaRef.current?.focus();
           },
@@ -79,10 +91,12 @@ export function MobileMessageComposer({
         chatId,
         text,
         clientTempId: crypto.randomUUID(),
+        replyToId: replyToMessageId ?? undefined,
       },
       {
         onSuccess: () => {
           clearDraft(chatId);
+          clearReply();
           resetHeight();
           textareaRef.current?.focus();
         },
@@ -92,9 +106,11 @@ export function MobileMessageComposer({
     attachments,
     chatId,
     clearDraft,
+    clearReply,
     disabled,
     draft,
     me?.id,
+    replyToMessageId,
     sendMutation,
     sendPendingMutation,
   ]);
@@ -133,16 +149,17 @@ export function MobileMessageComposer({
       }}
     >
       <ComposerErrorBanner chatId={chatId} />
-      <ComposerReplyPreview chatId={chatId} />
       <AttachmentPicker chatId={chatId} disabled={isDisabled} />
-      <div
-        className="mobile-composer"
-        style={
-          paddingBottom !== undefined
-            ? { paddingBottom: `${paddingBottom}px` }
-            : undefined
-        }
-      >
+      <div className={`mobile-composer-dock${hasReply ? ' mobile-composer-dock--reply' : ''}`}>
+        <MobileComposerReplyPreview chatId={chatId} />
+        <div
+          className="mobile-composer"
+          style={
+            paddingBottom !== undefined
+              ? { paddingBottom: `${paddingBottom}px` }
+              : undefined
+          }
+        >
         {isRecording ? (
           <MobileComposerVoiceControls
             hasText={canSend}
@@ -207,6 +224,7 @@ export function MobileMessageComposer({
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
+import { useComposerStore } from '@/stores/composerStore';
 import { useMessageContextStore } from '@/stores/messageContextStore';
 import { MobileMessageBubble } from './MobileMessageBubble';
+import { MobileSwipeReplyRow } from './MobileSwipeReplyRow';
 
 interface MobileMessageListProps {
   chatId: string;
@@ -11,15 +13,32 @@ interface MobileMessageListProps {
 
 const LONG_PRESS_MS = 450;
 
+function canSwipeReplyMessage(message: {
+  is_deleted?: boolean;
+  msg_type: string;
+}): boolean {
+  if (message.is_deleted) return false;
+  return (
+    message.msg_type === 'text' ||
+    message.msg_type === 'voice' ||
+    message.msg_type === 'video_note' ||
+    message.msg_type === 'image' ||
+    message.msg_type === 'video'
+  );
+}
+
 export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageListProps) {
   const { data: messages, isLoading, isError } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
   const openMessageMenu = useMessageContextStore((s) => s.openMessageMenu);
   const closeMessageMenu = useMessageContextStore((s) => s.closeMessageMenu);
+  const setReply = useComposerStore((s) => s.setReply);
+  const requestComposerFocus = useComposerStore((s) => s.requestComposerFocus);
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastChatIdRef = useRef(chatId);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressRectRef = useRef<DOMRect | null>(null);
   const longPressPointRef = useRef<{ x: number; y: number } | null>(null);
   const [pressedMessageId, setPressedMessageId] = useState<string | null>(null);
 
@@ -47,21 +66,37 @@ export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageLis
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    longPressRectRef.current = null;
     longPressPointRef.current = null;
     setPressedMessageId(null);
   }, []);
 
+  const handleSwipeReply = useCallback(
+    (messageId: string) => {
+      setReply(chatId, messageId);
+      requestComposerFocus();
+    },
+    [chatId, requestComposerFocus, setReply],
+  );
+
   const handlePointerDown = useCallback(
-    (messageId: string, e: React.PointerEvent) => {
+    (messageId: string, isOutgoing: boolean, e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       clearLongPress();
+      longPressRectRef.current = e.currentTarget.getBoundingClientRect();
       longPressPointRef.current = { x: e.clientX, y: e.clientY };
       setPressedMessageId(messageId);
       longPressTimerRef.current = setTimeout(() => {
         longPressTimerRef.current = null;
-        const point = longPressPointRef.current;
-        if (!point) return;
-        openMessageMenu(chatId, messageId, point);
+        const rect = longPressRectRef.current;
+        if (!rect) return;
+        openMessageMenu(chatId, messageId, {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+          isOutgoing,
+        });
         setPressedMessageId(null);
       }, LONG_PRESS_MS);
     },
@@ -70,8 +105,8 @@ export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageLis
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (!longPressTimerRef.current || !longPressPointRef.current) return;
       const point = longPressPointRef.current;
-      if (!point || !longPressTimerRef.current) return;
       const dx = Math.abs(e.clientX - point.x);
       const dy = Math.abs(e.clientY - point.y);
       if (dx > 10 || dy > 10) {
@@ -106,18 +141,23 @@ export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageLis
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {messages.map((message) => (
-        <div
-          key={message.id}
-          className={`mobile-bubble-row-wrap${pressedMessageId === message.id ? ' mobile-bubble-row-wrap--pressed' : ''}`}
-          onPointerDown={(e) => handlePointerDown(message.id, e)}
-        >
-          <MobileMessageBubble
-            message={message}
-            isOutgoing={!!me?.id && message.sender_id === me.id}
-          />
-        </div>
-      ))}
+      {messages.map((message) => {
+        const isOutgoing = !!me?.id && message.sender_id === me.id;
+        return (
+          <MobileSwipeReplyRow
+            key={message.id}
+            enabled={canSwipeReplyMessage(message)}
+            onReply={() => handleSwipeReply(message.id)}
+          >
+            <div
+              className={`mobile-bubble-row-wrap${pressedMessageId === message.id ? ' mobile-bubble-row-wrap--pressed' : ''}`}
+              onPointerDown={(e) => handlePointerDown(message.id, isOutgoing, e)}
+            >
+              <MobileMessageBubble message={message} isOutgoing={isOutgoing} />
+            </div>
+          </MobileSwipeReplyRow>
+        );
+      })}
       <div ref={bottomRef} />
     </div>
   );
