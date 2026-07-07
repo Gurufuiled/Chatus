@@ -658,8 +658,11 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         if (!active || active.participant_count <= 0) {
           applyActiveRoomSnapshot(chatId, null);
         }
-      } catch {
-        applyActiveRoomSnapshot(chatId, null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (isGroupCallUnavailableError(message)) {
+          applyActiveRoomSnapshot(chatId, null);
+        }
       }
     }
   }, [applyActiveRoomSnapshot, resetCallState, refreshActiveRoom]);
@@ -827,14 +830,18 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           ? (payload.participants as ApiGroupCallParticipant[])
           : [];
         if (!chatId || !roomId) return;
-        setActiveRoomByChatId((prev) => {
-          const current = prev[chatId];
-          if (!current || current.id !== roomId) return prev;
-          return {
-            ...prev,
-            [chatId]: { ...current, participant_count: participants.length },
-          };
-        });
+        if (participants.length === 0) {
+          applyActiveRoomSnapshot(chatId, null);
+        } else {
+          setActiveRoomByChatId((prev) => {
+            const current = prev[chatId];
+            if (!current || current.id !== roomId) return prev;
+            return {
+              ...prev,
+              [chatId]: { ...current, participant_count: participants.length },
+            };
+          });
+        }
         applyParticipantsSnapshot(chatId, roomId, participants);
       },
     });

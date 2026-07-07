@@ -290,6 +290,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   >({});
   const roomRef = useRef<Room | null>(null);
   const stateRef = useRef(state);
+  const leavingIntentionallyRef = useRef(false);
   const videoToggleInFlightRef = useRef(false);
   stateRef.current = state;
 
@@ -311,6 +312,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetCallState = useCallback(async () => {
+    leavingIntentionallyRef.current = false;
     setLocalCameraTrack(undefined);
     setRemoteVideoTracks({});
     await detachRoom();
@@ -412,8 +414,10 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       });
       room.on(RoomEvent.Disconnected, () => {
         const roomId = stateRef.current.roomId;
+        const shouldNotifyServer = Boolean(roomId) && !leavingIntentionallyRef.current;
+        leavingIntentionallyRef.current = false;
         void (async () => {
-          if (roomId) {
+          if (shouldNotifyServer && roomId) {
             try {
               await leaveGroupCall(roomId);
             } catch {
@@ -623,6 +627,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const leaveGroupCallAction = useCallback(async () => {
     const roomId = stateRef.current.roomId;
     const chatId = stateRef.current.chatId;
+    leavingIntentionallyRef.current = true;
     if (!roomId) {
       await resetCallState();
       return;
@@ -639,8 +644,11 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         if (!active || active.participant_count <= 0) {
           applyActiveRoomSnapshot(chatId, null);
         }
-      } catch {
-        applyActiveRoomSnapshot(chatId, null);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (isGroupCallUnavailableError(message)) {
+          applyActiveRoomSnapshot(chatId, null);
+        }
       }
     }
   }, [applyActiveRoomSnapshot, resetCallState, refreshActiveRoom]);
@@ -649,6 +657,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     const roomId = stateRef.current.roomId;
     const chatId = stateRef.current.chatId;
     if (!roomId) return;
+    leavingIntentionallyRef.current = true;
     try {
       await endGroupCallForAll(roomId);
     } catch (err) {
@@ -789,14 +798,18 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           ? (payload.participants as ApiGroupCallParticipant[])
           : [];
         if (!chatId || !roomId) return;
-        setActiveRoomByChatId((prev) => {
-          const current = prev[chatId];
-          if (!current || current.id !== roomId) return prev;
-          return {
-            ...prev,
-            [chatId]: { ...current, participant_count: participants.length },
-          };
-        });
+        if (participants.length === 0) {
+          applyActiveRoomSnapshot(chatId, null);
+        } else {
+          setActiveRoomByChatId((prev) => {
+            const current = prev[chatId];
+            if (!current || current.id !== roomId) return prev;
+            return {
+              ...prev,
+              [chatId]: { ...current, participant_count: participants.length },
+            };
+          });
+        }
         applyParticipantsSnapshot(chatId, roomId, participants);
       },
     });
