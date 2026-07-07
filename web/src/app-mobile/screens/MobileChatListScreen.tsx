@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { MobileChatListRow } from '../components/MobileChatListRow';
@@ -60,29 +59,6 @@ export function MobileChatListScreen() {
           filteredChats.map((chat) => <MobileChatListRow key={chat.id} chat={chat} />)
         )}
       </div>
-    </div>
-  );
-}
-
-/** Settings placeholder — Phase 1 stub */
-export function MobileSettingsScreen() {
-  const navigate = useNavigate();
-  return (
-    <div className="mobile-chat-list">
-      <header className="mobile-chat-list__toolbar">
-        <button
-          type="button"
-          className="mobile-chat__back"
-          onClick={() => navigate({ to: '/' })}
-          aria-label="Назад"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <h1 className="mobile-chat-list__title">Профиль</h1>
-      </header>
-      <p className="mobile-chat-list__empty">Настройки профиля — в следующей фазе</p>
     </div>
   );
 }

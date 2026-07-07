@@ -1,4 +1,5 @@
 import { formatMessageTime } from '@/features/conversation/messageFormatters';
+import { VoiceMessagePlayer } from '@/features/conversation/VoiceMessagePlayer';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { parseGroupCallSystemContent } from '@/utils/groupCallSystemMessage';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
@@ -74,6 +75,10 @@ export function MobileMessageBubble({ message, isOutgoing }: MobileMessageBubble
     message.msg_type === 'image' && firstMedia?.remote_url
       ? resolveMediaUrl(firstMedia.remote_url)
       : null;
+  const voiceUrl =
+    message.msg_type === 'voice' && firstMedia?.remote_url
+      ? resolveMediaUrl(firstMedia.remote_url)
+      : null;
 
   return (
     <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
@@ -85,11 +90,21 @@ export function MobileMessageBubble({ message, isOutgoing }: MobileMessageBubble
             style={{ maxWidth: '100%', borderRadius: 10, marginBottom: 4, display: 'block' }}
           />
         ) : null}
+        {voiceUrl ? (
+          <div className="mobile-bubble__voice">
+            <VoiceMessagePlayer
+              src={voiceUrl}
+              durationMs={firstMedia?.duration_ms ?? 1000}
+              waveformBase64={firstMedia?.waveform}
+              isOutgoing={isOutgoing}
+            />
+          </div>
+        ) : null}
         {isText ? (
           <p className="mobile-bubble__text">{message.content}</p>
         ) : message.msg_type === 'text' && isChatusStickerMessage(message.content) ? (
           <p className="mobile-bubble__media-label">Стикер</p>
-        ) : message.msg_type !== 'text' ? (
+        ) : !voiceUrl && message.msg_type !== 'text' && message.msg_type !== 'image' ? (
           <p className="mobile-bubble__media-label">
             {mediaLabel(message.msg_type, message.content)}
           </p>

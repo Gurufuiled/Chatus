@@ -1,10 +1,18 @@
 # ChatUs Standalone PWA (iPhone)
 
-**Status:** Phase 2 implemented (Add to Home Screen polish)  
+**Status:** Phase 3A implemented (composer fix, tabs, attachments, voice, profile)  
 **URL:** `https://messenger.startapus.com/app/`  
 **Embed (`/embed`) is unchanged** — Loginus iframe + `loginus:init` postMessage flow.
 
 ---
+
+## What Phase 3A includes
+
+- **Composer pinned at bottom** — flex column layout; message list scrolls independently; iOS safe-area + `visualViewport` keyboard lift
+- **Bottom tabs** — Чаты / Настройки (hidden inside chat and profile sub-routes, like mobile `MainTabs`)
+- **Attachments** — paperclip in composer; photo/file pick + preview + send (reuses embed upload pipeline)
+- **Voice messages** — tap mic to record; playback in bubbles via `VoiceMessagePlayer`
+- **Profile** — `/app/settings/profile` view + `/app/settings/profile/edit` (reuses embed `ProfileSettingsPage` / `ProfileEditPage` in mobile shell)
 
 ## What Phase 2 includes
 
@@ -44,10 +52,12 @@ The icon launches ChatUs full-screen without Safari chrome. Session is kept in `
 
 **UI source:** `web/src/app-mobile/` — CSS/components mirroring `mobile/src/screens/` and `mobile/src/components/`. Reuses web auth (`publicAuth`), API client, WebSocket, and React Query only.
 
-## Not in Phase 1 / 2
+## Not in Phase 1 / 2 / 3A
 
 - Web Push notifications (service worker + server subscription endpoints)
 - WebRTC group/1:1 calls in standalone context
+- Contacts tab (stub in Settings)
+- Stickers picker in standalone composer
 - Changes to `/embed`
 
 ---
@@ -172,5 +182,7 @@ After deploy, test on iPhone Safari:
 
 - Web Push (service worker + server subscription endpoints)
 - WebRTC group/1:1 calls in standalone context
+- Contacts tab (full implementation)
+- Stickers in standalone composer
 - Optional: dedicated logout UX for standalone (SLO via Loginus)
 - Optional: iOS splash screens (`apple-touch-startup-image`)

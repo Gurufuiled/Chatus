@@ -2,8 +2,12 @@ import { useParams, useLocation } from '@tanstack/react-router';
 import { useWsLifecycle } from '@/ws/useWsLifecycle';
 import { useWsUiStore } from '@/stores/wsUiStore';
 import { isUiPreviewMode } from '@/dev/uiPreview';
-import { MobileChatListScreen, MobileSettingsScreen } from './screens/MobileChatListScreen';
+import { MobileChatListScreen } from './screens/MobileChatListScreen';
 import { MobileChatScreen } from './screens/MobileChatScreen';
+import { MobileSettingsHomeScreen } from './screens/MobileSettingsHomeScreen';
+import { MobileProfileScreen } from './screens/MobileProfileScreen';
+import { MobileProfileEditScreen } from './screens/MobileProfileEditScreen';
+import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 
 export function MobileAppLayout() {
   const params = useParams({ strict: false });
@@ -16,41 +20,33 @@ export function MobileAppLayout() {
   const wsHasEverConnected = useWsUiStore((s) => s.hasEverConnected);
   const showWsDegraded =
     !isUiPreviewMode() && wsHasEverConnected && wsStatus === 'disconnected';
+  const showTabs = shouldShowMobileTabs(pathname);
 
-  if (pathname.includes('/settings/profile')) {
-    return (
-      <div className="mobile-app-layout">
-        {showWsDegraded ? (
-          <div className="mobile-ws-banner" role="status">
-            Нет соединения — обновления могут задерживаться
-          </div>
-        ) : null}
-        <MobileSettingsScreen />
-      </div>
-    );
-  }
-
-  if (chatId) {
-    return (
-      <div className="mobile-app-layout">
-        {showWsDegraded ? (
-          <div className="mobile-ws-banner" role="status">
-            Нет соединения — обновления могут задерживаться
-          </div>
-        ) : null}
-        <MobileChatScreen chatId={chatId} />
-      </div>
-    );
-  }
+  const renderContent = () => {
+    if (pathname.endsWith('/settings/profile/edit')) {
+      return <MobileProfileEditScreen />;
+    }
+    if (pathname.includes('/settings/profile')) {
+      return <MobileProfileScreen />;
+    }
+    if (pathname === '/settings') {
+      return <MobileSettingsHomeScreen />;
+    }
+    if (chatId) {
+      return <MobileChatScreen chatId={chatId} />;
+    }
+    return <MobileChatListScreen />;
+  };
 
   return (
-    <div className="mobile-app-layout">
+    <div className={`mobile-app-layout${showTabs ? ' mobile-app-layout--with-tabs' : ''}`}>
       {showWsDegraded ? (
         <div className="mobile-ws-banner" role="status">
           Нет соединения — обновления могут задерживаться
         </div>
       ) : null}
-      <MobileChatListScreen />
+      <div className="mobile-app-layout__content">{renderContent()}</div>
+      {showTabs ? <MobileBottomTabs /> : null}
     </div>
   );
 }

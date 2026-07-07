@@ -7,7 +7,9 @@ interface MobileAppShellProps {
 export function MobileAppShell({ children }: MobileAppShellProps) {
   return (
     <div className="mobile-app">
-      <div className="mobile-app-shell">{children}</div>
+      <div className="mobile-app-shell">
+        <div className="mobile-app-shell__inner">{children}</div>
+      </div>
     </div>
   );
 }

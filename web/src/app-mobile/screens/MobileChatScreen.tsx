@@ -6,6 +6,7 @@ import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import { MobileChatHeader } from '../components/MobileChatHeader';
 import { MobileMessageList } from '../components/MobileMessageList';
 import { MobileMessageComposer } from '../components/MobileMessageComposer';
+import { useMobileComposerKeyboard } from '../utils/useMobileComposerKeyboard';
 
 interface MobileChatScreenProps {
   chatId: string;
@@ -18,6 +19,7 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
   const { mutate: markChatRead } = useMarkChatReadMutation();
   const markedRef = useRef<string | null>(null);
   const chat = chats?.find((c) => c.id === chatId);
+  const { keyboardLift, composerPaddingBottom } = useMobileComposerKeyboard();
 
   useEffect(() => {
     markedRef.current = null;
@@ -65,8 +67,13 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
       style={{ '--mobile-chat-wallpaper': `url(${wallpaperUrl})` } as React.CSSProperties}
     >
       <MobileChatHeader chat={chat} />
-      <MobileMessageList chatId={chatId} />
-      <MobileMessageComposer chatId={chatId} disabled={messagesLoading} />
+      <MobileMessageList chatId={chatId} keyboardLift={keyboardLift} />
+      <MobileMessageComposer
+        chatId={chatId}
+        disabled={messagesLoading}
+        keyboardLift={keyboardLift}
+        composerPaddingBottom={composerPaddingBottom}
+      />
     </div>
   );
 }

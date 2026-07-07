@@ -5,9 +5,10 @@ import { MobileMessageBubble } from './MobileMessageBubble';
 
 interface MobileMessageListProps {
   chatId: string;
+  keyboardLift?: number;
 }
 
-export function MobileMessageList({ chatId }: MobileMessageListProps) {
+export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageListProps) {
   const { data: messages, isLoading, isError } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -18,6 +19,11 @@ export function MobileMessageList({ chatId }: MobileMessageListProps) {
     lastChatIdRef.current = chatId;
     bottomRef.current?.scrollIntoView({ behavior });
   }, [chatId, messages?.length]);
+
+  useEffect(() => {
+    if (keyboardLift <= 0) return;
+    bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+  }, [keyboardLift]);
 
   if (isLoading) {
     return <div className="mobile-chat__messages-loading">Загрузка…</div>;
@@ -32,7 +38,10 @@ export function MobileMessageList({ chatId }: MobileMessageListProps) {
   }
 
   return (
-    <div className="mobile-chat__messages">
+    <div
+      className="mobile-chat__messages"
+      style={keyboardLift > 0 ? { paddingBottom: keyboardLift + 8 } : undefined}
+    >
       {messages.map((message) => (
         <MobileMessageBubble
           key={message.id}
