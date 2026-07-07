@@ -13,6 +13,12 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
+  const contactsRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/contacts',
+    component: Layout,
+  });
+
   const settingsRoute = createRoute({
     getParentRoute: () => parentRoute,
     path: '/settings',
@@ -31,5 +37,5 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
-  return [indexRoute, chatRoute, settingsRoute, settingsProfileRoute, settingsProfileEditRoute];
+  return [indexRoute, chatRoute, contactsRoute, settingsRoute, settingsProfileRoute, settingsProfileEditRoute];
 }

@@ -29,20 +29,26 @@ export function MobileChatListScreen() {
 
   return (
     <div className="mobile-chat-list">
-      <header className="mobile-chat-list__toolbar">
-        <h1 className="mobile-chat-list__title">Чаты</h1>
-        <label className="mobile-chat-list__search">
-          <span aria-hidden>🔍</span>
+      <header className="mobile-chat-list__nav">
+        <h1 className="mobile-chat-list__nav-title">Чаты</h1>
+      </header>
+      <div className="mobile-chat-list__scroll">
+        <label className="mobile-chat-list__search mobile-chat-list__search--in-scroll">
+          <span className="mobile-chat-list__search-icon" aria-hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3-3" strokeLinecap="round" />
+            </svg>
+          </span>
           <input
             type="search"
-            placeholder="Поиск"
+            placeholder="Поиск чатов"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             aria-label="Поиск чатов"
           />
         </label>
-      </header>
-      <div className="mobile-chat-list__scroll">
+
         {isLoading ? (
           <div className="mobile-chat-list__loading">
             <div className="mobile-auth__spinner" role="status" />

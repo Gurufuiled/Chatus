@@ -4,6 +4,7 @@ import { useWsUiStore } from '@/stores/wsUiStore';
 import { isUiPreviewMode } from '@/dev/uiPreview';
 import { MobileChatListScreen } from './screens/MobileChatListScreen';
 import { MobileChatScreen } from './screens/MobileChatScreen';
+import { MobileContactsScreen } from './screens/MobileContactsScreen';
 import { MobileSettingsHomeScreen } from './screens/MobileSettingsHomeScreen';
 import { MobileProfileScreen } from './screens/MobileProfileScreen';
 import { MobileProfileEditScreen } from './screens/MobileProfileEditScreen';
@@ -28,6 +29,9 @@ export function MobileAppLayout() {
     }
     if (pathname.includes('/settings/profile')) {
       return <MobileProfileScreen />;
+    }
+    if (pathname === '/contacts') {
+      return <MobileContactsScreen />;
     }
     if (pathname === '/settings') {
       return <MobileSettingsHomeScreen />;

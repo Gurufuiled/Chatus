@@ -161,7 +161,7 @@ export function MobileMessageComposer({
                 <ComposerAttachmentPreview chatId={chatId} />
               </div>
             ) : null}
-            <div className="mobile-composer__row">
+            <div className="mobile-composer__shell">
               <button
                 type="button"
                 className="mobile-composer__attach"
