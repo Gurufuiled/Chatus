@@ -24,7 +24,7 @@ export function GroupCallBanner({
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  if (!activeRoom) return null;
+  if (!activeRoom || activeRoom.participant_count <= 0) return null;
 
   const count = activeRoom.participant_count || 0;
   const title =

@@ -16,7 +16,7 @@ export function GroupCallBanner({
   onJoin,
   onOpen,
 }: GroupCallBannerProps) {
-  if (!activeRoom) return null;
+  if (!activeRoom || activeRoom.participant_count <= 0) return null;
 
   const count = activeRoom.participant_count || 0;
   const title =

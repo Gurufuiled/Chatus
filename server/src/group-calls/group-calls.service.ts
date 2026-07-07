@@ -407,7 +407,16 @@ export class GroupCallsService {
     await this.assertGroupMember(room.chatId, userId);
     this.removeParticipant(roomId, userId);
     await this.broadcastParticipants(room);
+    await this.finalizeRoomIfEmpty(room, userId);
     return { ok: true };
+  }
+
+  private async finalizeRoomIfEmpty(room: ActiveRoomRow, endedByUserId: string) {
+    const inMemory = this.roomParticipants.get(room.id);
+    if (inMemory && inMemory.size > 0) return;
+    const liveCount = await this.countLiveKitParticipants(room.livekitRoomName, room.id);
+    if (liveCount > 0) return;
+    await this.finalizeRoom(room, endedByUserId);
   }
 
   async endRoom(roomId: string, userId: string) {
@@ -517,6 +526,7 @@ export class GroupCallsService {
         if (identity) {
           this.removeParticipant(room.id, identity);
           await this.broadcastParticipants(room);
+          await this.finalizeRoomIfEmpty(room, identity);
         }
         break;
       }

@@ -651,13 +651,18 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // local cleanup even if API fails
     }
-    if (chatId) {
-      void refreshActiveRoom(chatId).catch(() => {
-        setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: null }));
-      });
-    }
     await resetCallState();
-  }, [resetCallState, refreshActiveRoom]);
+    if (chatId) {
+      try {
+        const active = await refreshActiveRoom(chatId);
+        if (!active || active.participant_count <= 0) {
+          applyActiveRoomSnapshot(chatId, null);
+        }
+      } catch {
+        applyActiveRoomSnapshot(chatId, null);
+      }
+    }
+  }, [applyActiveRoomSnapshot, resetCallState, refreshActiveRoom]);
 
   const endGroupCallForAllAction = useCallback(async () => {
     const roomId = stateRef.current.roomId;
