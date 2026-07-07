@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useComposerStore, EMPTY_PENDING_ATTACHMENTS } from '@/stores/composerStore';
 import { useSendMessageMutation } from '@/queries/messages.queries';
 import { useSendPendingAttachmentsMutation } from '@/queries/media.queries';
@@ -6,6 +6,7 @@ import { useMeQuery } from '@/queries/auth.queries';
 import { AttachmentPicker } from '@/features/conversation/AttachmentPicker';
 import { ComposerAttachmentPreview } from '@/features/conversation/ComposerAttachmentPreview';
 import { ComposerErrorBanner } from '@/features/conversation/ComposerErrorBanner';
+import { ComposerReplyPreview } from '@/features/conversation/ComposerReplyPreview';
 import { useVoiceRecorder } from '@/features/conversation/useVoiceRecorder';
 import { MobileComposerVoiceControls } from './MobileComposerVoiceControls';
 
@@ -132,6 +133,7 @@ export function MobileMessageComposer({
       }}
     >
       <ComposerErrorBanner chatId={chatId} />
+      <ComposerReplyPreview chatId={chatId} />
       <AttachmentPicker chatId={chatId} disabled={isDisabled} />
       <div
         className="mobile-composer"

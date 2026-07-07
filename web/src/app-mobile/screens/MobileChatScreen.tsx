@@ -1,11 +1,17 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
-import { useMarkChatReadMutation, useMessagesQuery } from '@/queries/messages.queries';
+import {
+  useForwardMessagesMutation,
+  useMarkChatReadMutation,
+  useMessagesQuery,
+} from '@/queries/messages.queries';
 import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
+import { ForwardDialog } from '@/features/conversation/ForwardDialog';
 import { MobileChatHeader } from '../components/MobileChatHeader';
 import { MobileMessageList } from '../components/MobileMessageList';
 import { MobileMessageComposer } from '../components/MobileMessageComposer';
+import { MobileMessageContextMenu } from '../components/MobileMessageContextMenu';
 import { useMobileComposerKeyboard } from '../utils/useMobileComposerKeyboard';
 
 interface MobileChatScreenProps {
@@ -17,9 +23,27 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
   const { data: chats, isLoading: chatsLoading } = useChatsQuery();
   const { isLoading: messagesLoading } = useMessagesQuery(chatId);
   const { mutate: markChatRead } = useMarkChatReadMutation();
+  const forwardMutation = useForwardMessagesMutation();
   const markedRef = useRef<string | null>(null);
   const chat = chats?.find((c) => c.id === chatId);
   const { keyboardLift, composerPaddingBottom } = useMobileComposerKeyboard();
+  const [forwardMessageIds, setForwardMessageIds] = useState<string[]>([]);
+  const closeForward = useCallback(() => setForwardMessageIds([]), []);
+
+  const handleForwardToChat = useCallback(
+    (targetChatId: string) => {
+      if (forwardMessageIds.length === 0) return;
+      forwardMutation.mutate(
+        {
+          sourceChatId: chatId,
+          targetChatId,
+          messageIds: forwardMessageIds,
+        },
+        { onSuccess: closeForward },
+      );
+    },
+    [chatId, closeForward, forwardMessageIds, forwardMutation],
+  );
 
   useEffect(() => {
     markedRef.current = null;
@@ -79,6 +103,17 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
         disabled={messagesLoading}
         keyboardLift={keyboardLift}
         composerPaddingBottom={composerPaddingBottom}
+      />
+      <MobileMessageContextMenu
+        chatId={chatId}
+        onForward={(messageIds) => setForwardMessageIds(messageIds)}
+      />
+      <ForwardDialog
+        open={forwardMessageIds.length > 0}
+        sourceChatId={chatId}
+        pending={forwardMutation.isPending}
+        onClose={closeForward}
+        onSelectChat={handleForwardToChat}
       />
     </div>
   );

@@ -26,7 +26,7 @@ html:has(.mobile-app) #root {
   --m-composer-surface: #ffffff;
   --m-safe-top: env(safe-area-inset-top, 0px);
   --m-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --m-tab-bar-height: 49px;
+  --m-tab-bar-height: 42px;
   --m-tab-bar-bottom-lift: 2vh;
   --m-tab-bar-float-clearance: calc(
     var(--m-tab-bar-height) + var(--m-tab-bar-bottom-lift) + max(var(--m-safe-bottom), 8px) + 12px
@@ -491,13 +491,63 @@ html:has(.mobile-app) #root {
   margin-top: 2px;
 }
 
+.mobile-dialog-row__preview-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-dialog-row__thumbs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mobile-dialog-row__thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: rgba(128, 128, 128, 0.25);
+}
+
 .mobile-dialog-row__preview {
-  font-size: 16px;
+  font-size: 15px;
   color: var(--m-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+  min-width: 0;
+}
+
+.mobile-dialog-row__preview--accent {
+  color: var(--m-accent);
+}
+
+.mobile-dialog-row__preview--empty {
+  flex: 1;
+}
+
+.mobile-dialog-row__trailing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mobile-dialog-row__status {
+  display: inline-flex;
+  align-items: center;
+  color: var(--m-icon-muted);
+}
+
+.mobile-dialog-row__status .chat-status-checks svg {
+  width: 14px;
+  height: 10px;
 }
 
 .mobile-dialog-row__badge {
@@ -772,6 +822,14 @@ button.mobile-pill-header-title:active {
   justify-content: center;
   color: var(--m-text-secondary);
   font-size: 15px;
+}
+
+.mobile-bubble-row-wrap {
+  width: 100%;
+}
+
+.mobile-bubble-row-wrap--pressed {
+  opacity: 0.92;
 }
 
 .mobile-bubble-row {
@@ -1414,9 +1472,113 @@ button.mobile-pill-header-title:active {
 .mobile-composer__recording {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
   margin: 0 4px;
+}
+
+.mobile-composer__recording-stage {
+  position: relative;
+  width: 100%;
+}
+
+.mobile-composer__recording-stage--cancel .mobile-composer__recording-bubble {
+  background: rgba(255, 83, 83, 0.08);
+}
+
+.mobile-composer__recording-lock-hint {
+  position: absolute;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--m-text-secondary);
+  pointer-events: none;
+}
+
+.mobile-composer__recording-lock-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background: var(--m-row-pressed);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--m-icon-muted);
+}
+
+.mobile-composer__recording-lock-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mobile-composer__recording-bubble {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 22px;
+  background: var(--m-composer-surface);
+  border: 0.5px solid var(--m-composer-border);
+  overflow: hidden;
+}
+
+.mobile-composer__recording-bubble-tint {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 83, 83, 0.12);
+  pointer-events: none;
+}
+
+.mobile-composer__recording-slide-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--m-text-secondary);
+  white-space: nowrap;
+}
+
+.mobile-composer__recording-slide-hint svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mobile-composer__recording-cancel-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #e05252;
+  pointer-events: none;
+}
+
+.mobile-composer__recording-mic-halo {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background: var(--m-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 8px rgba(51, 144, 236, 0.15);
+}
+
+.mobile-composer__recording-mic-halo svg {
+  width: 22px;
+  height: 22px;
 }
 
 .mobile-composer__recording-cancel {
@@ -1534,13 +1696,13 @@ button.mobile-pill-header-title:active {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
   border: none;
   background: transparent;
   color: #8e8e93;
   cursor: pointer;
-  padding: 4px 12px;
-  min-width: 72px;
+  padding: 2px 10px;
+  min-width: 64px;
   font: inherit;
   -webkit-tap-highlight-color: transparent;
 }
@@ -1555,16 +1717,16 @@ button.mobile-pill-header-title:active {
 
 .mobile-tab-bar__icon {
   position: relative;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .mobile-tab-bar__icon svg {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
 }
 
 .mobile-tab-bar__badge {
@@ -1585,7 +1747,7 @@ button.mobile-pill-header-title:active {
 }
 
 .mobile-tab-bar__label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
 }
 
@@ -1780,6 +1942,20 @@ button.mobile-pill-header-title:active {
   color: var(--m-icon-muted);
   font-size: 16px;
   border-bottom: 1px solid var(--m-separator);
+}
+
+.mobile-settings__logout {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  background: var(--m-surface);
+  color: #e05252;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
 }
 
 /* —— Profile embed wrapper —— */

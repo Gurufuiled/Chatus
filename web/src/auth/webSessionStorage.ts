@@ -2,6 +2,8 @@ import type { AuthUser } from '@/types/auth';
 
 export const CHATUS_WEB_SESSION_KEY = 'chatus_web_session';
 
+const isStandalonePwa = import.meta.env.VITE_APP_MODE === 'standalone';
+
 export interface StoredWebSession {
   refresh_token: string;
   expires_at: number;
@@ -10,10 +12,26 @@ export interface StoredWebSession {
   access_token?: string;
 }
 
-export function loadWebSession(): StoredWebSession | null {
+function readRaw(key: 'local' | 'session'): string | null {
   try {
-    const raw = sessionStorage.getItem(CHATUS_WEB_SESSION_KEY);
-    if (!raw) return null;
+    const storage = key === 'local' ? localStorage : sessionStorage;
+    return storage.getItem(CHATUS_WEB_SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeRaw(storage: Storage, session: StoredWebSession): void {
+  storage.setItem(CHATUS_WEB_SESSION_KEY, JSON.stringify(session));
+}
+
+function removeRaw(storage: Storage): void {
+  storage.removeItem(CHATUS_WEB_SESSION_KEY);
+}
+
+function parseStored(raw: string | null): StoredWebSession | null {
+  if (!raw) return null;
+  try {
     const parsed = JSON.parse(raw) as StoredWebSession;
     if (
       typeof parsed.refresh_token !== 'string' ||
@@ -29,19 +47,67 @@ export function loadWebSession(): StoredWebSession | null {
   }
 }
 
-export function saveWebSession(session: StoredWebSession): void {
+/** Standalone PWA uses localStorage so sessions survive app restarts; embed keeps sessionStorage. */
+function primaryStorage(): Storage | null {
   try {
-    sessionStorage.setItem(CHATUS_WEB_SESSION_KEY, JSON.stringify(session));
+    return isStandalonePwa ? localStorage : sessionStorage;
   } catch {
-    // sessionStorage may be unavailable in private mode
+    return null;
+  }
+}
+
+export function loadWebSession(): StoredWebSession | null {
+  const primary = primaryStorage();
+  if (primary) {
+    const fromPrimary = parseStored(primary.getItem(CHATUS_WEB_SESSION_KEY));
+    if (fromPrimary) return fromPrimary;
+  }
+
+  // Migrate legacy sessionStorage entries into localStorage for standalone PWAs.
+  if (isStandalonePwa) {
+    const legacy = parseStored(readRaw('session'));
+    if (legacy) {
+      try {
+        localStorage.setItem(CHATUS_WEB_SESSION_KEY, JSON.stringify(legacy));
+        sessionStorage.removeItem(CHATUS_WEB_SESSION_KEY);
+      } catch {
+        // still return legacy session for this boot
+      }
+      return legacy;
+    }
+  }
+
+  return null;
+}
+
+export function saveWebSession(session: StoredWebSession): void {
+  const primary = primaryStorage();
+  if (!primary) return;
+  try {
+    writeRaw(primary, session);
+    // Drop stale copy from the other storage bucket.
+    if (isStandalonePwa) {
+      try {
+        sessionStorage.removeItem(CHATUS_WEB_SESSION_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    // storage may be unavailable in private mode
   }
 }
 
 export function clearWebSession(): void {
   try {
-    sessionStorage.removeItem(CHATUS_WEB_SESSION_KEY);
+    removeRaw(localStorage);
   } catch {
-    // ignore
+    /* ignore */
+  }
+  try {
+    removeRaw(sessionStorage);
+  } catch {
+    /* ignore */
   }
 }
 

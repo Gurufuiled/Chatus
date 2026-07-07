@@ -141,12 +141,14 @@ export class AuthController {
       });
     })
     .then(function(session) {
-      sessionStorage.setItem('${CHATUS_WEB_SESSION_KEY}', JSON.stringify({
+      var payload = JSON.stringify({
         refresh_token: session.refresh_token,
         expires_at: session.expires_at,
         user: session.user,
         access_token: session.access_token
-      }));
+      });
+      try { localStorage.setItem('${CHATUS_WEB_SESSION_KEY}', payload); } catch (e) {}
+      try { sessionStorage.removeItem('${CHATUS_WEB_SESSION_KEY}'); } catch (e) {}
       window.location.replace('/app/');
     })
     .catch(function(err) {

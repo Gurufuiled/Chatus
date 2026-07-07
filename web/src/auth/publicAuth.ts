@@ -110,11 +110,24 @@ export async function tryRestoreWebSession(): Promise<'none' | 'restored' | 'fai
   } catch (err) {
     if (generation !== bootSessionGeneration) return 'failed';
 
+    const isAuthError =
+      err instanceof ApiError
+        ? err.status === 401 || err.status === 403
+        : err instanceof Error &&
+          /401|403|invalid|expired|refresh/i.test(err.message);
+
     console.warn('[app] session restore failed', err);
-    clearWebSession();
-    setAccessToken(null);
-    store.setAccessToken(null);
-    store.setUser(null);
+
+    if (isAuthError) {
+      clearWebSession();
+      setAccessToken(null);
+      store.setAccessToken(null);
+      store.setUser(null);
+    } else {
+      store.setEmbedStatus('error');
+      store.setAuthError(mapAuthError(err));
+      return 'failed';
+    }
     return 'failed';
   }
 }
@@ -123,15 +136,26 @@ export async function bootPublicAuth(options?: BootPublicAuthOptions): Promise<v
   const store = useAuthUiStore.getState();
   if (store.embedStatus === 'ready') return;
 
-  if (!options?.preserveAuthError) {
-    const result = await tryRestoreWebSession();
-    if (result === 'restored') return;
-  }
+  const result = await tryRestoreWebSession();
+  if (result === 'restored') return;
+
+  if (useAuthUiStore.getState().embedStatus === 'error') return;
 
   store.setEmbedStatus('needs_login');
   if (!options?.preserveAuthError) {
     store.setAuthError(null);
   }
+}
+
+export function logoutPublicAuth(): void {
+  nextBootGeneration();
+  clearWebSession();
+  setAccessToken(null);
+  const store = useAuthUiStore.getState();
+  store.setAccessToken(null);
+  store.setUser(null);
+  store.setAuthError(null);
+  store.setEmbedStatus('needs_login');
 }
 
 export async function startOAuthLogin(): Promise<void> {
