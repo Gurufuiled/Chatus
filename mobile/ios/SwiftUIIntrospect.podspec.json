@@ -16,8 +16,7 @@
   "platforms": {
     "ios": "13.0",
     "tvos": "13.0",
-    "osx": "10.15",
-    "visionos": "1.0"
+    "osx": "10.15"
   },
   "swift_version": "5.7"
 }

@@ -29,8 +29,8 @@ import { ChatThemePickerModal } from '../components/ChatThemePickerModal';
 import {
   ChatProfileMediaSection,
   type ProfileTabKey,
-  type VoiceItem,
 } from '../components/ChatProfileMediaSection';
+import type { MediaTile, VoiceItem } from '../components/ChatProfileMediaSection';
 import { ChatProfileOverlayLayer } from '../components/ChatProfileOverlayLayer';
 import { ChatProfileDeleteHistoryPanel } from '../components/ChatProfileDeleteHistoryPanel';
 import { ChatProfileBlockSheet } from '../components/ChatProfileBlockSheet';
@@ -230,6 +230,9 @@ export function TelegramChatProfileScreen() {
   const [historyRows, setHistoryRows] = useState<TelegramMessageRow[]>([]);
   const [activeTab, setActiveTab] = useState<ProfileTabKey>('media');
   const [selectedMediaIndex, setSelectedMediaIndex] = useState<number | null>(null);
+  const [heroMediaOpen, setHeroMediaOpen] = useState(false);
+  const suppressMediaOpenRef = useRef(false);
+  const suppressMediaOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [floatingVideoNote, setFloatingVideoNote] = useState<VoiceItem | null>(null);
   const [actionMenu, setActionMenu] = useState<ProfileActionMenuState>(null);
   const [isHeroExpanded, setIsHeroExpanded] = useState(false);
@@ -531,6 +534,67 @@ export function TelegramChatProfileScreen() {
   const { mediaItems, fileItems, voiceItems, linkItems } = useMemo(
     () => telegramRowsToProfileBuckets(historyRows, displayName),
     [historyRows, displayName],
+  );
+
+  const heroMediaItem = useMemo((): MediaTile | null => {
+    if (!avatarUrl) return null;
+    return {
+      id: `hero:${telegramChatId}`,
+      kind: 'image',
+      uri: avatarUrl,
+      previewUri: avatarUrl,
+    };
+  }, [avatarUrl, telegramChatId]);
+
+  const viewerMediaItems = heroMediaOpen && heroMediaItem ? [heroMediaItem] : mediaItems;
+  const viewerSelectedIndex = heroMediaOpen ? 0 : selectedMediaIndex;
+
+  const scheduleMediaOpenSuppress = useCallback(() => {
+    suppressMediaOpenRef.current = true;
+    if (suppressMediaOpenTimerRef.current) {
+      clearTimeout(suppressMediaOpenTimerRef.current);
+    }
+    suppressMediaOpenTimerRef.current = setTimeout(() => {
+      suppressMediaOpenTimerRef.current = null;
+      suppressMediaOpenRef.current = false;
+    }, 400);
+  }, []);
+
+  const handleOpenMedia = useCallback(
+    (index: number) => {
+      if (suppressMediaOpenRef.current) return;
+      setHeroMediaOpen(false);
+      setSelectedMediaIndex(index);
+    },
+    [],
+  );
+
+  const handleHeroMediaPress = useCallback(() => {
+    if (suppressMediaOpenRef.current || !heroMediaItem) return;
+    setSelectedMediaIndex(null);
+    setHeroMediaOpen(true);
+  }, [heroMediaItem]);
+
+  const handleCloseMedia = useCallback(() => {
+    scheduleMediaOpenSuppress();
+    setHeroMediaOpen(false);
+    setSelectedMediaIndex(null);
+    setIsHeroExpanded(false);
+  }, [scheduleMediaOpenSuppress]);
+
+  const handleChangeMediaIndex = useCallback((index: number) => {
+    if (suppressMediaOpenRef.current) return;
+    if (heroMediaOpen) return;
+    setSelectedMediaIndex(index);
+  }, [heroMediaOpen]);
+
+  useEffect(
+    () => () => {
+      if (suppressMediaOpenTimerRef.current) {
+        clearTimeout(suppressMediaOpenTimerRef.current);
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -961,6 +1025,7 @@ export function TelegramChatProfileScreen() {
           expandedHeroWidth={expandedHeroWidth}
           expandedHeroHeight={expandedHeroHeight}
           onToggleHeroExpanded={toggleHeroExpanded}
+          onHeroMediaPress={handleHeroMediaPress}
           onStartCallPress={handleStartCallPress}
           onStartVideoCallPress={handleStartVideoCallPress}
           onMutePress={handleMutePress}
@@ -981,7 +1046,7 @@ export function TelegramChatProfileScreen() {
           voiceItems={voiceItems}
           linkItems={linkItems}
           onChangeTab={setActiveTab}
-          onOpenMedia={setSelectedMediaIndex}
+          onOpenMedia={handleOpenMedia}
           onOpenVideoNote={setFloatingVideoNote}
           onOpenActionMenu={openActionMenu}
         />
@@ -995,10 +1060,10 @@ export function TelegramChatProfileScreen() {
         moreMenuCustomBodyHeight={moreMenuDeletePanelHeight}
         onCloseMoreMenu={closeMoreMenu}
         onMoreMenuAction={handleMoreMenuAction}
-        mediaItems={mediaItems}
-        selectedMediaIndex={selectedMediaIndex}
-        onChangeMediaIndex={setSelectedMediaIndex}
-        onCloseMedia={() => setSelectedMediaIndex(null)}
+        mediaItems={viewerMediaItems}
+        selectedMediaIndex={viewerSelectedIndex}
+        onChangeMediaIndex={handleChangeMediaIndex}
+        onCloseMedia={handleCloseMedia}
         floatingVideoNote={floatingVideoNote}
         onCloseFloatingVideoNote={() => setFloatingVideoNote(null)}
         actionMenu={actionMenu}

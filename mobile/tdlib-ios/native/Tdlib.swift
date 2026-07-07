@@ -27,6 +27,7 @@ private func shouldEmitUpdateToJs(_ updateType: String) -> Bool {
        "updateChatPosition",
        "updateChatReadInbox",
        "updateChatTitle",
+       "updateChatPhoto",
        "updateUserChatAction":
     return true
   default:

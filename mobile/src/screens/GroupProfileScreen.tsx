@@ -1402,33 +1402,10 @@ export function GroupProfileScreen() {
           onChangeName={setNameDraft}
           onChangeDescription={setDescriptionDraft}
           onToggleMute={handleToggleMute}
+          onGroupVoicePress={handleGroupVoicePress}
           onSearch={handleSearchPress}
           onOpenMoreMenu={openMoreMenu}
         />
-
-        {!isEditMode ? (
-          <View style={{ paddingHorizontal: 4, paddingBottom: 8, gap: 8 }}>
-            <Pressable
-              onPress={handleGroupVoicePress}
-              style={({ pressed }) => ({
-                borderRadius: 14,
-                backgroundColor: themeColors.inputBackgroundSolid,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                opacity: pressed ? 0.88 : 1,
-              })}
-            >
-              <Text style={{ color: themeColors.textPrimary, fontWeight: '700', fontSize: 15 }}>
-                🔊 {isUserInGroupCall ? 'Открыть голосовой чат' : 'Начать голосовой чат'}
-              </Text>
-            </Pressable>
-            {activeGroupCallRoom ? (
-              <Text style={{ color: themeColors.textSecondary, fontSize: 13, paddingHorizontal: 4 }}>
-                {`Сейчас в звонке: ${activeGroupCallRoom.participant_count} участник(ов)`}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
 
         {!isEditMode ? (
           <GroupProfileStickyTabs

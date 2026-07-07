@@ -17,6 +17,7 @@ export const TDLIB_JS_UPDATE_TYPES = new Set([
   'updateChatPosition',
   'updateChatReadInbox',
   'updateChatTitle',
+  'updateChatPhoto',
   'updateUserChatAction',
 ]);
 

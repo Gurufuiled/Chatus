@@ -39,6 +39,7 @@ private fun shouldEmitUpdateToJs(updateType: String): Boolean =
     "updateChatPosition",
     "updateChatReadInbox",
     "updateChatTitle",
+    "updateChatPhoto",
     "updateUserChatAction",
     -> true
     else -> false

@@ -8,6 +8,7 @@
 import { API_BASE_URL, USE_MOCKS } from '../config';
 import { authStore } from '../stores/authStore';
 import { authService } from './AuthService';
+import { httpFetch } from './httpFetch';
 import { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete } from './apiMocks';
 
 const FETCH_TIMEOUT_MS = 15000;
@@ -49,7 +50,7 @@ export async function apiFetch(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? FETCH_TIMEOUT_MS);
     try {
-      return await fetch(url, {
+      return await httpFetch(url, {
         ...rest,
         headers: getHeaders(),
         signal: controller.signal,

@@ -1,5 +1,6 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { withTdlibRequestGate } from './tdlibRequestGate';
 
 export type TdlibUpdate = Record<string, unknown>;
 
@@ -9,12 +10,14 @@ const NATIVE_NAME = 'Tdlib';
 
 function getNativeModule(): {
   sendClientJson: (json: string) => Promise<string>;
+  recreateClient?: () => Promise<boolean>;
   addListener?: (eventType: string) => void;
   removeListeners?: (count: number) => void;
 } | null {
   const m = NativeModules[NATIVE_NAME] as
     | {
         sendClientJson: (json: string) => Promise<string>;
+        recreateClient?: () => Promise<boolean>;
         addListener?: (eventType: string) => void;
         removeListeners?: (count: number) => void;
       }
@@ -79,20 +82,30 @@ class TdlibClientImpl {
   }
 
   async send(query: object): Promise<unknown> {
-    const payload = JSON.stringify(query);
-    const mod = getNativeModule();
-    if (mod?.sendClientJson) {
-      const raw = await mod.sendClientJson(payload);
-      try {
-        return JSON.parse(raw) as unknown;
-      } catch {
-        return raw;
+    return withTdlibRequestGate(async () => {
+      const payload = JSON.stringify(query);
+      const mod = getNativeModule();
+      if (mod?.sendClientJson) {
+        const raw = await mod.sendClientJson(payload);
+        try {
+          return JSON.parse(raw) as unknown;
+        } catch {
+          return raw;
+        }
       }
-    }
-    if (Platform.OS === 'ios') {
-      return this.iosStub(query);
-    }
-    return { '@type': 'error', message: 'Tdlib native module not linked' };
+      if (Platform.OS === 'ios') {
+        return this.iosStub(query);
+      }
+      return { '@type': 'error', message: 'Tdlib native module not linked' };
+    });
+  }
+
+  /** Destroy native TDLib client and create a fresh one (reload session from on-disk database). */
+  async recreateClient(): Promise<boolean> {
+    const mod = getNativeModule();
+    if (!mod?.recreateClient) return false;
+    await mod.recreateClient();
+    return true;
   }
 
   /** Dev fallback when iOS native is not yet compiled into the target. */

@@ -8,8 +8,13 @@ Pod::Spec.new do |s|
   s.author = { 'Telegram' => 'support@telegram.org' }
   s.platform = :ios, '15.1'
   s.source = { :path => '.' }
-  s.vendored_libraries = 'libtdjson.xcframework'
   s.public_header_files = 'include/**/*.h'
   s.header_mappings_dir = 'include'
-  s.libraries = 'c++'
+  s.source_files = 'include/**/*.h'
+  s.preserve_paths = 'libtdjson.xcframework'
+  s.libraries = 'c++', 'tdjson'
+  s.vendored_libraries = 'libtdjson.xcframework/ios-arm64/libtdjson.dylib'
+  s.xcconfig = {
+    'LD_RUNPATH_SEARCH_PATHS' => '$(inherited) @executable_path/Frameworks',
+  }
 end

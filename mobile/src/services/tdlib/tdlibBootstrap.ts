@@ -3,6 +3,10 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from './TdlibClient';
 import { throwIfTdError } from './tdlibErrors';
 
+function readAuthStateType(auth: unknown): string {
+  return (auth as { '@type'?: string } | null)?.['@type'] ?? '';
+}
+
 /** TDLib ждёт POSIX-путь; Expo `documentDirectory` — `file:///…`. */
 function fileUriToFilesystemPath(uri: string): string {
   const trimmed = uri.trim();
@@ -36,6 +40,9 @@ export async function getTdlibDirectories(): Promise<{ databaseDir: string; file
  */
 let tdlibParametersAppliedThisProcess = false;
 let applyInFlight: Promise<void> | null = null;
+let recoveryInFlight: Promise<boolean> | null = null;
+let lastNativeVerifyMs = 0;
+const NATIVE_VERIFY_MIN_INTERVAL_MS = 8000;
 
 /**
  * Только если нативный клиент TDLib реально пересоздан (новый процесс приложения).
@@ -47,9 +54,39 @@ export function resetTdlibParametersLock(): void {
   applyInFlight = null;
 }
 
-export function applyTdlibParameters(): Promise<void> {
-  if (tdlibParametersAppliedThisProcess) {
-    return Promise.resolve();
+/**
+ * Recreate native TDLib client and reload the on-disk session (no SMS if DB is valid).
+ * Call when authorizationStateClosed but the user should still be logged in.
+ */
+export async function recoverTdlibSession(): Promise<boolean> {
+  if (recoveryInFlight) return recoveryInFlight;
+  recoveryInFlight = (async () => {
+    resetTdlibParametersLock();
+    try {
+      const recreated = await tdlibClient.recreateClient();
+      if (!recreated && __DEV__) {
+        console.warn('[tdlib] recreateClient not available on this platform build');
+      }
+    } catch (e) {
+      if (__DEV__) console.warn('[tdlib] recreateClient failed', e);
+      return false;
+    }
+    try {
+      await applyTdlibParameters({ force: true });
+      const { ready } = await waitForTdlibAuthorizationReady(45_000);
+      return ready;
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    recoveryInFlight = null;
+  });
+  return recoveryInFlight;
+}
+
+export function applyTdlibParameters(options?: { force?: boolean }): Promise<void> {
+  if (tdlibParametersAppliedThisProcess && !options?.force) {
+    return verifyTdlibNativeStillInitialized();
   }
   if (applyInFlight) {
     return applyInFlight;
@@ -58,6 +95,33 @@ export function applyTdlibParameters(): Promise<void> {
     applyInFlight = null;
   });
   return applyInFlight;
+}
+
+/** Native client may have been recreated while JS still thinks parameters were applied. */
+async function verifyTdlibNativeStillInitialized(): Promise<void> {
+  const now = Date.now();
+  if (now - lastNativeVerifyMs < NATIVE_VERIFY_MIN_INTERVAL_MS) return;
+  lastNativeVerifyMs = now;
+  if (recoveryInFlight) return;
+
+  try {
+    const auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<
+      string,
+      unknown
+    >;
+    throwIfTdError(auth);
+    const probeType = readAuthStateType(auth);
+    if (probeType === 'authorizationStateWaitTdlibParameters') {
+      tdlibParametersAppliedThisProcess = false;
+      await applyTdlibParameters({ force: true });
+      return;
+    }
+    if (probeType === 'authorizationStateClosed') {
+      await recoverTdlibSession();
+    }
+  } catch {
+    /* native unavailable */
+  }
 }
 
 async function doApplyTdlibParameters(): Promise<void> {
@@ -70,7 +134,7 @@ async function doApplyTdlibParameters(): Promise<void> {
   }
   const authProbe = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<string, unknown>;
   throwIfTdError(authProbe);
-  const probeType = (authProbe['@type'] as string) ?? '';
+  const probeType = readAuthStateType(authProbe);
   if (!probeType) {
     throw new Error('TDLib: пустой ответ getAuthorizationState');
   }
@@ -112,13 +176,15 @@ async function doApplyTdlibParameters(): Promise<void> {
 }
 
 const AUTH_READY_POLL_MS = 120;
-const AUTH_READY_TIMEOUT_MS = 25000;
+const AUTH_READY_TIMEOUT_MS = 25_000;
 
 /**
  * После `setTdlibParameters` TDLib поднимает сессию из БД асинхронно; сразу вызывать `getChats` часто даёт Unauthorized.
  */
-export async function waitForTdlibAuthorizationReady(): Promise<{ ready: boolean; state: string | null }> {
-  const deadline = Date.now() + AUTH_READY_TIMEOUT_MS;
+export async function waitForTdlibAuthorizationReady(
+  timeoutMs = AUTH_READY_TIMEOUT_MS,
+): Promise<{ ready: boolean; state: string | null }> {
+  const deadline = Date.now() + timeoutMs;
   let lastState: string | null = null;
   while (Date.now() < deadline) {
     const auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<string, unknown>;

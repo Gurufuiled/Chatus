@@ -2930,21 +2930,19 @@ export function ChatScreen() {
           !isSearchMode
         }
       >
-        {Platform.OS === 'android' ? (
-          <CustomAndroidChatHeader
-            title={title}
-            subtitle={subtitle}
-            avatarUrl={avatarUrl}
-            isGroupChat={isGroupChat}
-            peerId={peerId}
-            chatId={chatId}
-            navigation={navigation}
-            floating
-            showGroupCallButton={isGroupChat}
-            onGroupCallPress={isGroupChat ? handleOpenGroupCallSheet : undefined}
-            onSearchPress={() => setIsSearchMode(true)}
-          />
-        ) : null}
+        <CustomAndroidChatHeader
+          title={title}
+          subtitle={subtitle}
+          avatarUrl={avatarUrl}
+          isGroupChat={isGroupChat}
+          peerId={peerId}
+          chatId={chatId}
+          navigation={navigation}
+          floating
+          showGroupCallButton={isGroupChat}
+          onGroupCallPress={isGroupChat ? handleOpenGroupCallSheet : undefined}
+          onSearchPress={() => setIsSearchMode(true)}
+        />
 
       <BlurTargetView
         ref={blurTargetRef}
@@ -2952,9 +2950,7 @@ export function ChatScreen() {
         style={[styles.chatContentLayer, { backgroundColor: chatTheme.canvasColor }]}
       >
         <ChatBackgroundPattern themeId={activeThemeId} />
-        {Platform.OS === 'android' ? (
-          <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
-        ) : null}
+        <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
         <ChatTopBanners
           selectionMode={selectionMode}
           selectedCount={selectedMessageIds.length}
@@ -3023,7 +3019,11 @@ export function ChatScreen() {
           searchHighlightQuery={isSearchMode ? normalizedSearchQuery : ''}
           listRef={listRef}
           listAnimatedStyle={listWrapAnimatedStyle}
-          contentPaddingTop={(selectionMode ? selectionActionBarHeight : inputBarHeight) + 8}
+          contentPaddingTop={
+            (selectionMode ? selectionActionBarHeight : inputBarHeight) +
+            composerDockPaddingBottom +
+            8
+          }
           canSwipeReply={canSwipeReply}
           onSwipeReply={handleSwipeReply}
           allowReactions={allowReactions}

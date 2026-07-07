@@ -294,21 +294,15 @@ export async function downloadTdlibFile(fileId: number): Promise<string | null> 
   return path ? `file://${path}` : null;
 }
 
-async function fetchTdlibUserProfilePhotoUri(user: Record<string, unknown>): Promise<string | null> {
-  const photo = getNestedRecord(user.profile_photo);
-  if (!photo) return null;
-  const big = getNestedRecord(photo.big);
-  const small = getNestedRecord(photo.small);
-  const file = small ?? big; // Use small for chat feed
-  const fid = typeof file?.id === 'number' ? file.id : null;
-  if (fid == null) return null;
-  return downloadTdlibFile(fid).catch(() => null);
-}
-
 async function resolveIncomingUserSender(
   raw: Record<string, unknown>,
   loadAvatar: boolean,
-): Promise<{ userId: number; name: string; avatarUri: string | null | undefined } | null> {
+): Promise<{
+  userId: number;
+  name: string;
+  avatarUri: string | null | undefined;
+  avatarFileId?: number;
+} | null> {
   if (raw.is_outgoing === true) return null;
   const sender = getNestedRecord(raw.sender_id);
   if (!sender || sender['@type'] !== 'messageSenderUser') return null;
@@ -341,13 +335,33 @@ async function resolveIncomingUserSender(
     setCachedUserName(userId, name);
 
     let avatarUri: string | null | undefined;
+    let avatarFileId: number | undefined;
     if (loadAvatar) {
-      const downloaded = await fetchTdlibUserProfilePhotoUri(user);
-      avatarUri = downloaded;
-      setCachedUserAvatarUri(userId, downloaded);
+      const photo = getNestedRecord(user.profile_photo);
+      const small = getNestedRecord(photo?.small);
+      const big = getNestedRecord(photo?.big);
+      const file = small ?? big;
+      const localUri = getTdFileLocalUri(file);
+      if (localUri) {
+        avatarUri = localUri;
+        setCachedUserAvatarUri(userId, localUri);
+      } else {
+        const fileId = typeof file?.id === 'number' ? file.id : null;
+        if (fileId != null) {
+          scheduleTdlibFileDownload(fileId);
+          avatarFileId = fileId;
+        }
+        avatarUri = null;
+        setCachedUserAvatarUri(userId, null);
+      }
     }
 
-    return { userId, name, avatarUri: loadAvatar ? avatarUri ?? null : undefined };
+    return {
+      userId,
+      name,
+      avatarUri: loadAvatar ? avatarUri ?? null : undefined,
+      avatarFileId,
+    };
   } catch {
     const fallbackName = cachedName ?? `User ${userId}`;
     return {
@@ -594,6 +608,8 @@ export async function mapTdMessage(
   const senderUserId = outgoing ? undefined : incomingSender?.userId;
   const senderAvatarUri =
     outgoing || !loadAvatar ? undefined : incomingSender?.avatarUri;
+  const senderAvatarFileId =
+    outgoing || !loadAvatar ? undefined : incomingSender?.avatarFileId;
   const viewCount = getTdViewCount(raw);
   const { discussionReplyCount, discussionChatId, messageThreadId } = getTdDiscussionFields(raw);
   const mediaAlbumId = getTdMediaAlbumId(raw);
@@ -610,6 +626,7 @@ export async function mapTdMessage(
     senderName: senderName ?? undefined,
     senderUserId,
     senderAvatarUri: senderAvatarUri !== undefined ? senderAvatarUri : undefined,
+    senderAvatarFileId,
     viewCount,
     discussionReplyCount,
     discussionChatId,

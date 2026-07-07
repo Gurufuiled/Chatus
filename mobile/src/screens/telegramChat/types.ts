@@ -67,6 +67,8 @@ export type TelegramMessageRow = {
   senderUserId?: number;
   /** Resolved profile photo URI for the sender when `loadSenderAvatar` was used while mapping. */
   senderAvatarUri?: string | null;
+  /** TDLib profile photo file id pending download (`updateFile` patches `senderAvatarUri`). */
+  senderAvatarFileId?: number;
   /** Post view count from TDLib `interaction_info.view_count` (channel posts). */
   viewCount?: number;
   /** Linked discussion chat id from TDLib `reply_in_chat_id` when present; иначе экран подставляет `linked_chat_id` канала из `getSupergroupFullInfo`. */

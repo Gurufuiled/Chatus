@@ -39,6 +39,8 @@ type ChatProfileHeroProps = {
   expandedHeroWidth: number;
   expandedHeroHeight: number;
   onToggleHeroExpanded: () => void;
+  /** When hero is expanded, tap opens fullscreen media (e.g. avatar photo). */
+  onHeroMediaPress?: () => void;
   onStartCallPress: () => void | Promise<void>;
   onStartVideoCallPress: () => void | Promise<void>;
   onMutePress: () => void;
@@ -181,6 +183,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
   expandedHeroWidth,
   expandedHeroHeight,
   onToggleHeroExpanded,
+  onHeroMediaPress,
   onStartCallPress,
   onStartVideoCallPress,
   onMutePress,
@@ -204,6 +207,14 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
       overshootClamping: true,
     });
   }, [isExpanded, progress]);
+
+  const handleAvatarPress = React.useCallback(() => {
+    if (isExpanded && onHeroMediaPress) {
+      onHeroMediaPress();
+      return;
+    }
+    onToggleHeroExpanded();
+  }, [isExpanded, onHeroMediaPress, onToggleHeroExpanded]);
 
   const heroGesture = React.useMemo(
     () =>
@@ -269,7 +280,7 @@ export const ChatProfileHero = React.memo(function ChatProfileHero({
       <Reanimated.View style={avatarContainerStyle}>
         <GestureDetector gesture={heroGesture}>
           <Pressable
-            onPress={onToggleHeroExpanded}
+            onPress={handleAvatarPress}
             disabled={!avatarUrl}
             style={({ pressed }) => [
               styles.avatarPressable,

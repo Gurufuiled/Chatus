@@ -300,57 +300,11 @@ export function ChatsStack() {
       <Stack.Screen
         name="Chat"
         component={ChatScreen}
-        options={({ route, navigation }) => {
-          const title = route.params.chatTitle ?? 'Чат';
-          const chat = chats.find((item) => item.id === route.params.chatId) ?? null;
-          const isGroupChat = chat?.chat_type === 'group';
-          const peerId = getChatPeerId(chat, currentUserId);
-          const peerMember = chat?.members?.find((member) => member.user_id === peerId);
-          const presence = peerId
-            ? presenceByUserId[peerId] ?? {
-                is_online: peerMember?.user?.is_online ?? false,
-                last_seen: peerMember?.user?.last_seen ?? undefined,
-              }
-            : undefined;
-          const avatarUrl = resolveAvatarUrl(chat?.avatar_url);
-          const subtitle = isGroupChat
-            ? formatGroupSubtitle(chat?.members?.length)
-            : formatPresence(presence?.is_online, presence?.last_seen);
-
-          const openProfile = () => {
-            if (isGroupChat) {
-              navigation.navigate('GroupProfile', {
-                chatId: route.params.chatId,
-                chatTitle: title,
-              });
-              return;
-            }
-            if (!peerId) return;
-            navigation.navigate('ChatProfile', {
-              chatId: route.params.chatId,
-              userId: peerId,
-              chatTitle: title,
-            });
-          };
-
-          return {
-            ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
-            ...createIosOpaqueChatHeaderOptions(colors.toolbar),
-            headerShown: Platform.OS !== 'android',
-            title,
-            headerBackTitle: 'Назад',
-            headerTitleAlign: 'center',
-            headerTitle: () => (
-              <ChatPillHeaderTitle
-                title={title}
-                subtitle={subtitle}
-                avatarUrl={avatarUrl}
-                onPress={isGroupChat || peerId ? openProfile : undefined}
-                accessibilityHint="Открывает профиль"
-              />
-            ),
-          };
-        }}
+        options={({ route }) => ({
+          ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+          headerShown: false,
+          title: route.params.chatTitle ?? 'Чат',
+        })}
       />
 
       <Stack.Screen
@@ -358,11 +312,8 @@ export function ChatsStack() {
         component={TelegramChatScreen}
         options={({ route }) => ({
           ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
-          ...createIosOpaqueChatHeaderOptions(colors.toolbar),
-          headerShown: Platform.OS !== 'android',
+          headerShown: false,
           title: route.params.title ?? 'Telegram',
-          headerBackTitle: 'Назад',
-          headerTitleAlign: 'center',
         })}
       />
 

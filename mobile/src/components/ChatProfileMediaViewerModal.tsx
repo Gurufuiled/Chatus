@@ -282,8 +282,13 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
 }: ChatProfileMediaViewerModalProps) {
   const listRef = useRef<FlatList<MediaTile> | null>(null);
   const translateY = useRef(new Animated.Value(0)).current;
+  const visibleRef = useRef(visible);
   const [captionOpen, setCaptionOpen] = useState(false);
   const captionOpenRef = useRef(false);
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
+
   useEffect(() => {
     captionOpenRef.current = captionOpen;
   }, [captionOpen]);
@@ -334,12 +339,18 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
   }, [translateY]);
 
   const closeFromSwipe = useCallback((direction: number) => {
+    visibleRef.current = false;
     Animated.timing(translateY, {
       toValue: direction >= 0 ? SCREEN_HEIGHT : -SCREEN_HEIGHT,
       duration: 140,
       useNativeDriver: true,
     }).start(onClose);
   }, [onClose, translateY]);
+
+  const handleClosePress = useCallback(() => {
+    visibleRef.current = false;
+    onClose();
+  }, [onClose]);
 
   const panResponder = useMemo(
     () =>
@@ -379,6 +390,7 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
 
   const handleMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!visibleRef.current) return;
       const nextIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
       if (nextIndex !== selectedIndex && nextIndex >= 0 && nextIndex < items.length) {
         onChangeIndex(nextIndex);
@@ -408,7 +420,7 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
   if (items.length === 0) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClosePress}>
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
         <Animated.View
           style={[styles.viewerRoot, { transform: [{ translateY }] }]}
@@ -445,7 +457,7 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
         <View style={styles.topBar} pointerEvents="box-none">
           <Text style={styles.counter}>{safeIndex + 1} / {items.length}</Text>
           <Pressable
-            onPress={onClose}
+            onPress={handleClosePress}
             style={styles.closeButton}
             hitSlop={16}
             accessibilityRole="button"

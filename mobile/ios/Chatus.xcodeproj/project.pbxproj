@@ -155,6 +155,7 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
 				8C951138F42CCADF864FD9B6 /* [CP] Embed Pods Frameworks */,
+				6DB77C7BEBD7AD2280FBACF0 /* [TdLib] Embed libtdjson.dylib */,
 			);
 			buildRules = (
 			);
@@ -251,6 +252,24 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		6DB77C7BEBD7AD2280FBACF0 /* [TdLib] Embed libtdjson.dylib */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "[TdLib] Embed libtdjson.dylib";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nFRAMEWORK_ROOT=\"${SRCROOT}/../tdlib-ios/libtdjson.xcframework\"\nif [ \"${PLATFORM_NAME}\" = \"iphonesimulator\" ]; then\n  SLICE=\"${FRAMEWORK_ROOT}/ios-arm64_x86_64-simulator/libtdjson.dylib\"\nelse\n  SLICE=\"${FRAMEWORK_ROOT}/ios-arm64/libtdjson.dylib\"\nfi\nif [ ! -f \"${SLICE}\" ]; then\n  echo \"error: missing ${SLICE}. Run: npm run tdlib:fetch-ios\" >&2\n  exit 1\nfi\nDEST=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\nmkdir -p \"${DEST}\"\ncp -f \"${SLICE}\" \"${DEST}/libtdjson.dylib\"\ninstall_name_tool -id \"@rpath/libtdjson.dylib\" \"${DEST}/libtdjson.dylib\" 2>/dev/null || true\nif [ \"${CODE_SIGNING_ALLOWED}\" != \"NO\" ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ] && [ \"${EXPANDED_CODE_SIGN_IDENTITY}\" != \"-\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none \"${DEST}/libtdjson.dylib\"\nfi\n";
+		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -300,15 +319,11 @@
 			);
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Chatus/Pods-Chatus-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/JitsiWebRTC/WebRTC.framework/WebRTC",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/TdLib/libtdjson.dylib",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermesvm.framework/hermesvm",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/WebRTC/WebRTC.framework/WebRTC",
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
 				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/WebRTC.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/libtdjson.dylib",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermesvm.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -366,7 +381,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2ZR782SX47;
+				DEVELOPMENT_TEAM = X6MZQ9MJ73;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -387,11 +402,9 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
-					"-L$(PODS_XCFRAMEWORKS_BUILD_DIR)/TdLib",
-					"-ltdjson",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.chatus.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chatus.app.dev;
 				PRODUCT_NAME = Chatus;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OBJC_BRIDGING_HEADER = "Chatus/Chatus-Bridging-Header.h";
@@ -412,7 +425,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2ZR782SX47;
+				DEVELOPMENT_TEAM = X6MZQ9MJ73;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/../tdlib-ios/include",
@@ -428,11 +441,9 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
-					"-L$(PODS_XCFRAMEWORKS_BUILD_DIR)/TdLib",
-					"-ltdjson",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.chatus.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.chatus.app.dev;
 				PRODUCT_NAME = Chatus;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OBJC_BRIDGING_HEADER = "Chatus/Chatus-Bridging-Header.h";

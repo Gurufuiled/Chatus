@@ -83,7 +83,7 @@ function requestBackgroundDownload(fileId: number): void {
     .send({
       '@type': 'downloadFile',
       file_id: fileId,
-      priority: 1,
+      priority: 16,
       offset: 0,
       limit: 0,
       synchronous: false,
@@ -135,12 +135,15 @@ export async function loadChatRow(
     const date = typeof last?.date === 'number' ? last.date * 1000 : null;
     const unreadCount = typeof chat.unread_count === 'number' ? chat.unread_count : 0;
     const avatarSmallFile = getChatAvatarSmallFile(chat);
+    const avatarFileId =
+      typeof avatarSmallFile?.id === 'number' ? avatarSmallFile.id : previous?.avatarFileId;
     // Аватар: используем уже скачанный путь (или прежний из снапшота) и не блокируем строку
-    // сетевой загрузкой — недостающие файлы догружаются в фоне и появятся при следующем рефреше.
+    // сетевой загрузкой — недостающие файлы догружаются в фоне и появятся по updateFile.
     const avatarUri = localPathIfDownloaded(avatarSmallFile) ?? previous?.avatarUri ?? null;
-    if (!avatarUri) {
-      const avatarFileId = typeof avatarSmallFile?.id === 'number' ? avatarSmallFile.id : null;
-      if (avatarFileId != null) requestBackgroundDownload(avatarFileId);
+    const pendingAvatarFileId =
+      !avatarUri && avatarFileId != null ? avatarFileId : undefined;
+    if (pendingAvatarFileId != null) {
+      requestBackgroundDownload(pendingAvatarFileId);
     }
     const { chatType, supergroupId, basicGroupId } = parseChatType(chat);
     const [memberCount, dialogPreview] = await Promise.all([
@@ -159,6 +162,7 @@ export async function loadChatRow(
       lastMessageThumbnailUris: dialogPreview.thumbnailUris,
       lastMessagePreviewAccent: dialogPreview.accentLabel,
       avatarUri,
+      avatarFileId: pendingAvatarFileId,
       lastMessageAt: date,
       unreadCount,
       chatType,

@@ -51,6 +51,7 @@ import {
   formatTdlibAuthError,
   readWaitPasswordAuthInfo,
 } from "./telegramAuth/tdlibAuthErrors";
+import { mapTdlibAuthStateToStore } from "../services/tdlib/tdlibAuthState";
 import { AuthWizardTextField } from "./telegramAuth/AuthWizardTextField";
 import { TelegramAuthPasswordDock } from "./telegramAuth/TelegramAuthPasswordDock";
 import { TelegramAuthPhoneFields } from "./telegramAuth/TelegramAuthPhoneFields";
@@ -73,27 +74,11 @@ const STEP_COPY: Record<AuthWizardStep, { title: string; subtitle: string }> = {
   },
 };
 
-function mapTdlibAuthToStore(authType: string | undefined): TelegramAuthStatus {
-  switch (authType) {
-    case "authorizationStateReady":
-      return "ready";
-    case "authorizationStateWaitPassword":
-      return "waiting_password";
-    case "authorizationStateWaitCode":
-    case "authorizationStateWaitEmailCode":
-    case "authorizationStateWaitOtherDeviceConfirmation":
-      return "waiting_code";
-    case "authorizationStateWaitPhoneNumber":
-    case "authorizationStateWaitEmailAddress":
-    case "authorizationStateWaitRegistration":
-      return "waiting_phone";
-    case "authorizationStateLoggingOut":
-    case "authorizationStateClosing":
-    case "authorizationStateClosed":
-      return "error";
-    default:
-      return "error";
-  }
+function mapTdlibAuthToStore(
+  authType: string | undefined,
+  current: TelegramAuthStatus = "idle",
+): TelegramAuthStatus {
+  return mapTdlibAuthStateToStore(authType, current);
 }
 
 /** TDLib ждёт международный номер; «+» для страны нужен. Нормализуем типичный ввод РФ (8… / 7… / 9…). */
@@ -270,7 +255,7 @@ export function TelegramAuthScreen() {
         requestContactsAndSync().catch(console.error);
         return "ready";
       }
-      const next = mapTdlibAuthToStore(t);
+      const next = mapTdlibAuthToStore(t, telegramAccountStore.getState().authStatus);
       telegramAccountStore.getState().setAuthStatus(next);
       await telegramAccountStore.getState().persistSnapshot();
       return next;

@@ -2,7 +2,9 @@ import { useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { tdlibClient } from '../../services/tdlib/TdlibClient';
 import { telegramAccountStore } from '../../stores/telegramAccountStore';
+import { patchDialogsWithTdlibFile } from './telegramFileUpdates';
 import { refreshTelegramDialogs } from './telegramDialogsLoader';
+import { getNestedRecord } from './tdlibMapping';
 
 export function useTelegramDialogsRefresh(enabled: boolean) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,6 +41,16 @@ export function useTelegramDialogsRefresh(enabled: boolean) {
             t === 'updateDeleteMessages'
           ) {
             scheduleRefresh();
+            return;
+          }
+          if (t === 'updateFile') {
+            const file = getNestedRecord(u.file);
+            if (!file) return;
+            const store = telegramAccountStore.getState();
+            const patched = patchDialogsWithTdlibFile(store.dialogs, file);
+            if (patched !== store.dialogs) {
+              store.setDialogs(patched);
+            }
           }
         } catch {
           /* ignore */

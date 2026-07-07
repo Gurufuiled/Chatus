@@ -1,5 +1,6 @@
 source 'https://github.com/CocoaPods/Specs.git'
 
+require 'json'
 require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
 
@@ -22,11 +23,88 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 
 prepare_react_native_project!
 
+def ensure_tdlib_embed_phase
+  require 'xcodeproj'
+  project_path = File.join(__dir__, 'Chatus.xcodeproj')
+  project = Xcodeproj::Project.open(project_path)
+  target = project.targets.find { |t| t.name == 'Chatus' }
+  return unless target
+
+  phase_name = '[TdLib] Embed libtdjson.dylib'
+  script = <<~SCRIPT
+    set -e
+    FRAMEWORK_ROOT="${SRCROOT}/../tdlib-ios/libtdjson.xcframework"
+    if [ "${PLATFORM_NAME}" = "iphonesimulator" ]; then
+      SLICE="${FRAMEWORK_ROOT}/ios-arm64_x86_64-simulator/libtdjson.dylib"
+    else
+      SLICE="${FRAMEWORK_ROOT}/ios-arm64/libtdjson.dylib"
+    fi
+    if [ ! -f "${SLICE}" ]; then
+      echo "error: missing ${SLICE}. Run: npm run tdlib:fetch-ios" >&2
+      exit 1
+    fi
+    DEST="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+    mkdir -p "${DEST}"
+    cp -f "${SLICE}" "${DEST}/libtdjson.dylib"
+    install_name_tool -id "@rpath/libtdjson.dylib" "${DEST}/libtdjson.dylib" 2>/dev/null || true
+    if [ "${CODE_SIGNING_ALLOWED}" != "NO" ] && [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
+      /usr/bin/codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --timestamp=none "${DEST}/libtdjson.dylib"
+    fi
+  SCRIPT
+
+  phase = target.shell_script_build_phases.find { |p| p.name == phase_name }
+  if phase
+    phase.shell_script = script
+  else
+    phase = target.new_shell_script_build_phase(phase_name)
+    phase.shell_script = script
+    embed_index = target.build_phases.index do |p|
+      p.respond_to?(:name) && p.name&.include?('Embed Pods Frameworks')
+    end
+    target.build_phases.move(phase, embed_index + 1) if embed_index
+  end
+  project.save
+end
+
+def fix_hermes_cli_path
+  correct = File.expand_path('../node_modules/hermes-compiler/hermesc/osx-bin/hermesc', __dir__)
+  return unless File.exist?(correct)
+
+  Dir.glob(File.join(__dir__, 'Pods/Target Support Files/Pods-Chatus/*.xcconfig')).each do |config_path|
+    text = File.read(config_path)
+    next unless text.include?('HERMES_CLI_PATH')
+    File.write(config_path, text.gsub(/^HERMES_CLI_PATH = .*$/, "HERMES_CLI_PATH = #{correct}"))
+  end
+
+  hermes_json = File.join(__dir__, 'Pods/Local Podspecs/hermes-engine.podspec.json')
+  if File.exist?(hermes_json)
+    data = JSON.parse(File.read(hermes_json))
+    if data.dig('pod_target_xcconfig', 'HERMES_CLI_PATH')
+      data['pod_target_xcconfig']['HERMES_CLI_PATH'] = correct
+      File.write(hermes_json, JSON.pretty_generate(data))
+    end
+  end
+end
+
+def ensure_hermes_framework_embed
+  script_path = File.join(__dir__, 'Pods/Target Support Files/Pods-Chatus/Pods-Chatus-frameworks.sh')
+  return unless File.exist?(script_path)
+
+  embed_line = '  install_framework "${PODS_XCFRAMEWORKS_BUILD_DIR}/hermesvm/hermesvm.framework"'
+  text = File.read(script_path)
+  return if text.include?('hermesvm/hermesvm.framework')
+
+  text = text.gsub(
+    /install_framework "\$\{PODS_XCFRAMEWORKS_BUILD_DIR\}\/WebRTC\/WebRTC\.framework"\n/,
+    "install_framework \"${PODS_XCFRAMEWORKS_BUILD_DIR}/WebRTC/WebRTC.framework\"\n#{embed_line}\n"
+  )
+  File.write(script_path, text)
+end
+
 target 'Chatus' do
   use_expo_modules!
   pod 'TdLib', :path => '../tdlib-ios'
-  pod 'SwiftUIIntrospect', :podspec => File.join(__dir__, 'SwiftUIIntrospect.podspec.json')
-  pod 'JitsiWebRTC', :podspec => File.join(__dir__, 'JitsiWebRTC.podspec.json')
+  pod 'SwiftUIIntrospect', :path => File.join(__dir__, 'Vendor/SwiftUIIntrospect')
   pod 'ZXingObjC/OneD', :podspec => File.join(__dir__, 'ZXingObjC.podspec.json')
   pod 'ZXingObjC/PDF417', :podspec => File.join(__dir__, 'ZXingObjC.podspec.json')
 
@@ -66,5 +144,13 @@ target 'Chatus' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |bc|
+        bc.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      end
+    end
+    ensure_tdlib_embed_phase
+    fix_hermes_cli_path
+    ensure_hermes_framework_embed
   end
 end

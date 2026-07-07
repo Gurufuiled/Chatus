@@ -35,6 +35,8 @@ export type TelegramDialogRow = {
   /** Подпись медиа accent-цветом («Фотография», «Видео»). */
   lastMessagePreviewAccent?: boolean;
   avatarUri?: string | null;
+  /** TDLib small photo file id while avatar is still downloading (`updateFile` patches `avatarUri`). */
+  avatarFileId?: number;
   lastMessageAt?: number | null;
   unreadCount?: number;
   /** TDLib internal chat id as string */

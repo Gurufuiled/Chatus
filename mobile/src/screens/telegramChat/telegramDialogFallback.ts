@@ -39,6 +39,7 @@ export function buildChatRowLoadFailure(
     lastMessageThumbnailUris: previous?.lastMessageThumbnailUris,
     lastMessagePreviewAccent: previous?.lastMessagePreviewAccent,
     avatarUri: previous?.avatarUri ?? null,
+    avatarFileId: previous?.avatarFileId,
     lastMessageAt: previous?.lastMessageAt ?? null,
     unreadCount: typeof previous?.unreadCount === 'number' ? previous.unreadCount : 0,
     chatType: previous?.chatType,

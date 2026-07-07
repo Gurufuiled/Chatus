@@ -6,6 +6,7 @@
 
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL } from '../config';
+import { httpFetch } from './httpFetch';
 import { initDatabase } from './DatabaseService';
 import { AuthSessionDao } from '../db/dao/AuthSessionDao';
 import { SyncQueueDao } from '../db/dao/SyncQueueDao';
@@ -88,7 +89,10 @@ export class AuthService {
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
       console.log('[Auth] getLoginUrl: fetching', API_BASE_URL + '/auth/login-url');
-      const res = await fetch(`${API_BASE_URL}/auth/login-url`, { signal: controller.signal });
+      const res = await httpFetch(`${API_BASE_URL}/auth/login-url`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
       if (!res.ok) {
         throw new Error(`Сервер ответил ${res.status}`);
       }
@@ -125,7 +129,7 @@ export class AuthService {
     await initDatabase();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(`${API_BASE_URL}/auth/loginus`, {
+    const res = await httpFetch(`${API_BASE_URL}/auth/loginus`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, redirect_uri: redirectUri }),
@@ -192,7 +196,7 @@ export class AuthService {
       throw new Error('No refresh token');
     }
 
-    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    const res = await httpFetch(`${API_BASE_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: session.refresh_token }),
@@ -245,7 +249,7 @@ export class AuthService {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/logout`, {
+      const res = await httpFetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,

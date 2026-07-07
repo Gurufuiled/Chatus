@@ -49,7 +49,7 @@ function parseAuthCallbackUrl(url: string): AuthWebPayload | null {
 }
 
 const AUTH_BG = require('../../assets/splash/auth-bg-clean.png');
-const PRIVACY_CONSENT_STORAGE_KEY = '@chatus/privacy_policy_accepted_v1';
+const PRIVACY_CONSENT_STORAGE_KEY = 'chatus.privacy_policy_accepted_v1';
 
 /** Dev (USB / emulator) vs remote API — тексты ошибок не должны вводить в заблуждение на release. */
 function apiNetworkHint(): string {
@@ -58,10 +58,16 @@ function apiNetworkHint(): string {
     if (u.hostname === '127.0.0.1' || u.hostname === 'localhost') {
       return ' Запусти бэкенд и при USB с телефоном выполни `npm run adb:reverse`.';
     }
+    if (u.protocol === 'https:') {
+      return ' Проверь интернет и что сайт API открывается с устройства.';
+    }
+    if (u.protocol === 'http:') {
+      return ' Проверь интернет и что API открывается с устройства (порты 4000–4002, сеть не блокирует IP).';
+    }
   } catch {
     /* ignore */
   }
-  return ' Проверь интернет и что с телефона открывается API (порты 4000–4002, сеть не блокирует IP).';
+  return ' Проверь интернет и доступность API.';
 }
 
 /**

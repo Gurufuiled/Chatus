@@ -181,6 +181,10 @@ npx eas-cli submit --platform ios --profile production
 
 Только на macOS.
 
+**Подробная инструкция** по Release на симулятор и физический iPhone **без Metro** (через `xcodebuild`): **[BUILD-IOS-LOCAL.md](./BUILD-IOS-LOCAL.md)**.
+
+Кратко для Archive / TestFlight:
+
 ```bash
 cd mobile
 npm ci
@@ -189,13 +193,13 @@ export MOBILE_ENV=production
 npx expo prebuild --platform ios --clean
 cd ios
 pod install
-open mobile.xcworkspace
+open Chatus.xcworkspace
 ```
 
 В Xcode:
 
-1. Выбрать scheme `mobile`.
-2. Target `mobile` → Signing & Capabilities.
+1. Выбрать scheme `Chatus`.
+2. Target `Chatus` → Signing & Capabilities.
 3. Team: команда Apple Developer.
 4. Bundle Identifier: `com.chatus.app`.
 5. Version / Build: актуальные значения для релиза.

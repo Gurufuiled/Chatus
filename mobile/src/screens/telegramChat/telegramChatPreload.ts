@@ -95,6 +95,10 @@ async function pumpQueue(): Promise<void> {
   pumpRunning = true;
   try {
     while (queue.length > 0) {
+      if (telegramUiStore.getState().activeTelegramChatId != null) {
+        await delay(2500);
+        continue;
+      }
       const task = queue.shift();
       if (!task) break;
       await runPreloadTask(task);

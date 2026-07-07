@@ -1,5 +1,7 @@
+import type { TelegramDialogRow } from '../../stores/telegramAccountStore';
 import type { TelegramMessageRow } from './types';
 import { getNestedRecord } from './tdlibMapping';
+import { setCachedUserAvatarUri } from '../../services/tdlib/userNameCache';
 
 export function getTdlibFileLocalUri(file: Record<string, unknown> | null): string | null {
   const local = getNestedRecord(file?.local);
@@ -62,6 +64,18 @@ export function patchMessagesWithTdlibFile(
       };
     }
 
+    if (row.senderAvatarFileId === fileId) {
+      changed = true;
+      if (row.senderUserId != null) {
+        setCachedUserAvatarUri(row.senderUserId, uri);
+      }
+      updated = {
+        ...updated,
+        senderAvatarUri: uri,
+        senderAvatarFileId: undefined,
+      };
+    }
+
     if (row.kind === 'album' && row.albumMedia?.length) {
       let albumChanged = false;
       const albumMedia = row.albumMedia.map((item) => {
@@ -81,12 +95,36 @@ export function patchMessagesWithTdlibFile(
   return changed ? next : rows;
 }
 
+/** Apply TDLib `updateFile` to dialog list avatars. */
+export function patchDialogsWithTdlibFile(
+  dialogs: TelegramDialogRow[],
+  file: Record<string, unknown>,
+): TelegramDialogRow[] {
+  const fileId = getTdlibFileId(file);
+  const uri = getTdlibFileLocalUri(file);
+  if (fileId == null || !uri) return dialogs;
+
+  let changed = false;
+  const next = dialogs.map((row) => {
+    if (row.avatarFileId !== fileId) return row;
+    changed = true;
+    return {
+      ...row,
+      avatarUri: uri,
+      avatarFileId: undefined,
+    };
+  });
+
+  return changed ? next : dialogs;
+}
+
 export function collectPendingTdlibFileIds(rows: TelegramMessageRow[]): number[] {
   const ids = new Set<number>();
   for (const row of rows) {
     if (row.mediaFullFileId != null) ids.add(row.mediaFullFileId);
     if (row.webPagePreview?.photoFileId != null) ids.add(row.webPagePreview.photoFileId);
     if (row.forwardInfo?.avatarFileId != null) ids.add(row.forwardInfo.avatarFileId);
+    if (row.senderAvatarFileId != null) ids.add(row.senderAvatarFileId);
     if (row.kind === 'album') {
       for (const item of row.albumMedia ?? []) {
         if (item.mediaFullFileId != null) ids.add(item.mediaFullFileId);

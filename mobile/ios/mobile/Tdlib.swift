@@ -27,6 +27,7 @@ private func shouldEmitUpdateToJs(_ updateType: String) -> Bool {
        "updateChatPosition",
        "updateChatReadInbox",
        "updateChatTitle",
+       "updateChatPhoto",
        "updateUserChatAction":
     return true
   default:
@@ -70,6 +71,29 @@ final class Tdlib: RCTEventEmitter {
     stateLock.lock()
     hasActiveListeners = false
     stateLock.unlock()
+  }
+
+  @objc(recreateClient:rejecter:)
+  func recreateClient(
+    _ resolve: RCTPromiseResolveBlock,
+    rejecter reject: RCTPromiseRejectBlock
+  ) {
+    rejectAllPending(code: "E_TD_RECREATE", message: "TDLib client is being recreated.")
+    sendLock.lock()
+    stateLock.lock()
+    if let oldClient = client {
+      td_json_client_destroy(oldClient)
+      client = nil
+    }
+    client = td_json_client_create()
+    stateLock.unlock()
+    sendLock.unlock()
+    if client == nil {
+      reject("E_TD_NATIVE", "Failed to recreate TDLib client.", nil)
+      return
+    }
+    NSLog("[Tdlib] client recreated — session can reload from database_directory")
+    resolve(true)
   }
 
   @objc(getUses24HourClock:rejecter:)
@@ -206,11 +230,17 @@ final class Tdlib: RCTEventEmitter {
         return
       }
 
-      if let single = takeSinglePendingFallback() {
-        DispatchQueue.main.async {
-          single.resolve(json)
-        }
-        // Continue below: Android emits the same payload if it is also a subscribed update.
+      let msgType = object["@type"] as? String ?? ""
+      if pendingCount() > 0 {
+        NSLog(
+          "[Tdlib] response @extra mismatch (got=%@, type=%@, pending=%d) — not pairing to avoid corrupting parallel requests",
+          extra,
+          msgType,
+          pendingCount()
+        )
+      }
+      if msgType != "updateAuthorizationState" && shouldEmitUpdateToJs(msgType) == false {
+        return
       }
     }
 

@@ -1,5 +1,5 @@
 import Feather from '@expo/vector-icons/Feather';
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -33,7 +33,6 @@ import { ChatDaySeparator } from '../components/ChatDaySeparator';
 import { ChatScrollToBottomButton } from '../components/ChatScrollToBottomButton';
 import { ChatTopBanners } from '../components/ChatTopBanners';
 import { InteractiveChatBackShell } from '../components/InteractiveChatBackShell';
-import { ChatPillHeaderTitle } from '../components/ChatPillHeaderTitle';
 import {
   ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
   CustomAndroidChatHeader,
@@ -84,7 +83,6 @@ import {
   CHAT_MSG_ROW_MARGIN_ISOLATED,
   CHAT_MSG_VERTICAL_PADDING,
 } from '../presentation/telegramChatUi';
-import { createIosOpaqueChatHeaderOptions } from '../presentation';
 import {
   buildInputMessageVideoNoteContent,
   fileUriToPath,
@@ -109,7 +107,6 @@ import {
 import { useTelegramChatHeaderSubtitle } from './telegramChat/useTelegramChatHeaderSubtitle';
 import {
   createTelegramChatStyles,
-  createTelegramStackHeaderPresentationStyles,
 } from './telegramChat/telegramChatStyles';
 import {
   getLastReadOutboxMessageId,
@@ -189,14 +186,6 @@ export function TelegramChatScreen() {
   const { colors, resolvedScheme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => createTelegramChatStyles(colors), [colors]);
-  const headerChromeStyles = useMemo(
-    () => createTelegramStackHeaderPresentationStyles(colors),
-    [colors],
-  );
-  const iosOpaqueHeaderOptions = useMemo(
-    () => createIosOpaqueChatHeaderOptions(colors.toolbar),
-    [colors.toolbar],
-  );
   const route = useRoute<RouteProp<ChatsStackParamList, 'TelegramChat'>>();
   const {
     telegramChatId,
@@ -837,58 +826,6 @@ export function TelegramChatScreen() {
     [ensureReady, navigation],
   );
 
-  useLayoutEffect(() => {
-    if (telegramSelectionMode) {
-      navigation.setOptions({
-        ...iosOpaqueHeaderOptions,
-        headerTitle: () => (
-          <Text style={headerChromeStyles.headerTitleText}>
-            {selectedTelegramMessageIds.length === 1
-              ? '1 сообщение'
-              : `${selectedTelegramMessageIds.length} сообщ.`}
-          </Text>
-        ),
-        headerRight: () => (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Отменить выбор"
-            onPress={clearTelegramSelection}
-            style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1, paddingHorizontal: 12, paddingVertical: 8 })}
-          >
-            <Text style={{ color: colors.accent, fontSize: 17, fontWeight: '600' }}>Отмена</Text>
-          </Pressable>
-        ),
-      });
-      return;
-    }
-    navigation.setOptions({
-      ...iosOpaqueHeaderOptions,
-      headerTitle: () => (
-        <ChatPillHeaderTitle
-          title={headerTitle}
-          subtitle={headerSubtitle}
-          avatarUrl={avatarUri}
-          onPress={openTelegramChatProfile}
-          accessibilityHint="Открывает профиль"
-        />
-      ),
-      headerRight: undefined,
-    });
-  }, [
-    avatarUri,
-    clearTelegramSelection,
-    colors.accent,
-    colors.toolbar,
-    iosOpaqueHeaderOptions,
-    openTelegramChatProfile,
-    headerChromeStyles,
-    headerSubtitle,
-    headerTitle,
-    navigation,
-    selectedTelegramMessageIds.length,
-    telegramSelectionMode,
-  ]);
-
   messagesRef.current = messages;
 
   useEffect(() => {
@@ -1224,7 +1161,7 @@ export function TelegramChatScreen() {
         return mapTdMessages(
           rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
           lastReadOutboxMessageIdRef.current,
-          8,
+          3,
           {
             loadSenderAvatar: isGroupChat,
             /** Локальный кэш TDLib — без блокирующих downloadFile; сеть — подтягиваем файлы. */
@@ -2807,30 +2744,26 @@ export function TelegramChatScreen() {
           !isSearchMode
         }
       >
-        {Platform.OS === 'android' ? (
-          <CustomAndroidChatHeader
-            title={headerTitle}
-            subtitle={headerSubtitle ?? (isGroupChat ? formatGroupSubtitle(undefined) : formatPresence(undefined, undefined))}
-            avatarUrl={avatarUri}
-            isGroupChat={isGroupChat}
-            peerId={routeChatType === 'private' ? telegramChatId : null}
-            chatId={telegramChatId}
-            navigation={navigation}
-            telegramTitleOnly
-            titleNavDisabled={telegramSelectionMode}
-            onTitlePress={openTelegramChatProfile}
-            floating
-          />
-        ) : null}
+        <CustomAndroidChatHeader
+          title={headerTitle}
+          subtitle={headerSubtitle ?? (isGroupChat ? formatGroupSubtitle(undefined) : formatPresence(undefined, undefined))}
+          avatarUrl={avatarUri}
+          isGroupChat={isGroupChat}
+          peerId={routeChatType === 'private' ? telegramChatId : null}
+          chatId={telegramChatId}
+          navigation={navigation}
+          telegramTitleOnly
+          titleNavDisabled={telegramSelectionMode}
+          onTitlePress={openTelegramChatProfile}
+          floating
+        />
 
       <View style={{ flex: 1, backgroundColor: chatTheme.canvasColor }}>
         <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.flexChatBody}>
           <View style={styles.wallpaperLayer} pointerEvents="none">
             <ChatBackgroundPattern themeId={wallpaperThemeId} />
           </View>
-          {Platform.OS === 'android' ? (
-            <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
-          ) : null}
+          <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
           <ChatTopBanners
             selectionMode={telegramSelectionMode}
             selectedCount={selectedTelegramMessageIds.length}
@@ -2929,7 +2862,7 @@ export function TelegramChatScreen() {
               style={styles.messagesList}
               contentContainerStyle={[
                 styles.listContent,
-                { paddingTop: CHAT_MSG_VERTICAL_PADDING + inputBarHeight },
+                { paddingTop: CHAT_MSG_VERTICAL_PADDING + inputBarHeight + composerDockPaddingBottom },
               ]}
               keyboardShouldPersistTaps="handled"
               refreshing={loading}

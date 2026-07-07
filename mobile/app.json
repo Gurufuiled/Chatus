@@ -68,7 +68,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chatus.app",
+      "bundleIdentifier": "com.chatus.app.dev",
       "infoPlist": {
         "CFBundleDisplayName": "Chatus",
         "LSMinimumSystemVersion": "15.1",
