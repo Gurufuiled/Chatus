@@ -469,6 +469,34 @@ function AlbumMediaViewerModal({
     });
   }, [state, translateY]);
 
+
+  // ⚡ Bolt: Extracted inline FlatList callbacks (keyExtractor, getItemLayout, renderItem) to useCallback to prevent unnecessary re-renders
+  const keyExtractor = React.useCallback((item: VisualMediaItem, index: number) => {
+    return `${item.remote_url ?? item.thumbnail_url ?? 'media'}-${index}`;
+  }, []);
+
+  const getItemLayout = React.useCallback((_: any, index: number) => ({
+    length: SCREEN_WIDTH,
+    offset: SCREEN_WIDTH * index,
+    index,
+  }), []);
+
+  const renderMediaItem = React.useCallback(({ item }: { item: VisualMediaItem }) => {
+    const raw = item.remote_url?.trim() || item.thumbnail_url?.trim() || '';
+    const uri = resolveMediaUrl(raw || null) ?? raw;
+    return (
+      <Pressable
+        style={styles.viewerSlide}
+        android_disableSound
+        {...panResponder.panHandlers}
+      >
+        {uri ? (
+          <Image source={{ uri }} style={styles.viewerImage} contentFit="contain" cachePolicy="disk" />
+        ) : null}
+      </Pressable>
+    );
+  }, [panResponder.panHandlers]);
+
   return (
     <Modal
       visible={state != null}
@@ -503,17 +531,13 @@ function AlbumMediaViewerModal({
             ref={listRef}
             style={styles.viewerFlatList}
             data={media}
-            keyExtractor={(item, index) => `${item.remote_url ?? item.thumbnail_url ?? 'media'}-${index}`}
+            keyExtractor={keyExtractor}
             horizontal
             pagingEnabled
             bounces={false}
             showsHorizontalScrollIndicator={false}
             initialScrollIndex={state?.initialIndex ?? 0}
-            getItemLayout={(_, index) => ({
-              length: SCREEN_WIDTH,
-              offset: SCREEN_WIDTH * index,
-              index,
-            })}
+            getItemLayout={getItemLayout}
             onMomentumScrollEnd={(event) => {
               const nextIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
               setActiveIndex(Math.max(0, Math.min(media.length - 1, nextIndex)));
@@ -526,21 +550,7 @@ function AlbumMediaViewerModal({
                 });
               });
             }}
-            renderItem={({ item }) => {
-              const raw = item.remote_url?.trim() || item.thumbnail_url?.trim() || '';
-              const uri = resolveMediaUrl(raw || null) ?? raw;
-              return (
-                <Pressable
-                  style={styles.viewerSlide}
-                  android_disableSound
-                  {...panResponder.panHandlers}
-                >
-                  {uri ? (
-                    <Image source={{ uri }} style={styles.viewerImage} contentFit="contain" cachePolicy="disk" />
-                  ) : null}
-                </Pressable>
-              );
-            }}
+            renderItem={renderMediaItem}
           />
 
           <View style={[styles.viewerBottomBar, { paddingBottom: insets.bottom + 18 }]} />
