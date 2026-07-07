@@ -30,6 +30,16 @@ export function useTelegramDialogsRefresh(enabled: boolean) {
       const unsub = tdlibClient.subscribe((u) => {
         try {
           const t = (u['@type'] as string | undefined) ?? '';
+          if (t === 'updateChatReadInbox') {
+            const chatIdNum = typeof u.chat_id === 'number' ? u.chat_id : null;
+            const unread =
+              typeof u.unread_count === 'number' && Number.isFinite(u.unread_count)
+                ? u.unread_count
+                : 0;
+            if (chatIdNum != null) {
+              telegramAccountStore.getState().patchDialog(String(chatIdNum), { unreadCount: unread });
+            }
+          }
           if (
             t === 'updateNewChat' ||
             t === 'updateChatLastMessage' ||

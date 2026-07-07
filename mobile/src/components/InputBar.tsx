@@ -58,6 +58,7 @@ import type { StickerPanelTopTab } from '../stickers/stickerPanelPreferences';
 
 /** Ниже — кнопка стикеров уезжает к скрепке (фаза 3.2 журнала), чтобы не сжимать поле и микрофон. */
 const COMPOSER_NARROW_BREAKPOINT = 380;
+const COMPOSER_FIELD_MAX_HEIGHT = 140;
 
 export interface MediaPickResult {
   kind: 'image' | 'video';
@@ -252,6 +253,7 @@ export function InputBar({
   const [stickerSheetBootTab, setStickerSheetBootTab] = useState<StickerPanelTopTab | null>(null);
   const sendAnchorRef = useRef<View>(null);
   const [inputText, setInputText] = useState('');
+  const [composerContentHeight, setComposerContentHeight] = useState(MIN_TAP_TARGET);
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
@@ -462,9 +464,25 @@ export function InputBar({
   const handleInputChange = useCallback(
     (text: string) => {
       setInputText(text);
+      if (!text) {
+        setComposerContentHeight(MIN_TAP_TARGET);
+      }
       onInputChange?.(text);
     },
     [onInputChange]
+  );
+
+  const handleComposerContentSizeChange = useCallback(
+    (event: { nativeEvent: { contentSize: { height: number } } }) => {
+      const nextHeight = Math.min(
+        COMPOSER_FIELD_MAX_HEIGHT,
+        Math.max(MIN_TAP_TARGET, Math.ceil(event.nativeEvent.contentSize.height)),
+      );
+      setComposerContentHeight((current) =>
+        current === nextHeight ? current : nextHeight,
+      );
+    },
+    [],
   );
 
   const openStickerPanel = useCallback(
@@ -1040,6 +1058,8 @@ export function InputBar({
     setShowAttachmentSheet(false);
     setSelectedGalleryItems([]);
     setGalleryCaption('');
+    inputRef.current?.blur();
+    Keyboard.dismiss();
   }, []);
 
   const focusComposerInput = useCallback(() => {
@@ -1131,6 +1151,8 @@ export function InputBar({
       return;
     }
     if (!showAttachmentButton) return;
+    inputRef.current?.blur();
+    Keyboard.dismiss();
     setShowAttachmentSheet(true);
   }, [mediaRestriction, showAttachmentButton, showRestrictionHint]);
 
@@ -1689,12 +1711,16 @@ export function InputBar({
                   style={[
                     styles.input,
                     styles.inputComposerField,
+                    { height: composerContentHeight },
                   ]}
                   placeholder={placeholder}
                   placeholderTextColor={themeColors.placeholder}
                   value={inputText}
                   onChangeText={handleInputChange}
+                  onContentSizeChange={handleComposerContentSizeChange}
                   multiline
+                  scrollEnabled={composerContentHeight >= COMPOSER_FIELD_MAX_HEIGHT}
+                  textAlignVertical="top"
                   maxLength={4096}
                 />
               </View>
@@ -2077,7 +2103,7 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
   },
   input: {
     minHeight: MIN_TAP_TARGET,
-    maxHeight: 120,
+    maxHeight: COMPOSER_FIELD_MAX_HEIGHT,
     paddingHorizontal: 8,
     paddingTop: 11,
     paddingBottom: 10,

@@ -277,7 +277,7 @@ export class GroupCallsService {
       room: livekitRoomName,
       canPublish: true,
       canSubscribe: true,
-      canPublishSources: [TrackSource.MICROPHONE],
+      canPublishSources: [TrackSource.MICROPHONE, TrackSource.CAMERA, TrackSource.SCREEN_SHARE],
     });
     return token.toJwt();
   }

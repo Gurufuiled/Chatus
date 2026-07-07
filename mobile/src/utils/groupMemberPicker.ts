@@ -95,8 +95,15 @@ export function getContactSortName(user: PickerUser) {
 }
 
 function buildQueryTokens(user: PickerUser) {
+  const combined = [user.display_name?.trim(), user.last_name?.trim()]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase();
   return [
     normalizeText(user.display_name),
+    normalizeText(user.last_name),
+    combined,
     normalizeText(user.username),
     normalizeText(user.handle),
     user.handle ? `@${normalizeText(user.handle)}` : '',
@@ -129,6 +136,7 @@ export function getGroupMemberPickerContacts(params: {
         username: member.user?.username ?? null,
         handle: member.user?.handle ?? null,
         display_name: member.user?.display_name ?? fallbackDisplayName,
+        last_name: member.user?.last_name ?? null,
         avatar_url: member.user?.avatar_url ?? null,
         is_online: member.user?.is_online ?? false,
         last_seen: member.user?.last_seen ?? null,

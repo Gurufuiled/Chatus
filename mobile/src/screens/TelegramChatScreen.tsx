@@ -21,9 +21,10 @@ import type { RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useChatComposerDockPaddingBottom,
+  useChatComposerKeyboard,
   useChatComposerKeyboardLiftStyles,
 } from '../utils/chatComposerKeyboard';
-import Reanimated, { useAnimatedKeyboard, useSharedValue } from 'react-native-reanimated';
+import Reanimated, { useSharedValue } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
 import { ChatContextMenuOverlay, DOUBLE_TAP_REACTION_EMOJI } from '../components/ChatContextMenuOverlay';
 import { MessageReactionInline } from '../components/MessageReactionInline';
@@ -108,6 +109,11 @@ import {
 } from './telegramChat/messageRow';
 import { useTelegramChatHeaderSubtitle } from './telegramChat/useTelegramChatHeaderSubtitle';
 import {
+  clearTelegramDialogUnreadLocal,
+  markTelegramChatMessagesRead,
+  patchTelegramDialogOutgoingPreview,
+} from './telegramChat/telegramDialogLocalPatch';
+import {
   createTelegramChatStyles,
   createTelegramStackHeaderPresentationStyles,
 } from './telegramChat/telegramChatStyles';
@@ -183,8 +189,9 @@ export function TelegramChatScreen() {
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
   const isVoiceRecordingShared = useSharedValue(false);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const chatComposerKeyboard = useChatComposerKeyboard();
   const { dockAnimatedStyle: inputDockAnimatedStyle, listWrapAnimatedStyle: listKeyboardAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), isVoiceRecordingShared);
+    useChatComposerKeyboardLiftStyles(chatComposerKeyboard, isVoiceRecordingShared);
   const blurTargetRef = useRef<View>(null);
   const { colors, resolvedScheme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -284,6 +291,21 @@ export function TelegramChatScreen() {
     }
     lastMessagesLengthRef.current = messages.length;
   }, [messages, scrollToBottom]);
+
+  const lastMarkedIncomingIdRef = useRef(0);
+  useEffect(() => {
+    lastMarkedIncomingIdRef.current = 0;
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!isFocused || !Number.isFinite(chatId) || messages.length === 0) return;
+    const latestIncoming = messages.find((row) => !row.outgoing && row.messageId > 0);
+    if (!latestIncoming || latestIncoming.messageId <= lastMarkedIncomingIdRef.current) return;
+    lastMarkedIncomingIdRef.current = latestIncoming.messageId;
+    clearTelegramDialogUnreadLocal(telegramChatId);
+    void markTelegramChatMessagesRead(chatId, [latestIncoming.messageId]);
+  }, [chatId, isFocused, messages, telegramChatId]);
+
   const handleMessagesListScroll = useCallback(
     (event: Parameters<typeof handleChatScroll>[0]) => {
       handleChatScroll(event);
@@ -437,6 +459,7 @@ export function TelegramChatScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
+      clearTelegramDialogUnreadLocal(telegramChatId);
       void (async () => {
         if (!Number.isFinite(chatId)) return;
         try {
@@ -455,7 +478,7 @@ export function TelegramChatScreen() {
         if (!Number.isFinite(chatId)) return;
         void tdlibClient.send({ '@type': 'closeChat', chat_id: chatId }).catch(() => {});
       };
-    }, [chatId, ensureReady]),
+    }, [chatId, ensureReady, telegramChatId]),
   );
 
   const handleOpenDiscussion = useCallback(
@@ -1459,6 +1482,7 @@ export function TelegramChatScreen() {
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      patchTelegramDialogOutgoingPreview(chatId, trimmed, optimistic.dateMs);
       try {
         await ensureReady();
         const response = (await tdlibClient.send({
@@ -1475,9 +1499,15 @@ export function TelegramChatScreen() {
           },
         })) as Record<string, unknown>;
         throwIfTdError(response);
-        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
-        if (mapped) {
-          setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped));
+        const responseType = response['@type'];
+        if (responseType === 'message' || typeof response.id === 'number') {
+          const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
+          if (mapped) {
+            setMessages((prev) =>
+              upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped),
+            );
+            patchTelegramDialogOutgoingPreview(chatId, trimmed, mapped.dateMs);
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1647,9 +1677,14 @@ export function TelegramChatScreen() {
           input_message_content: inputMessageContent,
         })) as Record<string, unknown>;
         throwIfTdError(response);
-        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
-        if (mapped) {
-          setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped));
+        const responseType = response['@type'];
+        if (responseType === 'message' || typeof response.id === 'number') {
+          const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
+          if (mapped) {
+            setMessages((prev) =>
+              upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped),
+            );
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

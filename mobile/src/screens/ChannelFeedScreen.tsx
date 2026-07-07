@@ -15,11 +15,12 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
-import Reanimated, { runOnJS, useAnimatedKeyboard } from 'react-native-reanimated';
+import Reanimated, { runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useChatComposerDockPaddingBottom,
+  useChatComposerKeyboard,
   useChatComposerKeyboardLiftStyles,
 } from '../utils/chatComposerKeyboard';
 import Feather from '@expo/vector-icons/Feather';
@@ -864,8 +865,9 @@ export function ChannelFeedScreen() {
   const menuAnim = React.useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
+  const chatComposerKeyboard = useChatComposerKeyboard();
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
+    useChatComposerKeyboardLiftStyles(chatComposerKeyboard);
   const { channelId, inviteToken: routeInviteToken } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
   const linkResolve = channelStore((state) => state.linkResolveByChannelId[channelId]);

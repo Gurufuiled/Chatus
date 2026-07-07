@@ -23,7 +23,6 @@ import Reanimated, {
   interpolate,
   runOnJS,
   scrollTo,
-  useAnimatedKeyboard,
   useAnimatedProps,
   useAnimatedReaction,
   useAnimatedRef,
@@ -784,19 +783,13 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
     };
   });
 
-  /** Плашка подписи поднимается поверх клавиатуры (как в GalleryPhotoPreview). */
-  const animatedKeyboard = useAnimatedKeyboard();
+  /** Плашка подписи поднимается поверх клавиатуры внутри модалки. */
   const modalKeyboardHeight = useModalKeyboardHeight(visible);
 
   const bottomAccessoryStyle = useAnimatedStyle(() => {
-    const correction = Math.min(sheetTranslateY.value, snapCollapsedY.value);
-    const keyboardLift = Math.max(
-      animatedKeyboard.height.value,
-      modalKeyboardHeight.value,
-      0,
-    );
+    const keyboardLift = Math.max(modalKeyboardHeight.value, 0);
     return {
-      transform: [{ translateY: -(correction + keyboardLift) }],
+      transform: [{ translateY: -keyboardLift }],
     };
   });
 

@@ -21,7 +21,6 @@ import Reanimated, {
   Extrapolation,
   interpolate,
   runOnJS,
-  useAnimatedKeyboard,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -31,6 +30,7 @@ import { useRoute, useNavigation, type RouteProp } from '@react-navigation/nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useChatComposerDockPaddingBottom,
+  useChatComposerKeyboard,
   useChatComposerKeyboardLiftStyles,
 } from '../utils/chatComposerKeyboard';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -737,8 +737,9 @@ export function ChannelDiscussionScreen() {
   const styles = useMemo(() => createChannelDiscussionStyles(c), [c]);
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
+  const chatComposerKeyboard = useChatComposerKeyboard();
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
+    useChatComposerKeyboardLiftStyles(chatComposerKeyboard);
   const blurTargetRef = React.useRef<View | null>(null);
   const listRef = React.useRef<FlatList<Message> | null>(null);
   const contentRefs = React.useRef<Record<string, View | null>>({});

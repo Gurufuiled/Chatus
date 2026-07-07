@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { GroupCallParticipant } from '../../contexts/GroupCallContext';
 import { ParticipantTile, TILE_ASPECT_RATIO } from './ParticipantTile';
 
@@ -9,6 +9,7 @@ const TILE_GAP = 10;
 
 type ParticipantStageProps = {
   participants: GroupCallParticipant[];
+  renderVideoSlot?: (participant: GroupCallParticipant) => React.ReactNode;
 };
 
 type StageLayout = {
@@ -57,7 +58,7 @@ function chunkRows<T>(items: T[], columns: number): T[][] {
   return rows;
 }
 
-export function ParticipantStage({ participants }: ParticipantStageProps) {
+export function ParticipantStage({ participants, renderVideoSlot }: ParticipantStageProps) {
   const { width: screenWidth } = useWindowDimensions();
   const layout = useMemo(
     () => computeLayout(participants.length, screenWidth),
@@ -103,6 +104,7 @@ export function ParticipantStage({ participants }: ParticipantStageProps) {
                 participant={participant}
                 width={layout.tileWidth}
                 isDominantSpeaker={participant.isSpeaking && speakingCount === 1}
+                videoSlot={renderVideoSlot?.(participant)}
               />
             </View>
           ))}

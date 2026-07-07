@@ -14,12 +14,16 @@ import {
 } from './profileFormatters';
 import './profile.css';
 
-export function ProfileSettingsPage() {
+interface ProfileSettingsPageProps {
+  backTo?: string;
+}
+
+export function ProfileSettingsPage({ backTo = '/' }: ProfileSettingsPageProps) {
   const navigate = useNavigate();
   const { data: me, isLoading, isError, error } = useMeQuery();
 
   const goBack = () => {
-    void navigate({ to: '/' });
+    void navigate({ to: backTo });
   };
 
   const goEdit = () => {

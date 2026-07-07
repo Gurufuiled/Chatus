@@ -49,7 +49,7 @@ function parseAuthCallbackUrl(url: string): AuthWebPayload | null {
 }
 
 const AUTH_BG = require('../../assets/splash/auth-bg-clean.png');
-const PRIVACY_CONSENT_STORAGE_KEY = '@chatus/privacy_policy_accepted_v1';
+const PRIVACY_CONSENT_STORAGE_KEY = 'chatus_privacy_policy_accepted_v1';
 
 /** Dev (USB / emulator) vs remote API — тексты ошибок не должны вводить в заблуждение на release. */
 function apiNetworkHint(): string {

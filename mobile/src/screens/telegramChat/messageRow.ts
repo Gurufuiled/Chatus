@@ -229,7 +229,31 @@ export function upsertMessage(
       (oldMessageId == null || item.messageId !== oldMessageId) &&
       !(oldMessageId != null && item.albumMessageIds?.includes(oldMessageId)),
   );
-  return [next, ...withoutSame].sort((a, b) => b.messageId - a.messageId);
+
+  const withoutStaleOptimistic =
+    next.outgoing
+      ? withoutSame.filter((item) => !shouldDropStaleOptimisticOutgoing(item, next, oldMessageId))
+      : withoutSame;
+
+  return [next, ...withoutStaleOptimistic].sort((a, b) => b.messageId - a.messageId);
+}
+
+function shouldDropStaleOptimisticOutgoing(
+  item: TelegramMessageRow,
+  confirmed: TelegramMessageRow,
+  oldMessageId?: number | null,
+): boolean {
+  if (!item.outgoing || item.status !== 'sending') return false;
+  if (!item.id.startsWith('temp-') && item.messageId >= 0) return false;
+  if (oldMessageId != null && item.messageId === oldMessageId) return true;
+  if (item.kind !== confirmed.kind) return false;
+  const itemText = (item.text ?? '').trim();
+  const confirmedText = (confirmed.text ?? '').trim();
+  // Text sends: match by content. Media/sticker rows without text require oldMessageId match above.
+  if (!itemText && !confirmedText) return false;
+  if (itemText !== confirmedText) return false;
+  if (Math.abs(item.dateMs - confirmed.dateMs) > 120_000) return false;
+  return true;
 }
 
 export function applyReadOutboxStatus(

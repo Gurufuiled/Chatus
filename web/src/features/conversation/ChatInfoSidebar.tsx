@@ -248,10 +248,12 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
               </svg>
             </span>
             <div className="chat-info-sidebar__detail-content chat-info-sidebar__detail-content--row">
-              <span className="chat-info-sidebar__detail-value">Уведомления</span>
+              <span id="notifications-label" className="chat-info-sidebar__detail-value">Уведомления</span>
               <label className="chat-info-sidebar__switch">
                 <input
                   type="checkbox"
+                  role="switch"
+                  aria-labelledby="notifications-label"
                   checked={notificationsEnabled}
                   onChange={(e) => setNotificationsEnabled(e.target.checked)}
                 />
@@ -296,11 +298,15 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
         )}
 
         {/* Tab Selection */}
-        <div className="chat-info-sidebar__tabs-nav">
+        <div className="chat-info-sidebar__tabs-nav" role="tablist">
           {tabs.map((tab, idx) => (
             <button
               key={tab}
               type="button"
+              id={`tab-${idx}`}
+              role="tab"
+              aria-selected={activeTab === idx}
+              aria-controls={`tabpanel-${idx}`}
               className={`chat-info-sidebar__tab-btn${activeTab === idx ? ' chat-info-sidebar__tab-btn--active' : ''}`}
               onClick={() => setActiveTab(idx)}
             >
@@ -318,7 +324,12 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
         </div>
 
         {/* Tab panel — only active tab content */}
-        <div className="chat-info-sidebar__panel">
+        <div
+          className="chat-info-sidebar__panel"
+          role="tabpanel"
+          id={`tabpanel-${activeTab}`}
+          aria-labelledby={`tab-${activeTab}`}
+        >
           {activeTab === 0 && (
             mediaMessages.length === 0 ? (
               <div className="chat-info-sidebar__empty-state">
@@ -337,6 +348,7 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
                       key={msg.id}
                       type="button"
                       className="chat-info-sidebar__media-item"
+                      aria-label={isVideo ? 'Видео' : 'Фото'}
                       onClick={() => {
                         if (!isVideo) setLightboxSrc(fullUrl);
                       }}

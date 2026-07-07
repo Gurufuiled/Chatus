@@ -83,6 +83,7 @@ export interface ChatRow {
       username: string | null;
       handle: string | null;
       display_name: string | null;
+      last_name?: string | null;
       avatar_url: string | null;
       phone?: string | null;
       is_online: boolean;

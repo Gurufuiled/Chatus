@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
 import {
@@ -9,6 +9,11 @@ import {
 } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { useSelectionStore } from '@/stores/selectionStore';
+import { useGroupCall } from '@/contexts/GroupCallContext';
+import { formatGroupCallParticipantNames } from '@/utils/groupCallSystemMessage';
+import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
+import { GroupCallBanner } from '@/features/group-call/GroupCallBanner';
+import '@/features/group-call/group-call.css';
 import { ConversationHeader } from './ConversationHeader';
 import { MessageList } from './MessageList';
 import { MessageComposer } from './MessageComposer';
@@ -37,6 +42,51 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
   const markedRef = useRef<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const chat = chats?.find((c) => c.id === chatId);
+  const isGroupChat = chat?.chat_type === 'group';
+  const chatTitle = chat ? getChatDisplayName(chat) : '';
+  const {
+    state: groupCallState,
+    activeRoomByChatId,
+    refreshActiveRoom,
+    startGroupCall,
+    joinGroupCall,
+    isInCallForChat,
+  } = useGroupCall();
+
+  const activeGroupCallRoom = activeRoomByChatId[chatId] ?? null;
+  const isUserInGroupCall = isInCallForChat(chatId);
+  const groupCallParticipantPreview = useMemo(
+    () => formatGroupCallParticipantNames(groupCallState.participants),
+    [groupCallState.participants],
+  );
+
+  useEffect(() => {
+    if (!isGroupChat) return;
+    void refreshActiveRoom(chatId);
+  }, [chatId, isGroupChat, refreshActiveRoom]);
+
+  const handleJoinActiveGroupCall = useCallback(() => {
+    if (!activeGroupCallRoom) return;
+    void joinGroupCall(activeGroupCallRoom.id, chatId, chatTitle);
+  }, [activeGroupCallRoom, chatId, chatTitle, joinGroupCall]);
+
+  const handleGroupCallPress = useCallback(() => {
+    if (activeGroupCallRoom && !isUserInGroupCall) {
+      void joinGroupCall(activeGroupCallRoom.id, chatId, chatTitle);
+      return;
+    }
+    if (isUserInGroupCall) {
+      return;
+    }
+    void startGroupCall(chatId, chatTitle);
+  }, [
+    activeGroupCallRoom,
+    chatId,
+    chatTitle,
+    isUserInGroupCall,
+    joinGroupCall,
+    startGroupCall,
+  ]);
 
   const [forwardMessageIds, setForwardMessageIds] = useState<string[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -115,8 +165,22 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
           <Link to="/" className="conversation-pane__back" aria-label="Назад к списку чатов">
             ←
           </Link>
-          <ConversationHeader chat={chat} onClick={() => setIsSidebarOpen((prev) => !prev)} />
+          <ConversationHeader
+            chat={chat}
+            onClick={() => setIsSidebarOpen((prev) => !prev)}
+            onGroupCallPress={isGroupChat ? handleGroupCallPress : undefined}
+            isUserInGroupCall={isUserInGroupCall}
+          />
         </div>
+        {isGroupChat ? (
+          <GroupCallBanner
+            activeRoom={activeGroupCallRoom}
+            isUserInCall={isUserInGroupCall}
+            participantPreview={groupCallParticipantPreview}
+            onJoin={handleJoinActiveGroupCall}
+            onOpen={() => {}}
+          />
+        ) : null}
         <ConversationDropZone chatId={chatId} disabled={messagesLoading}>
           <div
             ref={bodyRef}

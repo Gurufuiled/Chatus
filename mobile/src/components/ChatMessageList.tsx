@@ -1359,7 +1359,7 @@ const MessageRow = React.memo(function MessageRow({
             onJoin={canJoin && onJoinGroupCall ? () => onJoinGroupCall(groupCallPayload.room_id) : undefined}
             time={formatTime(bodyItem.created_at)}
             status={bodyItem.status}
-            isMe={isMe}
+            isMe
           />
         );
       }
@@ -2424,7 +2424,7 @@ const MessageRow = React.memo(function MessageRow({
 
   const card = isGroupCallSystem ? (
     <View style={styles.messagePressable}>
-      <View style={[styles.messageWrap, styles.messageWrapService]}>
+      <View style={[styles.messageWrap, styles.messageWrapMe]}>
         <View
           ref={(node) => setContentRef(item.id, node)}
           collapsable={false}

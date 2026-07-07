@@ -1,3 +1,15 @@
+.message-bubble--system {
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.message-bubble__text--system {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
 .conversation-pane {
   display: flex;
   flex-direction: column;

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ConnectionState } from 'livekit-client';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS } from '../../icons/telegram';
 import { useGroupCall } from '../../contexts/GroupCallContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -21,20 +22,21 @@ function formatDuration(startedAt?: number, now = Date.now()) {
 export function GroupCallMinimizedBar({ bottomOffset }: GroupCallMinimizedBarProps) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
-  const { state, expand, toggleMute, leaveGroupCall } = useGroupCall();
+  const { state, expand, toggleMute, toggleVideo, leaveGroupCall } = useGroupCall();
   const [now, setNow] = React.useState(Date.now());
 
   React.useEffect(() => {
-    if (state.phase !== 'minimized') return;
+    if (state.phase !== 'minimized' || !state.startedAt) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [state.phase]);
+  }, [state.phase, state.startedAt]);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
 
   if (state.phase !== 'minimized') return null;
 
   const count = Math.max(state.participants.length, 1);
+  const canToggleVideo = state.connectionState === ConnectionState.Connected;
 
   return (
     <View
@@ -42,11 +44,32 @@ export function GroupCallMinimizedBar({ bottomOffset }: GroupCallMinimizedBarPro
       style={[styles.wrap, { bottom: bottomOffset + Math.max(insets.bottom, 8) }]}
     >
       <Pressable onPress={expand} style={({ pressed }) => [styles.bar, pressed && styles.pressed]}>
-        <Text style={styles.emoji}>🔊</Text>
+        <Text style={styles.emoji}>{state.isVideoEnabled ? '📹' : '🔊'}</Text>
         <Text style={styles.label} numberOfLines={1}>
-          {`Голосовой чат · ${count} · ${formatDuration(state.startedAt, now)}`}
+          {`${state.isVideoEnabled ? 'Видеочат' : 'Голосовой чат'} · ${count} · ${formatDuration(state.startedAt, now)}`}
         </Text>
         <View style={styles.actions}>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              void toggleVideo();
+            }}
+            disabled={!canToggleVideo}
+            hitSlop={8}
+            style={[
+              styles.iconButton,
+              state.isVideoEnabled && styles.iconButtonActive,
+              !canToggleVideo && styles.iconButtonDisabled,
+            ]}
+          >
+            <TelegramGlyph
+              d={TELEGRAM_CALL_GLYPHS.video.d}
+              fillRule={TELEGRAM_CALL_GLYPHS.video.fillRule}
+              viewBox={TELEGRAM_CALL_GLYPHS.video.viewBox}
+              size={22}
+              color="#fff"
+            />
+          </Pressable>
           <Pressable
             onPress={(e) => {
               e.stopPropagation();
@@ -124,6 +147,12 @@ function createStyles(colors: { accent: string }) {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: withAlpha('#000', 0.18),
+    },
+    iconButtonActive: {
+      backgroundColor: withAlpha('#000', 0.32),
+    },
+    iconButtonDisabled: {
+      opacity: 0.45,
     },
     pressed: {
       opacity: 0.92,

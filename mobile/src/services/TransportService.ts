@@ -289,7 +289,8 @@ class TransportServiceClass {
       | 'peer_skipped'
       | 'peer_success'
       | 'peer_failed'
-      | 'server_fallback',
+      | 'server_fallback'
+      | 'server_relay',
     payload: Record<string, unknown>,
   ): void {
     if (__DEV__) {
@@ -747,6 +748,8 @@ class TransportServiceClass {
         currentUserId: authStore.getState().user?.id ?? null,
       });
 
+      let peerRelayOutcome: 'skipped' | 'failed' | 'success' = 'skipped';
+
       if (textRoute.mode === 'server_direct') {
         this.logP2PDecision('peer_skipped', {
           chatId,
@@ -762,6 +765,7 @@ class TransportServiceClass {
           replyToId,
         );
         if (peerResult.ok === false) {
+          peerRelayOutcome = 'failed';
           this.logP2PDecision('peer_failed', {
             chatId,
             tempId,
@@ -769,6 +773,7 @@ class TransportServiceClass {
             reason: peerResult.reason,
           });
         } else {
+          peerRelayOutcome = 'success';
           this.logP2PDecision('peer_success', {
             chatId,
             tempId,
@@ -784,15 +789,19 @@ class TransportServiceClass {
             .catch((err) => {
               console.warn('[TransportService] LineSync p2p_delivered mark failed', err);
             });
-          return;
+          // Still relay via server so web/embed and other sessions receive the message.
         }
       }
 
-      this.logP2PDecision('server_fallback', {
-        chatId,
-        tempId,
-        path: WebSocketService.isConnected() ? 'websocket' : 'offline_queue',
-      });
+      this.logP2PDecision(
+        peerRelayOutcome === 'success' ? 'server_relay' : 'server_fallback',
+        {
+          chatId,
+          tempId,
+          path: WebSocketService.isConnected() ? 'websocket' : 'offline_queue',
+          ...(peerRelayOutcome === 'success' ? { after: 'peer_success' } : {}),
+        },
+      );
     }
 
     this.sendTextViaServerOrQueue(chatId, content, msgType, tempId, replyToId);

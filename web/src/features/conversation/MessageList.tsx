@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
+import { useChatsQuery } from '@/queries/chats.queries';
+import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { useMessageContextStore } from '@/stores/messageContextStore';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { MessageBubble } from './MessageBubble';
@@ -14,6 +16,9 @@ interface MessageListProps {
 export function MessageList({ chatId }: MessageListProps) {
   const { data: messages, isLoading, isError, error } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
+  const { data: chats } = useChatsQuery();
+  const chat = chats?.find((c) => c.id === chatId);
+  const chatTitle = chat ? getChatDisplayName(chat) : 'Группа';
   const closeMessageMenu = useMessageContextStore((s) => s.closeMessageMenu);
   const openMessageMenu = useMessageContextStore((s) => s.openMessageMenu);
   const selectionActive = useSelectionStore((s) => s.isActive && s.chatId === chatId);
@@ -94,7 +99,7 @@ export function MessageList({ chatId }: MessageListProps) {
   }
 
   return (
-    <div className="message-list" ref={containerRef}>
+    <div className="message-list" ref={containerRef} role="log" aria-relevant="additions">
       <div className="message-list__inner">
         {messages.map((message) => {
           const isOutgoing = !!me?.id && message.sender_id === me.id;
@@ -122,6 +127,7 @@ export function MessageList({ chatId }: MessageListProps) {
               ) : null}
               <MessageBubble
                 chatId={chatId}
+                chatTitle={chatTitle}
                 message={message}
                 isOutgoing={isOutgoing}
                 selectionActive={selectionActive}

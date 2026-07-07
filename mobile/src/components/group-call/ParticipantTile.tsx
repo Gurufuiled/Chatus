@@ -1,14 +1,7 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import Reanimated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS } from '../../icons/telegram';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { GroupCallParticipant } from '../../contexts/GroupCallContext';
@@ -17,17 +10,12 @@ import { withAlpha } from '../../theme/colors';
 export const TILE_BORDER_RADIUS = 16;
 export const TILE_ASPECT_RATIO = 4 / 5;
 
-const SPEAKING_SCALE = 1.1;
-const DOMINANT_SCALE = 1.13;
-const SPEAKING_PULSE_DELTA = 0.02;
-const DOMINANT_PULSE_DELTA = 0.02;
-
 type ParticipantTileProps = {
   participant: GroupCallParticipant;
   width: number;
   /** True when this participant is the sole active speaker in the call. */
   isDominantSpeaker?: boolean;
-  /** Reserved for future LiveKit VideoView integration. */
+  /** Optional video layer (e.g. LiveKit VideoView). Falls back to avatar when absent. */
   videoSlot?: React.ReactNode;
 };
 
@@ -42,36 +30,9 @@ export function ParticipantTile({
   videoSlot,
 }: ParticipantTileProps) {
   const { colors } = useTheme();
-  const pulse = useSharedValue(1);
   const height = width / TILE_ASPECT_RATIO;
   const isSpeaking = participant.isSpeaking;
   const isHighlighted = isSpeaking || isDominantSpeaker;
-
-  useEffect(() => {
-    if (isDominantSpeaker) {
-      const peak = DOMINANT_SCALE + DOMINANT_PULSE_DELTA;
-      pulse.value = withRepeat(
-        withSequence(
-          withTiming(peak, { duration: 320 }),
-          withTiming(DOMINANT_SCALE, { duration: 320 }),
-        ),
-        -1,
-        true,
-      );
-    } else if (isSpeaking) {
-      const peak = SPEAKING_SCALE + SPEAKING_PULSE_DELTA;
-      pulse.value = withRepeat(
-        withSequence(
-          withTiming(peak, { duration: 350 }),
-          withTiming(SPEAKING_SCALE, { duration: 350 }),
-        ),
-        -1,
-        true,
-      );
-    } else {
-      pulse.value = withTiming(1, { duration: 150 });
-    }
-  }, [isDominantSpeaker, isSpeaking]);
 
   const borderColor = useMemo(() => {
     if (isDominantSpeaker) return colors.accent;
@@ -86,10 +47,6 @@ export function ParticipantTile({
     [colors.accent, isDominantSpeaker],
   );
 
-  const frameStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulse.value }],
-  }));
-
   const borderWidth = isDominantSpeaker ? 4 : isSpeaking ? 3 : 1;
   const glowRadius = isDominantSpeaker ? 14 : 10;
   const glowElevation = isDominantSpeaker ? 10 : 7;
@@ -97,7 +54,7 @@ export function ParticipantTile({
   const displayName = participant.isLocal ? 'Вы' : participant.displayName;
 
   return (
-    <Reanimated.View
+    <View
       accessibilityLabel={
         participant.isMuted
           ? `${displayName}, микрофон выключен`
@@ -120,7 +77,6 @@ export function ParticipantTile({
               elevation: glowElevation,
             }
           : null,
-        frameStyle,
       ]}
     >
       <View
@@ -169,7 +125,7 @@ export function ParticipantTile({
           </View>
         ) : null}
       </View>
-    </Reanimated.View>
+    </View>
   );
 }
 

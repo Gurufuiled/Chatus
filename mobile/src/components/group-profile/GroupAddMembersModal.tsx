@@ -133,7 +133,7 @@ export function GroupAddMembersModal({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {memberSearchLoading ? (
+            {memberSearchLoading && visibleUsers.length === 0 ? (
               <View style={styles.centerState}>
                 <ActivityIndicator color={c.accent} />
               </View>
@@ -146,7 +146,13 @@ export function GroupAddMembersModal({
                 </Text>
               </View>
             ) : (
-              visibleUsers.map((user) => {
+              <>
+                {memberSearchLoading ? (
+                  <View style={styles.inlineLoading}>
+                    <ActivityIndicator color={c.accent} size="small" />
+                  </View>
+                ) : null}
+                {visibleUsers.map((user) => {
                 const isSelected = selectedUserIds.has(user.id);
                 const avatar = resolveAvatarUrl(user.avatar_url);
                 const display = getDisplayName(user);
@@ -190,7 +196,8 @@ export function GroupAddMembersModal({
                     </View>
                   </Pressable>
                 );
-              })
+              })}
+              </>
             )}
           </ScrollView>
 
@@ -298,6 +305,11 @@ function createGroupAddMembersStyles(c: ThemeColors) {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 28,
+  },
+  inlineLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 8,
   },
   emptySubtitle: {
     textAlign: 'center',

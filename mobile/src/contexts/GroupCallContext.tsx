@@ -14,8 +14,11 @@ import {
   RoomEvent,
   ConnectionState,
   Track,
+  type LocalVideoTrack,
   type Participant,
+  type VideoTrack,
 } from 'livekit-client';
+import { Camera } from 'expo-camera';
 import { AudioSession, AndroidAudioTypePresets } from '@livekit/react-native';
 import { authStore } from '../stores/authStore';
 import { useCall } from './CallContext';
@@ -24,6 +27,7 @@ import {
   createGroupCall,
   endGroupCallForAll,
   fetchActiveGroupCall,
+  isGroupCallUnavailableError,
   joinGroupCall,
   leaveGroupCall,
   type ApiGroupCallParticipant,
@@ -46,6 +50,7 @@ export type GroupCallParticipant = {
   isLocal: boolean;
   isMuted: boolean;
   isSpeaking: boolean;
+  isVideoEnabled: boolean;
 };
 
 type GroupCallState = {
@@ -56,6 +61,7 @@ type GroupCallState = {
   participants: GroupCallParticipant[];
   isMuted: boolean;
   isSpeakerOn: boolean;
+  isVideoEnabled: boolean;
   startedAt?: number;
   isCreator: boolean;
   connectionState: ConnectionState | 'idle';
@@ -63,6 +69,8 @@ type GroupCallState = {
 
 type GroupCallContextType = {
   state: GroupCallState;
+  localCameraTrack: LocalVideoTrack | undefined;
+  remoteVideoTracks: Record<string, VideoTrack>;
   activeRoomByChatId: Record<string, ApiGroupCallRoom | null>;
   refreshActiveRoom: (chatId: string) => Promise<ApiGroupCallRoom | null>;
   applyActiveRoomSnapshot: (chatId: string, room: ApiGroupCallRoom | null) => void;
@@ -79,6 +87,7 @@ type GroupCallContextType = {
   expand: () => void;
   toggleMute: () => Promise<void>;
   toggleSpeaker: () => Promise<void>;
+  toggleVideo: () => Promise<void>;
   isInCallForChat: (chatId: string) => boolean;
 };
 
@@ -90,6 +99,7 @@ const initialState: GroupCallState = {
   participants: [],
   isMuted: false,
   isSpeakerOn: true,
+  isVideoEnabled: false,
   isCreator: false,
   connectionState: 'idle',
 };
@@ -107,7 +117,51 @@ function mapApiParticipant(
     isLocal: participant.user_id === currentUserId,
     isMuted: participant.is_muted,
     isSpeaking: false,
+    isVideoEnabled: false,
   };
+}
+
+function localParticipantProfile(currentUserId: string): {
+  displayName: string;
+  avatarUrl: string | null;
+} {
+  const user = authStore.getState().user;
+  if (!user || user.id !== currentUserId) {
+    return { displayName: '', avatarUrl: null };
+  }
+  const displayName =
+    [user.display_name, user.last_name].filter(Boolean).join(' ').trim() ||
+    user.username?.trim() ||
+    user.handle?.trim() ||
+    '';
+  return {
+    displayName,
+    avatarUrl: resolveAvatarUrl(user.avatar_url),
+  };
+}
+
+function isCameraTrackEnabled(participant: Participant): boolean {
+  const camPub = participant.getTrackPublication(Track.Source.Camera);
+  return Boolean(camPub?.track && !camPub.isMuted && camPub.isEnabled);
+}
+
+function readLocalCameraTrack(room: Room): LocalVideoTrack | undefined {
+  const camPub = room.localParticipant.getTrackPublication(Track.Source.Camera);
+  const track = camPub?.track;
+  return track?.kind === Track.Kind.Video ? (track as LocalVideoTrack) : undefined;
+}
+
+function readRemoteVideoTracks(room: Room): Record<string, VideoTrack> {
+  const tracks: Record<string, VideoTrack> = {};
+  for (const participant of room.remoteParticipants.values()) {
+    if (!isCameraTrackEnabled(participant)) continue;
+    const camPub = participant.getTrackPublication(Track.Source.Camera);
+    const track = camPub?.track;
+    if (track?.kind === Track.Kind.Video) {
+      tracks[participant.identity] = track;
+    }
+  }
+  return tracks;
 }
 
 function mapLiveKitParticipant(
@@ -115,13 +169,16 @@ function mapLiveKitParticipant(
   currentUserId: string,
 ): GroupCallParticipant {
   const micPub = participant.getTrackPublication(Track.Source.Microphone);
+  const isLocal = participant.identity === currentUserId;
+  const profile = isLocal ? localParticipantProfile(currentUserId) : null;
   return {
     userId: participant.identity,
-    displayName: participant.name || participant.identity,
-    avatarUrl: null,
-    isLocal: participant.identity === currentUserId,
-    isMuted: micPub?.isMuted ?? !micPub?.isEnabled,
+    displayName: profile?.displayName || participant.name || participant.identity,
+    avatarUrl: profile?.avatarUrl ?? null,
+    isLocal,
+    isMuted: micPub ? micPub.isMuted || !micPub.isEnabled : false,
     isSpeaking: participant.isSpeaking,
+    isVideoEnabled: isCameraTrackEnabled(participant),
   };
 }
 
@@ -135,11 +192,31 @@ function buildParticipantsFromRoom(room: Room, currentUserId: string): GroupCall
   return [...local, ...remote];
 }
 
-function normalizeStartedAt(startedAt: number | undefined): number {
+function normalizeStartedAt(startedAt: number | string | undefined | null): number | undefined {
   if (typeof startedAt === 'number' && Number.isFinite(startedAt) && startedAt > 0) {
-    return startedAt;
+    return startedAt < 1_000_000_000_000 ? startedAt * 1000 : startedAt;
   }
-  return Date.now();
+  if (typeof startedAt === 'string') {
+    const trimmed = startedAt.trim();
+    if (!trimmed) return undefined;
+    const parsed = Date.parse(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+    }
+  }
+  return undefined;
+}
+
+function resolveCallStartedAt(
+  ...candidates: Array<number | string | undefined | null>
+): number | undefined {
+  for (const candidate of candidates) {
+    const normalized = normalizeStartedAt(candidate);
+    if (normalized != null) return normalized;
+  }
+  return undefined;
 }
 
 function buildCallAudioMode(isSpeakerOn: boolean) {
@@ -180,11 +257,14 @@ async function applyGroupCallSpeaker(isSpeakerOn: boolean): Promise<void> {
 export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const { callState } = useCall();
   const [state, setState] = useState<GroupCallState>(initialState);
+  const [localCameraTrack, setLocalCameraTrack] = useState<LocalVideoTrack | undefined>();
+  const [remoteVideoTracks, setRemoteVideoTracks] = useState<Record<string, VideoTrack>>({});
   const [activeRoomByChatId, setActiveRoomByChatId] = useState<
     Record<string, ApiGroupCallRoom | null>
   >({});
   const roomRef = useRef<Room | null>(null);
   const stateRef = useRef(state);
+  const videoToggleInFlightRef = useRef(false);
   stateRef.current = state;
 
   const detachRoom = useCallback(async () => {
@@ -205,13 +285,21 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetCallState = useCallback(async () => {
+    setLocalCameraTrack(undefined);
+    setRemoteVideoTracks({});
     await detachRoom();
     setState(initialState);
   }, [detachRoom]);
 
+  const syncVideoTracksFromRoom = useCallback((room: Room) => {
+    setLocalCameraTrack(readLocalCameraTrack(room));
+    setRemoteVideoTracks(readRemoteVideoTracks(room));
+  }, []);
+
   const syncParticipantsFromRoom = useCallback((room: Room) => {
     const currentUserId = authStore.getState().user?.id;
     if (!currentUserId) return;
+    syncVideoTracksFromRoom(room);
     setState((prev) => {
       const fromRoom = buildParticipantsFromRoom(room, currentUserId);
       const priorByUserId = new Map(prev.participants.map((p) => [p.userId, p]));
@@ -224,9 +312,14 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           avatarUrl: prior.avatarUrl ?? p.avatarUrl,
         };
       });
-      return { ...prev, participants };
+      const localParticipant = participants.find((p) => p.isLocal);
+      return {
+        ...prev,
+        participants,
+        isVideoEnabled: localParticipant?.isVideoEnabled ?? prev.isVideoEnabled,
+      };
     });
-  }, []);
+  }, [syncVideoTracksFromRoom]);
 
   const connectToRoom = useCallback(
     async (params: {
@@ -265,6 +358,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       room.on(RoomEvent.TrackUnmuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackPublished, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackSubscribed, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.TrackUnpublished, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.TrackUnsubscribed, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         const speakingIds = new Set(speakers.map((s) => s.identity));
         setState((prev) => ({
@@ -314,7 +409,12 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       }
 
       const participants = buildParticipantsFromRoom(room, currentUserId);
-      const startedAt = normalizeStartedAt(params.startedAt);
+      const startedAt =
+        resolveCallStartedAt(
+          params.startedAt,
+          stateRef.current.startedAt,
+          activeRoomByChatId[params.chatId]?.started_at,
+        ) ?? Date.now();
       const isConnected = room.state === ConnectionState.Connected;
 
       setState((prev) => ({
@@ -326,12 +426,14 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         participants,
         isMuted: false,
         isSpeakerOn: true,
+        isVideoEnabled: false,
         startedAt,
         isCreator: params.isCreator,
         connectionState: room.state,
       }));
+      syncVideoTracksFromRoom(room);
     },
-    [detachRoom, resetCallState, syncParticipantsFromRoom],
+    [activeRoomByChatId, detachRoom, resetCallState, syncVideoTracksFromRoom, syncParticipantsFromRoom],
   );
 
   const refreshActiveRoom = useCallback(async (chatId: string) => {
@@ -444,17 +546,29 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         Alert.alert('Голосовой чат', 'Сначала выйдите из текущего голосового чата.');
         return;
       }
+      const cachedStartedAt = normalizeStartedAt(activeRoomByChatId[chatId]?.started_at);
       setState((prev) => ({
         ...prev,
         phase: 'joining',
         chatId,
         chatTitle,
         roomId,
+        startedAt: cachedStartedAt ?? prev.startedAt,
       }));
       try {
         const response = await joinGroupCall(roomId);
         setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: response.room }));
         const currentUserId = authStore.getState().user?.id;
+        const joinedStartedAt = resolveCallStartedAt(
+          response.room.started_at,
+          cachedStartedAt,
+        );
+        if (joinedStartedAt != null) {
+          setState((prev) => ({
+            ...prev,
+            startedAt: joinedStartedAt,
+          }));
+        }
         await connectToRoom({
           token: response.token,
           livekitUrl: response.livekit_url,
@@ -462,19 +576,22 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           chatId,
           chatTitle,
           roomId,
-          startedAt: response.room.started_at,
+          startedAt: response.room.started_at ?? cachedStartedAt,
           isCreator: currentUserId === response.room.started_by_user_id,
           phase: 'joining',
         });
       } catch (err) {
         await resetCallState();
-        Alert.alert(
-          'Не удалось присоединиться',
-          err instanceof Error ? err.message : String(err),
-        );
+        const message = err instanceof Error ? err.message : String(err);
+        if (isGroupCallUnavailableError(message)) {
+          applyActiveRoomSnapshot(chatId, null);
+          Alert.alert('Голосовой чат', 'Звонок уже завершён или недоступен.');
+          return;
+        }
+        Alert.alert('Не удалось присоединиться', message);
       }
     },
-    [callState, connectToRoom, resetCallState],
+    [activeRoomByChatId, callState, connectToRoom, resetCallState, applyActiveRoomSnapshot],
   );
 
   const leaveGroupCallAction = useCallback(async () => {
@@ -490,10 +607,12 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       // local cleanup even if API fails
     }
     if (chatId) {
-      setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: prev[chatId] ?? null }));
+      void refreshActiveRoom(chatId).catch(() => {
+        setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: null }));
+      });
     }
     await resetCallState();
-  }, [resetCallState]);
+  }, [resetCallState, refreshActiveRoom]);
 
   const endGroupCallForAllAction = useCallback(async () => {
     const roomId = stateRef.current.roomId;
@@ -530,14 +649,21 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     const room = roomRef.current;
     if (!room) return;
     const nextMuted = !stateRef.current.isMuted;
-    await room.localParticipant.setMicrophoneEnabled(!nextMuted);
-    setState((prev) => ({
-      ...prev,
-      isMuted: nextMuted,
-      participants: prev.participants.map((p) =>
-        p.isLocal ? { ...p, isMuted: nextMuted } : p,
-      ),
-    }));
+    try {
+      await room.localParticipant.setMicrophoneEnabled(!nextMuted);
+      setState((prev) => ({
+        ...prev,
+        isMuted: nextMuted,
+        participants: prev.participants.map((p) =>
+          p.isLocal ? { ...p, isMuted: nextMuted } : p,
+        ),
+      }));
+    } catch (err) {
+      Alert.alert(
+        'Микрофон',
+        err instanceof Error ? err.message : 'Не удалось переключить микрофон',
+      );
+    }
   }, []);
 
   const toggleSpeaker = useCallback(async () => {
@@ -553,6 +679,41 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const toggleVideo = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room || room.state !== ConnectionState.Connected || videoToggleInFlightRef.current) {
+      return;
+    }
+    const nextEnabled = !stateRef.current.isVideoEnabled;
+    videoToggleInFlightRef.current = true;
+    try {
+      if (nextEnabled) {
+        const { status } = await Camera.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          throw new Error('Нет доступа к камере');
+        }
+      }
+      await room.localParticipant.setCameraEnabled(nextEnabled);
+      if (!roomRef.current || stateRef.current.phase === 'idle') return;
+      syncVideoTracksFromRoom(room);
+      setState((prev) => ({
+        ...prev,
+        isVideoEnabled: nextEnabled,
+        participants: prev.participants.map((p) =>
+          p.isLocal ? { ...p, isVideoEnabled: nextEnabled } : p,
+        ),
+      }));
+    } catch (err) {
+      if (!roomRef.current || stateRef.current.phase === 'idle') return;
+      Alert.alert(
+        nextEnabled ? 'Не удалось включить видео' : 'Не удалось выключить видео',
+        err instanceof Error ? err.message : 'Проверь доступ к камере и попробуй ещё раз.',
+      );
+    } finally {
+      videoToggleInFlightRef.current = false;
+    }
+  }, [syncVideoTracksFromRoom]);
+
   const isInCallForChat = useCallback(
     (chatId: string) =>
       stateRef.current.chatId === chatId &&
@@ -566,7 +727,9 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         const chatId = typeof payload.chat_id === 'string' ? payload.chat_id : null;
         const roomId = typeof payload.room_id === 'string' ? payload.room_id : null;
         const startedAt =
-          typeof payload.started_at === 'number' ? payload.started_at : Date.now();
+          typeof payload.started_at === 'number' || typeof payload.started_at === 'string'
+            ? normalizeStartedAt(payload.started_at)
+            : undefined;
         const startedBy =
           typeof payload.started_by === 'string' ? payload.started_by : '';
         if (!chatId || !roomId) return;
@@ -575,7 +738,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           chat_id: chatId,
           livekit_room_name: '',
           started_by_user_id: startedBy,
-          started_at: startedAt,
+          started_at: startedAt ?? Date.now(),
           participant_count: 1,
         };
         applyActiveRoomSnapshot(chatId, room);
@@ -614,6 +777,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const contextValue = useMemo<GroupCallContextType>(
     () => ({
       state,
+      localCameraTrack,
+      remoteVideoTracks,
       activeRoomByChatId,
       refreshActiveRoom,
       applyActiveRoomSnapshot,
@@ -626,10 +791,13 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       expand,
       toggleMute,
       toggleSpeaker,
+      toggleVideo,
       isInCallForChat,
     }),
     [
       state,
+      localCameraTrack,
+      remoteVideoTracks,
       activeRoomByChatId,
       refreshActiveRoom,
       applyActiveRoomSnapshot,
@@ -642,6 +810,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       expand,
       toggleMute,
       toggleSpeaker,
+      toggleVideo,
       isInCallForChat,
     ],
   );

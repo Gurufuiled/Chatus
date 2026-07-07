@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
@@ -11,9 +11,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConnectionState } from 'livekit-client';
+import { VideoView } from '@livekit/react-native';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS } from '../../icons/telegram';
 import { useGroupCall } from '../../contexts/GroupCallContext';
 import { colors, withAlpha } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 import { ParticipantStage } from './ParticipantStage';
 
 function formatDuration(startedAt?: number, now = Date.now()) {
@@ -27,7 +29,7 @@ function formatDuration(startedAt?: number, now = Date.now()) {
 type ActionButtonProps = {
   accessibilityLabel: string;
   icon: keyof typeof TELEGRAM_CALL_GLYPHS;
-  tone?: 'neutral' | 'danger' | 'disabled';
+  tone?: 'neutral' | 'accent' | 'danger' | 'disabled';
   onPress: () => void;
   onLongPress?: () => void;
 };
@@ -39,21 +41,25 @@ function ActionButton({
   onPress,
   onLongPress,
 }: ActionButtonProps) {
+  const { colors: themeColors } = useTheme();
   const bg =
     tone === 'danger'
       ? '#E53935'
-      : tone === 'disabled'
-        ? withAlpha(colors.textPrimary, 0.08)
-        : withAlpha(colors.textPrimary, 0.14);
+      : tone === 'accent'
+        ? withAlpha(themeColors.accent, 0.92)
+        : tone === 'disabled'
+          ? withAlpha(colors.textPrimary, 0.08)
+          : withAlpha(colors.textPrimary, 0.14);
   return (
     <Pressable
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       onLongPress={onLongPress}
+      disabled={tone === 'disabled'}
       style={({ pressed }) => [
         styles.actionButton,
         { backgroundColor: bg, opacity: tone === 'disabled' ? 0.55 : 1 },
-        pressed && styles.pressed,
+        pressed && tone !== 'disabled' && styles.pressed,
       ]}
     >
       <TelegramGlyph
@@ -71,11 +77,14 @@ export function GroupCallOverlay() {
   const insets = useSafeAreaInsets();
   const {
     state,
+    localCameraTrack,
+    remoteVideoTracks,
     minimize,
     leaveGroupCall,
     endGroupCallForAll,
     toggleMute,
     toggleSpeaker,
+    toggleVideo,
   } = useGroupCall();
   const [now, setNow] = useState(Date.now());
 
@@ -86,14 +95,11 @@ export function GroupCallOverlay() {
 
   useEffect(() => {
     if (!visible || !state.startedAt) return;
-    const isConnected =
-      state.phase === 'active' ||
-      state.phase === 'minimized' ||
-      state.connectionState === ConnectionState.Connected;
-    if (!isConnected) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [visible, state.connectionState, state.phase, state.startedAt]);
+  }, [visible, state.startedAt]);
+
+  const canToggleVideo = state.connectionState === ConnectionState.Connected;
 
   const statusLine = useMemo(() => {
     const isConnecting =
@@ -144,9 +150,34 @@ export function GroupCallOverlay() {
     ]);
   };
 
-  const showVideoComingSoon = () => {
-    Alert.alert('Видеозвонок', 'Групповой видеозвонок скоро будет доступен.');
-  };
+  const renderVideoSlot = useCallback(
+    (participant: (typeof state.participants)[number]) => {
+      if (!participant.isVideoEnabled) {
+        return undefined;
+      }
+      if (participant.isLocal) {
+        if (!localCameraTrack) return undefined;
+        return (
+          <VideoView
+            videoTrack={localCameraTrack}
+            style={styles.participantVideo}
+            objectFit="cover"
+            mirror
+          />
+        );
+      }
+      const remoteTrack = remoteVideoTracks[participant.userId];
+      if (!remoteTrack) return undefined;
+      return (
+        <VideoView
+          videoTrack={remoteTrack}
+          style={styles.participantVideo}
+          objectFit="cover"
+        />
+      );
+    },
+    [localCameraTrack, remoteVideoTracks],
+  );
 
   if (!visible) return null;
 
@@ -164,7 +195,7 @@ export function GroupCallOverlay() {
           <Text style={styles.subtitle}>{statusLine}</Text>
         </View>
 
-        <ParticipantStage participants={state.participants} />
+        <ParticipantStage participants={state.participants} renderVideoSlot={renderVideoSlot} />
 
         <View style={styles.controls}>
           <ActionButton
@@ -182,10 +213,14 @@ export function GroupCallOverlay() {
             }}
           />
           <ActionButton
-            accessibilityLabel="Видеозвонок (скоро)"
+            accessibilityLabel={state.isVideoEnabled ? 'Выключить камеру' : 'Включить камеру'}
             icon="video"
-            tone="disabled"
-            onPress={showVideoComingSoon}
+            tone={
+              !canToggleVideo ? 'disabled' : state.isVideoEnabled ? 'accent' : 'neutral'
+            }
+            onPress={() => {
+              void toggleVideo();
+            }}
           />
           <ActionButton
             accessibilityLabel="Завершить звонок"
@@ -231,6 +266,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: withAlpha('#fff', 0.72),
     fontSize: 15,
+  },
+  participantVideo: {
+    ...StyleSheet.absoluteFillObject,
   },
   controls: {
     flexDirection: 'row',

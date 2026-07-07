@@ -1,10 +1,14 @@
-const mcpPreset =
-  process.env.NODE_ENV === 'development' || process.env.REACT_NATIVE_MCP_ENABLED === '1'
-    ? require.resolve('@ohah/react-native-mcp-server/babel-preset')
-    : null;
+function isMcpEnabled() {
+  const v = process.env.REACT_NATIVE_MCP_ENABLED;
+  return v === '1' || v === 'true';
+}
 
 module.exports = function (api) {
-  api.cache(true);
+  api.cache.using(() => process.env.REACT_NATIVE_MCP_ENABLED ?? '');
+
+  const mcpPreset = isMcpEnabled()
+    ? require.resolve('@ohah/react-native-mcp-server/babel-preset')
+    : null;
 
   return {
     presets: [

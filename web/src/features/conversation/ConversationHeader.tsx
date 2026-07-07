@@ -7,9 +7,16 @@ import { useMemo } from 'react';
 interface ConversationHeaderProps {
   chat: ChatSummary;
   onClick?: () => void;
+  onGroupCallPress?: () => void;
+  isUserInGroupCall?: boolean;
 }
 
-export function ConversationHeader({ chat, onClick }: ConversationHeaderProps) {
+export function ConversationHeader({
+  chat,
+  onClick,
+  onGroupCallPress,
+  isUserInGroupCall = false,
+}: ConversationHeaderProps) {
   const title = getChatDisplayName(chat);
   const { data: me } = useMeQuery();
 
@@ -48,12 +55,27 @@ export function ConversationHeader({ chat, onClick }: ConversationHeaderProps) {
   }, [chat, peer, title]);
 
   return (
-    <header className="conversation-header" onClick={onClick} style={{ cursor: 'pointer' }}>
+    <header className="conversation-header" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
       <Avatar name={title} imageUrl={chat.avatar_url} size={40} />
       <div className="conversation-header__info">
         <h1 className="conversation-header__title">{title}</h1>
         <span className="conversation-header__status">{userStatus}</span>
       </div>
+      {onGroupCallPress ? (
+        <button
+          type="button"
+          className="conversation-header__call-btn"
+          aria-label={isUserInGroupCall ? 'Открыть голосовой чат' : 'Начать голосовой чат'}
+          onClick={(e) => {
+            e.stopPropagation();
+            onGroupCallPress();
+          }}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C10.07 21 3 13.93 3 5a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z" />
+          </svg>
+        </button>
+      ) : null}
     </header>
   );
 }

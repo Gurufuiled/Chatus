@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import * as SecureStore from 'expo-secure-store';
 import { BlurTargetView } from 'expo-blur';
@@ -25,7 +25,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, {
   FadeInDown,
   FadeOutDown,
-  useAnimatedKeyboard,
   withTiming,
 } from 'react-native-reanimated';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -78,6 +77,8 @@ import {
   CustomAndroidChatHeader,
 } from '../components/CustomAndroidChatHeader';
 import { formatPresence, formatGroupSubtitle } from '../navigation/ChatsStack';
+import { ChatPillHeaderTitle } from '../components/ChatPillHeaderTitle';
+import { createIosOpaqueChatHeaderOptions } from '../presentation';
 
 import {
   MeBubbleChrome,
@@ -142,6 +143,7 @@ import { formatMediaDuration, formatPlaybackElapsedDuration } from '../utils/med
 import { parseChannelDeepLinkFromMessage } from '../utils/channelDeepLink';
 import {
   useChatComposerDockPaddingBottom,
+  useChatComposerKeyboard,
   useChatComposerKeyboardLiftStyles,
 } from '../utils/chatComposerKeyboard';
 import { bubbleRadius } from '../theme/stylePrimitives';
@@ -151,7 +153,7 @@ import { hideOthersMessageOnlyOnDevice } from '../services/locallyHiddenMessages
 import { useGroupCall } from '../contexts/GroupCallContext';
 import { GroupCallBanner } from '../components/group-call/GroupCallBanner';
 import { GroupCallMinimizedBar } from '../components/group-call/GroupCallMinimizedBar';
-import { formatGroupCallParticipantNames } from '../utils/groupCallSystemMessage';
+import { formatGroupCallParticipantNames, parseGroupCallSystemContent } from '../utils/groupCallSystemMessage';
 import {
   PeerFirstAlbumImage,
   PeerFirstFileBubble,
@@ -476,8 +478,9 @@ export function ChatScreen() {
   const listRef = useRef<FlatList<ChatListRow> | null>(null);
   const blurTargetRef = useRef<View | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
+  const chatComposerKeyboard = useChatComposerKeyboard();
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
+    useChatComposerKeyboardLiftStyles(chatComposerKeyboard);
   const [inputBarHeight, setInputBarHeight] = useState(82);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [selectionActionBarHeight, setSelectionActionBarHeight] = useState(104);
@@ -493,6 +496,7 @@ export function ChatScreen() {
     state: groupCallState,
     activeRoomByChatId,
     refreshActiveRoom,
+    applyActiveRoomSnapshot,
     startGroupCall,
     joinGroupCall,
     expand,
@@ -2912,6 +2916,86 @@ export function ChatScreen() {
     ? formatGroupSubtitle(currentChat?.members?.length)
     : formatPresence(presence?.is_online, presence?.last_seen);
   const avatarUrl = resolveAvatarUrl(currentChat?.avatar_url);
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'ios') return;
+
+    if (selectionMode) {
+      navigation.setOptions({ headerRight: () => null });
+      return;
+    }
+
+    navigation.setOptions({
+      ...createIosOpaqueChatHeaderOptions(themeColors.toolbar),
+      headerTitle: () => (
+        <ChatPillHeaderTitle
+          title={title}
+          subtitle={subtitle}
+          avatarUrl={avatarUrl}
+          onPress={
+            isGroupChat || peerId
+              ? () => {
+                  if (isGroupChat) {
+                    navigation.navigate('GroupProfile', { chatId, chatTitle: title });
+                    return;
+                  }
+                  if (!peerId) return;
+                  navigation.navigate('ChatProfile', { chatId, userId: peerId, chatTitle: title });
+                }
+              : undefined
+          }
+          accessibilityHint="Открывает профиль"
+        />
+      ),
+      headerRight: isGroupChat
+        ? () => null
+        : () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingRight: 6 }}>
+          <Pressable
+            onPress={() => setIsSearchMode(true)}
+            hitSlop={10}
+            style={({ pressed }) => ({
+              width: 40,
+              height: 40,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.65 : 1,
+            })}
+          >
+            <Feather name="search" size={22} color={themeColors.textPrimary} />
+          </Pressable>
+        </View>
+      ),
+    });
+  }, [
+    avatarUrl,
+    isGroupChat,
+    navigation,
+    peerId,
+    selectionMode,
+    subtitle,
+    themeColors.textPrimary,
+    themeColors.toolbar,
+    title,
+  ]);
+
+  useEffect(() => {
+    if (!isGroupChat || !activeGroupCallRoom?.id) return;
+    const endedForActiveRoom = messages.some((message) => {
+      if (message.msg_type !== 'system') return false;
+      const payload = parseGroupCallSystemContent(message.content);
+      return payload?.action === 'ended' && payload.room_id === activeGroupCallRoom.id;
+    });
+    if (endedForActiveRoom) {
+      applyActiveRoomSnapshot(chatId, null);
+    }
+  }, [
+    activeGroupCallRoom?.id,
+    applyActiveRoomSnapshot,
+    chatId,
+    isGroupChat,
+    messages,
+  ]);
 
   return (
     <View style={[styles.container, styles.chatRootTransparent]}>

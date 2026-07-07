@@ -7,6 +7,7 @@ import {
   type TelegramDialogRow,
 } from '../../stores/telegramAccountStore';
 import { buildChatRowLoadFailure } from './telegramDialogFallback';
+import { isTdChatMuted } from './tdlibUserProfile';
 import { buildDialogPreviewFromChat, previewTextFromChat } from './telegramDialogPreview';
 import { scheduleTopTelegramChatsPreload } from './telegramChatPreload';
 
@@ -134,6 +135,7 @@ export async function loadChatRow(
     const last = getNestedRecord(chat.last_message);
     const date = typeof last?.date === 'number' ? last.date * 1000 : null;
     const unreadCount = typeof chat.unread_count === 'number' ? chat.unread_count : 0;
+    const isMuted = isTdChatMuted(chat);
     const avatarSmallFile = getChatAvatarSmallFile(chat);
     // Аватар: используем уже скачанный путь (или прежний из снапшота) и не блокируем строку
     // сетевой загрузкой — недостающие файлы догружаются в фоне и появятся при следующем рефреше.
@@ -164,6 +166,7 @@ export async function loadChatRow(
       chatType,
       memberCount,
       isPinned: Array.isArray(chat.positions) && chat.positions.some((p: any) => p?.list?.['@type'] === 'chatListMain' && p?.is_pinned === true),
+      isMuted,
     };
   } catch {
     return buildChatRowLoadFailure(chatId, previous);

@@ -4,6 +4,9 @@ import { resolveMediaUrl } from '@/services/mediaService';
 import { formatMessageTime } from './messageFormatters';
 import { isChatusStickerMessage, tryDecodeStickerPayload } from '@/utils/stickerPayload';
 import { isAlbumCaption, isAlbumMessage } from '@/utils/albumCaption';
+import { parseGroupCallSystemContent } from '@/utils/groupCallSystemMessage';
+import { useOptionalGroupCall } from '@/contexts/GroupCallContext';
+import { GroupCallSystemMessage } from '@/features/group-call/GroupCallSystemMessage';
 import { VoiceMessagePlayer } from './VoiceMessagePlayer';
 import {
   FileMessageContent,
@@ -47,6 +50,7 @@ function getReplyThumbnailUrl(replyMessage: MappedMessage): string | null {
 
 interface MessageBubbleProps {
   chatId: string;
+  chatTitle?: string;
   message: MappedMessage;
   isOutgoing: boolean;
   selectionActive: boolean;
@@ -56,12 +60,15 @@ interface MessageBubbleProps {
 
 export function MessageBubble({
   chatId,
+  chatTitle = 'Группа',
   message,
   isOutgoing,
   selectionActive,
   onContextMenu,
   onHighlightMessage,
 }: MessageBubbleProps) {
+  const groupCall = useOptionalGroupCall();
+
   if (message.is_deleted) {
     return (
       <div
@@ -74,6 +81,40 @@ export function MessageBubble({
 
   const { data: messages } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
+
+  const groupCallPayload =
+    message.msg_type === 'system' ? parseGroupCallSystemContent(message.content) : null;
+
+  if (groupCallPayload) {
+    const activeRoomId = groupCall?.activeRoomByChatId[chatId]?.id ?? null;
+    const canJoin =
+      groupCallPayload.action === 'started' &&
+      Boolean(activeRoomId && activeRoomId === groupCallPayload.room_id) &&
+      !groupCall?.isInCallForChat(chatId);
+    return (
+      <GroupCallSystemMessage
+        payload={groupCallPayload}
+        canJoin={canJoin}
+        onJoin={
+          canJoin && groupCall
+            ? () => void groupCall.joinGroupCall(groupCallPayload.room_id, chatId, chatTitle)
+            : undefined
+        }
+        createdAt={message.created_at}
+        status={message.status}
+      />
+    );
+  }
+
+  if (message.msg_type === 'system') {
+    return (
+      <div className="message-bubble message-bubble--system">
+        <p className="message-bubble__text message-bubble__text--system">
+          {message.content?.trim() || 'Системное сообщение'}
+        </p>
+      </div>
+    );
+  }
 
   const replyMessage = message.reply_to_id
     ? messages?.find((m) => m.id === message.reply_to_id)

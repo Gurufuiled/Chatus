@@ -48,7 +48,6 @@ export function CustomAndroidChatHeader({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const hasRightActions = Boolean(onSearchPress || (showGroupCallButton && onGroupCallPress));
 
   const openProfile = () => {
     if (isGroupChat) {
@@ -72,23 +71,19 @@ export function CustomAndroidChatHeader({
       ]}
     >
       <View style={styles.toolbar}>
-        <Pressable
-          style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-          onPress={() => navigation.canGoBack() && navigation.goBack()}
-          hitSlop={12}
-        >
-          <View style={styles.backButtonPill}>
-            <Feather name="arrow-left" size={24} color={colors.textPrimary} />
-          </View>
-        </Pressable>
+        <View style={styles.leftSlot}>
+          <Pressable
+            style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
+            onPress={() => navigation.canGoBack() && navigation.goBack()}
+            hitSlop={12}
+          >
+            <View style={styles.backButtonPill}>
+              <Feather name="arrow-left" size={24} color={colors.textPrimary} />
+            </View>
+          </Pressable>
+        </View>
 
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.pillTitleRoot,
-            hasRightActions ? { right: 104 } : null,
-          ]}
-        >
+        <View pointerEvents="box-none" style={styles.centerSlot}>
           <ChatPillHeaderTitle
             title={title}
             subtitle={subtitle}
@@ -103,7 +98,7 @@ export function CustomAndroidChatHeader({
           />
         </View>
 
-        <View style={styles.rightActions}>
+        <View style={styles.rightSlot}>
           {onSearchPress ? (
             <Pressable
               onPress={onSearchPress}
@@ -147,7 +142,27 @@ function createStyles(colors: ThemeColors) {
       height: ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
-      paddingRight: 16,
+    },
+    leftSlot: {
+      width: 88,
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 2,
+    },
+    centerSlot: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 4,
+    },
+    rightSlot: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      width: 88,
+      paddingRight: 8,
+      gap: 4,
+      zIndex: 2,
     },
     backButton: {
       width: 56,
@@ -172,21 +187,6 @@ function createStyles(colors: ThemeColors) {
     },
     backButtonPressed: {
       opacity: 0.65,
-    },
-    pillTitleRoot: {
-      position: 'absolute',
-      left: 56,
-      right: 56,
-      top: 5,
-      bottom: 5,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    rightActions: {
-      marginLeft: 'auto',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
     },
     actionButton: {
       width: 40,

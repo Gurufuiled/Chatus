@@ -158,6 +158,7 @@ export const TelegramDialogListRow = React.memo(
                   <View
                     style={[
                       rowStyles.unreadBadge,
+                      item.isMuted && rowStyles.unreadBadgeMuted,
                       item.unreadCount > 99 && rowStyles.unreadBadgeWide,
                     ]}
                   >

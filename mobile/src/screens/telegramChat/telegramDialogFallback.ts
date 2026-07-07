@@ -43,5 +43,7 @@ export function buildChatRowLoadFailure(
     unreadCount: typeof previous?.unreadCount === 'number' ? previous.unreadCount : 0,
     chatType: previous?.chatType,
     memberCount: previous?.memberCount,
+    isPinned: previous?.isPinned,
+    isMuted: previous?.isMuted,
   };
 }

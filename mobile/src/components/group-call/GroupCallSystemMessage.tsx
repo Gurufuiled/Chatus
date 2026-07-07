@@ -96,16 +96,17 @@ export function GroupCallSystemMessage({
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    alignItems: 'flex-end',
+    paddingVertical: 6,
+    paddingHorizontal: 0,
   },
   card: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    maxWidth: '88%',
+    maxWidth: '82%',
+    alignSelf: 'flex-end',
     shadowOpacity: 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
@@ -139,7 +140,7 @@ const styles = StyleSheet.create({
   },
   joinButton: {
     marginTop: 10,
-    alignSelf: 'center',
+    alignSelf: 'flex-end',
     borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 8,

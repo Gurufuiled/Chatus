@@ -37,8 +37,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const sendPendingMutation = useSendPendingAttachmentsMutation();
   const { data: me } = useMeQuery();
 
-  const isSending = sendMutation.isPending || sendPendingMutation.isPending;
-  const voiceDisabled = disabled || isSending || !me?.id;
+  const voiceDisabled = disabled || !me?.id;
   const voice = useVoiceRecorder(chatId, voiceDisabled);
 
   const resetTextareaHeight = () => {
@@ -132,7 +131,8 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   };
 
   const isRecording = voice.isRecording || voice.isProcessing;
-  const isDisabled = disabled || isSending || !me?.id || isRecording;
+  const isSending = sendMutation.isPending || sendPendingMutation.isPending;
+  const isDisabled = disabled || !me?.id || isRecording || isSending;
   const hasText = draft.trim().length > 0;
   const hasAttachments = attachments.length > 0;
   const canSend = hasText || hasAttachments;
@@ -206,7 +206,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
           elapsedMs={voice.elapsedMs}
           isRecording={voice.isRecording}
           isProcessing={voice.isProcessing}
-          isBusy={voice.isBusy}
+          isBusy={voice.isBusy || isSending}
           onStartRecording={voice.startRecording}
           onCancelRecording={voice.cancelRecording}
           onFinishRecording={voice.finishRecording}

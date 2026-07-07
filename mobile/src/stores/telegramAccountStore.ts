@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { resetTelegramPushRegistrationFlag } from '../services/pushNotificationsService';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
-import { normalizeTelegramDialogRows } from '../screens/telegramChat/telegramDialogFallback';
+import { normalizeTelegramDialogRows, normalizeTelegramDialogRow } from '../screens/telegramChat/telegramDialogFallback';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
 
@@ -45,6 +45,8 @@ export type TelegramDialogRow = {
   memberCount?: number;
   /** Whether the chat is pinned in the main chat list. */
   isPinned?: boolean;
+  /** Whether the chat has notifications muted. */
+  isMuted?: boolean;
 };
 
 type TelegramAccountState = {
@@ -67,6 +69,8 @@ type TelegramAccountActions = {
   setLastError: (msg: string | null) => void;
   setDialogs: (rows: TelegramDialogRow[]) => void;
   setDialogsSyncing: (syncing: boolean) => void;
+  /** Merge partial fields into one dialog row (e.g. clear unread after opening chat). */
+  patchDialog: (chatId: string, patch: Partial<TelegramDialogRow>) => void;
   resetTelegramSession: () => Promise<void>;
 };
 
@@ -120,6 +124,19 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
   setLastError: (lastError) => set({ lastError }),
   setDialogs: (dialogs) => set({ dialogs: normalizeTelegramDialogRows(dialogs) }),
   setDialogsSyncing: (dialogsSyncing) => set({ dialogsSyncing }),
+
+  patchDialog: (chatId, patch) => {
+    const key = String(chatId);
+    const dialogs = get().dialogs;
+    const index = dialogs.findIndex((row) => row.chatId === key || row.id === key);
+    if (index === -1) return;
+    const next = [...dialogs];
+    next[index] = normalizeTelegramDialogRow({ ...next[index], ...patch, chatId: key, id: key });
+    if (patch.lastMessageAt != null) {
+      next.sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+    }
+    set({ dialogs: next });
+  },
 
   resetTelegramSession: async () => {
     try {
