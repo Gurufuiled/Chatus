@@ -169,14 +169,10 @@
 .group-call-stage {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.group-call-stage--scroll {
-  align-items: flex-start;
 }
 
 .group-call-stage__grid {
@@ -205,6 +201,7 @@
 
 .group-call-tile {
   position: relative;
+  flex-shrink: 0;
 }
 
 .group-call-tile--speaking .group-call-tile__inner {
@@ -243,6 +240,11 @@
 
 .group-call-tile__video:not(.group-call-tile__video--mirror) {
   transform: none;
+}
+
+.group-call-tile__video--contain {
+  object-fit: contain;
+  background: #0a0d12;
 }
 
 .group-call-tile__avatar {

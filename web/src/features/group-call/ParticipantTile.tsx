@@ -1,10 +1,11 @@
 import type { GroupCallParticipant } from '@/contexts/GroupCallContext';
 
-export const TILE_ASPECT_RATIO = 4 / 5;
+export const TILE_ASPECT_RATIO = 16 / 9;
 
 type ParticipantTileProps = {
   participant: GroupCallParticipant;
   width: number;
+  height?: number;
   isDominantSpeaker?: boolean;
   videoSlot?: React.ReactNode;
 };
@@ -16,10 +17,11 @@ function buildInitial(name: string) {
 export function ParticipantTile({
   participant,
   width,
+  height: heightProp,
   isDominantSpeaker = false,
   videoSlot,
 }: ParticipantTileProps) {
-  const height = width / TILE_ASPECT_RATIO;
+  const height = heightProp ?? width / TILE_ASPECT_RATIO;
   const isSpeaking = participant.isSpeaking;
   const isHighlighted = isSpeaking || isDominantSpeaker;
   const displayName = participant.isLocal ? 'Вы' : participant.displayName;

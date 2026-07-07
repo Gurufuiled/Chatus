@@ -140,24 +140,50 @@ function localParticipantProfile(currentUserId: string): {
   };
 }
 
+function isScreenShareTrackEnabled(participant: Participant): boolean {
+  const pub = participant.getTrackPublication(Track.Source.ScreenShare);
+  return Boolean(pub?.track && !pub.isMuted && pub.isEnabled);
+}
+
 function isCameraTrackEnabled(participant: Participant): boolean {
   const camPub = participant.getTrackPublication(Track.Source.Camera);
   return Boolean(camPub?.track && !camPub.isMuted && camPub.isEnabled);
 }
 
-function readLocalCameraTrack(room: Room): LocalVideoTrack | undefined {
-  const camPub = room.localParticipant.getTrackPublication(Track.Source.Camera);
-  const track = camPub?.track;
+function isVideoTrackEnabled(participant: Participant): boolean {
+  return isScreenShareTrackEnabled(participant) || isCameraTrackEnabled(participant);
+}
+
+function readParticipantVideoTrack(participant: Participant): VideoTrack | undefined {
+  const screenPub = participant.getTrackPublication(Track.Source.ScreenShare);
+  const screenTrack = screenPub?.track;
+  if (
+    screenTrack?.kind === Track.Kind.Video &&
+    screenPub &&
+    !screenPub.isMuted &&
+    screenPub.isEnabled
+  ) {
+    return screenTrack as VideoTrack;
+  }
+  const camPub = participant.getTrackPublication(Track.Source.Camera);
+  const camTrack = camPub?.track;
+  if (camTrack?.kind === Track.Kind.Video && camPub && !camPub.isMuted && camPub.isEnabled) {
+    return camTrack as VideoTrack;
+  }
+  return undefined;
+}
+
+function readLocalPreviewTrack(room: Room): LocalVideoTrack | undefined {
+  const track = readParticipantVideoTrack(room.localParticipant);
   return track?.kind === Track.Kind.Video ? (track as LocalVideoTrack) : undefined;
 }
 
 function readRemoteVideoTracks(room: Room): Record<string, VideoTrack> {
   const tracks: Record<string, VideoTrack> = {};
   for (const participant of room.remoteParticipants.values()) {
-    if (!isCameraTrackEnabled(participant)) continue;
-    const camPub = participant.getTrackPublication(Track.Source.Camera);
-    const track = camPub?.track;
-    if (track?.kind === Track.Kind.Video) {
+    if (!isVideoTrackEnabled(participant)) continue;
+    const track = readParticipantVideoTrack(participant);
+    if (track) {
       tracks[participant.identity] = track;
     }
   }
@@ -178,7 +204,7 @@ function mapLiveKitParticipant(
     isLocal,
     isMuted: micPub ? micPub.isMuted || !micPub.isEnabled : false,
     isSpeaking: participant.isSpeaking,
-    isVideoEnabled: isCameraTrackEnabled(participant),
+    isVideoEnabled: isVideoTrackEnabled(participant),
   };
 }
 
@@ -292,7 +318,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   }, [detachRoom]);
 
   const syncVideoTracksFromRoom = useCallback((room: Room) => {
-    setLocalCameraTrack(readLocalCameraTrack(room));
+    setLocalCameraTrack(readLocalPreviewTrack(room));
     setRemoteVideoTracks(readRemoteVideoTracks(room));
   }, []);
 

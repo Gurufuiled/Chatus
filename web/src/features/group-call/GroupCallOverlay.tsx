@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ConnectionState } from 'livekit-client';
+import { ConnectionState, Track } from 'livekit-client';
 import { useGroupCall } from '@/contexts/GroupCallContext';
 import { ParticipantStage } from './ParticipantStage';
 import { LiveKitVideoRenderer } from './LiveKitVideoRenderer';
@@ -151,19 +151,26 @@ export function GroupCallOverlay() {
       if (!participant.isVideoEnabled) return undefined;
       if (participant.isLocal) {
         if (!localCameraTrack) return undefined;
+        const isScreenShare = localCameraTrack.source === Track.Source.ScreenShare;
         return (
           <LiveKitVideoRenderer
             track={localCameraTrack}
-            mirror={!state.isScreenShareEnabled}
-            className={`group-call-tile__video${!state.isScreenShareEnabled ? ' group-call-tile__video--mirror' : ''}`}
+            mirror={!isScreenShare}
+            className={`group-call-tile__video${isScreenShare ? ' group-call-tile__video--contain' : ' group-call-tile__video--mirror'}`}
           />
         );
       }
       const remoteTrack = remoteVideoTracks[participant.userId];
       if (!remoteTrack) return undefined;
-      return <LiveKitVideoRenderer track={remoteTrack} className="group-call-tile__video" />;
+      const isScreenShare = remoteTrack.source === Track.Source.ScreenShare;
+      return (
+        <LiveKitVideoRenderer
+          track={remoteTrack}
+          className={`group-call-tile__video${isScreenShare ? ' group-call-tile__video--contain' : ''}`}
+        />
+      );
     },
-    [localCameraTrack, remoteVideoTracks, state.isScreenShareEnabled],
+    [localCameraTrack, remoteVideoTracks],
   );
 
   if (!visible) return null;

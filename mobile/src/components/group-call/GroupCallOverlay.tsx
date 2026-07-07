@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ConnectionState } from 'livekit-client';
+import { ConnectionState, Track } from 'livekit-client';
 import { VideoView } from '@livekit/react-native';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS } from '../../icons/telegram';
 import { useGroupCall } from '../../contexts/GroupCallContext';
@@ -157,22 +157,30 @@ export function GroupCallOverlay() {
       }
       if (participant.isLocal) {
         if (!localCameraTrack) return undefined;
+        const isScreenShare = localCameraTrack.source === Track.Source.ScreenShare;
         return (
           <VideoView
             videoTrack={localCameraTrack}
-            style={styles.participantVideo}
-            objectFit="cover"
-            mirror
+            style={[
+              styles.participantVideo,
+              isScreenShare ? styles.participantVideoContain : null,
+            ]}
+            objectFit={isScreenShare ? 'contain' : 'cover'}
+            mirror={!isScreenShare}
           />
         );
       }
       const remoteTrack = remoteVideoTracks[participant.userId];
       if (!remoteTrack) return undefined;
+      const isScreenShare = remoteTrack.source === Track.Source.ScreenShare;
       return (
         <VideoView
           videoTrack={remoteTrack}
-          style={styles.participantVideo}
-          objectFit="cover"
+          style={[
+            styles.participantVideo,
+            isScreenShare ? styles.participantVideoContain : null,
+          ]}
+          objectFit={isScreenShare ? 'contain' : 'cover'}
         />
       );
     },
@@ -269,6 +277,9 @@ const styles = StyleSheet.create({
   },
   participantVideo: {
     ...StyleSheet.absoluteFillObject,
+  },
+  participantVideoContain: {
+    backgroundColor: '#0A0D12',
   },
   controls: {
     flexDirection: 'row',

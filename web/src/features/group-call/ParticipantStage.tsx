@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GroupCallParticipant } from '@/contexts/GroupCallContext';
 import { ParticipantTile, TILE_ASPECT_RATIO } from './ParticipantTile';
 
 const STAGE_PADDING_H = 16;
+const STAGE_PADDING_V = 12;
 const TILE_GAP = 10;
+const SINGLE_TILE_MAX_WIDTH = 320;
 
 type ParticipantStageProps = {
   participants: GroupCallParticipant[];
@@ -13,35 +15,81 @@ type ParticipantStageProps = {
 type StageLayout = {
   columns: number;
   tileWidth: number;
-  scrollable: boolean;
+  tileHeight: number;
   centerStage: boolean;
 };
 
-function computeLayout(count: number, containerWidth: number): StageLayout {
-  const innerWidth = containerWidth - STAGE_PADDING_H * 2;
+function computeLayout(
+  count: number,
+  containerWidth: number,
+  containerHeight: number,
+): StageLayout {
+  const innerWidth = Math.max(0, containerWidth - STAGE_PADDING_H * 2);
+  const innerHeight = Math.max(0, containerHeight - STAGE_PADDING_V * 2);
 
   if (count <= 0) {
-    return { columns: 1, tileWidth: innerWidth * 0.55, scrollable: false, centerStage: true };
-  }
-  if (count === 1) {
+    const tileWidth = Math.min(innerWidth * 0.55, SINGLE_TILE_MAX_WIDTH);
     return {
       columns: 1,
-      tileWidth: Math.min(innerWidth * 0.58, 280),
-      scrollable: false,
+      tileWidth,
+      tileHeight: tileWidth / TILE_ASPECT_RATIO,
       centerStage: true,
     };
   }
-  if (count === 2) {
-    const tileWidth = (innerWidth - TILE_GAP) / 2;
-    return { columns: 2, tileWidth, scrollable: false, centerStage: false };
+
+  const maxColumns = count >= 7 ? 3 : count >= 2 ? 2 : 1;
+  let best: StageLayout | null = null;
+  let bestArea = -1;
+
+  for (let columns = 1; columns <= Math.min(count, maxColumns); columns += 1) {
+    const rows = Math.ceil(count / columns);
+    const maxTileWidth = (innerWidth - TILE_GAP * (columns - 1)) / columns;
+    const maxTileHeight = (innerHeight - TILE_GAP * (rows - 1)) / rows;
+    if (maxTileWidth <= 0 || maxTileHeight <= 0) continue;
+
+    let tileWidth = maxTileWidth;
+    let tileHeight = tileWidth / TILE_ASPECT_RATIO;
+    if (tileHeight > maxTileHeight) {
+      tileHeight = maxTileHeight;
+      tileWidth = tileHeight * TILE_ASPECT_RATIO;
+    }
+
+    const area = tileWidth * tileHeight;
+    if (area > bestArea) {
+      bestArea = area;
+      best = {
+        columns,
+        tileWidth,
+        tileHeight,
+        centerStage: count === 1,
+      };
+    }
   }
-  if (count <= 4) {
-    const tileWidth = (innerWidth - TILE_GAP) / 2;
-    return { columns: 2, tileWidth, scrollable: false, centerStage: false };
+
+  const layout = best ?? {
+    columns: 1,
+    tileWidth: Math.min(innerWidth, 200),
+    tileHeight: Math.min(innerWidth, 200) / TILE_ASPECT_RATIO,
+    centerStage: true,
+  };
+
+  if (!best) {
+    if (layout.tileHeight > innerHeight && innerHeight > 0) {
+      layout.tileHeight = innerHeight;
+      layout.tileWidth = layout.tileHeight * TILE_ASPECT_RATIO;
+    }
   }
-  const columns = count >= 7 ? 3 : 2;
-  const tileWidth = (innerWidth - TILE_GAP * (columns - 1)) / columns;
-  return { columns, tileWidth, scrollable: true, centerStage: false };
+
+  if (count === 1) {
+    layout.tileWidth = Math.min(layout.tileWidth, SINGLE_TILE_MAX_WIDTH);
+    layout.tileHeight = layout.tileWidth / TILE_ASPECT_RATIO;
+    if (layout.tileHeight > innerHeight) {
+      layout.tileHeight = innerHeight;
+      layout.tileWidth = layout.tileHeight * TILE_ASPECT_RATIO;
+    }
+  }
+
+  return layout;
 }
 
 function chunkRows<T>(items: T[], columns: number): T[][] {
@@ -53,19 +101,29 @@ function chunkRows<T>(items: T[], columns: number): T[][] {
 }
 
 export function ParticipantStage({ participants, renderVideoSlot }: ParticipantStageProps) {
-  const [containerWidth, setContainerWidth] = useState(
-    typeof window !== 'undefined' ? window.innerWidth : 360,
-  );
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
-    const onResize = () => setContainerWidth(window.innerWidth);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    const el = stageRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      setContainerSize({
+        width: el.clientWidth,
+        height: el.clientHeight,
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const layout = useMemo(
-    () => computeLayout(participants.length, containerWidth),
-    [participants.length, containerWidth],
+    () => computeLayout(participants.length, containerSize.width, containerSize.height),
+    [participants.length, containerSize.height, containerSize.width],
   );
   const rows = useMemo(
     () => chunkRows(participants, layout.columns),
@@ -76,34 +134,35 @@ export function ParticipantStage({ participants, renderVideoSlot }: ParticipantS
     [participants],
   );
 
-  const grid = (
-    <div
-      className={`group-call-stage__grid${layout.centerStage ? ' group-call-stage__grid--centered' : ''}`}
-    >
-      {rows.map((row, rowIndex) => (
-        <div
-          key={`row-${rowIndex}`}
-          className={`group-call-stage__row${row.length < layout.columns ? ' group-call-stage__row--centered' : ''}`}
-        >
-          {row.map((participant) => (
-            <ParticipantTile
-              key={participant.userId}
-              participant={participant}
-              width={layout.tileWidth}
-              isDominantSpeaker={participant.isSpeaking && speakingCount === 1}
-              videoSlot={renderVideoSlot?.(participant)}
-            />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-
-  if (layout.scrollable) {
-    return <div className="group-call-stage group-call-stage--scroll">{grid}</div>;
+  if (containerSize.width <= 0 || containerSize.height <= 0) {
+    return <div ref={stageRef} className="group-call-stage" />;
   }
 
-  return <div className="group-call-stage">{grid}</div>;
+  return (
+    <div ref={stageRef} className="group-call-stage">
+      <div
+        className={`group-call-stage__grid${layout.centerStage ? ' group-call-stage__grid--centered' : ''}`}
+      >
+        {rows.map((row, rowIndex) => (
+          <div
+            key={`row-${rowIndex}`}
+            className={`group-call-stage__row${row.length < layout.columns ? ' group-call-stage__row--centered' : ''}`}
+          >
+            {row.map((participant) => (
+              <ParticipantTile
+                key={participant.userId}
+                participant={participant}
+                width={layout.tileWidth}
+                height={layout.tileHeight}
+                isDominantSpeaker={participant.isSpeaking && speakingCount === 1}
+                videoSlot={renderVideoSlot?.(participant)}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export { TILE_ASPECT_RATIO };
