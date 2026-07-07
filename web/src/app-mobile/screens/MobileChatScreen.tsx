@@ -34,7 +34,10 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
 
   if (chatsLoading) {
     return (
-      <div className="mobile-chat">
+      <div
+        className="mobile-chat"
+        style={{ '--mobile-chat-wallpaper': `url(${wallpaperUrl})` } as React.CSSProperties}
+      >
         <div className="mobile-chat__messages-loading">Загрузка…</div>
       </div>
     );
@@ -42,7 +45,10 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
 
   if (!chat) {
     return (
-      <div className="mobile-chat">
+      <div
+        className="mobile-chat"
+        style={{ '--mobile-chat-wallpaper': `url(${wallpaperUrl})` } as React.CSSProperties}
+      >
         <header className="mobile-chat__header">
           <button
             type="button"

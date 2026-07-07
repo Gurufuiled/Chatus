@@ -526,7 +526,10 @@ html:has(.mobile-app) #root {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--m-chat-bg);
+  background-color: var(--m-chat-bg);
+  background-image: var(--mobile-chat-wallpaper, none);
+  background-size: 420px;
+  background-repeat: repeat;
 }
 
 .mobile-chat .mobile-chat__messages {
@@ -545,6 +548,8 @@ html:has(.mobile-app) #root {
 }
 
 .mobile-chat__header--pill {
+  padding-left: 0;
+  padding-right: 0;
   background: transparent;
   border-bottom: none;
 }
@@ -754,10 +759,7 @@ button.mobile-pill-header-title:active {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background-color: var(--m-chat-bg);
-  background-image: var(--mobile-chat-wallpaper, none);
-  background-size: 420px;
-  background-repeat: repeat;
+  background: transparent;
 }
 
 .mobile-chat__messages-loading,
@@ -868,7 +870,7 @@ button.mobile-pill-header-title:active {
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  padding: 8px 10px calc(10px + var(--m-safe-bottom));
+  padding: 8px 0 calc(10px + var(--m-safe-bottom));
   background: transparent;
   flex-shrink: 0;
 }
@@ -878,6 +880,7 @@ button.mobile-pill-header-title:active {
   align-items: flex-end;
   gap: 6px;
   min-height: 54px;
+  margin: 0 4px;
   padding: 4px 6px 4px 4px;
   border-radius: 27px;
   background: var(--m-composer-surface);
@@ -893,6 +896,7 @@ button.mobile-pill-header-title:active {
 
 .mobile-composer__attachments {
   width: 100%;
+  padding: 0 4px;
 }
 
 .mobile-composer__attachments .composer-attachments {
@@ -942,10 +946,12 @@ button.mobile-pill-header-title:active {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0 4px;
   padding: 6px 12px;
   background: #fef2f2;
   color: #b91c1c;
   font-size: 13px;
+  border-radius: 12px;
 }
 
 .mobile-composer-wrap .composer-error__dismiss {
@@ -1069,6 +1075,7 @@ button.mobile-pill-header-title:active {
   align-items: center;
   gap: 12px;
   width: 100%;
+  margin: 0 4px;
 }
 
 .mobile-composer__recording-cancel {
@@ -1271,6 +1278,11 @@ button.mobile-pill-header-title:active {
   padding: 4px 12px;
   min-width: 72px;
   font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-tab-bar__item:active {
+  opacity: 0.7;
 }
 
 .mobile-tab-bar__item--active {
