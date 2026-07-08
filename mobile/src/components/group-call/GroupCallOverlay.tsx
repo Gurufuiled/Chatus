@@ -164,7 +164,7 @@ export function GroupCallOverlay() {
             style={[
               styles.participantVideo,
               isScreenShare ? styles.participantVideoContain : null,
-            ]}
+            ] as any}
             objectFit={isScreenShare ? 'contain' : 'cover'}
             mirror={!isScreenShare}
           />
@@ -179,7 +179,7 @@ export function GroupCallOverlay() {
           style={[
             styles.participantVideo,
             isScreenShare ? styles.participantVideoContain : null,
-          ]}
+          ] as any}
           objectFit={isScreenShare ? 'contain' : 'cover'}
         />
       );
