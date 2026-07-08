@@ -1,0 +1,22 @@
+
+> server@0.0.1 start /app/server
+> nest start
+
+(node:106727) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PrismaClientInitializationError: Can't reach database server at `127.0.0.1:5433`
+
+Please make sure your database server is running at `127.0.0.1:5433`.
+    at r (/app/server/node_modules/.pnpm/@prisma+client@6.19.3_prisma@6.19.3_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/core/engines/library/LibraryEngine.ts:440:17)
+    at async Proxy.onModuleInit (/app/server/src/prisma/prisma.service.ts:10:5)
+    at async Promise.all (index 0)
+    at async callModuleInitHook (/app/server/node_modules/.pnpm/@nestjs+core@11.1.28_@nestjs+common@11.1.28_class-transformer@0.5.1_class-validator@0.1_cf3bda414d9a599c1f75a6b5fbaf342d/node_modules/@nestjs/core/hooks/on-module-init.hook.js:43:5)
+    at async NestApplication.callInitHook (/app/server/node_modules/.pnpm/@nestjs+core@11.1.28_@nestjs+common@11.1.28_class-transformer@0.5.1_class-validator@0.1_cf3bda414d9a599c1f75a6b5fbaf342d/node_modules/@nestjs/core/nest-application-context.js:252:13)
+    at async NestApplication.init (/app/server/node_modules/.pnpm/@nestjs+core@11.1.28_@nestjs+common@11.1.28_class-transformer@0.5.1_class-validator@0.1_cf3bda414d9a599c1f75a6b5fbaf342d/node_modules/@nestjs/core/nest-application.js:105:9)
+    at async NestApplication.listen (/app/server/node_modules/.pnpm/@nestjs+core@11.1.28_@nestjs+common@11.1.28_class-transformer@0.5.1_class-validator@0.1_cf3bda414d9a599c1f75a6b5fbaf342d/node_modules/@nestjs/core/nest-application.js:177:13)
+    at async bootstrap (/app/server/src/main.ts:219:3) {
+  clientVersion: '6.19.3',
+  errorCode: 'P1001',
+  retryable: undefined
+}
+ ELIFECYCLE  Command failed with exit code 1.
