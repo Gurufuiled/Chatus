@@ -2831,6 +2831,56 @@ export function TelegramChatScreen() {
     ],
   );
 
+  const keyExtractor = useCallback((item: TelegramMessageRow) => item.id, []);
+
+  const renderItem = useCallback(
+    (info: { item: TelegramMessageRow; index: number }) => {
+      const rows = messagesRef.current;
+      let olderComparableDateMs: number | null = null;
+      for (let j = info.index + 1; j < rows.length; j += 1) {
+        const candidateMs = rows[j]!.dateMs;
+        if (isValidChatTimestamp(candidateMs)) {
+          olderComparableDateMs = candidateMs;
+          break;
+        }
+      }
+      const showDaySeparator =
+        isValidChatTimestamp(info.item.dateMs) &&
+        (olderComparableDateMs == null ||
+          getChatDayKey(info.item.dateMs) !== getChatDayKey(olderComparableDateMs));
+      return (
+        <View>
+          {renderMessageRow(info)}
+          {showDaySeparator ? (
+            <ChatDaySeparator label={formatChatDayLabel(info.item.dateMs)} />
+          ) : null}
+        </View>
+      );
+    },
+    [renderMessageRow],
+  );
+
+  const onScrollToIndexFailed = useCallback((info: { index: number }) => {
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({
+        index: info.index,
+        animated: true,
+        viewPosition: 0.5,
+      });
+    }, 120);
+  }, []);
+
+  const listEmptyComponent = useMemo(
+    () => (
+      <View style={styles.empty}>
+        <Text style={styles.emptyText}>
+          {lastError ?? (loading ? 'Загружаем историю Telegram...' : 'История пуста')}
+        </Text>
+      </View>
+    ),
+    [lastError, loading, styles.empty, styles.emptyText],
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: 'transparent' }}>
       <InteractiveChatBackShell
@@ -2936,30 +2986,8 @@ export function TelegramChatScreen() {
             <FlatList
               ref={listRef}
               data={messages}
-              keyExtractor={(item) => item.id}
-              renderItem={(info) => {
-                const rows = messagesRef.current;
-                let olderComparableDateMs: number | null = null;
-                for (let j = info.index + 1; j < rows.length; j += 1) {
-                  const candidateMs = rows[j]!.dateMs;
-                  if (isValidChatTimestamp(candidateMs)) {
-                    olderComparableDateMs = candidateMs;
-                    break;
-                  }
-                }
-                const showDaySeparator =
-                  isValidChatTimestamp(info.item.dateMs) &&
-                  (olderComparableDateMs == null ||
-                    getChatDayKey(info.item.dateMs) !== getChatDayKey(olderComparableDateMs));
-                return (
-                  <View>
-                    {renderMessageRow(info)}
-                    {showDaySeparator ? (
-                      <ChatDaySeparator label={formatChatDayLabel(info.item.dateMs)} />
-                    ) : null}
-                  </View>
-                );
-              }}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
               inverted
               style={styles.messagesList}
               contentContainerStyle={[
@@ -2976,22 +3004,8 @@ export function TelegramChatScreen() {
               onMomentumScrollEnd={handleMessagesListScrollEnd}
               onScrollEndDrag={handleMessagesListScrollEnd}
               onContentSizeChange={recheckFabVisibility}
-              onScrollToIndexFailed={(info) => {
-                setTimeout(() => {
-                  listRef.current?.scrollToIndex({
-                    index: info.index,
-                    animated: true,
-                    viewPosition: 0.5,
-                  });
-                }, 120);
-              }}
-              ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={styles.emptyText}>
-                    {lastError ?? (loading ? 'Загружаем историю Telegram...' : 'История пуста')}
-                  </Text>
-                </View>
-              }
+              onScrollToIndexFailed={onScrollToIndexFailed}
+              ListEmptyComponent={listEmptyComponent}
             />
             {!isSearchMode && !telegramSelectionMode && !isVoiceRecording ? (
               <ChatScrollToBottomButton
