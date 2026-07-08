@@ -175,6 +175,7 @@ export function injectBridgeIntoFrame(
   iframe: HTMLIFrameElement,
   script: string,
   initMessage: Record<string, unknown>,
+  targetOrigin: string = '*',
 ): void {
   try {
     const doc = iframe.contentDocument;
@@ -187,5 +188,5 @@ export function injectBridgeIntoFrame(
   } catch {
     /* cross-origin */
   }
-  iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), '*');
+  iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), targetOrigin);
 }

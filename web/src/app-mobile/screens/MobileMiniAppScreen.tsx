@@ -95,15 +95,30 @@ export function MobileMiniAppScreen({ appId, title }: MobileMiniAppScreenProps) 
     [bridgeContext],
   );
 
+  const targetOrigin = useMemo(() => {
+    if (!session?.base_url) return '*';
+    try {
+      const url = new URL(session.base_url);
+      return url.origin;
+    } catch {
+      return '*';
+    }
+  }, [session?.base_url]);
+
   const injectBridge = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe || !bridgeScript || !bridgeContext) return;
-    injectBridgeIntoFrame(iframe, bridgeScript, {
-      themeParams: bridgeContext.themeParams,
-      colorScheme: bridgeContext.colorScheme,
-      viewportHeight: bridgeContext.viewportHeight,
-    });
-  }, [bridgeContext, bridgeScript]);
+    injectBridgeIntoFrame(
+      iframe,
+      bridgeScript,
+      {
+        themeParams: bridgeContext.themeParams,
+        colorScheme: bridgeContext.colorScheme,
+        viewportHeight: bridgeContext.viewportHeight,
+      },
+      targetOrigin,
+    );
+  }, [bridgeContext, bridgeScript, targetOrigin]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -162,9 +177,9 @@ export function MobileMiniAppScreen({ appId, title }: MobileMiniAppScreenProps) 
         themeParams: bridgeContext.themeParams,
         colorScheme: bridgeContext.colorScheme,
       }),
-      '*',
+      targetOrigin,
     );
-  }, [bridgeContext]);
+  }, [bridgeContext, targetOrigin]);
 
   const handleBack = useCallback(() => {
     if (window.history.length > 1) {
