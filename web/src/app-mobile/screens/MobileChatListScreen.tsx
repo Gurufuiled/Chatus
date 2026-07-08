@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useMobileUiStore } from '@/stores/mobileUiStore';
@@ -16,6 +17,7 @@ function sortChats(chats: ChatSummary[]): ChatSummary[] {
 }
 
 export function MobileChatListScreen() {
+  const navigate = useNavigate();
   const { data: chats, isLoading, isError, error } = useChatsQuery();
   const chatListFilter = useMobileUiStore((s) => s.chatListFilter);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,8 +34,19 @@ export function MobileChatListScreen() {
 
   return (
     <div className="mobile-chat-list">
-      <header className="mobile-chat-list__nav">
+      <header className="mobile-chat-list__nav mobile-chat-list__nav--with-action">
+        <span className="mobile-chat-list__nav-side" />
         <h1 className="mobile-chat-list__nav-title">Чаты</h1>
+        <button
+          type="button"
+          className="mobile-chat-list__compose"
+          aria-label="Написать сообщение"
+          onClick={() => navigate({ to: '/compose' })}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4 12.5-12.5z" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </header>
       <div className="mobile-chat-list__scroll">
         <label className="mobile-chat-list__search mobile-chat-list__search--in-scroll">

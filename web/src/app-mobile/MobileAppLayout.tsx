@@ -16,6 +16,9 @@ import { MobileComingSoonScreen } from './screens/settings/MobileComingSoonScree
 import { MobileProfileEditScreen } from './screens/MobileProfileEditScreen';
 import { MobileChatProfileScreen } from './screens/MobileChatProfileScreen';
 import { MobileMiniAppScreen } from './screens/MobileMiniAppScreen';
+import { MobileComposeScreen } from './screens/MobileComposeScreen';
+import { MobileCreateGroupScreen } from './screens/MobileCreateGroupScreen';
+import { MobileCreateChannelScreen } from './screens/MobileCreateChannelScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 
 export function MobileAppLayout() {
@@ -67,6 +70,15 @@ export function MobileAppLayout() {
     }
     if (miniAppId && pathname.startsWith('/miniapp/')) {
       return <MobileMiniAppScreen appId={miniAppId} title={miniAppSearch.title} />;
+    }
+    if (pathname === '/compose') {
+      return <MobileComposeScreen />;
+    }
+    if (pathname === '/create-group') {
+      return <MobileCreateGroupScreen />;
+    }
+    if (pathname === '/create-channel') {
+      return <MobileCreateChannelScreen />;
     }
     if (pathname === '/contacts') {
       return <MobileContactsScreen />;

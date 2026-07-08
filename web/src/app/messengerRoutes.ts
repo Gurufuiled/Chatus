@@ -106,6 +106,24 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     }),
   });
 
+  const composeRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/compose',
+    component: Layout,
+  });
+
+  const createGroupRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/create-group',
+    component: Layout,
+  });
+
+  const createChannelRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/create-channel',
+    component: Layout,
+  });
+
   return [
     indexRoute,
     chatRoute,
@@ -122,5 +140,8 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     settingsFeedbackComposeRoute,
     settingsComingSoonRoute,
     miniAppRoute,
+    composeRoute,
+    createGroupRoute,
+    createChannelRoute,
   ];
 }

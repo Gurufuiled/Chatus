@@ -29,3 +29,16 @@ export async function createOrFindPrivateChat(userId: string): Promise<ChatSumma
     }),
   });
 }
+
+export async function createGroupChat(name: string, memberIds: string[]): Promise<ChatSummary> {
+  const trimmedName = name.trim();
+  const normalizedMemberIds = [...new Set(memberIds.filter((id) => id.trim().length > 0))];
+  return apiRequest<ChatSummary>('/chats', {
+    method: 'POST',
+    body: JSON.stringify({
+      chat_type: 'group',
+      name: trimmedName,
+      member_ids: normalizedMemberIds,
+    }),
+  });
+}

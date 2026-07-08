@@ -4,7 +4,9 @@ import {
   leaveChat,
   listChats,
   createOrFindPrivateChat,
+  createGroupChat,
 } from '@/services/chatService';
+import { createChannel } from '@/services/channelService';
 import type { ChatSummary } from '@/types/chat';
 import { useAuthUiStore } from '@/stores/authUiStore';
 
@@ -127,5 +129,35 @@ export function useCreatePrivateChatMutation() {
         return sortChats([chat, ...old]);
       });
     },
+  });
+}
+
+function upsertChatInCache(queryClient: ReturnType<typeof useQueryClient>, chat: ChatSummary) {
+  queryClient.setQueryData<ChatSummary[]>(chatsQueryKey, (old) => {
+    if (!old) return sortChats([chat]);
+    const exists = old.some((item) => item.id === chat.id);
+    if (exists) {
+      return sortChats(old.map((item) => (item.id === chat.id ? { ...item, ...chat } : item)));
+    }
+    return sortChats([chat, ...old]);
+  });
+}
+
+export function useCreateGroupChatMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ name, memberIds }: { name: string; memberIds: string[] }) =>
+      createGroupChat(name, memberIds),
+    onSuccess: (chat) => upsertChatInCache(queryClient, chat),
+  });
+}
+
+export function useCreateChannelMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createChannel,
+    onSuccess: (chat) => upsertChatInCache(queryClient, chat),
   });
 }

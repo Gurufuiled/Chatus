@@ -323,7 +323,9 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
         }}
         aria-hidden
       >
-        <MobileMessageBubble message={message} isOutgoing={isOutgoing} />
+        <div className="mobile-message-menu__preview-inner">
+          <MobileMessageBubble message={message} isOutgoing={isOutgoing} />
+        </div>
       </div>
       <div
         ref={menuRef}
