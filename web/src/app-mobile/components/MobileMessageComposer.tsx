@@ -136,41 +136,24 @@ export function MobileMessageComposer({
   const hasAttachments = attachments.length > 0;
   const canSend = hasText || hasAttachments;
 
-  const paddingBottom =
+  const wrapPaddingBottom =
     composerPaddingBottom !== undefined
-      ? composerPaddingBottom
-      : undefined;
-
-  const composerStyle =
-    paddingBottom !== undefined
-      ? { paddingBottom: `${paddingBottom}px` }
-      : undefined;
-
-  const dockStyle =
-    hasReply && paddingBottom !== undefined
-      ? {
-          paddingBottom: `max(${paddingBottom}px, calc(10px + var(--m-safe-bottom)))`,
-        }
-      : undefined;
+      ? `${composerPaddingBottom}px`
+      : 'calc(10px + var(--m-safe-bottom))';
 
   return (
     <div
       className={`mobile-composer-wrap${isRecording ? ' mobile-composer-wrap--recording' : ''}`}
       style={{
         transform: keyboardLift > 0 ? `translateY(-${keyboardLift}px)` : undefined,
+        paddingBottom: wrapPaddingBottom,
       }}
     >
       <ComposerErrorBanner chatId={chatId} />
       <AttachmentPicker chatId={chatId} disabled={isDisabled} />
-      <div
-        className={`mobile-composer-dock${hasReply ? ' mobile-composer-dock--reply' : ''}`}
-        style={dockStyle}
-      >
+      <div className={`mobile-composer-dock${hasReply ? ' mobile-composer-dock--reply' : ''}`}>
         <MobileComposerReplyPreview chatId={chatId} />
-        <div
-          className="mobile-composer"
-          style={hasReply ? undefined : composerStyle}
-        >
+        <div className="mobile-composer">
         {isRecording ? (
           <MobileComposerVoiceControls
             hasText={canSend}

@@ -94,6 +94,18 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     }),
   });
 
+  const miniAppRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/miniapp/$appId',
+    component: Layout,
+    validateSearch: (search: Record<string, unknown>) => ({
+      title:
+        typeof search.title === 'string'
+          ? search.title.trim().slice(0, 80) || undefined
+          : undefined,
+    }),
+  });
+
   return [
     indexRoute,
     chatRoute,
@@ -109,5 +121,6 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     settingsFeedbackSuggestionRoute,
     settingsFeedbackComposeRoute,
     settingsComingSoonRoute,
+    miniAppRoute,
   ];
 }

@@ -15,13 +15,16 @@ import { MobileFeedbackComposeScreen } from './screens/settings/MobileFeedbackCo
 import { MobileComingSoonScreen } from './screens/settings/MobileComingSoonScreen';
 import { MobileProfileEditScreen } from './screens/MobileProfileEditScreen';
 import { MobileChatProfileScreen } from './screens/MobileChatProfileScreen';
+import { MobileMiniAppScreen } from './screens/MobileMiniAppScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 
 export function MobileAppLayout() {
   const params = useParams({ strict: false });
   const chatId = 'chatId' in params ? (params.chatId as string | undefined) : undefined;
+  const miniAppId = 'appId' in params ? (params.appId as string | undefined) : undefined;
   const { pathname } = useLocation();
   const feedbackComposeSearch = useSearch({ strict: false }) as { kind?: 'bug' | 'suggestion' };
+  const miniAppSearch = useSearch({ strict: false }) as { title?: string };
   const comingSoonSearch = useSearch({ strict: false }) as { title?: string };
 
   useWsLifecycle(chatId);
@@ -61,6 +64,9 @@ export function MobileAppLayout() {
     }
     if (pathname === '/settings/coming-soon') {
       return <MobileComingSoonScreen title={comingSoonSearch.title ?? 'Скоро'} />;
+    }
+    if (miniAppId && pathname.startsWith('/miniapp/')) {
+      return <MobileMiniAppScreen appId={miniAppId} title={miniAppSearch.title} />;
     }
     if (pathname === '/contacts') {
       return <MobileContactsScreen />;

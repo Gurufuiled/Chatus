@@ -69,7 +69,8 @@ export function MobileServicesScreen() {
                 className={`mobile-settings-services__row${index > 0 ? ' mobile-settings-services__row--bordered' : ''}`}
                 onClick={() =>
                   void navigate({
-                    to: '/settings/coming-soon',
+                    to: '/miniapp/$appId',
+                    params: { appId: app.short_id },
                     search: { title: app.title },
                   })
                 }

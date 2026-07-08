@@ -32,6 +32,9 @@ export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageLis
   const { data: me } = useMeQuery();
   const openMessageMenu = useMessageContextStore((s) => s.openMessageMenu);
   const closeMessageMenu = useMessageContextStore((s) => s.closeMessageMenu);
+  const menuMessageId = useMessageContextStore((s) =>
+    s.chatId === chatId ? s.messageId : null,
+  );
   const setReply = useComposerStore((s) => s.setReply);
   const requestComposerFocus = useComposerStore((s) => s.requestComposerFocus);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -150,7 +153,9 @@ export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageLis
             onReply={() => handleSwipeReply(message.id)}
           >
             <div
-              className={`mobile-bubble-row-wrap${pressedMessageId === message.id ? ' mobile-bubble-row-wrap--pressed' : ''}`}
+              className={`mobile-bubble-row-wrap${
+                pressedMessageId === message.id ? ' mobile-bubble-row-wrap--pressed' : ''
+              }${menuMessageId === message.id ? ' mobile-bubble-row-wrap--menu-hidden' : ''}`}
               onPointerDown={(e) => handlePointerDown(message.id, isOutgoing, e)}
             >
               <MobileMessageBubble message={message} isOutgoing={isOutgoing} />

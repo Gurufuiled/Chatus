@@ -15,6 +15,7 @@ import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 import { canForwardMessage } from '@/utils/forwardPayload';
 import { isTempMessageId } from '@/features/conversation/messageFormatters';
+import { MobileMessageBubble } from './MobileMessageBubble';
 import type { MappedMessage } from '@/types/message';
 
 const REACTIONS = ['❤️', '👏', '😭', '🥰', '💋', '🤣', '👍'];
@@ -312,6 +313,18 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
         aria-label="Закрыть меню"
         onClick={closeMessageMenu}
       />
+      <div
+        className="mobile-message-menu__preview"
+        style={{
+          top: position.y,
+          left: position.x,
+          width: position.width ?? undefined,
+          height: position.height ?? undefined,
+        }}
+        aria-hidden
+      >
+        <MobileMessageBubble message={message} isOutgoing={isOutgoing} />
+      </div>
       <div
         ref={menuRef}
         className={`mobile-message-menu__panel${layout.ready ? '' : ' mobile-message-menu__panel--measuring'}`}
