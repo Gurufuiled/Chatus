@@ -23,6 +23,10 @@ const MENU_WIDTH = 220;
 const MENU_EDGE_GAP = 12;
 const MENU_GAP = 4;
 
+function getMobileAppPortalRoot(): HTMLElement {
+  return document.querySelector('.mobile-app') ?? document.body;
+}
+
 interface MobileMessageContextMenuProps {
   chatId: string;
   onForward: (messageIds: string[]) => void;
@@ -307,12 +311,14 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
 
   const overlay = (
     <div className="mobile-message-menu" role="presentation">
+      {/* Layer 1: blur + dim — sibling only, never wraps preview/panel */}
       <button
         type="button"
         className="mobile-message-menu__backdrop"
         aria-label="Закрыть меню"
         onClick={closeMessageMenu}
       />
+      {/* Layer 2: sharp message clone above backdrop */}
       <div
         className="mobile-message-menu__preview"
         style={{
@@ -327,6 +333,7 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
           <MobileMessageBubble message={message} isOutgoing={isOutgoing} />
         </div>
       </div>
+      {/* Layer 3: solid menu panel above preview */}
       <div
         ref={menuRef}
         className={`mobile-message-menu__panel${layout.ready ? '' : ' mobile-message-menu__panel--measuring'}`}
@@ -393,5 +400,5 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
     </div>
   );
 
-  return createPortal(overlay, document.body);
+  return createPortal(overlay, getMobileAppPortalRoot());
 }

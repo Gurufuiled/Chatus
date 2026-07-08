@@ -886,7 +886,8 @@ button.mobile-pill-header-title:active {
 }
 
 .mobile-bubble-row-wrap--menu-hidden {
-  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .mobile-bubble-row {
@@ -2008,19 +2009,26 @@ button.mobile-pill-header-title:active {
   position: fixed;
   inset: 0;
   z-index: 1100;
+  pointer-events: none;
 }
 
+/* Layer 1 — blur + dim; isolated so filter does not wash out siblings */
 .mobile-message-menu__backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 0;
   border: none;
   padding: 0;
   margin: 0;
-  background: rgba(12, 16, 22, 0.42);
+  pointer-events: auto;
   cursor: default;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  isolation: isolate;
 }
 
+/* Layer 2 — sharp message clone; own stacking context above backdrop */
 .mobile-message-menu__preview {
   position: fixed;
   z-index: 2;
@@ -2031,34 +2039,39 @@ button.mobile-pill-header-title:active {
   transform: translateZ(0);
 }
 
-.mobile-message-menu__preview .mobile-bubble-row-wrap,
-.mobile-message-menu__preview .mobile-bubble-row,
-.mobile-message-menu__preview .mobile-bubble {
-  opacity: 1;
-}
-
 .mobile-message-menu__preview-inner {
   width: 100%;
   height: 100%;
   opacity: 1;
 }
 
+.mobile-message-menu__preview .mobile-bubble-row-wrap,
+.mobile-message-menu__preview .mobile-bubble-row,
+.mobile-message-menu__preview .mobile-bubble {
+  opacity: 1;
+}
+
+.mobile-message-menu__preview .mobile-bubble--out {
+  background-color: var(--m-bubble-me);
+}
+
+.mobile-message-menu__preview .mobile-bubble--in {
+  background-color: var(--m-bubble-other);
+}
+
+/* Layer 3 — solid menu card; never inside backdrop-filter subtree */
 .mobile-message-menu__panel {
   position: fixed;
   z-index: 3;
+  pointer-events: auto;
   border-radius: 14px;
-  background: #ffffff;
-  background: var(--m-surface);
-  border: 1px solid var(--m-separator);
+  background-color: var(--m-surface, #ffffff);
+  border: 1px solid var(--m-separator, #e3e4e8);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
   overflow: hidden;
   opacity: 1;
   isolation: isolate;
   transform: translateZ(0);
-}
-
-.mobile-app[data-scheme='dark'] .mobile-message-menu__panel {
-  background: #1e2a35;
 }
 
 .mobile-message-menu__panel--measuring {
@@ -2071,7 +2084,12 @@ button.mobile-pill-header-title:active {
   align-items: center;
   gap: 2px;
   padding: 8px 10px;
+  background-color: inherit;
   border-bottom: 1px solid #eceef2;
+}
+
+.mobile-app[data-scheme='dark'] .mobile-message-menu__reactions {
+  border-bottom-color: var(--m-separator);
 }
 
 .mobile-message-menu__reaction {
@@ -2163,7 +2181,7 @@ button.mobile-pill-header-title:active {
   text-align: center;
   font-size: 15px;
   color: var(--m-text-secondary);
-  border-top: 1px solid #eceef2;
+  border-top: 1px solid var(--m-separator, #eceef2);
   margin-top: 2px;
   cursor: pointer;
 }
