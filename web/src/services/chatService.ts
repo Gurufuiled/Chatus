@@ -42,3 +42,34 @@ export async function createGroupChat(name: string, memberIds: string[]): Promis
     }),
   });
 }
+
+export async function updateGroupChat(
+  chatId: string,
+  payload: { name?: string; description?: string; avatar_url?: string },
+): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>(`/chats/${encodeURIComponent(chatId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function addGroupMembers(chatId: string, memberIds: string[]): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>(`/chats/${encodeURIComponent(chatId)}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ member_ids: memberIds }),
+  });
+}
+
+export async function removeGroupMember(chatId: string, memberId: string): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>(
+    `/chats/${encodeURIComponent(chatId)}/members/${encodeURIComponent(memberId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function leaveGroup(chatId: string): Promise<void> {
+  await apiRequest<unknown>(`/chats/${encodeURIComponent(chatId)}/leave`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}

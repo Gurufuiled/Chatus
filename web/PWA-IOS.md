@@ -1,8 +1,42 @@
 # ChatUs Standalone PWA (iPhone)
 
-**Status:** Phase 3A implemented (composer fix, tabs, attachments, voice, profile)  
+**Status:** Phase 3B implemented (groups + channels in standalone PWA)  
 **URL:** `https://messenger.startapus.com/app/`  
 **Embed (`/embed`) is unchanged** — Loginus iframe + `loginus:init` postMessage flow.
+
+---
+
+## What Phase 3B includes (groups & channels)
+
+### Groups
+- **Group profile** — `/app/chat/$id/group-profile` (header tap in group chat)
+- Members list with owner/admin badges, add members modal, remove member (admin)
+- Media tab, mute toggle, leave group, delete group (owner)
+- Group messages show **sender name** on incoming bubbles
+
+### Channels
+- **Channel feed** — `/app/channel/$id` (post layout, not chat bubbles)
+- Subscribe gate for private/paid channels; mock checkout for paid access
+- **Publish posts** — text + image/file attachment (owners/admins with `can_post`)
+- Post reactions (quick emoji bar) and comment count
+- **Discussion thread** — `/app/channel/$id/discussion/$postId`
+- **Channel profile** — `/app/channel/$id/profile` (description, mute, unsubscribe, media preview)
+- Chat list opens channels on feed route; create-channel lands on feed
+
+### Routes (standalone `/app`)
+| Route | Screen |
+|-------|--------|
+| `/chat/$chatId` | Private or group chat |
+| `/chat/$chatId/profile` | Private 1:1 profile |
+| `/chat/$chatId/group-profile` | Group profile |
+| `/channel/$channelId` | Channel feed |
+| `/channel/$channelId/profile` | Channel profile |
+| `/channel/$channelId/discussion/$postId` | Post comments |
+
+### Deferred (Скоро stubs in profile)
+- Channel admin management, invite links, monetization settings, discussion settings
+- Group avatar/name edit, member tags, files/voice tabs, group calls
+- Channel catalog / link gate screens
 
 ---
 
@@ -52,12 +86,13 @@ The icon launches ChatUs full-screen without Safari chrome. Session is kept in `
 
 **UI source:** `web/src/app-mobile/` — CSS/components mirroring `mobile/src/screens/` and `mobile/src/components/`. Reuses web auth (`publicAuth`), API client, WebSocket, and React Query only.
 
-## Not in Phase 1 / 2 / 3A
+## Not in Phase 1 / 2 / 3A / 3B
 
 - Web Push notifications (service worker + server subscription endpoints)
 - WebRTC group/1:1 calls in standalone context
 - Contacts tab (stub in Settings)
 - Stickers picker in standalone composer
+- Channel catalog, full admin/monetization flows
 - Changes to `/embed`
 
 ---

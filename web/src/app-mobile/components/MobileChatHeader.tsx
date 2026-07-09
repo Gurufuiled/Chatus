@@ -17,6 +17,11 @@ export function MobileChatHeader({ chat }: MobileChatHeaderProps) {
         ? 'в сети'
         : '';
 
+  const profilePath =
+    chat.chat_type === 'group'
+      ? '/chat/$chatId/group-profile'
+      : '/chat/$chatId/profile';
+
   return (
     <header className="mobile-chat__header mobile-chat__header--pill">
       <div className="mobile-chat__header-slot mobile-chat__header-slot--left">
@@ -37,7 +42,7 @@ export function MobileChatHeader({ chat }: MobileChatHeaderProps) {
           subtitle={subtitle || undefined}
           avatarUrl={chat.avatar_url}
           onClick={() =>
-            navigate({ to: '/chat/$chatId/profile', params: { chatId: chat.id } })
+            navigate({ to: profilePath, params: { chatId: chat.id } })
           }
         />
       </div>

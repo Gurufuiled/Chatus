@@ -9,6 +9,7 @@ import { MobileSwipeReplyRow } from './MobileSwipeReplyRow';
 interface MobileMessageListProps {
   chatId: string;
   keyboardLift?: number;
+  isGroupChat?: boolean;
 }
 
 const LONG_PRESS_MS = 450;
@@ -27,7 +28,7 @@ function canSwipeReplyMessage(message: {
   );
 }
 
-export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageListProps) {
+export function MobileMessageList({ chatId, keyboardLift = 0, isGroupChat = false }: MobileMessageListProps) {
   const { data: messages, isLoading, isError } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
   const openMessageMenu = useMessageContextStore((s) => s.openMessageMenu);
@@ -158,7 +159,11 @@ export function MobileMessageList({ chatId, keyboardLift = 0 }: MobileMessageLis
               }${menuMessageId === message.id ? ' mobile-bubble-row-wrap--menu-hidden' : ''}`}
               onPointerDown={(e) => handlePointerDown(message.id, isOutgoing, e)}
             >
-              <MobileMessageBubble message={message} isOutgoing={isOutgoing} />
+              <MobileMessageBubble
+                message={message}
+                isOutgoing={isOutgoing}
+                showSenderName={isGroupChat && !isOutgoing}
+              />
             </div>
           </MobileSwipeReplyRow>
         );

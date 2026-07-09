@@ -26,6 +26,11 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
   const forwardMutation = useForwardMessagesMutation();
   const markedRef = useRef<string | null>(null);
   const chat = chats?.find((c) => c.id === chatId);
+
+  useEffect(() => {
+    if (!chat || chat.chat_type !== 'channel') return;
+    navigate({ to: '/channel/$channelId', params: { channelId: chat.id }, replace: true });
+  }, [chat, navigate]);
   const { keyboardLift, composerPaddingBottom } = useMobileComposerKeyboard();
   const [forwardMessageIds, setForwardMessageIds] = useState<string[]>([]);
   const closeForward = useCallback(() => setForwardMessageIds([]), []);
@@ -97,7 +102,7 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
       style={{ '--mobile-chat-wallpaper': `url(${wallpaperUrl})` } as React.CSSProperties}
     >
       <MobileChatHeader chat={chat} />
-      <MobileMessageList chatId={chatId} keyboardLift={keyboardLift} />
+      <MobileMessageList chatId={chatId} keyboardLift={keyboardLift} isGroupChat={chat.chat_type === 'group'} />
       <MobileMessageComposer
         chatId={chatId}
         disabled={messagesLoading}

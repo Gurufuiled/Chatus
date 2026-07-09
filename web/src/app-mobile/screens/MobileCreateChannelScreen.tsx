@@ -128,7 +128,7 @@ export function MobileCreateChannelScreen() {
       },
       {
         onSuccess: (chat) => {
-          navigate({ to: '/chat/$chatId', params: { chatId: chat.id } });
+          navigate({ to: '/channel/$channelId', params: { channelId: chat.id } });
         },
         onError: (err) => {
           setError(err instanceof Error ? err.message : 'Не удалось создать канал');

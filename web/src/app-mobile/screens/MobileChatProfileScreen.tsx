@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
 import { useMessagesQuery } from '@/queries/messages.queries';
@@ -37,6 +37,15 @@ export function MobileChatProfileScreen({ chatId }: MobileChatProfileScreenProps
   const { data: messages } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
   const chat = chats?.find((c) => c.id === chatId);
+
+  useEffect(() => {
+    if (!chat || chat.chat_type !== 'group') return;
+    navigate({
+      to: '/chat/$chatId/group-profile',
+      params: { chatId: chat.id },
+      replace: true,
+    });
+  }, [chat, navigate]);
 
   const peer = useMemo(() => {
     if (!chat || chat.chat_type !== 'private') return null;

@@ -124,10 +124,38 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
+  const groupProfileRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/chat/$chatId/group-profile',
+    component: Layout,
+  });
+
+  const channelFeedRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId',
+    component: Layout,
+  });
+
+  const channelProfileRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/profile',
+    component: Layout,
+  });
+
+  const channelDiscussionRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/discussion/$postId',
+    component: Layout,
+  });
+
   return [
     indexRoute,
     chatRoute,
     chatProfileRoute,
+    groupProfileRoute,
+    channelFeedRoute,
+    channelProfileRoute,
+    channelDiscussionRoute,
     contactsRoute,
     settingsRoute,
     settingsProfileRoute,

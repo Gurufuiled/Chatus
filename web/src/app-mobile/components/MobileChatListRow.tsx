@@ -5,6 +5,7 @@ import type { ChatSummary } from '@/types/chat';
 import { useMeQuery } from '@/queries/auth.queries';
 import { getAvatarColor, resolveAvatarSrc } from '../utils/avatar';
 import { buildDialogPreviewForChat } from '../utils/dialogPreview';
+import { getChatOpenPath } from '../utils/chatNavigation';
 
 interface MobileChatListRowProps {
   chat: ChatSummary;
@@ -20,11 +21,12 @@ export function MobileChatListRow({ chat }: MobileChatListRowProps) {
     !!me?.id && !!chat.last_message && chat.last_message.sender_id === me.id;
   const unread = chat.unread_count ?? 0;
   const showPreview = preview.text.length > 0 || preview.thumbnailUrls.length > 0;
+  const openPath = getChatOpenPath(chat, me?.id ?? null);
 
   return (
     <Link
-      to="/chat/$chatId"
-      params={{ chatId: chat.id }}
+      to={openPath.to}
+      params={openPath.params}
       className="mobile-dialog-row"
     >
       {avatarSrc ? (

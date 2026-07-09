@@ -15,6 +15,7 @@ import type { MappedMessage } from '@/types/message';
 interface MobileMessageBubbleProps {
   message: MappedMessage;
   isOutgoing: boolean;
+  showSenderName?: boolean;
 }
 
 function BubbleMeta({
@@ -68,7 +69,18 @@ function mediaLabel(msgType: string, content: string | null): string {
   }
 }
 
-export function MobileMessageBubble({ message, isOutgoing }: MobileMessageBubbleProps) {
+function SenderName({
+  message,
+  show,
+}: {
+  message: MappedMessage;
+  show: boolean;
+}) {
+  if (!show || !message.sender_name?.trim()) return null;
+  return <span className="mobile-bubble__sender">{message.sender_name}</span>;
+}
+
+export function MobileMessageBubble({ message, isOutgoing, showSenderName = false }: MobileMessageBubbleProps) {
   if (message.is_deleted) {
     return (
       <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
@@ -201,6 +213,7 @@ export function MobileMessageBubble({ message, isOutgoing }: MobileMessageBubble
 
   return (
     <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
+      <SenderName message={message} show={showSenderName} />
       <div className={bubbleClass}>
         {text ? (
           <div className="mobile-bubble__text-row">

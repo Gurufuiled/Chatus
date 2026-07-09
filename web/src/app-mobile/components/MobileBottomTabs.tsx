@@ -21,6 +21,7 @@ const TABS: { id: TabId; label: string; to: string; glyph: TabGlyphKey }[] = [
 
 export function shouldShowMobileTabs(pathname: string): boolean {
   if (pathname.includes('/chat/')) return false;
+  if (pathname.startsWith('/channel/')) return false;
   if (pathname.startsWith('/miniapp/')) return false;
   if (pathname === '/compose' || pathname === '/create-group' || pathname === '/create-channel') {
     return false;

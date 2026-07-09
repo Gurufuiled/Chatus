@@ -19,11 +19,17 @@ import { MobileMiniAppScreen } from './screens/MobileMiniAppScreen';
 import { MobileComposeScreen } from './screens/MobileComposeScreen';
 import { MobileCreateGroupScreen } from './screens/MobileCreateGroupScreen';
 import { MobileCreateChannelScreen } from './screens/MobileCreateChannelScreen';
+import { MobileGroupProfileScreen } from './screens/MobileGroupProfileScreen';
+import { MobileChannelFeedScreen } from './screens/MobileChannelFeedScreen';
+import { MobileChannelProfileScreen } from './screens/MobileChannelProfileScreen';
+import { MobileChannelDiscussionScreen } from './screens/MobileChannelDiscussionScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 
 export function MobileAppLayout() {
   const params = useParams({ strict: false });
   const chatId = 'chatId' in params ? (params.chatId as string | undefined) : undefined;
+  const channelId = 'channelId' in params ? (params.channelId as string | undefined) : undefined;
+  const postId = 'postId' in params ? (params.postId as string | undefined) : undefined;
   const miniAppId = 'appId' in params ? (params.appId as string | undefined) : undefined;
   const { pathname } = useLocation();
   const feedbackComposeSearch = useSearch({ strict: false }) as { kind?: 'bug' | 'suggestion' };
@@ -86,8 +92,20 @@ export function MobileAppLayout() {
     if (pathname === '/settings') {
       return <MobileSettingsHomeScreen />;
     }
+    if (chatId && pathname.endsWith('/group-profile')) {
+      return <MobileGroupProfileScreen chatId={chatId} />;
+    }
     if (chatId && pathname.endsWith('/profile')) {
       return <MobileChatProfileScreen chatId={chatId} />;
+    }
+    if (channelId && postId && pathname.includes('/discussion/')) {
+      return <MobileChannelDiscussionScreen channelId={channelId} postId={postId} />;
+    }
+    if (channelId && pathname.endsWith('/profile')) {
+      return <MobileChannelProfileScreen channelId={channelId} />;
+    }
+    if (channelId) {
+      return <MobileChannelFeedScreen channelId={channelId} />;
     }
     if (chatId) {
       return <MobileChatScreen chatId={chatId} />;

@@ -5,6 +5,10 @@ import {
   listChats,
   createOrFindPrivateChat,
   createGroupChat,
+  updateGroupChat,
+  addGroupMembers,
+  removeGroupMember,
+  leaveGroup,
 } from '@/services/chatService';
 import { createChannel } from '@/services/channelService';
 import type { ChatSummary } from '@/types/chat';
@@ -159,5 +163,55 @@ export function useCreateChannelMutation() {
   return useMutation({
     mutationFn: createChannel,
     onSuccess: (chat) => upsertChatInCache(queryClient, chat),
+  });
+}
+
+export function useUpdateGroupChatMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      chatId,
+      ...payload
+    }: {
+      chatId: string;
+      name?: string;
+      description?: string;
+      avatar_url?: string;
+    }) => updateGroupChat(chatId, payload),
+    onSuccess: (chat) => upsertChatInCache(queryClient, chat),
+  });
+}
+
+export function useAddGroupMembersMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ chatId, memberIds }: { chatId: string; memberIds: string[] }) =>
+      addGroupMembers(chatId, memberIds),
+    onSuccess: (chat) => upsertChatInCache(queryClient, chat),
+  });
+}
+
+export function useRemoveGroupMemberMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ chatId, memberId }: { chatId: string; memberId: string }) =>
+      removeGroupMember(chatId, memberId),
+    onSuccess: (chat) => upsertChatInCache(queryClient, chat),
+  });
+}
+
+export function useLeaveGroupMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (chatId: string) => leaveGroup(chatId),
+    onSuccess: (_data, chatId) => {
+      queryClient.setQueryData<ChatSummary[]>(chatsQueryKey, (old) =>
+        old?.filter((chat) => chat.id !== chatId),
+      );
+    },
   });
 }

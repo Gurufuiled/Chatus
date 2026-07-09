@@ -41,10 +41,16 @@ export interface MappedMessage {
   chat_id: string;
   sender_id: string;
   sender_name?: string | null;
+  sender_avatar_url?: string | null;
   msg_type: MessageType;
   content: string | null;
   reply_to_id: string | null;
+  thread_root_message_id?: string | null;
+  is_channel_post?: boolean;
+  view_count?: number;
+  comment_count?: number;
   is_deleted: boolean;
+  is_edited?: boolean;
   status: MessageStatus;
   created_at: number;
   updated_at: number;
