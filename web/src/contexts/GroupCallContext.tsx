@@ -15,6 +15,8 @@ import {
   type LocalVideoTrack,
   type Participant,
   type RemoteAudioTrack,
+  type RemoteTrack,
+  type RemoteTrackPublication,
   type VideoTrack,
 } from 'livekit-client';
 import { useAuthUiStore } from '@/stores/authUiStore';
@@ -55,6 +57,7 @@ type GroupCallState = {
   isScreenShareEnabled: boolean;
   /** Per-remote-participant playback volume (0–1). */
   remoteVolumes: Record<string, number>;
+  audioPlaybackBlocked: boolean;
   startedAt?: number;
   isCreator: boolean;
   connectionState: ConnectionState | 'idle';
@@ -81,6 +84,7 @@ type GroupCallContextType = {
   toggleScreenShare: () => Promise<void>;
   setParticipantVolume: (userId: string, volume: number) => void;
   getParticipantVolume: (userId: string) => number;
+  unlockAudioPlayback: () => Promise<void>;
   isInCallForChat: (chatId: string) => boolean;
 };
 
@@ -94,6 +98,7 @@ const initialState: GroupCallState = {
   isVideoEnabled: false,
   isScreenShareEnabled: false,
   remoteVolumes: {},
+  audioPlaybackBlocked: false,
   isCreator: false,
   connectionState: 'idle',
 };
@@ -205,25 +210,46 @@ function readParticipantVolume(
     : DEFAULT_PARTICIPANT_VOLUME;
 }
 
+function applyMicVolumeToParticipant(participant: Participant, volume: number) {
+  const micPub = participant.getTrackPublication(Track.Source.Microphone);
+  const track = micPub?.track;
+  if (track?.kind === Track.Kind.Audio) {
+    (track as RemoteAudioTrack).setVolume(clampParticipantVolume(volume));
+  }
+}
+
 function applyParticipantVolumeToRoom(room: Room, userId: string, volume: number) {
   const participant = room.remoteParticipants.get(userId);
   if (!participant) return;
-  const clamped = clampParticipantVolume(volume);
-  for (const pub of participant.trackPublications.values()) {
-    if (pub.kind === Track.Kind.Audio && pub.track) {
-      (pub.track as RemoteAudioTrack).setVolume(clamped);
-    }
-  }
+  applyMicVolumeToParticipant(participant, volume);
 }
 
 function applyRemoteVolumesToRoom(room: Room, volumes: Record<string, number>) {
   for (const participant of room.remoteParticipants.values()) {
-    applyParticipantVolumeToRoom(
-      room,
-      participant.identity,
+    applyMicVolumeToParticipant(
+      participant,
       readParticipantVolume(volumes, participant.identity),
     );
   }
+}
+
+function applyMicVolumeToRemoteTrack(
+  track: RemoteTrack,
+  publication: RemoteTrackPublication | undefined,
+  participant: Participant | undefined,
+  volumes: Record<string, number>,
+) {
+  if (track.kind !== Track.Kind.Audio || participant?.isLocal) return;
+  if (
+    publication?.source != null &&
+    publication.source !== Track.Source.Microphone &&
+    publication.source !== Track.Source.Unknown
+  ) {
+    return;
+  }
+  const userId = participant?.identity;
+  if (!userId) return;
+  (track as RemoteAudioTrack).setVolume(readParticipantVolume(volumes, userId));
 }
 
 function mapLiveKitParticipant(
@@ -348,6 +374,25 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     connectGenerationRef.current += 1;
   }, []);
 
+  const syncAudioPlaybackState = useCallback((room: Room) => {
+    setState((prev) => ({
+      ...prev,
+      audioPlaybackBlocked: !room.canPlaybackAudio,
+    }));
+  }, []);
+
+  const ensureRoomAudioPlayback = useCallback(
+    async (room: Room) => {
+      try {
+        await room.startAudio();
+      } catch {
+        // Browser may require an explicit tap — unlockAudioPlayback handles that.
+      }
+      syncAudioPlaybackState(room);
+    },
+    [syncAudioPlaybackState],
+  );
+
   const syncVideoTracksFromRoom = useCallback((room: Room) => {
     setLocalCameraTrack(readLocalPreviewTrack(room));
     setRemoteVideoTracks(readRemoteVideoTracks(room));
@@ -414,13 +459,20 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       room.on(RoomEvent.TrackMuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackUnmuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackPublished, () => syncParticipantsFromRoom(room));
-      room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-        if (track.kind === Track.Kind.Audio && participant && !participant.isLocal) {
-          (track as RemoteAudioTrack).setVolume(
-            readParticipantVolume(remoteVolumesRef.current, participant.identity),
-          );
+      room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        applyMicVolumeToRemoteTrack(
+          track,
+          publication,
+          participant,
+          remoteVolumesRef.current,
+        );
+        if (track.kind === Track.Kind.Audio) {
+          void ensureRoomAudioPlayback(room);
         }
         syncParticipantsFromRoom(room);
+      });
+      room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        syncAudioPlaybackState(room);
       });
       room.on(RoomEvent.TrackUnpublished, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackUnsubscribed, () => syncParticipantsFromRoom(room));
@@ -474,6 +526,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         throw micErr instanceof Error ? micErr : new Error(String(micErr));
       }
 
+      await ensureRoomAudioPlayback(room);
+
       const participants = buildParticipantsFromRoom(room, currentUserId);
       const startedAt =
         resolveCallStartedAt(
@@ -507,7 +561,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       }));
       syncVideoTracksFromRoom(room);
     },
-    [activeRoomByChatId, detachRoom, resetCallState, syncParticipantsFromRoom, syncVideoTracksFromRoom],
+    [activeRoomByChatId, detachRoom, ensureRoomAudioPlayback, resetCallState, syncAudioPlaybackState, syncParticipantsFromRoom, syncVideoTracksFromRoom],
   );
 
   const refreshActiveRoom = useCallback(async (chatId: string) => {
@@ -792,6 +846,12 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const unlockAudioPlayback = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    await ensureRoomAudioPlayback(room);
+  }, [ensureRoomAudioPlayback]);
+
   const toggleScreenShare = useCallback(async () => {
     const room = roomRef.current;
     if (
@@ -908,6 +968,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       toggleScreenShare,
       setParticipantVolume,
       getParticipantVolume,
+      unlockAudioPlayback,
       isInCallForChat,
     }),
     [
@@ -927,6 +988,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       toggleScreenShare,
       setParticipantVolume,
       getParticipantVolume,
+      unlockAudioPlayback,
       isInCallForChat,
     ],
   );

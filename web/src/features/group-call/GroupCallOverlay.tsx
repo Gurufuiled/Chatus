@@ -54,6 +54,7 @@ export function GroupCallOverlay() {
     toggleScreenShare,
     getParticipantVolume,
     setParticipantVolume,
+    unlockAudioPlayback,
   } = useGroupCall();
   const [now, setNow] = useState(Date.now());
   const [volumeUserId, setVolumeUserId] = useState<string | null>(null);
@@ -162,6 +163,15 @@ export function GroupCallOverlay() {
       <div className="group-call-overlay__header">
         <h2 className="group-call-overlay__title">{state.chatTitle}</h2>
         <p className="group-call-overlay__subtitle">{statusLine}</p>
+        {state.audioPlaybackBlocked ? (
+          <button
+            type="button"
+            className="group-call-overlay__audio-unlock"
+            onClick={() => void unlockAudioPlayback()}
+          >
+            Нажмите, чтобы включить звук собеседников
+          </button>
+        ) : null}
       </div>
 
       <ParticipantStage

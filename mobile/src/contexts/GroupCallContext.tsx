@@ -154,20 +154,30 @@ function isVideoTrackEnabled(participant: Participant): boolean {
   return isScreenShareTrackEnabled(participant) || isCameraTrackEnabled(participant);
 }
 
+function isRemoteVideoPublicationReady(
+  participant: Participant,
+  pub: ReturnType<Participant['getTrackPublication']>,
+): boolean {
+  if (!pub || pub.isMuted || !pub.isEnabled) return false;
+  if (participant.isLocal) return Boolean(pub.track);
+  return Boolean(pub.track && pub.isSubscribed);
+}
+
 function readParticipantVideoTrack(participant: Participant): VideoTrack | undefined {
   const screenPub = participant.getTrackPublication(Track.Source.ScreenShare);
   const screenTrack = screenPub?.track;
   if (
     screenTrack?.kind === Track.Kind.Video &&
-    screenPub &&
-    !screenPub.isMuted &&
-    screenPub.isEnabled
+    isRemoteVideoPublicationReady(participant, screenPub)
   ) {
     return screenTrack as VideoTrack;
   }
   const camPub = participant.getTrackPublication(Track.Source.Camera);
   const camTrack = camPub?.track;
-  if (camTrack?.kind === Track.Kind.Video && camPub && !camPub.isMuted && camPub.isEnabled) {
+  if (
+    camTrack?.kind === Track.Kind.Video &&
+    isRemoteVideoPublicationReady(participant, camPub)
+  ) {
     return camTrack as VideoTrack;
   }
   return undefined;
@@ -183,24 +193,42 @@ function readRemoteVideoTracks(room: Room): Record<string, VideoTrack> {
   for (const participant of room.remoteParticipants.values()) {
     if (!isVideoTrackEnabled(participant)) continue;
     const track = readParticipantVideoTrack(participant);
-    if (track) {
+    if (track?.mediaStream) {
       tracks[participant.identity] = track;
     }
   }
   return tracks;
 }
 
+function apiProfileForUser(
+  apiByUserId: Map<string, ApiGroupCallParticipant> | undefined,
+  userId: string,
+): { displayName: string; avatarUrl: string | null } | null {
+  const api = apiByUserId?.get(userId);
+  if (!api) return null;
+  return {
+    displayName: api.display_name,
+    avatarUrl: resolveAvatarUrl(api.avatar_url),
+  };
+}
+
 function mapLiveKitParticipant(
   participant: Participant,
   currentUserId: string,
+  apiByUserId?: Map<string, ApiGroupCallParticipant>,
 ): GroupCallParticipant {
   const micPub = participant.getTrackPublication(Track.Source.Microphone);
   const isLocal = participant.identity === currentUserId;
-  const profile = isLocal ? localParticipantProfile(currentUserId) : null;
+  const localProfile = isLocal ? localParticipantProfile(currentUserId) : null;
+  const apiProfile = apiProfileForUser(apiByUserId, participant.identity);
   return {
     userId: participant.identity,
-    displayName: profile?.displayName || participant.name || participant.identity,
-    avatarUrl: profile?.avatarUrl ?? null,
+    displayName:
+      localProfile?.displayName ||
+      apiProfile?.displayName ||
+      participant.name ||
+      participant.identity,
+    avatarUrl: localProfile?.avatarUrl ?? apiProfile?.avatarUrl ?? null,
     isLocal,
     isMuted: micPub ? micPub.isMuted || !micPub.isEnabled : false,
     isSpeaking: participant.isSpeaking,
@@ -208,12 +236,16 @@ function mapLiveKitParticipant(
   };
 }
 
-function buildParticipantsFromRoom(room: Room, currentUserId: string): GroupCallParticipant[] {
+function buildParticipantsFromRoom(
+  room: Room,
+  currentUserId: string,
+  apiByUserId?: Map<string, ApiGroupCallParticipant>,
+): GroupCallParticipant[] {
   const remote = [...room.remoteParticipants.values()].map((p) =>
-    mapLiveKitParticipant(p, currentUserId),
+    mapLiveKitParticipant(p, currentUserId, apiByUserId),
   );
   const local = room.localParticipant
-    ? [mapLiveKitParticipant(room.localParticipant, currentUserId)]
+    ? [mapLiveKitParticipant(room.localParticipant, currentUserId, apiByUserId)]
     : [];
   return [...local, ...remote];
 }
@@ -290,9 +322,22 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   >({});
   const roomRef = useRef<Room | null>(null);
   const stateRef = useRef(state);
+  const apiParticipantsByChatRef = useRef<
+    Record<string, Map<string, ApiGroupCallParticipant>>
+  >({});
   const leavingIntentionallyRef = useRef(false);
   const videoToggleInFlightRef = useRef(false);
   stateRef.current = state;
+
+  const storeApiParticipantsSnapshot = useCallback(
+    (chatId: string, participants: ApiGroupCallParticipant[]) => {
+      apiParticipantsByChatRef.current = {
+        ...apiParticipantsByChatRef.current,
+        [chatId]: new Map(participants.map((p) => [p.user_id, p])),
+      };
+    },
+    [],
+  );
 
   const detachRoom = useCallback(async () => {
     const room = roomRef.current;
@@ -312,10 +357,16 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetCallState = useCallback(async () => {
+    const chatId = stateRef.current.chatId;
     leavingIntentionallyRef.current = false;
     setLocalCameraTrack(undefined);
     setRemoteVideoTracks({});
     await detachRoom();
+    if (chatId) {
+      const next = { ...apiParticipantsByChatRef.current };
+      delete next[chatId];
+      apiParticipantsByChatRef.current = next;
+    }
     setState(initialState);
   }, [detachRoom]);
 
@@ -329,7 +380,9 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     if (!currentUserId) return;
     syncVideoTracksFromRoom(room);
     setState((prev) => {
-      const fromRoom = buildParticipantsFromRoom(room, currentUserId);
+      const chatId = prev.chatId;
+      const apiByUserId = chatId ? apiParticipantsByChatRef.current[chatId] : undefined;
+      const fromRoom = buildParticipantsFromRoom(room, currentUserId, apiByUserId);
       const priorByUserId = new Map(prev.participants.map((p) => [p.userId, p]));
       const participants = fromRoom.map((p) => {
         const prior = priorByUserId.get(p.userId);
@@ -432,13 +485,19 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         autoSubscribe: true,
       });
       try {
+        await room.startAudio();
+      } catch {
+        // Browser may require a later user gesture.
+      }
+      try {
         await room.localParticipant.setMicrophoneEnabled(true);
       } catch (micErr) {
         await detachRoom();
         throw micErr instanceof Error ? micErr : new Error(String(micErr));
       }
 
-      const participants = buildParticipantsFromRoom(room, currentUserId);
+      const apiByUserId = apiParticipantsByChatRef.current[params.chatId];
+      const participants = buildParticipantsFromRoom(room, currentUserId, apiByUserId);
       const startedAt =
         resolveCallStartedAt(
           params.startedAt,
@@ -486,16 +545,25 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     (chatId: string, roomId: string, participants: ApiGroupCallParticipant[]) => {
       const currentUserId = authStore.getState().user?.id;
       if (!currentUserId) return;
-      setState((prev) => {
-        if (prev.chatId !== chatId || prev.roomId !== roomId) return prev;
+
+      const prev = stateRef.current;
+      if (prev.chatId !== chatId) return;
+      if (prev.roomId && prev.roomId !== roomId) return;
+
+      storeApiParticipantsSnapshot(chatId, participants);
+      setState((current) => {
+        if (current.chatId !== chatId) return current;
+        if (current.roomId && current.roomId !== roomId) return current;
+
+        const roomPatch = !current.roomId ? { roomId } : {};
 
         const isLiveKitActive =
-          (prev.phase === 'active' || prev.phase === 'minimized') &&
-          prev.connectionState === ConnectionState.Connected;
+          (current.phase === 'active' || current.phase === 'minimized') &&
+          current.connectionState === ConnectionState.Connected;
 
         if (isLiveKitActive) {
           const apiByUserId = new Map(participants.map((p) => [p.user_id, p]));
-          const merged = prev.participants.map((live) => {
+          const merged = current.participants.map((live) => {
             const api = apiByUserId.get(live.userId);
             if (!api) return live;
             return {
@@ -510,16 +578,17 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
               merged.push(mapApiParticipant(api, currentUserId));
             }
           }
-          return { ...prev, participants: merged };
+          return { ...current, ...roomPatch, participants: merged };
         }
 
         return {
-          ...prev,
+          ...current,
+          ...roomPatch,
           participants: participants.map((p) => mapApiParticipant(p, currentUserId)),
         };
       });
     },
-    [],
+    [storeApiParticipantsSnapshot],
   );
 
   const startGroupCall = useCallback(
@@ -541,6 +610,13 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       try {
         const response = await createGroupCall(chatId);
         setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: response.room }));
+        const callStartedAt =
+          resolveCallStartedAt(response.room.started_at) ?? Date.now();
+        setState((prev) => ({
+          ...prev,
+          roomId: response.room.id,
+          startedAt: callStartedAt,
+        }));
         await connectToRoom({
           token: response.token,
           livekitUrl: response.livekit_url,
@@ -606,7 +682,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           chatId,
           chatTitle,
           roomId,
-          startedAt: response.room.started_at ?? cachedStartedAt,
+          startedAt: response.room.started_at ?? cachedStartedAt ?? Date.now(),
           isCreator: currentUserId === response.room.started_by_user_id,
           phase: 'joining',
         });
@@ -785,6 +861,20 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           participant_count: 1,
         };
         applyActiveRoomSnapshot(chatId, room);
+        if (
+          stateRef.current.chatId === chatId &&
+          stateRef.current.phase !== 'idle'
+        ) {
+          setState((prev) => ({
+            ...prev,
+            roomId: prev.roomId ?? roomId,
+            startedAt:
+              prev.startedAt ??
+              startedAt ??
+              normalizeStartedAt(room.started_at) ??
+              Date.now(),
+          }));
+        }
       },
       onGroupCallEnded: (payload) => {
         const chatId = typeof payload.chat_id === 'string' ? payload.chat_id : null;
@@ -799,6 +889,13 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           : [];
         if (!chatId || !roomId) return;
         if (participants.length === 0) {
+          if (
+            stateRef.current.chatId === chatId &&
+            (stateRef.current.phase === 'creating' ||
+              stateRef.current.phase === 'joining')
+          ) {
+            return;
+          }
           applyActiveRoomSnapshot(chatId, null);
         } else {
           setActiveRoomByChatId((prev) => {

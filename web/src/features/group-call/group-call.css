@@ -166,6 +166,22 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
+.group-call-overlay__audio-unlock {
+  margin-top: 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--color-accent, #5b8def) 88%, #000);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.group-call-overlay__audio-unlock:hover {
+  opacity: 0.92;
+}
+
 .group-call-stage {
   flex: 1;
   min-height: 0;
