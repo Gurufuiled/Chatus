@@ -1,3 +1,4 @@
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { GroupCallParticipant } from '@/contexts/GroupCallContext';
 
 export const TILE_ASPECT_RATIO = 16 / 9;
@@ -7,11 +8,53 @@ type ParticipantTileProps = {
   width: number;
   height?: number;
   isDominantSpeaker?: boolean;
-  videoSlot?: React.ReactNode;
+  videoSlot?: ReactNode;
+  volume?: number;
+  showVolumePopover?: boolean;
+  onVolumeChange?: (volume: number) => void;
+  onVolumeToggle?: () => void;
 };
 
 function buildInitial(name: string) {
   return (name.trim()[0] || '?').toUpperCase();
+}
+
+function ParticipantVolumePopover({
+  displayName,
+  volume,
+  onChange,
+}: {
+  displayName: string;
+  volume: number;
+  onChange: (volume: number) => void;
+}) {
+  const percent = Math.round(volume * 100);
+
+  return (
+    <div
+      className="group-call-tile-volume"
+      role="dialog"
+      aria-label={`Громкость: ${displayName}`}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <span className="group-call-tile-volume__label">
+        Громкость · {percent}%
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={percent}
+        className="group-call-tile-volume__slider"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+      />
+    </div>
+  );
 }
 
 export function ParticipantTile({
@@ -20,22 +63,48 @@ export function ParticipantTile({
   height: heightProp,
   isDominantSpeaker = false,
   videoSlot,
+  volume = 1,
+  showVolumePopover = false,
+  onVolumeChange,
+  onVolumeToggle,
 }: ParticipantTileProps) {
   const height = heightProp ?? width / TILE_ASPECT_RATIO;
   const isSpeaking = participant.isSpeaking;
   const isHighlighted = isSpeaking || isDominantSpeaker;
   const displayName = participant.isLocal ? 'Вы' : participant.displayName;
+  const canAdjustVolume = !participant.isLocal && Boolean(onVolumeToggle && onVolumeChange);
+  const volumePercent = Math.round(volume * 100);
+  const volumeAdjusted = canAdjustVolume && volumePercent !== 100;
+
+  const handleTileClick = () => {
+    if (!canAdjustVolume) return;
+    onVolumeToggle?.();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (!canAdjustVolume) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onVolumeToggle?.();
+    }
+  };
 
   return (
     <div
-      className={`group-call-tile${isHighlighted ? ' group-call-tile--speaking' : ''}${isDominantSpeaker ? ' group-call-tile--dominant' : ''}`}
+      className={`group-call-tile${isHighlighted ? ' group-call-tile--speaking' : ''}${isDominantSpeaker ? ' group-call-tile--dominant' : ''}${canAdjustVolume ? ' group-call-tile--clickable' : ''}`}
       style={{ width, height }}
+      role={canAdjustVolume ? 'group' : undefined}
+      tabIndex={canAdjustVolume && !showVolumePopover ? 0 : undefined}
+      onClick={canAdjustVolume && !showVolumePopover ? handleTileClick : undefined}
+      onKeyDown={canAdjustVolume && !showVolumePopover ? handleKeyDown : undefined}
       aria-label={
         participant.isMuted
           ? `${displayName}, микрофон выключен`
           : isHighlighted
             ? `${displayName}, говорит`
-            : displayName
+            : canAdjustVolume
+              ? `${displayName}, нажмите для настройки громкости`
+              : displayName
       }
     >
       <div className="group-call-tile__inner">
@@ -48,8 +117,20 @@ export function ParticipantTile({
             )}
           </div>
         )}
+        {showVolumePopover && onVolumeChange ? (
+          <ParticipantVolumePopover
+            displayName={displayName}
+            volume={volume}
+            onChange={onVolumeChange}
+          />
+        ) : null}
         <div className="group-call-tile__name-gradient" aria-hidden />
         <div className="group-call-tile__name">{displayName}</div>
+        {volumeAdjusted ? (
+          <span className="group-call-tile__volume-badge" aria-hidden title={`Громкость ${volumePercent}%`}>
+            {volumePercent}%
+          </span>
+        ) : null}
         {participant.isMuted ? (
           <span className="group-call-tile__mute-badge" aria-hidden title="Микрофон выключен">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">

@@ -53,7 +53,8 @@ type GroupCallState = {
   isMuted: boolean;
   isVideoEnabled: boolean;
   isScreenShareEnabled: boolean;
-  remoteVolume: number;
+  /** Per-remote-participant playback volume (0–1). */
+  remoteVolumes: Record<string, number>;
   startedAt?: number;
   isCreator: boolean;
   connectionState: ConnectionState | 'idle';
@@ -78,7 +79,8 @@ type GroupCallContextType = {
   toggleMute: () => Promise<void>;
   toggleVideo: () => Promise<void>;
   toggleScreenShare: () => Promise<void>;
-  setRemoteVolume: (volume: number) => void;
+  setParticipantVolume: (userId: string, volume: number) => void;
+  getParticipantVolume: (userId: string) => number;
   isInCallForChat: (chatId: string) => boolean;
 };
 
@@ -91,7 +93,7 @@ const initialState: GroupCallState = {
   isMuted: false,
   isVideoEnabled: false,
   isScreenShareEnabled: false,
-  remoteVolume: 1,
+  remoteVolumes: {},
   isCreator: false,
   connectionState: 'idle',
 };
@@ -187,14 +189,40 @@ function readRemoteVideoTracks(room: Room): Record<string, VideoTrack> {
   return tracks;
 }
 
-function applyRemoteVolumeToRoom(room: Room, volume: number) {
-  const clamped = Math.min(1, Math.max(0, volume));
-  for (const participant of room.remoteParticipants.values()) {
-    for (const pub of participant.trackPublications.values()) {
-      if (pub.kind === Track.Kind.Audio && pub.track) {
-        (pub.track as RemoteAudioTrack).setVolume(clamped);
-      }
+const DEFAULT_PARTICIPANT_VOLUME = 1;
+
+function clampParticipantVolume(volume: number): number {
+  return Math.min(1, Math.max(0, volume));
+}
+
+function readParticipantVolume(
+  volumes: Record<string, number>,
+  userId: string,
+): number {
+  const value = volumes[userId];
+  return typeof value === 'number' && Number.isFinite(value)
+    ? clampParticipantVolume(value)
+    : DEFAULT_PARTICIPANT_VOLUME;
+}
+
+function applyParticipantVolumeToRoom(room: Room, userId: string, volume: number) {
+  const participant = room.remoteParticipants.get(userId);
+  if (!participant) return;
+  const clamped = clampParticipantVolume(volume);
+  for (const pub of participant.trackPublications.values()) {
+    if (pub.kind === Track.Kind.Audio && pub.track) {
+      (pub.track as RemoteAudioTrack).setVolume(clamped);
     }
+  }
+}
+
+function applyRemoteVolumesToRoom(room: Room, volumes: Record<string, number>) {
+  for (const participant of room.remoteParticipants.values()) {
+    applyParticipantVolumeToRoom(
+      room,
+      participant.identity,
+      readParticipantVolume(volumes, participant.identity),
+    );
   }
 }
 
@@ -291,7 +319,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const leavingIntentionallyRef = useRef(false);
   const videoToggleInFlightRef = useRef(false);
   const screenShareToggleInFlightRef = useRef(false);
-  const remoteVolumeRef = useRef(1);
+  const remoteVolumesRef = useRef<Record<string, number>>({});
   stateRef.current = state;
   activeRoomByChatIdRef.current = activeRoomByChatId;
 
@@ -309,7 +337,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
 
   const resetCallState = useCallback(async () => {
     leavingIntentionallyRef.current = false;
-    remoteVolumeRef.current = initialState.remoteVolume;
+    remoteVolumesRef.current = {};
     setLocalCameraTrack(undefined);
     setRemoteVideoTracks({});
     await detachRoom();
@@ -323,7 +351,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const syncVideoTracksFromRoom = useCallback((room: Room) => {
     setLocalCameraTrack(readLocalPreviewTrack(room));
     setRemoteVideoTracks(readRemoteVideoTracks(room));
-    applyRemoteVolumeToRoom(room, remoteVolumeRef.current);
+    applyRemoteVolumesToRoom(room, remoteVolumesRef.current);
   }, []);
 
   const syncParticipantsFromRoom = useCallback(
@@ -386,9 +414,11 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       room.on(RoomEvent.TrackMuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackUnmuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackPublished, () => syncParticipantsFromRoom(room));
-      room.on(RoomEvent.TrackSubscribed, (track) => {
-        if (track.kind === Track.Kind.Audio) {
-          (track as RemoteAudioTrack).setVolume(remoteVolumeRef.current);
+      room.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+        if (track.kind === Track.Kind.Audio && participant && !participant.isLocal) {
+          (track as RemoteAudioTrack).setVolume(
+            readParticipantVolume(remoteVolumesRef.current, participant.identity),
+          );
         }
         syncParticipantsFromRoom(room);
       });
@@ -745,13 +775,20 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     }
   }, [syncVideoTracksFromRoom]);
 
-  const setRemoteVolume = useCallback((volume: number) => {
-    const clamped = Math.min(1, Math.max(0, volume));
-    remoteVolumeRef.current = clamped;
-    setState((prev) => ({ ...prev, remoteVolume: clamped }));
+  const getParticipantVolume = useCallback((userId: string) => {
+    return readParticipantVolume(remoteVolumesRef.current, userId);
+  }, []);
+
+  const setParticipantVolume = useCallback((userId: string, volume: number) => {
+    const clamped = clampParticipantVolume(volume);
+    remoteVolumesRef.current = { ...remoteVolumesRef.current, [userId]: clamped };
+    setState((prev) => ({
+      ...prev,
+      remoteVolumes: { ...prev.remoteVolumes, [userId]: clamped },
+    }));
     const room = roomRef.current;
     if (room) {
-      applyRemoteVolumeToRoom(room, clamped);
+      applyParticipantVolumeToRoom(room, userId, clamped);
     }
   }, []);
 
@@ -869,7 +906,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       toggleMute,
       toggleVideo,
       toggleScreenShare,
-      setRemoteVolume,
+      setParticipantVolume,
+      getParticipantVolume,
       isInCallForChat,
     }),
     [
@@ -887,7 +925,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       toggleMute,
       toggleVideo,
       toggleScreenShare,
-      setRemoteVolume,
+      setParticipantVolume,
+      getParticipantVolume,
       isInCallForChat,
     ],
   );

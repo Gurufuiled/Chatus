@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConnectionState, Track } from 'livekit-client';
 import { useGroupCall } from '@/contexts/GroupCallContext';
 import { ParticipantStage } from './ParticipantStage';
@@ -10,7 +10,6 @@ import {
   IconScreenShare,
   IconScreenShareOff,
   IconVideo,
-  IconVolume,
 } from './callIcons';
 import './group-call.css';
 
@@ -43,59 +42,6 @@ function ActionButton({ label, tone = 'neutral', onClick, children }: ActionButt
   );
 }
 
-function RemoteVolumeControl({
-  volume,
-  onChange,
-}: {
-  volume: number;
-  onChange: (volume: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [open]);
-
-  const percent = Math.round(volume * 100);
-
-  return (
-    <div className="group-call-volume-wrap" ref={wrapRef}>
-      <ActionButton
-        label="Громкость собеседников"
-        tone={open ? 'accent' : 'neutral'}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <IconVolume />
-      </ActionButton>
-      {open ? (
-        <div className="group-call-volume-popover" role="dialog" aria-label="Громкость собеседников">
-          <span className="group-call-volume-popover__label">Громкость · {percent}%</span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={percent}
-            className="group-call-volume-popover__slider"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={percent}
-            onChange={(e) => onChange(Number(e.target.value) / 100)}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function GroupCallOverlay() {
   const {
     state,
@@ -106,9 +52,11 @@ export function GroupCallOverlay() {
     toggleMute,
     toggleVideo,
     toggleScreenShare,
-    setRemoteVolume,
+    getParticipantVolume,
+    setParticipantVolume,
   } = useGroupCall();
   const [now, setNow] = useState(Date.now());
+  const [volumeUserId, setVolumeUserId] = useState<string | null>(null);
 
   const visible =
     state.phase === 'creating' || state.phase === 'joining' || state.phase === 'active';
@@ -118,6 +66,40 @@ export function GroupCallOverlay() {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [visible, state.startedAt]);
+
+  useEffect(() => {
+    if (!volumeUserId) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target;
+      if (!(target instanceof Element)) {
+        setVolumeUserId(null);
+        return;
+      }
+      if (
+        target.closest('.group-call-tile--clickable') ||
+        target.closest('.group-call-tile-volume')
+      ) {
+        return;
+      }
+      setVolumeUserId(null);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setVolumeUserId(null);
+    };
+    document.addEventListener('click', onDocClick);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('click', onDocClick);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [volumeUserId]);
+
+  useEffect(() => {
+    if (!volumeUserId) return;
+    if (!state.participants.some((p) => p.userId === volumeUserId && !p.isLocal)) {
+      setVolumeUserId(null);
+    }
+  }, [state.participants, volumeUserId]);
 
   const canToggleMedia = state.connectionState === ConnectionState.Connected;
 
@@ -182,7 +164,14 @@ export function GroupCallOverlay() {
         <p className="group-call-overlay__subtitle">{statusLine}</p>
       </div>
 
-      <ParticipantStage participants={state.participants} renderVideoSlot={renderVideoSlot} />
+      <ParticipantStage
+        participants={state.participants}
+        renderVideoSlot={renderVideoSlot}
+        volumeUserId={volumeUserId}
+        getParticipantVolume={getParticipantVolume}
+        onParticipantVolumeChange={setParticipantVolume}
+        onVolumeUserIdChange={setVolumeUserId}
+      />
 
       <div className="group-call-overlay__controls">
         <ActionButton
@@ -192,8 +181,6 @@ export function GroupCallOverlay() {
         >
           {state.isMuted ? <IconMicOff /> : <IconMic />}
         </ActionButton>
-
-        <RemoteVolumeControl volume={state.remoteVolume} onChange={setRemoteVolume} />
 
         <ActionButton
           label={state.isVideoEnabled ? 'Выключить камеру' : 'Включить камеру'}

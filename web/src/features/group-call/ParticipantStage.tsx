@@ -10,6 +10,10 @@ const SINGLE_TILE_MAX_WIDTH = 320;
 type ParticipantStageProps = {
   participants: GroupCallParticipant[];
   renderVideoSlot?: (participant: GroupCallParticipant) => React.ReactNode;
+  volumeUserId?: string | null;
+  getParticipantVolume?: (userId: string) => number;
+  onParticipantVolumeChange?: (userId: string, volume: number) => void;
+  onVolumeUserIdChange?: (userId: string | null) => void;
 };
 
 type StageLayout = {
@@ -100,7 +104,14 @@ function chunkRows<T>(items: T[], columns: number): T[][] {
   return rows;
 }
 
-export function ParticipantStage({ participants, renderVideoSlot }: ParticipantStageProps) {
+export function ParticipantStage({
+  participants,
+  renderVideoSlot,
+  volumeUserId = null,
+  getParticipantVolume,
+  onParticipantVolumeChange,
+  onVolumeUserIdChange,
+}: ParticipantStageProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
@@ -157,6 +168,25 @@ export function ParticipantStage({ participants, renderVideoSlot }: ParticipantS
                 height={layout.tileHeight}
                 isDominantSpeaker={participant.isSpeaking && speakingCount === 1}
                 videoSlot={renderVideoSlot?.(participant)}
+                volume={getParticipantVolume?.(participant.userId)}
+                showVolumePopover={
+                  !participant.isLocal &&
+                  volumeUserId === participant.userId &&
+                  Boolean(onParticipantVolumeChange)
+                }
+                onVolumeChange={
+                  onParticipantVolumeChange
+                    ? (volume) => onParticipantVolumeChange(participant.userId, volume)
+                    : undefined
+                }
+                onVolumeToggle={
+                  participant.isLocal || !onVolumeUserIdChange
+                    ? undefined
+                    : () =>
+                        onVolumeUserIdChange(
+                          volumeUserId === participant.userId ? null : participant.userId,
+                        )
+                }
               />
             ))}
           </div>
