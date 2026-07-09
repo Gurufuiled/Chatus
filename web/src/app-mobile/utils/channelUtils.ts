@@ -1,4 +1,29 @@
 import type { ChatSummary } from '@/types/chat';
+import type { MappedMessage } from '@/types/message';
+
+export type ChannelCommentSettings = Pick<
+  ChatSummary,
+  'disable_comments_all' | 'disable_comments_new' | 'disable_comments_new_since'
+>;
+
+/** Mirrors server `resolveCommentAccessForPost` / mobile ChannelFeedScreen. */
+export function canCommentOnPost(
+  post: MappedMessage,
+  channel: ChannelCommentSettings | null | undefined,
+  globalCanComment: boolean,
+): boolean {
+  if (!globalCanComment) return false;
+  if (!channel) return true;
+  if (channel.disable_comments_all) return false;
+  if (
+    channel.disable_comments_new &&
+    channel.disable_comments_new_since &&
+    post.created_at >= channel.disable_comments_new_since
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export function isChannelPreviewRequired(
   channel: ChatSummary,
@@ -32,5 +57,3 @@ export function formatViewCount(count: number): string {
   if (count < 1_000_000) return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}K`;
   return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
 }
-
-export const QUICK_CHANNEL_REACTIONS = ['🔥', '👍', '❤️', '👏'] as const;

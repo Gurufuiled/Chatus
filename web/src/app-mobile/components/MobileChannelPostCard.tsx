@@ -7,10 +7,15 @@ import {
 import { VoiceMessagePlayer } from '@/features/conversation/VoiceMessagePlayer';
 import { resolveMediaUrl } from '@/services/mediaService';
 import type { MappedMessage } from '@/types/message';
-import { formatViewCount, QUICK_CHANNEL_REACTIONS } from '../utils/channelUtils';
+import {
+  canCommentOnPost,
+  formatViewCount,
+  type ChannelCommentSettings,
+} from '../utils/channelUtils';
 
 interface MobileChannelPostCardProps {
   post: MappedMessage;
+  channel?: ChannelCommentSettings | null;
   canReact: boolean;
   canComment: boolean;
   onOpenDiscussion?: () => void;
@@ -72,6 +77,7 @@ function PostMedia({ post }: { post: MappedMessage }) {
 
 export function MobileChannelPostCard({
   post,
+  channel,
   canReact,
   canComment,
   onOpenDiscussion,
@@ -81,68 +87,91 @@ export function MobileChannelPostCard({
   const text = post.content?.trim() ?? '';
   const viewCount = post.view_count ?? 0;
   const commentCount = post.comment_count ?? 0;
+  const isVisualMedia = post.msg_type === 'image' || post.msg_type === 'video';
+  const isVoice = post.msg_type === 'voice';
 
   const reactionSummary = useMemo(
     () => reactions.filter((r) => r.count > 0),
     [reactions],
   );
 
+  const itemCanComment = canCommentOnPost(post, channel, canComment);
+  const showActionsRow = itemCanComment || reactionSummary.length > 0;
+
+  const discussionLabel = `${commentCount} комментариев`;
+
   return (
     <article className="mobile-channel-post">
-      <div className="mobile-channel-post__bubble">
-        {text ? <p className="mobile-channel-post__text">{text}</p> : null}
+      <div
+        className={[
+          'mobile-channel-post__bubble',
+          isVisualMedia ? 'mobile-channel-post__bubble--visual' : '',
+          isVoice ? 'mobile-channel-post__bubble--voice' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
+        {text && !isVisualMedia ? (
+          <p className="mobile-channel-post__text">{text}</p>
+        ) : null}
         <PostMedia post={post} />
+        {text && isVisualMedia ? (
+          <div className="mobile-channel-post__caption">
+            <p className="mobile-channel-post__text">{text}</p>
+          </div>
+        ) : null}
         <footer className="mobile-channel-post__meta">
+          {viewCount > 0 ? (
+            <span className="mobile-channel-post__views">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              {formatViewCount(viewCount)}
+            </span>
+          ) : null}
           <time dateTime={new Date(post.created_at).toISOString()}>
             {formatMessageTime(post.created_at)}
           </time>
-          {viewCount > 0 ? (
-            <span className="mobile-channel-post__views">{formatViewCount(viewCount)} просм.</span>
-          ) : null}
         </footer>
-      </div>
 
-      {reactionSummary.length > 0 ? (
-        <div className="mobile-channel-post__reactions">
-          {reactionSummary.map((r) => (
-            <button
-              key={r.emoji}
-              type="button"
-              className={`mobile-channel-post__reaction-pill${r.reacted_by_me ? ' mobile-channel-post__reaction-pill--mine' : ''}`}
-              disabled={!canReact}
-              onClick={() => onReaction(r.emoji)}
-            >
-              <span>{r.emoji}</span>
-              <span>{r.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mobile-channel-post__actions">
-        {canReact ? (
-          <div className="mobile-channel-post__quick-reactions">
-            {QUICK_CHANNEL_REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                className="mobile-channel-post__quick-reaction"
-                onClick={() => onReaction(emoji)}
-                aria-label={`Реакция ${emoji}`}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {canComment && onOpenDiscussion ? (
-          <button
-            type="button"
-            className="mobile-channel-post__comments-btn"
-            onClick={onOpenDiscussion}
+        {showActionsRow ? (
+          <div
+            className={[
+              'mobile-channel-post__actions-row',
+              isVisualMedia ? 'mobile-channel-post__actions-row--visual' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
           >
-            💬 {commentCount > 0 ? commentCount : 'Комментарии'}
-          </button>
+            {itemCanComment && onOpenDiscussion ? (
+              <button
+                type="button"
+                className="mobile-channel-post__discussion"
+                onClick={onOpenDiscussion}
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                  <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" />
+                </svg>
+                <span className="mobile-channel-post__discussion-link">{discussionLabel}</span>
+              </button>
+            ) : null}
+            {reactionSummary.length > 0 ? (
+              <div className="mobile-channel-post__reactions-summary">
+                {reactionSummary.map((r) => (
+                  <button
+                    key={r.emoji}
+                    type="button"
+                    className={`mobile-channel-post__reaction-summary${r.reacted_by_me ? ' mobile-channel-post__reaction-summary--mine' : ''}`}
+                    disabled={!canReact}
+                    onClick={() => onReaction(r.emoji)}
+                  >
+                    {r.emoji} {r.count}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </article>

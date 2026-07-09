@@ -55,6 +55,9 @@ export interface ChatSummary {
   subscriber_count?: number;
   allow_comments?: boolean;
   allow_reactions?: boolean;
+  disable_comments_new?: boolean;
+  disable_comments_new_since?: number | null;
+  disable_comments_all?: boolean;
   is_subscribed?: boolean;
   can_post?: boolean;
   can_view_full_feed?: boolean;

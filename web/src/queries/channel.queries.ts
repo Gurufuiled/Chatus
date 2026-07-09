@@ -12,6 +12,7 @@ import {
   updateChannel,
   type ChannelDetail,
   type ChannelFeedResult,
+  type ChannelPostMedia,
   type DiscussionThreadResult,
 } from '@/services/channelService';
 import type { MappedMessage } from '@/types/message';
@@ -133,7 +134,7 @@ export function usePublishChannelPostMutation() {
       channelId: string;
       content?: string;
       msgType?: string;
-      media?: Parameters<typeof publishChannelPost>[1]['media'];
+      media?: ChannelPostMedia | ChannelPostMedia[];
     }) =>
       publishChannelPost(channelId, {
         content: content ?? null,

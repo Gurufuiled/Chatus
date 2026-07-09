@@ -1,19 +1,19 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import {
   useChannelFeedQuery,
   useMockCheckoutChannelMutation,
-  usePublishChannelPostMutation,
   useSubscribeChannelMutation,
   useToggleChannelReactionMutation,
 } from '@/queries/channel.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
-import { uploadFile } from '@/services/mediaService';
 import { MobilePillHeaderTitle } from '../components/MobilePillHeaderTitle';
 import { MobileChannelPostCard } from '../components/MobileChannelPostCard';
+import { MobileChannelPostComposer } from '../components/MobileChannelPostComposer';
 import { isChannelPreviewRequired } from '../utils/channelUtils';
+import { useMobileComposerKeyboard } from '../utils/useMobileComposerKeyboard';
 
 interface MobileChannelFeedScreenProps {
   channelId: string;
@@ -25,18 +25,19 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
   const { data: feedData, isLoading, isError, error, refetch } = useChannelFeedQuery(channelId);
   const subscribe = useSubscribeChannelMutation();
   const checkout = useMockCheckoutChannelMutation();
-  const publishPost = usePublishChannelPostMutation();
   const toggleReaction = useToggleChannelReactionMutation();
+  const { keyboardLift, composerPaddingBottom } = useMobileComposerKeyboard();
 
-  const [draft, setDraft] = useState('');
-  const [publishError, setPublishError] = useState<string | null>(null);
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
-  const [attachBusy, setAttachBusy] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const channel = feedData?.channel;
   const posts = useMemo(
-    () => [...(feedData?.posts ?? [])].sort((a, b) => a.created_at - b.created_at),
+    () =>
+      [...(feedData?.posts ?? [])].sort((a, b) => {
+        if (a.created_at !== b.created_at) return a.created_at - b.created_at;
+        if (a.updated_at !== b.updated_at) return a.updated_at - b.updated_at;
+        return String(a.id).localeCompare(String(b.id));
+      }),
     [feedData?.posts],
   );
 
@@ -49,6 +50,7 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
   const canComment = feedData?.can_comment ?? channel?.can_comment ?? false;
   const canEditSettings = channel?.channel_permissions?.can_edit_channel === true;
   const title = channel ? getChatDisplayName(channel) : 'Канал';
+  const showComposer = canPost && !needsSubscribe;
 
   const handleSubscribe = () => {
     if (!channel) return;
@@ -67,53 +69,6 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
           setSubscribeError(err instanceof Error ? err.message : 'Не удалось подписаться'),
       },
     );
-  };
-
-  const handlePublish = () => {
-    const text = draft.trim();
-    if (!text || publishPost.isPending) return;
-    setPublishError(null);
-    publishPost.mutate(
-      { channelId, content: text },
-      {
-        onSuccess: () => setDraft(''),
-        onError: (err) =>
-          setPublishError(err instanceof Error ? err.message : 'Не удалось опубликовать'),
-      },
-    );
-  };
-
-  const handleAttach = async (file: File) => {
-    if (!canPost || attachBusy) return;
-    setAttachBusy(true);
-    setPublishError(null);
-    try {
-      const uploaded = await uploadFile(file);
-      const isImage = file.type.startsWith('image/');
-      publishPost.mutate(
-        {
-          channelId,
-          content: draft.trim() || undefined,
-          msgType: isImage ? 'image' : 'file',
-          media: {
-            media_type: isImage ? 'image' : 'file',
-            url: uploaded.url,
-            file_name: file.name,
-            file_size: file.size,
-            mime_type: file.type,
-          },
-        },
-        {
-          onSuccess: () => setDraft(''),
-          onError: (err) =>
-            setPublishError(err instanceof Error ? err.message : 'Не удалось опубликовать'),
-        },
-      );
-    } catch (err) {
-      setPublishError(err instanceof Error ? err.message : 'Не удалось загрузить файл');
-    } finally {
-      setAttachBusy(false);
-    }
   };
 
   if (isLoading) {
@@ -144,7 +99,7 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
 
   return (
     <div
-      className={`mobile-channel-feed${canPost ? ' mobile-channel-feed--with-composer' : ''}`}
+      className={`mobile-channel-feed${showComposer ? ' mobile-channel-feed--with-composer' : ''}`}
       style={{ '--mobile-chat-wallpaper': `url(${wallpaperUrl})` } as React.CSSProperties}
     >
       <header className="mobile-chat__header mobile-chat__header--pill">
@@ -198,6 +153,7 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
                 <MobileChannelPostCard
                   key={post.id}
                   post={post}
+                  channel={channel}
                   canReact={false}
                   canComment={false}
                   onReaction={() => {}}
@@ -225,7 +181,15 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
           ) : null}
         </div>
       ) : (
-        <div className="mobile-channel-feed__posts">
+        <div
+          className="mobile-channel-feed__posts"
+          style={{
+            paddingBottom:
+              keyboardLift > 0
+                ? `calc(${keyboardLift + 8}px + var(--m-safe-bottom))`
+                : undefined,
+          }}
+        >
           {posts.length === 0 ? (
             <p className="mobile-channel-feed__empty">
               {canPost ? 'Пока нет публикаций — напишите первый пост' : 'Пока нет публикаций'}
@@ -235,6 +199,7 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
               <MobileChannelPostCard
                 key={post.id}
                 post={post}
+                channel={channel}
                 canReact={canReact}
                 canComment={canComment}
                 onReaction={(emoji) =>
@@ -252,57 +217,12 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
         </div>
       )}
 
-      {canPost && !needsSubscribe ? (
-        <footer className="mobile-channel-feed__composer">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,.pdf,.doc,.docx"
-            className="mobile-channel-feed__file-input"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleAttach(file);
-              e.target.value = '';
-            }}
-          />
-          <button
-            type="button"
-            className="mobile-channel-feed__attach"
-            disabled={attachBusy}
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Прикрепить файл"
-          >
-            📎
-          </button>
-          <textarea
-            className="mobile-channel-feed__input"
-            placeholder="Новая публикация"
-            value={draft}
-            rows={1}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handlePublish();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="mobile-channel-feed__send"
-            disabled={!draft.trim() || publishPost.isPending || attachBusy}
-            onClick={handlePublish}
-            aria-label="Опубликовать"
-          >
-            ➤
-          </button>
-        </footer>
-      ) : null}
-
-      {publishError ? (
-        <p className="mobile-channel-feed__publish-error" role="alert">
-          {publishError}
-        </p>
+      {showComposer ? (
+        <MobileChannelPostComposer
+          channelId={channelId}
+          keyboardLift={keyboardLift}
+          composerPaddingBottom={composerPaddingBottom}
+        />
       ) : null}
 
       <button

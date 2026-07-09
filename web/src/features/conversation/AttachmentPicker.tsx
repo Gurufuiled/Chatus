@@ -10,7 +10,7 @@ interface AttachmentPickerProps {
   disabled?: boolean;
 }
 
-const ACCEPT =
+export const ACCEPT =
   'image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain';
 
 export function AttachmentPicker({ chatId, disabled = false }: AttachmentPickerProps) {

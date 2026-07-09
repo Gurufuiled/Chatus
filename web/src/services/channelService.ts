@@ -2,6 +2,19 @@ import { apiRequest } from './apiClient';
 import type { ChatSummary, ChannelPermissions } from '@/types/chat';
 import type { MappedMessage, MappedMessageReaction } from '@/types/message';
 
+export type ChannelPostMedia = {
+  media_type?: string;
+  url?: string;
+  duration_ms?: number;
+  thumbnail_url?: string;
+  width?: number;
+  height?: number;
+  file_name?: string;
+  file_size?: number;
+  mime_type?: string;
+  waveform?: number[];
+};
+
 export type ChannelDetail = {
   channel: ChatSummary;
   preview_posts: MappedMessage[];
@@ -163,17 +176,7 @@ export async function publishChannelPost(
   payload: {
     content?: string | null;
     msg_type?: string;
-    media?: {
-      media_type?: string;
-      url?: string;
-      duration_ms?: number;
-      thumbnail_url?: string;
-      width?: number;
-      height?: number;
-      file_name?: string;
-      file_size?: number;
-      mime_type?: string;
-    };
+    media?: ChannelPostMedia | ChannelPostMedia[];
   },
 ): Promise<MappedMessage> {
   return apiRequest<MappedMessage>(`/channels/${encodeURIComponent(channelId)}/posts`, {
