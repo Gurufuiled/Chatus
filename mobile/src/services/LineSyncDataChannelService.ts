@@ -29,7 +29,7 @@ type DataChannelLike = {
 };
 
 type PeerConnectionLike = RTCPeerConnection & {
-  createDataChannel?: (label: string, options?: Record<string, unknown>) => DataChannelLike;
+  createDataChannel?: (label: string, options?: Record<string, unknown>) => any;
   ondatachannel?: ((event: { channel?: DataChannelLike }) => void) | null;
   onicecandidate?: ((event: { candidate?: RTCIceCandidate | null }) => void) | null;
   onconnectionstatechange?: (() => void) | null;
@@ -130,7 +130,7 @@ class LineSyncDataChannelServiceClass {
       this.closeSession(userId);
       return done(false);
     }
-    this.attachChannel(session, channel);
+    this.attachChannel(session, channel as any);
 
     const openPromise = this.waitForOpen(session, timeoutMs);
     session.openPromise = openPromise;

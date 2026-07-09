@@ -163,8 +163,8 @@ export function GroupCallOverlay() {
             videoTrack={localCameraTrack}
             style={[
               styles.participantVideo,
-              isScreenShare ? styles.participantVideoContain : null,
-            ]}
+              isScreenShare && styles.participantVideoContain,
+            ] as any}
             objectFit={isScreenShare ? 'contain' : 'cover'}
             mirror={!isScreenShare}
           />
@@ -178,8 +178,8 @@ export function GroupCallOverlay() {
           videoTrack={remoteTrack}
           style={[
             styles.participantVideo,
-            isScreenShare ? styles.participantVideoContain : null,
-          ]}
+            isScreenShare && styles.participantVideoContain,
+          ] as any}
           objectFit={isScreenShare ? 'contain' : 'cover'}
         />
       );

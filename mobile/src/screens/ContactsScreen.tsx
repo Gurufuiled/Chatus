@@ -197,7 +197,7 @@ export function ContactsScreen() {
     [navigation]
   );
 
-  const renderSearchItem = ({ item }: { item: ApiUser }) => {
+  const renderSearchItem = useCallback(({ item }: { item: ApiUser }) => {
     const avatarUrl = resolveAvatarUrl(item.avatar_url);
     const displayName = item.display_name || item.username || 'Unknown';
     const handle = item.handle ? `@${item.handle}` : '';
@@ -238,9 +238,9 @@ export function ContactsScreen() {
         )}
       </Pressable>
     );
-  };
+  }, [creatingChatUserIds, handleStartChat, styles.avatar, styles.avatarPlaceholder, styles.avatarPlaceholderText, styles.displayName, styles.handle, styles.info, styles.row, styles.rowLoader, styles.rowPressed, themeColors.accent]);
 
-  const renderContactFromChat = ({ item }: { item: ContactFromChatRow }) => {
+  const renderContactFromChat = useCallback(({ item }: { item: ContactFromChatRow }) => {
     const { chat, peerId, title, avatarUrl: rawAvatar } = item;
     const peerMember = chat.members?.find((m) => m.user_id === peerId);
     const presence = presenceByUserId[peerId] ?? {
@@ -280,7 +280,7 @@ export function ContactsScreen() {
         </View>
       </Pressable>
     );
-  };
+  }, [openChat, presenceByUserId, styles.avatar, styles.avatarPlaceholder, styles.avatarPlaceholderText, styles.displayName, styles.info, styles.presenceSubtitle, styles.row, styles.rowPressed]);
 
   const renderPhoneBookContact = useCallback(
     ({ item }: { item: PhoneBookContact }) => {
@@ -325,7 +325,7 @@ export function ContactsScreen() {
 
   const searchG = TELEGRAM_PROFILE_GLYPHS.search;
 
-  const listEmpty = isSearchMode ? (
+  const listEmpty = useMemo(() => isSearchMode ? (
     <View style={styles.empty}>
       <Text style={styles.emptyText}>Пользователи не найдены</Text>
     </View>
@@ -333,7 +333,45 @@ export function ContactsScreen() {
     <View style={styles.empty}>
       <Text style={styles.emptyText}>Нет личных чатов. Найдите человека по имени или @нику.</Text>
     </View>
-  );
+  ), [isSearchMode, styles.empty, styles.emptyText]);
+
+  const contactsListData = useMemo(() => [
+    ...contactsFromChats.map((item) => ({ type: 'chat' as const, key: item.chat.id, data: item })),
+    ...(chatusPhoneContacts.length > 0
+      ? [
+          { type: 'sectionHeader' as const, key: 'header:phonebook', data: null },
+          ...chatusPhoneContacts.map((item) => ({ type: 'phonebook' as const, key: `pb:${item.phoneNumber}`, data: item })),
+        ]
+      : []),
+  ], [contactsFromChats, chatusPhoneContacts]);
+
+  const renderListItem = useCallback(({ item }: { item: { type: 'chat' | 'sectionHeader' | 'phonebook', key: string, data: any } }) => {
+    if (item.type === 'sectionHeader') {
+      return (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionHeaderText}>В телефонной книге</Text>
+        </View>
+      );
+    }
+    if (item.type === 'phonebook') {
+      return renderPhoneBookContact({ item: item.data as PhoneBookContact });
+    }
+    return renderContactFromChat({ item: item.data as ContactFromChatRow });
+  }, [renderContactFromChat, renderPhoneBookContact, styles.sectionHeader, styles.sectionHeaderText]);
+
+  const listHeaderComponent = useMemo(() => permissionStatus !== 'granted' ? (
+    <Pressable
+      style={({ pressed }) => [styles.permissionBanner, pressed && { opacity: 0.85 }]}
+      onPress={() => void handleRequestPermission()}
+    >
+      <Text style={styles.permissionBannerText}>
+        Разрешите доступ к контактам, чтобы найти друзей в Chatus
+      </Text>
+      <Text style={styles.permissionBannerButton}>Разрешить</Text>
+    </Pressable>
+  ) : null, [permissionStatus, handleRequestPermission, styles.permissionBanner, styles.permissionBannerText, styles.permissionBannerButton]);
+
+  const listEmptyComponentContacts = useMemo(() => permissionStatus !== 'granted' ? null : listEmpty, [permissionStatus, listEmpty]);
 
   return (
     <View style={styles.container}>
@@ -369,45 +407,11 @@ export function ContactsScreen() {
         />
       ) : (
         <FlatList
-          data={[
-            ...contactsFromChats.map((item) => ({ type: 'chat' as const, key: item.chat.id, data: item })),
-            ...(chatusPhoneContacts.length > 0
-              ? [
-                  { type: 'sectionHeader' as const, key: 'header:phonebook', data: null },
-                  ...chatusPhoneContacts.map((item) => ({ type: 'phonebook' as const, key: `pb:${item.phoneNumber}`, data: item })),
-                ]
-              : []),
-          ]}
+          data={contactsListData}
           keyExtractor={(item) => item.key}
-          renderItem={({ item }) => {
-            if (item.type === 'sectionHeader') {
-              return (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionHeaderText}>В телефонной книге</Text>
-                </View>
-              );
-            }
-            if (item.type === 'phonebook') {
-              return renderPhoneBookContact({ item: item.data as PhoneBookContact });
-            }
-            return renderContactFromChat({ item: item.data as ContactFromChatRow });
-          }}
-          ListHeaderComponent={
-            permissionStatus !== 'granted' ? (
-              <Pressable
-                style={({ pressed }) => [styles.permissionBanner, pressed && { opacity: 0.85 }]}
-                onPress={() => void handleRequestPermission()}
-              >
-                <Text style={styles.permissionBannerText}>
-                  Разрешите доступ к контактам, чтобы найти друзей в Chatus
-                </Text>
-                <Text style={styles.permissionBannerButton}>Разрешить</Text>
-              </Pressable>
-            ) : null
-          }
-          ListEmptyComponent={
-            permissionStatus !== 'granted' ? null : listEmpty
-          }
+          renderItem={renderListItem}
+          ListHeaderComponent={listHeaderComponent}
+          ListEmptyComponent={listEmptyComponentContacts}
         />
       )}
     </View>

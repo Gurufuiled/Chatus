@@ -187,5 +187,10 @@ export function injectBridgeIntoFrame(
   } catch {
     /* cross-origin */
   }
-  iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), '*');
+  const targetOrigin = iframe.src ? new URL(iframe.src).origin : '*';
+  if (targetOrigin !== 'null' && targetOrigin !== '') {
+    iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), targetOrigin);
+  } else {
+    iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), '*');
+  }
 }
