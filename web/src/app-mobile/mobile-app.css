@@ -4684,6 +4684,43 @@ button.mobile-pill-header-title:active {
   margin-top: 0;
   border-radius: 12px;
   overflow: hidden;
+  line-height: 0;
+  max-width: 100%;
+}
+
+.mobile-channel-post__media-frame {
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.mobile-channel-post__media-frame .image-message,
+.mobile-channel-post__media-frame .video-message-container {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  line-height: 0;
+}
+
+.mobile-channel-post__media-frame .image-message {
+  cursor: zoom-in;
+}
+
+.mobile-channel-post__media-frame .image-message__img,
+.mobile-channel-post__media-frame .video-message {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0;
+}
+
+.mobile-channel-post__media-frame .video-message-container--round,
+.mobile-channel-post__media-frame .video-message--round {
+  border-radius: 50%;
 }
 
 .mobile-channel-post__bubble:not(.mobile-channel-post__bubble--visual) .mobile-channel-post__media {

@@ -1,12 +1,9 @@
 import { useMemo } from 'react';
 import { formatMessageTime } from '@/features/conversation/messageFormatters';
-import {
-  ImageMessageContent,
-  VideoMessageContent,
-} from '@/features/conversation/MediaMessageContent';
 import { VoiceMessagePlayer } from '@/features/conversation/VoiceMessagePlayer';
 import { resolveMediaUrl } from '@/services/mediaService';
 import type { MappedMessage } from '@/types/message';
+import { ChannelPostVisualMedia } from './ChannelPostVisualMedia';
 import {
   canCommentOnPost,
   formatViewCount,
@@ -31,7 +28,12 @@ function PostMedia({ post }: { post: MappedMessage }) {
   if (post.msg_type === 'image') {
     return (
       <div className="mobile-channel-post__media">
-        <ImageMessageContent url={url} alt="" />
+        <ChannelPostVisualMedia
+          msgType="image"
+          url={url}
+          width={media.width}
+          height={media.height}
+        />
       </div>
     );
   }
@@ -39,10 +41,13 @@ function PostMedia({ post }: { post: MappedMessage }) {
   if (post.msg_type === 'video' || post.msg_type === 'video_note') {
     return (
       <div className="mobile-channel-post__media">
-        <VideoMessageContent
+        <ChannelPostVisualMedia
+          msgType={post.msg_type === 'video_note' ? 'video_note' : 'video'}
           url={url}
-          poster={media.thumbnail_url ? resolveMediaUrl(media.thumbnail_url) : undefined}
+          poster={media.thumbnail_url}
           round={post.msg_type === 'video_note' || media.is_round}
+          width={media.width}
+          height={media.height}
         />
       </div>
     );

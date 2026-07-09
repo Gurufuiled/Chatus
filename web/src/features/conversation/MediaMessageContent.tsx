@@ -51,9 +51,10 @@ export function FileMessageContent({ fileName, fileSize, mimeType, url }: FileMe
 interface ImageMessageContentProps {
   url: string;
   alt?: string;
+  onImageLoad?: (img: HTMLImageElement) => void;
 }
 
-export function ImageMessageContent({ url, alt = 'Photo' }: ImageMessageContentProps) {
+export function ImageMessageContent({ url, alt = 'Photo', onImageLoad }: ImageMessageContentProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const src = resolveMediaUrl(url);
 
@@ -79,7 +80,13 @@ export function ImageMessageContent({ url, alt = 'Photo' }: ImageMessageContentP
         onClick={() => setLightboxOpen(true)}
         aria-label="Open image"
       >
-        <img src={src} alt={alt} className="image-message__img" loading="lazy" />
+        <img
+          src={src}
+          alt={alt}
+          className="image-message__img"
+          loading="lazy"
+          onLoad={(e) => onImageLoad?.(e.currentTarget)}
+        />
       </button>
       {lightboxOpen ? (
         <div
