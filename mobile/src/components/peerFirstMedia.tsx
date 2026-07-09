@@ -195,7 +195,8 @@ export function PeerFirstVoiceBubble({
   ...props
 }: Omit<React.ComponentProps<typeof VoiceBubble>, 'uri'> & { lineId: string; serverUri: string }) {
   const uri = usePeerFirstResolvedUri(lineId, serverUri);
-  return <VoiceBubble {...props} uri={uri} />;
+  const playbackKey = resolveMediaUrl(serverUri) ?? serverUri;
+  return <VoiceBubble {...props} uri={uri} playbackKey={playbackKey} />;
 }
 
 export function PeerFirstFileBubble({

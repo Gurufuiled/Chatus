@@ -1,53 +1,32 @@
 import type { TelegramAuthStatus } from '../../stores/telegramAccountStore';
-import { applyTdlibParameters, recoverTdlibSession } from './tdlibBootstrap';
+import { applyTdlibParameters, scheduleBackgroundTdlibRecovery } from './tdlibBootstrap';
 import { throwIfTdError } from './tdlibErrors';
 import { readAuthorizationStateType } from '../../screens/telegramAuth/tdlibAuthFlow';
 import { tdlibClient } from './TdlibClient';
+import { mapTdlibAuthStateToStore } from './tdlibAuthStateMapping';
 
-const TERMINAL_AUTH_STATES = new Set([
-  'authorizationStateLoggingOut',
-  'authorizationStateClosed',
-]);
+export { mapTdlibAuthStateToStore, isTerminalTdlibAuthState } from './tdlibAuthStateMapping';
 
 const AUTH_RECOVERY_POLL_MS = 200;
-const AUTH_RECOVERY_TIMEOUT_MS = 12_000;
-const OPERATIONAL_RETRY_MS = 1800;
+const AUTH_RECOVERY_TIMEOUT_MS = 15_000;
+const OPERATIONAL_RETRY_MS = 2000;
 
-/**
- * Map TDLib authorization state to store status.
- * Unknown / transient states keep the current store status instead of forcing error.
- */
-export function mapTdlibAuthStateToStore(
-  authType: string | undefined,
-  current: TelegramAuthStatus,
-): TelegramAuthStatus {
-  switch (authType) {
-    case 'authorizationStateReady':
-      return 'ready';
-    case 'authorizationStateWaitPassword':
-      return 'waiting_password';
-    case 'authorizationStateWaitCode':
-    case 'authorizationStateWaitEmailCode':
-    case 'authorizationStateWaitOtherDeviceConfirmation':
-      return 'waiting_code';
-    case 'authorizationStateWaitPhoneNumber':
-    case 'authorizationStateWaitEmailAddress':
-    case 'authorizationStateWaitRegistration':
-      return 'waiting_phone';
-    case 'authorizationStateWaitTdlibParameters':
-      return current === 'ready' ? current : 'waiting_parameters';
-    case 'authorizationStateClosing':
-      return current;
-    case 'authorizationStateLoggingOut':
-    case 'authorizationStateClosed':
-      if (current === 'ready') return current;
-      return 'error';
-  }
-  return current;
+const EXPLICIT_REAUTH_STATES = new Set([
+  'authorizationStateWaitPhoneNumber',
+  'authorizationStateWaitEmailAddress',
+  'authorizationStateWaitRegistration',
+  'authorizationStateWaitCode',
+  'authorizationStateWaitEmailCode',
+  'authorizationStateWaitOtherDeviceConfirmation',
+  'authorizationStateWaitPassword',
+]);
+
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-export function isTerminalTdlibAuthState(authType: string | undefined): boolean {
-  return authType != null && TERMINAL_AUTH_STATES.has(authType);
+function isExplicitReauthState(state: string | null | undefined): boolean {
+  return state != null && EXPLICIT_REAUTH_STATES.has(state);
 }
 
 async function readTdlibAuthorizationStateType(): Promise<string | null> {
@@ -56,21 +35,16 @@ async function readTdlibAuthorizationStateType(): Promise<string | null> {
   return readAuthorizationStateType(auth) ?? null;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/** Lightweight check — getMe is cheaper than getChats while TDLib is busy in an open group. */
 async function isTdlibSessionOperational(): Promise<boolean> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       const me = (await tdlibClient.send({ '@type': 'getMe' })) as Record<string, unknown>;
       throwIfTdError(me);
       if (me['@type'] === 'user') return true;
     } catch {
-      /* TDLib may be momentarily busy */
+      /* TDLib may be busy opening a chat */
     }
-    if (attempt < 2) {
+    if (attempt < 3) {
       await delay(OPERATIONAL_RETRY_MS);
     }
   }
@@ -86,15 +60,12 @@ async function waitForTdlibAuthRecovery(): Promise<{ ready: boolean; state: stri
     if (state === 'authorizationStateReady') {
       return { ready: true, state };
     }
+    if (isExplicitReauthState(state)) {
+      return { ready: false, state };
+    }
     await delay(AUTH_RECOVERY_POLL_MS);
   }
   return { ready: false, state: lastState };
-}
-
-async function tryRecoverReadySession(current: TelegramAuthStatus): Promise<boolean> {
-  if (current !== 'ready' && current !== 'error') return false;
-  if (await isTdlibSessionOperational()) return true;
-  return recoverTdlibSession();
 }
 
 /** Read live TDLib auth and map to store status (does not mutate store). */
@@ -104,13 +75,19 @@ export async function probeTdlibAuthStatus(
   await applyTdlibParameters();
   let state = await readTdlibAuthorizationStateType();
 
+  if (isExplicitReauthState(state)) {
+    return {
+      status: mapTdlibAuthStateToStore(state ?? undefined, current),
+      state,
+    };
+  }
+
   if (current === 'error') {
-    if (state === 'authorizationStateReady') {
-      return { status: 'ready', state };
+    if (state === 'authorizationStateReady' || (await isTdlibSessionOperational())) {
+      return { status: 'ready', state: state ?? 'authorizationStateReady' };
     }
-    if (await tryRecoverReadySession(current)) {
-      return { status: 'ready', state: 'authorizationStateReady' };
-    }
+    scheduleBackgroundTdlibRecovery();
+    return { status: 'error', state };
   }
 
   const isTransientClose =
@@ -118,23 +95,30 @@ export async function probeTdlibAuthStatus(
     state === 'authorizationStateClosed' ||
     state === 'authorizationStateLoggingOut';
 
-  if (current === 'ready' && isTransientClose) {
+  if (current === 'ready' && (isTransientClose || state === 'authorizationStateWaitTdlibParameters')) {
     const recovered = await waitForTdlibAuthRecovery();
     if (recovered.ready) {
       return { status: 'ready', state: recovered.state };
     }
     state = recovered.state;
+    if (isExplicitReauthState(state)) {
+      return {
+        status: mapTdlibAuthStateToStore(state, current),
+        state,
+      };
+    }
     if (await isTdlibSessionOperational()) {
       return { status: 'ready', state: 'authorizationStateReady' };
     }
-    if (await tryRecoverReadySession('ready')) {
-      return { status: 'ready', state: 'authorizationStateReady' };
-    }
-    return { status: 'error', state };
+    scheduleBackgroundTdlibRecovery();
+    return { status: 'ready', state };
   }
 
-  return {
-    status: mapTdlibAuthStateToStore(state ?? undefined, current),
-    state,
-  };
+  const mapped = mapTdlibAuthStateToStore(state ?? undefined, current);
+  if (current === 'ready' && mapped !== 'ready') {
+    scheduleBackgroundTdlibRecovery();
+    return { status: 'ready', state };
+  }
+
+  return { status: mapped, state };
 }

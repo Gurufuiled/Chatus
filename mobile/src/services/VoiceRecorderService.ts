@@ -3,9 +3,11 @@
  * Outputs AAC .m4a format with waveform metering for UI.
  */
 
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { Camera } from 'expo-camera';
 import { Platform } from 'react-native';
 
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 import { VoicePlayerService } from './VoicePlayerService';
 import { buildLiveWaveform, buildUiWaveform, dbToNormalized } from './waveformUtils';
 
@@ -53,8 +55,19 @@ class VoiceRecorderServiceClass {
 
   /** Request RECORD_AUDIO (Android) / microphone (iOS) permission. Returns true if granted. */
   async requestPermissions(): Promise<boolean> {
-    const { status } = await Audio.requestPermissionsAsync();
-    return status === 'granted';
+    const current = await Camera.getMicrophonePermissionsAsync();
+    if (current.status === 'granted') {
+      return true;
+    }
+
+    await releaseMediaAudioSession();
+
+    if (current.status === 'denied' && current.canAskAgain === false) {
+      return false;
+    }
+
+    const next = await Camera.requestMicrophonePermissionsAsync();
+    return next.status === 'granted';
   }
 
   /** Ensure audio mode allows recording (required on iOS). */
@@ -65,6 +78,8 @@ class VoiceRecorderServiceClass {
       staysActiveInBackground: false,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
+      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
     });
   }
 
@@ -76,6 +91,8 @@ class VoiceRecorderServiceClass {
       staysActiveInBackground: false,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
+      interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
     });
   }
 
@@ -84,6 +101,9 @@ class VoiceRecorderServiceClass {
     if (this.recording) {
       throw new Error('Recording already in progress. Call stopRecording() first.');
     }
+
+    await VoicePlayerService.stop().catch(() => {});
+    await releaseMediaAudioSession();
 
     const granted = await this.requestPermissions();
     if (!granted) {
@@ -94,7 +114,6 @@ class VoiceRecorderServiceClass {
       );
     }
 
-    await VoicePlayerService.stop().catch(() => {});
     await this.ensureAudioMode();
     this.waveformSamples = [];
     this.emitLiveWaveform(Array(LIVE_WAVEFORM_SAMPLE_COUNT).fill(0.06));

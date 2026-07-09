@@ -29,6 +29,7 @@ import type { BlobRef } from './lineSyncProtocol';
 import { LineSyncService, LINE_SYNC_MVP_NODE_ID, type PeerPatchDeliveryResult } from './LineSyncService';
 import { MediaCacheService } from './MediaCacheService';
 import { calculateFileSha256 } from './MediaHashService';
+import { ensureLocalFileUri } from '../utils/ensureLocalFileUri';
 import { getOtherGroupMemberUserIds } from '../utils/groupLineSyncPeer';
 
 function queueToSyncQueue(
@@ -450,10 +451,17 @@ class TransportServiceClass {
     const senderId = authStore.getState().user?.id;
     if (!senderId) return { ok: false, reason: 'unavailable' };
 
-    const sha256 = await calculateFileSha256(args.localUri);
+    let localUri = args.localUri;
+    try {
+      localUri = await ensureLocalFileUri(args.localUri, 'media');
+    } catch {
+      // Fall back to original URI; hashing / pin may still fail and trigger server upload.
+    }
+
+    const sha256 = await calculateFileSha256(localUri);
     if (!sha256) return { ok: false, reason: 'unavailable' };
 
-    const info = await FileSystem.getInfoAsync(args.localUri).catch(() => null);
+    const info = await FileSystem.getInfoAsync(localUri).catch(() => null);
     const sizeBytes =
       info?.exists && !info.isDirectory && typeof info.size === 'number' ? info.size : null;
     if (sizeBytes == null || sizeBytes < 0) return { ok: false, reason: 'unavailable' };
@@ -495,7 +503,7 @@ class TransportServiceClass {
       lineId: args.chatId,
       blobId: `sha256:${sha256}`,
       sha256,
-      localUri: args.localUri,
+      localUri,
       sizeBytes,
       targetUserId: args.recipientUserId,
     });

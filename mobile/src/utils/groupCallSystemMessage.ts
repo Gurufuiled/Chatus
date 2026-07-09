@@ -32,6 +32,11 @@ export function parseGroupCallSystemContent(
   return null;
 }
 
+/** Solid incoming-bubble fill for in-chat group call system messages (Android parity). */
+export function getGroupCallSystemBubbleBackground(bubbleOtherColor: string): string {
+  return bubbleOtherColor;
+}
+
 export function formatGroupCallParticipantNames(
   participants: GroupCallParticipant[],
   maxNames = 2,

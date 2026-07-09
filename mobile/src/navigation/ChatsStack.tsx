@@ -1,5 +1,5 @@
 import React from 'react';
-import { createNativeStackNavigator, type NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
@@ -32,13 +32,7 @@ import {
   TelegramChatScreen,
 } from '../screens';
 import type { ChatsStackParamList } from './types';
-import { resolveAvatarUrl } from '../config';
-import { authStore } from '../stores/authStore';
-import { chatStore } from '../stores/chatStore';
-import type { Chat } from '../stores/types';
-import { uiStore } from '../stores/uiStore';
-import { ChatPillHeaderTitle } from '../components/ChatPillHeaderTitle';
-import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation, createIosOpaqueChatHeaderOptions } from '../presentation';
+import { CHAT_HEADER_AVATAR_SIZE, chatHeaderPresentation } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
 
@@ -86,7 +80,7 @@ export function formatGroupSubtitle(memberCount?: number) {
 }
 
 function getChatPeerId(
-  chat: ReturnType<typeof chatStore.getState>['chats'][number] | null,
+  chat: { chat_type?: string; members?: Array<{ user_id: string }> } | null,
   currentUserId: string | null,
 ): string | null {
   if (!chat || !currentUserId || chat.chat_type !== 'private') return null;
@@ -133,124 +127,10 @@ export function ChatHeaderTitle({
   );
 }
 
-const GROUP_HEADER_MEMBER_CHIP = 28;
-const GROUP_HEADER_MEMBER_OVERLAP = 10;
-const GROUP_HEADER_MEMBERS_MAX = 5;
-
-const MEMBER_CHIP_COLORS = ['#5B8DEF', '#53B7A8', '#F2994A', '#BB6BD9', '#EB5757', '#2D9CDB'];
-
-function memberChipColor(seed: string): string {
-  let h = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    h = seed.charCodeAt(i) + ((h << 5) - h);
-  }
-  return MEMBER_CHIP_COLORS[Math.abs(h) % MEMBER_CHIP_COLORS.length] ?? MEMBER_CHIP_COLORS[0];
-}
-
-function getGroupMemberDisplayName(m: NonNullable<Chat['members']>[number]): string {
-  return (
-    m.user?.display_name?.trim() ||
-    m.user?.username?.trim() ||
-    m.user?.handle?.trim() ||
-    m.user_id?.trim() ||
-    'Участник'
-  );
-}
-
-export function GroupChatHeaderMembers({
-  members,
-  currentUserId,
-  chatId,
-  navigation,
-  stackStyles,
-  headerBorderColor,
-}: {
-  members: NonNullable<Chat['members']>;
-  currentUserId: string | null;
-  chatId: string;
-  navigation: NativeStackNavigationProp<ChatsStackParamList, 'Chat'>;
-  stackStyles: ReturnType<typeof createChatsStackStyles>;
-  headerBorderColor: string;
-}) {
-  const ordered = React.useMemo(() => {
-    const list = members.filter((m) => m.user_id?.trim());
-    const others = list.filter((m) => m.user_id !== currentUserId);
-    const me = list.find((m) => m.user_id === currentUserId);
-    return [...others, ...(me ? [me] : [])];
-  }, [members, currentUserId]);
-
-  if (ordered.length === 0) return null;
-
-  const shown = ordered.slice(0, GROUP_HEADER_MEMBERS_MAX);
-  const overflow = ordered.length - shown.length;
-
-  return (
-    <View style={stackStyles.groupHeaderMembersRow} accessibilityRole="toolbar">
-      {shown.map((m, index) => {
-        const name = getGroupMemberDisplayName(m);
-        const uri = resolveAvatarUrl(m.user?.avatar_url ?? null);
-        const initial = (name.trim()[0] || '?').toUpperCase();
-        return (
-          <Pressable
-            key={m.user_id}
-            accessibilityRole="button"
-            accessibilityLabel={`Профиль: ${name}`}
-            hitSlop={6}
-            onPress={() =>
-              navigation.navigate('ChatProfile', {
-                chatId,
-                userId: m.user_id,
-                chatTitle: name,
-              })
-            }
-            style={[
-              stackStyles.groupHeaderMemberPressable,
-              index > 0 && { marginLeft: -GROUP_HEADER_MEMBER_OVERLAP },
-              { zIndex: shown.length - index },
-            ]}
-          >
-            {uri ? (
-              <Image
-                source={{ uri }}
-                style={[stackStyles.groupHeaderMemberAvatar, { borderColor: headerBorderColor }]}
-                contentFit="cover"
-                cachePolicy="disk"
-              />
-            ) : (
-              <View
-                style={[
-                  stackStyles.groupHeaderMemberAvatar,
-                  stackStyles.groupHeaderMemberAvatarPlaceholder,
-                  { borderColor: headerBorderColor, backgroundColor: memberChipColor(m.user_id) },
-                ]}
-              >
-                <Text style={stackStyles.groupHeaderMemberInitial}>{initial}</Text>
-              </View>
-            )}
-          </Pressable>
-        );
-      })}
-      {overflow > 0 ? (
-        <View
-          style={[
-            stackStyles.groupHeaderOverflow,
-            { marginLeft: -GROUP_HEADER_MEMBER_OVERLAP, zIndex: 0 },
-          ]}
-        >
-          <Text style={stackStyles.groupHeaderOverflowText}>+{overflow}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
+export { GroupChatHeaderMembers } from '../components/GroupChatHeaderMembers';
 
 export function ChatsStack() {
-  const chats = chatStore((state) => state.chats);
-  const presenceByUserId = uiStore((state) => state.presenceByUserId);
-  const currentUserId = authStore((state) => state.user?.id ?? null);
   const { colors } = useTheme();
-  const stackStyles = React.useMemo(() => createChatsStackStyles(colors), [colors]);
 
   return (
     <Stack.Navigator
@@ -362,37 +242,11 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChannelFeed"
         component={ChannelFeedScreen}
-        options={({ route, navigation }) => {
-          const channel = chats.find((item) => item.id === route.params.channelId) ?? null;
-          const title = channel?.name || 'Канал';
-          const subtitle = `${channel?.subscriber_count ?? 0} подписчиков`;
-          const avatarUrl = resolveAvatarUrl(channel?.avatar_url);
-          return {
-            ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
-            ...createIosOpaqueChatHeaderOptions(colors.toolbar),
-            headerShown: Platform.OS !== 'android',
-            headerBackTitle: 'Назад',
-            headerTitleAlign: 'left',
-            headerTitle: () => (
-              <Pressable
-                onPress={() =>
-                  navigation.navigate('ChannelProfile', { channelId: route.params.channelId })
-                }
-                style={({ pressed }) => [
-                  stackStyles.headerTitlePressable,
-                  pressed && stackStyles.headerPressablePressed,
-                ]}
-              >
-                <ChatHeaderTitle
-                  title={title}
-                  subtitle={subtitle}
-                  avatarUrl={avatarUrl}
-                  stackStyles={stackStyles}
-                />
-              </Pressable>
-            ),
-          };
-        }}
+        options={({ route }) => ({
+          ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS,
+          headerShown: false,
+          title: route.params.channelId,
+        })}
       />
 
       <Stack.Screen
@@ -428,7 +282,7 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChannelDiscussion"
         component={ChannelDiscussionScreen}
-        options={{ title: 'Обсуждение', headerBackTitle: 'Назад', ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS, ...createIosOpaqueChatHeaderOptions(colors.toolbar), headerShown: Platform.OS !== 'android' }}
+        options={{ title: 'Обсуждение', headerBackTitle: 'Назад', ...CHAT_INTERACTIVE_BACK_STACK_OPTIONS, headerShown: false }}
       />
 
       <Stack.Screen
@@ -483,8 +337,6 @@ export function ChatsStack() {
 }
 
 export function createChatsStackStyles(colors: ThemeColors) {
-  const chip = GROUP_HEADER_MEMBER_CHIP;
-  const chipR = chip / 2;
   return StyleSheet.create({
   chatHeaderTitleRoot: {
     flexDirection: 'row',
@@ -495,39 +347,6 @@ export function createChatsStackStyles(colors: ThemeColors) {
   chatHeaderTitlePressableFlex: {
     flex: 1,
     minWidth: 0,
-  },
-  groupHeaderMembersRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 0,
-    paddingLeft: 2,
-    maxWidth: '42%',
-  },
-  groupHeaderMemberPressable: {},
-  groupHeaderMemberAvatar: {
-    width: chip,
-    height: chip,
-    borderRadius: chipR,
-    borderWidth: 2,
-  },
-  groupHeaderMemberAvatarPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  groupHeaderMemberInitial: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  groupHeaderOverflow: {
-    marginLeft: 2,
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
-  groupHeaderOverflowText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textSecondary,
   },
   headerRow: {
     flexDirection: 'row',

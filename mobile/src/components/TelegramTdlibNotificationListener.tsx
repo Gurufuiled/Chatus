@@ -1,13 +1,12 @@
 import { useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
-import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import {
-  isTerminalTdlibAuthState,
-  mapTdlibAuthStateToStore,
-  probeTdlibAuthStatus,
-} from '../services/tdlib/tdlibAuthState';
-import { recoverTdlibSession } from '../services/tdlib/tdlibBootstrap';
+  applyTdlibParameters,
+  scheduleBackgroundTdlibRecovery,
+  waitForTdlibAuthorizationReady,
+} from '../services/tdlib/tdlibBootstrap';
+import { probeTdlibAuthStatus } from '../services/tdlib/tdlibAuthState';
 import {
   notifyTelegramInboundMessagePreview,
   registerTelegramAndroidPushWithTdlib,
@@ -69,40 +68,7 @@ export function TelegramTdlibNotificationListener() {
       }, 400);
     };
 
-    let authCloseVerifyTimer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleAuthCloseVerification = () => {
-      if (authCloseVerifyTimer) clearTimeout(authCloseVerifyTimer);
-      authCloseVerifyTimer = setTimeout(() => {
-        authCloseVerifyTimer = null;
-        void (async () => {
-          const store = telegramAccountStore.getState();
-          const previousStatus = store.authStatus;
-          try {
-            let { status, state } = await probeTdlibAuthStatus(previousStatus);
-            if (__DEV__) {
-              console.log('[tdlib-notify] auth close verify ->', state, '=>', status);
-            }
-            if (status === 'error' && previousStatus === 'ready') {
-              const recovered = await recoverTdlibSession();
-              if (recovered) {
-                status = 'ready';
-                state = 'authorizationStateReady';
-              }
-            }
-            if (status === previousStatus) return;
-            store.setAuthStatus(status);
-            if (status === 'ready') {
-              syncChatusPhoneFromTelegramAuth().catch(console.error);
-            }
-            scheduleAuthPersist();
-          } catch (e) {
-            if (__DEV__) console.warn('[tdlib-notify] auth close verify failed', e);
-          }
-        })();
-      }, 4500);
-    };
-
-    void (async () => {
+    const reconcileAuthStatus = async () => {
       const store = telegramAccountStore.getState();
       if (store.authStatus === 'idle') return;
       try {
@@ -115,9 +81,11 @@ export function TelegramTdlibNotificationListener() {
           scheduleAuthPersist();
         }
       } catch (e) {
-        if (__DEV__) console.warn('[tdlib-notify] startup auth reconcile failed', e);
+        if (__DEV__) console.warn('[tdlib-notify] auth reconcile failed', e);
       }
-    })();
+    };
+
+    void reconcileAuthStatus();
 
     unsubTd = tdlibClient.subscribe((update) => {
       try {
@@ -153,8 +121,6 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateWaitPhoneNumber':
             case 'authorizationStateWaitEmailAddress':
             case 'authorizationStateWaitRegistration':
-              // Во время активного ввода кода/пароля не откатываем шаг назад из-за гонки,
-              // но после завершения/сброса auth-flow позволяем вернуться на телефон.
               if (
                 store.authStatus !== 'waiting_code' &&
                 store.authStatus !== 'waiting_password' &&
@@ -165,27 +131,13 @@ export function TelegramTdlibNotificationListener() {
               }
               break;
             case 'authorizationStateClosing':
-              // Transient while TDLib restarts — verify before marking session dead.
-              scheduleAuthCloseVerification();
-              break;
             case 'authorizationStateLoggingOut':
             case 'authorizationStateClosed':
-              if (isTerminalTdlibAuthState(stateType)) {
-                void (async () => {
-                  if (stateType === 'authorizationStateClosed') {
-                    const recovered = await recoverTdlibSession();
-                    if (recovered) {
-                      const s = telegramAccountStore.getState();
-                      if (s.authStatus !== 'ready') {
-                        s.setAuthStatus('ready');
-                        scheduleAuthPersist();
-                        syncChatusPhoneFromTelegramAuth().catch(console.error);
-                      }
-                      return;
-                    }
-                  }
-                  scheduleAuthCloseVerification();
-                })();
+              // Never flip ready → error on transient close; recover quietly in background.
+              if (store.authStatus === 'ready') {
+                scheduleBackgroundTdlibRecovery();
+              } else {
+                void reconcileAuthStatus();
               }
               break;
             default:
@@ -248,7 +200,6 @@ export function TelegramTdlibNotificationListener() {
 
     return () => {
       if (persistAuthDebounce) clearTimeout(persistAuthDebounce);
-      if (authCloseVerifyTimer) clearTimeout(authCloseVerifyTimer);
       unsubTd?.();
       unsubAuth?.();
     };

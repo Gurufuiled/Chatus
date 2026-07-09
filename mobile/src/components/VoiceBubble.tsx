@@ -23,6 +23,8 @@ const WAVEFORM_RENDER_THROTTLE_MS = 125;
 
 export interface VoiceBubbleProps {
   uri: string | null;
+  /** Stable key for playback progress when `uri` may switch between remote and cached file. */
+  playbackKey?: string;
   waveform: number[]; 
   durationMs: number;
   isMe: boolean;
@@ -129,6 +131,7 @@ function buildTelegramLikeBars(
 function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
   return (
     prev.uri === next.uri &&
+    prev.playbackKey === next.playbackKey &&
     prev.durationMs === next.durationMs &&
     prev.isMe === next.isMe &&
     prev.time === next.time &&
@@ -155,6 +158,7 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
 
 export const VoiceBubble = React.memo(function VoiceBubble({
   uri,
+  playbackKey: playbackKeyProp,
   waveform,
   durationMs,
   isMe,
@@ -180,8 +184,13 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   source,
   loading = false,
 }: VoiceBubbleProps) {
+  const playbackKey = playbackKeyProp ?? uri ?? undefined;
   const { play, pause, seekTo } = useVoicePlayerControls();
-  const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
+  const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(
+    uri,
+    durationMs,
+    playbackKey
+  );
   const [waveformWidth, setWaveformWidth] = useState(0);
 
   // Throttle the progress value used for waveform rendering to avoid
@@ -232,7 +241,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
 
     try {
       stopActiveVideoNotePlayback();
-      void play(uri).catch((err) => {
+      void play(uri, undefined, playbackKey).catch((err) => {
         if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
       });
     } catch (err) {
@@ -255,7 +264,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     try {
       if (!isCurrent) {
         stopActiveVideoNotePlayback();
-        void play(uri, targetPositionMs).catch((err) => {
+        void play(uri, targetPositionMs, playbackKey).catch((err) => {
           if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
         });
       } else {

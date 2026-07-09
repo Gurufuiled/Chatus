@@ -1,5 +1,5 @@
 /** Limit parallel TDLib JSON requests — flooding the native bridge causes @extra mismatches and session drops. */
-const MAX_IN_FLIGHT = 6;
+const MAX_IN_FLIGHT = 3;
 
 let inFlight = 0;
 const waitQueue: Array<() => void> = [];

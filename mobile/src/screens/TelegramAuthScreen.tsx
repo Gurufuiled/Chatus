@@ -33,6 +33,7 @@ import {
   tdlibClient,
 } from "../services/tdlib/TdlibClient";
 import { applyTdlibParameters } from "../services/tdlib/tdlibBootstrap";
+import { probeTdlibAuthStatus } from "../services/tdlib/tdlibAuthState";
 import { throwIfTdError } from "../services/tdlib/tdlibErrors";
 import { runTdlibAuthorizationQuery } from "../services/tdlib/tdlibAuthQueue";
 import {
@@ -255,10 +256,13 @@ export function TelegramAuthScreen() {
         requestContactsAndSync().catch(console.error);
         return "ready";
       }
-      const next = mapTdlibAuthToStore(t, telegramAccountStore.getState().authStatus);
-      telegramAccountStore.getState().setAuthStatus(next);
-      await telegramAccountStore.getState().persistSnapshot();
-      return next;
+      const current = telegramAccountStore.getState().authStatus;
+      const probed = await probeTdlibAuthStatus(current);
+      if (probed.status !== current) {
+        telegramAccountStore.getState().setAuthStatus(probed.status);
+        await telegramAccountStore.getState().persistSnapshot();
+      }
+      return probed.status;
     }, [apiHash, apiId]);
 
   useFocusEffect(

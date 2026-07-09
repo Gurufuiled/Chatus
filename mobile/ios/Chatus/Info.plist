@@ -60,13 +60,13 @@
 		</dict>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Разрешите доступ к камере для записи видеокружков.</string>
+	<string>Разрешите доступ к камере для записи видеокружков и съёмки.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>Разрешите доступ к контактам для поиска друзей в Chatus и Telegram.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Разрешите доступ к микрофону для записи видеокружков.</string>
+	<string>Разрешите доступ к микрофону для голосовых сообщений и видеокружков.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Разрешите сохранять изображения в галерею.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

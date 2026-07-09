@@ -77,7 +77,7 @@ import {
   ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT,
   CustomAndroidChatHeader,
 } from '../components/CustomAndroidChatHeader';
-import { formatPresence, formatGroupSubtitle } from '../navigation/ChatsStack';
+import { formatPresence } from '../navigation/ChatsStack';
 
 import {
   MeBubbleChrome,
@@ -115,6 +115,7 @@ import {
   type ChatThemeId,
 } from '../theme/chatThemes';
 import { makeOptimisticTempMessageId } from '../utils/optimisticTempMessageId';
+import { VIDEO_NOTE_CAMERA_SIDE_PX } from '../constants/videoNote';
 import {
   probeLocalVideoDimensionsWithRetry,
 } from '../utils/probeLocalVideoDimensions';
@@ -1460,7 +1461,10 @@ export function ChatScreen() {
   const handleSendVideoNote = useCallback(
     async (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
       if (!currentUserId) return;
-      const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
+      const probed =
+        Platform.OS === 'ios'
+          ? { width: VIDEO_NOTE_CAMERA_SIDE_PX, height: VIDEO_NOTE_CAMERA_SIDE_PX }
+          : await probeLocalVideoDimensionsWithRetry(result.uri);
       if (!probed) {
         Alert.alert(
           'Не удалось отправить видеосообщение',
@@ -2914,7 +2918,7 @@ export function ChatScreen() {
     : undefined;
   const title = route.params.chatTitle ?? 'Чат';
   const subtitle = isGroupChat
-    ? formatGroupSubtitle(currentChat?.members?.length)
+    ? undefined
     : formatPresence(presence?.is_online, presence?.last_seen);
   const avatarUrl = resolveAvatarUrl(currentChat?.avatar_url);
 
@@ -2939,9 +2943,6 @@ export function ChatScreen() {
           chatId={chatId}
           navigation={navigation}
           floating
-          showGroupCallButton={isGroupChat}
-          onGroupCallPress={isGroupChat ? handleOpenGroupCallSheet : undefined}
-          onSearchPress={() => setIsSearchMode(true)}
         />
 
       <BlurTargetView

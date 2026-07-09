@@ -3,9 +3,11 @@
  * Single sound at a time. Loading new URI stops and unloads previous.
  */
 
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import type { AVPlaybackStatus } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
+import { normalizeVoicePlaybackKey } from '../utils/voicePlaybackKey';
 
 const PROGRESS_UPDATE_INTERVAL_MS = 100;
 /** Cap React store broadcasts during playback so ChatScreen / bubbles are not repainted 10×/s. */
@@ -125,6 +127,8 @@ class VoicePlayerServiceClass {
       staysActiveInBackground: false,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
+      interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
     });
     this.audioModeReady = true;
   }
@@ -213,7 +217,11 @@ class VoicePlayerServiceClass {
   };
 
   /** Try streaming from remote URL (avoids download latency when supported). */
-  private async tryPlayFromUriDirect(uri: string, positionMs?: number): Promise<boolean> {
+  private async tryPlayFromUriDirect(
+    uri: string,
+    playbackKey: string,
+    positionMs?: number
+  ): Promise<boolean> {
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
@@ -228,7 +236,7 @@ class VoicePlayerServiceClass {
         false
       );
       this.soundRef = sound;
-      this.currentUri = uri;
+      this.currentUri = playbackKey;
       const status = await sound.getStatusAsync();
       if (status.isLoaded) {
         this.lastStatus = {
@@ -251,12 +259,16 @@ class VoicePlayerServiceClass {
    * Stops and unloads any previously playing sound.
    * Serialized to avoid race when play() is called concurrently.
    */
-  async play(uri: string, positionMs?: number): Promise<void> {
+  async play(uri: string, positionMs?: number, playbackKey?: string): Promise<void> {
+    const normalizedKey = normalizeVoicePlaybackKey(playbackKey ?? uri);
     const previous = this.playPromise;
     this.playPromise = (async () => {
       await previous;
 
-      if (this.soundRef && this.currentUri === uri) {
+      this.audioModeReady = false;
+      await releaseMediaAudioSession();
+
+      if (this.soundRef && this.currentUri === normalizedKey) {
         const currentStatus = await this.soundRef.getStatusAsync();
         if (currentStatus.isLoaded) {
           if (positionMs != null) {
@@ -289,7 +301,7 @@ class VoicePlayerServiceClass {
       await this.stopAndUnloadCurrent();
       await this.ensureAudioMode();
       if (/^https?:\/\//i.test(uri)) {
-        const streamed = await this.tryPlayFromUriDirect(uri, positionMs);
+        const streamed = await this.tryPlayFromUriDirect(uri, normalizedKey, positionMs);
         if (streamed) return;
       }
       const playableUri = await this.resolvePlayableUri(uri);
@@ -308,7 +320,7 @@ class VoicePlayerServiceClass {
       );
 
       this.soundRef = sound;
-      this.currentUri = uri;
+      this.currentUri = normalizedKey;
       const status = await sound.getStatusAsync();
       if (status.isLoaded) {
         this.lastStatus = {

@@ -61,7 +61,7 @@ import {
   buildReplyPreviewText,
   getReplyPreviewThumbnailUri,
 } from '../components';
-import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import { CustomAndroidChatHeader, ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT } from '../components/CustomAndroidChatHeader';
 import {
   PeerFirstFileBubble,
   PeerFirstImageBubble,
@@ -1268,17 +1268,16 @@ export function ChannelDiscussionScreen() {
   return (
     <View style={[styles.container, styles.discussionRootTransparent]}>
       <InteractiveChatBackShell navigation={navigation as any} gestureEnabled={!menuState}>
-        {Platform.OS === 'android' ? (
-          <CustomAndroidChatHeader
-            title="Обсуждение"
-            subtitle={undefined}
-            avatarUrl={null}
-            isGroupChat={false}
-            peerId={null}
-            chatId={channelId}
-            navigation={navigation as any}
-          />
-        ) : null}
+        <CustomAndroidChatHeader
+          title="Обсуждение"
+          subtitle={undefined}
+          avatarUrl={null}
+          isGroupChat={false}
+          peerId={null}
+          chatId={channelId}
+          navigation={navigation as any}
+          floating
+        />
 
       <BlurTargetView
         ref={blurTargetRef}
@@ -1286,6 +1285,7 @@ export function ChannelDiscussionScreen() {
         style={[styles.container, { backgroundColor: c.chatBackground }]}
       >
         <ChatBackgroundPattern />
+        <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
 
         {loading && !thread && !loadError ? (
           <View style={styles.loading}><ActivityIndicator size="large" color={c.accent} /></View>

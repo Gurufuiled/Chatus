@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatPillHeaderTitle } from './ChatPillHeaderTitle';
+import { PILL_TITLE_SIDE_INSET } from '../utils/chatHeaderRightActions';
 import type { ThemeColors } from '../theme/palettes';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -17,12 +18,9 @@ interface CustomAndroidChatHeaderProps {
   isGroupChat: boolean;
   peerId: string | null;
   chatId: string;
-  navigation: NativeStackNavigationProp<ChatsStackParamList, 'Chat'> | any;
+  navigation: NativeStackNavigationProp<ChatsStackParamList, 'Chat'> | { navigate: (...args: unknown[]) => void };
   /** When set, title row opens this instead of Chatus GroupProfile / ChatProfile. */
   onTitlePress?: () => void;
-  onSearchPress?: () => void;
-  onGroupCallPress?: () => void;
-  showGroupCallButton?: boolean;
   /** Telegram chat: never fall back to Chatus profile routes when `onTitlePress` is unset. */
   telegramTitleOnly?: boolean;
   titleNavDisabled?: boolean;
@@ -38,9 +36,6 @@ export function CustomAndroidChatHeader({
   chatId,
   navigation,
   onTitlePress,
-  onSearchPress,
-  onGroupCallPress,
-  showGroupCallButton = false,
   telegramTitleOnly = false,
   titleNavDisabled = false,
   floating = false,
@@ -48,15 +43,21 @@ export function CustomAndroidChatHeader({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const hasRightActions = Boolean(onSearchPress || (showGroupCallButton && onGroupCallPress));
 
   const openProfile = () => {
     if (isGroupChat) {
-      navigation.navigate('GroupProfile', { chatId, chatTitle: title });
+      (navigation as NativeStackNavigationProp<ChatsStackParamList, 'Chat'>).navigate('GroupProfile', {
+        chatId,
+        chatTitle: title,
+      });
       return;
     }
     if (!peerId) return;
-    navigation.navigate('ChatProfile', { chatId, userId: peerId, chatTitle: title });
+    (navigation as NativeStackNavigationProp<ChatsStackParamList, 'Chat'>).navigate('ChatProfile', {
+      chatId,
+      userId: peerId,
+      chatTitle: title,
+    });
   };
 
   const canOpenProfile = telegramTitleOnly
@@ -74,7 +75,10 @@ export function CustomAndroidChatHeader({
       <View style={styles.toolbar}>
         <Pressable
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
-          onPress={() => navigation.canGoBack() && navigation.goBack()}
+          onPress={() =>
+            (navigation as NativeStackNavigationProp<ChatsStackParamList, 'Chat'>).canGoBack() &&
+            (navigation as NativeStackNavigationProp<ChatsStackParamList, 'Chat'>).goBack()
+          }
           hitSlop={12}
         >
           <View style={styles.backButtonPill}>
@@ -86,7 +90,7 @@ export function CustomAndroidChatHeader({
           pointerEvents="box-none"
           style={[
             styles.pillTitleRoot,
-            hasRightActions ? { right: 104 } : null,
+            { left: PILL_TITLE_SIDE_INSET, right: PILL_TITLE_SIDE_INSET },
           ]}
         >
           <ChatPillHeaderTitle
@@ -101,27 +105,6 @@ export function CustomAndroidChatHeader({
             disabled={titleNavDisabled || !canOpenProfile}
             accessibilityHint="Открывает профиль"
           />
-        </View>
-
-        <View style={styles.rightActions}>
-          {onSearchPress ? (
-            <Pressable
-              onPress={onSearchPress}
-              hitSlop={10}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.backButtonPressed]}
-            >
-              <Feather name="search" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ) : null}
-          {showGroupCallButton && onGroupCallPress ? (
-            <Pressable
-              onPress={onGroupCallPress}
-              hitSlop={10}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.backButtonPressed]}
-            >
-              <Feather name="phone" size={22} color={colors.textPrimary} />
-            </Pressable>
-          ) : null}
         </View>
       </View>
     </View>
@@ -175,23 +158,8 @@ function createStyles(colors: ThemeColors) {
     },
     pillTitleRoot: {
       position: 'absolute',
-      left: 56,
-      right: 56,
       top: 5,
       bottom: 5,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    rightActions: {
-      marginLeft: 'auto',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    actionButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
     },

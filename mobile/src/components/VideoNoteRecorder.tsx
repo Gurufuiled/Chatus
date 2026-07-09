@@ -22,6 +22,7 @@ import {
 } from '../services/VideoNoteRecorderService';
 
 import { VIDEO_NOTE_CAMERA_SIDE_PX } from '../constants/videoNote';
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 
 const CIRCLE_SIZE = VIDEO_NOTE_CAMERA_SIDE_PX;
 const CIRCLE_RADIUS = CIRCLE_SIZE / 2;
@@ -135,6 +136,7 @@ export function VideoNoteRecorder({
     setIsPreparing(true);
 
     try {
+      await releaseMediaAudioSession();
       await VideoNoteRecorderService.startRecording();
       if (cancelledRef.current) {
         await stopRecordingSilently();
@@ -173,7 +175,17 @@ export function VideoNoteRecorder({
           return;
         }
 
-        await onComplete(result);
+        try {
+          await onComplete(result);
+        } catch (sendErr) {
+          if (__DEV__) {
+            console.warn('[VideoNoteRecorder] send video note error:', sendErr);
+          }
+          Alert.alert(
+            'Ошибка',
+            'Видеокружок записан, но не удалось отправить. Проверь интернет и попробуй ещё раз.',
+          );
+        }
       } catch (err) {
         stopTimer();
         setIsRecording(false);
@@ -211,8 +223,12 @@ export function VideoNoteRecorder({
 
   const handleSend = useCallback(() => {
     if (!VideoNoteRecorderService.isRecording()) return;
+    if (elapsedMs < 700) {
+      Alert.alert('Подожди', 'Держи запись чуть дольше перед отправкой.');
+      return;
+    }
     void finalizeRecording(false);
-  }, [finalizeRecording]);
+  }, [elapsedMs, finalizeRecording]);
 
   const handleFlipCamera = useCallback(() => {
     // expo-camera stops the current recording when facing changes.
@@ -230,6 +246,7 @@ export function VideoNoteRecorder({
       setIsRecording(false);
       stopTimer();
       VideoNoteRecorderService.setCameraRef(null);
+      void releaseMediaAudioSession();
       return;
     }
 
@@ -306,6 +323,7 @@ export function VideoNoteRecorder({
           style={styles.camera}
           facing={facing}
           mode="video"
+          mute={false}
           mirror={facing === 'front'}
           zoom={0}
           ratio="1:1"

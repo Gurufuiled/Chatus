@@ -13,9 +13,10 @@ import {
   type VoicePlayerSnapshot,
   type VoicePlayerStatus,
 } from '../services/VoicePlayerService';
+import { normalizeVoicePlaybackKey } from '../utils/voicePlaybackKey';
 
 type VoicePlayerControls = {
-  play: (uri: string, positionMs?: number) => Promise<void>;
+  play: (uri: string, positionMs?: number, playbackKey?: string) => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
   seekTo: (positionMs: number) => Promise<void>;
@@ -44,9 +45,12 @@ function getVoicePlayerSnapshot(): VoicePlayerSnapshot {
 function buildVoicePlaybackSelection(
   snapshot: VoicePlayerSnapshot,
   uri: string | null,
-  fallbackDurationMs: number
+  fallbackDurationMs: number,
+  playbackKey?: string
 ): VoicePlaybackForUri {
-  const isCurrent = Boolean(uri) && snapshot.currentVoiceUri === uri;
+  const keySource = playbackKey ?? uri;
+  const normalizedKey = keySource ? normalizeVoicePlaybackKey(keySource) : '';
+  const isCurrent = Boolean(normalizedKey) && snapshot.currentVoiceUri === normalizedKey;
   const positionMs = isCurrent ? snapshot.status.positionMs : 0;
   /** Use loaded media duration for progress — message metadata can be inflated (e.g. recording wall-clock bug). */
   const durationMs = isCurrent
@@ -89,8 +93,8 @@ function isSameVoicePlaybackSelection(
 }
 
 export function VoicePlayerProvider({ children }: { children: React.ReactNode }) {
-  const play = useCallback(async (uri: string, positionMs?: number) => {
-    await VoicePlayerService.play(uri, positionMs);
+  const play = useCallback(async (uri: string, positionMs?: number, playbackKey?: string) => {
+    await VoicePlayerService.play(uri, positionMs, playbackKey);
   }, []);
 
   const pause = useCallback(async () => {
@@ -151,10 +155,12 @@ export function useVoicePlayerState(): VoicePlayerSnapshot {
 
 export function useVoicePlaybackForUri(
   uri: string | null,
-  fallbackDurationMs: number
+  fallbackDurationMs: number,
+  playbackKey?: string
 ): VoicePlaybackForUri {
+  const effectivePlaybackKey = playbackKey ?? uri ?? undefined;
   const [selection, setSelection] = useState<VoicePlaybackForUri>(() =>
-    buildVoicePlaybackSelection(getVoicePlayerSnapshot(), uri, fallbackDurationMs)
+    buildVoicePlaybackSelection(getVoicePlayerSnapshot(), uri, fallbackDurationMs, effectivePlaybackKey)
   );
   const selectionRef = useRef(selection);
 
@@ -163,7 +169,8 @@ export function useVoicePlaybackForUri(
       const next = buildVoicePlaybackSelection(
         getVoicePlayerSnapshot(),
         uri,
-        fallbackDurationMs
+        fallbackDurationMs,
+        effectivePlaybackKey
       );
 
       if (isSameVoicePlaybackSelection(selectionRef.current, next)) {
@@ -176,7 +183,7 @@ export function useVoicePlaybackForUri(
 
     syncSelection();
     return subscribeToVoicePlayer(syncSelection);
-  }, [fallbackDurationMs, uri]);
+  }, [effectivePlaybackKey, fallbackDurationMs, uri]);
 
   return selection;
 }

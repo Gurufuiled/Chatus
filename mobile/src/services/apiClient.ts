@@ -6,7 +6,10 @@
  */
 
 import { API_BASE_URL, USE_MOCKS } from '../config';
+import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { authStore } from '../stores/authStore';
+import { ensureLocalFileUri } from '../utils/ensureLocalFileUri';
 import { authService } from './AuthService';
 import { httpFetch } from './httpFetch';
 import { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete } from './apiMocks';
@@ -181,6 +184,76 @@ function inferUploadName(uri: string, fallback: string): string {
   return candidate || fallback;
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
+async function uploadViaNativeMultipart(args: {
+  localUri: string;
+  name: string;
+  type: string;
+  timeoutMs: number;
+}): Promise<ApiUploadResult> {
+  const url = `${API_BASE_URL}/upload`;
+  const token = authStore.getState().accessToken;
+
+  const doUpload = async (): Promise<ApiUploadResult> => {
+    const uploadResult = await withTimeout(
+      FileSystem.uploadAsync(url, args.localUri, {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType: args.type,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }),
+      args.timeoutMs,
+      'Upload',
+    );
+
+    if (uploadResult.status === 401 && token) {
+      await authService.refreshToken();
+      await authStore.getState().restoreSession();
+      const refreshedToken = authStore.getState().accessToken;
+      const retryResult = await withTimeout(
+        FileSystem.uploadAsync(url, args.localUri, {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          mimeType: args.type,
+          headers: refreshedToken ? { Authorization: `Bearer ${refreshedToken}` } : {},
+        }),
+        args.timeoutMs,
+        'Upload retry',
+      );
+      if (retryResult.status < 200 || retryResult.status >= 300) {
+        throw new Error(retryResult.body || `Upload failed: ${retryResult.status}`);
+      }
+      return JSON.parse(retryResult.body) as ApiUploadResult;
+    }
+
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      throw new Error(uploadResult.body || `Upload failed: ${uploadResult.status}`);
+    }
+
+    return JSON.parse(uploadResult.body) as ApiUploadResult;
+  };
+
+  return doUpload();
+}
+
 /**
  * Upload file via multipart/form-data POST to /upload.
  * Returns { url, file_name, mime_type, file_size }.
@@ -192,14 +265,23 @@ export async function apiUpload(file: {
   /** По умолчанию UPLOAD_FETCH_TIMEOUT_MS; для видео задавай LARGE_MEDIA_UPLOAD_TIMEOUT_MS. */
   timeoutMs?: number;
 }): Promise<ApiUploadResult> {
+  const name = file.name ?? 'voice.m4a';
+  const type = file.type ?? 'audio/mp4';
+  const timeoutMs = file.timeoutMs ?? UPLOAD_FETCH_TIMEOUT_MS;
+  const localUri = await ensureLocalFileUri(file.uri, name);
+
+  if (Platform.OS === 'ios') {
+    return uploadViaNativeMultipart({ localUri, name, type, timeoutMs });
+  }
+
   const formData = new FormData();
   // React Native FormData accepts { uri, name, type } for file uploads
   formData.append(
     'file',
     {
-      uri: file.uri,
-      name: file.name ?? 'voice.m4a',
-      type: file.type ?? 'audio/mp4',
+      uri: localUri,
+      name,
+      type,
     } as unknown as Blob
   );
 
@@ -207,7 +289,7 @@ export async function apiUpload(file: {
     method: 'POST',
     headers: {},
     body: formData,
-    timeoutMs: file.timeoutMs ?? UPLOAD_FETCH_TIMEOUT_MS,
+    timeoutMs,
   });
 
   if (!res.ok) {

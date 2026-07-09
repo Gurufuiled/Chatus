@@ -41,8 +41,11 @@ export async function getTdlibDirectories(): Promise<{ databaseDir: string; file
 let tdlibParametersAppliedThisProcess = false;
 let applyInFlight: Promise<void> | null = null;
 let recoveryInFlight: Promise<boolean> | null = null;
+let lastRecoveryFinishedMs = 0;
+let backgroundRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let lastNativeVerifyMs = 0;
-const NATIVE_VERIFY_MIN_INTERVAL_MS = 8000;
+const NATIVE_VERIFY_MIN_INTERVAL_MS = 12_000;
+const RECOVERY_COOLDOWN_MS = 45_000;
 
 /**
  * Только если нативный клиент TDLib реально пересоздан (новый процесс приложения).
@@ -61,6 +64,10 @@ export function resetTdlibParametersLock(): void {
 export async function recoverTdlibSession(): Promise<boolean> {
   if (recoveryInFlight) return recoveryInFlight;
   recoveryInFlight = (async () => {
+    const sinceLast = Date.now() - lastRecoveryFinishedMs;
+    if (sinceLast < RECOVERY_COOLDOWN_MS) {
+      return false;
+    }
     resetTdlibParametersLock();
     try {
       const recreated = await tdlibClient.recreateClient();
@@ -74,6 +81,9 @@ export async function recoverTdlibSession(): Promise<boolean> {
     try {
       await applyTdlibParameters({ force: true });
       const { ready } = await waitForTdlibAuthorizationReady(45_000);
+      if (ready) {
+        lastRecoveryFinishedMs = Date.now();
+      }
       return ready;
     } catch {
       return false;
@@ -82,6 +92,25 @@ export async function recoverTdlibSession(): Promise<boolean> {
     recoveryInFlight = null;
   });
   return recoveryInFlight;
+}
+
+/**
+ * Debounced native client recovery — never downgrade UI to error from transient Closed.
+ * Avoids hammering recreateClient while user navigates between Telegram chats.
+ */
+export function scheduleBackgroundTdlibRecovery(): void {
+  if (recoveryInFlight) return;
+  const sinceLast = Date.now() - lastRecoveryFinishedMs;
+  if (sinceLast < RECOVERY_COOLDOWN_MS) return;
+  if (backgroundRecoveryTimer) return;
+  backgroundRecoveryTimer = setTimeout(() => {
+    backgroundRecoveryTimer = null;
+    void recoverTdlibSession().then((ok) => {
+      if (ok && __DEV__) {
+        console.log('[tdlib] background session recovery succeeded');
+      }
+    });
+  }, 3000);
 }
 
 export function applyTdlibParameters(options?: { force?: boolean }): Promise<void> {
@@ -116,8 +145,11 @@ async function verifyTdlibNativeStillInitialized(): Promise<void> {
       await applyTdlibParameters({ force: true });
       return;
     }
-    if (probeType === 'authorizationStateClosed') {
-      await recoverTdlibSession();
+    if (
+      probeType === 'authorizationStateClosed' ||
+      probeType === 'authorizationStateClosing'
+    ) {
+      scheduleBackgroundTdlibRecovery();
     }
   } catch {
     /* native unavailable */

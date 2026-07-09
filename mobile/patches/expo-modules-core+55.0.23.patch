@@ -53,3 +53,44 @@ index 0000000..81afb75
 +@end
 +
 +NS_ASSUME_NONNULL_END
+diff --git a/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.h b/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.h
+index 46292b9..aa609c8 100644
+--- a/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.h
++++ b/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.h
+@@ -2,8 +2,9 @@
+ 
+ #import <ExpoModulesCore/EXExportedModule.h>
+ #import <ExpoModulesCore/EXPermissionsInterface.h>
++#import <ExpoModulesCore/EXInternalModule.h>
+ 
+-@interface EXPermissionsService : NSObject <EXPermissionsInterface>
++@interface EXPermissionsService : NSObject <EXPermissionsInterface, EXInternalModule>
+ 
+ + (EXPermissionStatus)statusForPermission:(NSDictionary *)permission;
+ 
+diff --git a/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.m b/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.m
+index 00dbd94..eec54bd 100644
+--- a/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.m
++++ b/node_modules/expo-modules-core/ios/Legacy/Services/Permissions/EXPermissionsService.m
+@@ -3,6 +3,7 @@
+ #import <ExpoModulesCore/EXUtilitiesInterface.h>
+ #import <ExpoModulesCore/EXUtilities.h>
+ #import <ExpoModulesCore/EXPermissionsService.h>
++#import <ExpoModulesCore/EXInternalModule.h>
+ #import <React/RCTLog.h>
+ 
+ NSString * const EXStatusKey = @"status";
+@@ -21,6 +22,13 @@ @interface EXPermissionsService ()
+ 
+ @implementation EXPermissionsService
+ 
++EX_REGISTER_MODULE();
++
+++ (const NSArray<Protocol *> *)exportedInterfaces
++{
++  return @[@protocol(EXPermissionsInterface)];
++}
++
+ - (instancetype)init
+ {
+   if (self = [super init]) {

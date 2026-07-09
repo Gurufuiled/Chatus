@@ -28,6 +28,7 @@ import { VoiceRecorderService, type VoiceRecordingResult } from '../services/Voi
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
 import type { Message } from '../stores/types';
 import { ensureVideoThumbnailUri } from '../utils/videoThumbnail';
+import { ensureLocalFileUri } from '../utils/ensureLocalFileUri';
 import {
   InputAttachmentSheet,
   type GalleryItem,
@@ -525,8 +526,11 @@ export function InputBar({
       entryModeTapEligibleRef.current = false;
       voiceGestureActiveRef.current = false;
       setVoiceTouchTracking(false);
-      setShowVideoNoteRecorder(false);
-      await onSendVideoNote?.(result);
+      try {
+        await onSendVideoNote?.(result);
+      } finally {
+        setShowVideoNoteRecorder(false);
+      }
     },
     [onSendVideoNote]
   );
@@ -672,7 +676,11 @@ export function InputBar({
       setVoiceRecordMode('idle');
       resetVoiceGestureVisuals();
       if (__DEV__) console.warn('[InputBar] start voice recording error:', err);
-      Alert.alert('Ошибка', 'Не удалось начать запись. Проверь доступ к микрофону.');
+      const message =
+        err instanceof Error && err.message.includes('permission denied')
+          ? 'Нет доступа к микрофону. Разреши его в Настройки → Chatus → Микрофон.'
+          : 'Не удалось начать запись. Попробуй ещё раз.';
+      Alert.alert('Ошибка', message);
     } finally {
       clearVoiceStartWatchdog();
       voiceStartPendingRef.current = false;
@@ -970,9 +978,13 @@ export function InputBar({
           ? (await ensureVideoThumbnailUri(resolvedUri).catch(() => '')) || undefined
           : undefined;
 
+      const uploadableUri = await ensureLocalFileUri(resolvedUri, resolvedFileName ?? 'media').catch(
+        () => resolvedUri,
+      );
+
       return {
         kind,
-        uri: resolvedUri,
+        uri: uploadableUri,
         previewUri,
         width: assetInfo?.width ?? item.width,
         height: assetInfo?.height ?? item.height,

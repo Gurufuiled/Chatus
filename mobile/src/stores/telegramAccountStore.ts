@@ -89,8 +89,13 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
       const raw = await SecureStore.getItemAsync(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<TelegramAccountState>;
+      let authStatus = (parsed.authStatus as TelegramAuthStatus) ?? 'idle';
+      // Stale persisted «error» is often a false positive from transient TDLib close.
+      if (authStatus === 'error') {
+        authStatus = 'ready';
+      }
       set({
-        authStatus: (parsed.authStatus as TelegramAuthStatus) ?? 'idle',
+        authStatus,
         telegramUserId:
           typeof parsed.telegramUserId === 'number' ? parsed.telegramUserId : null,
         phoneNumberHint:
@@ -107,8 +112,9 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
 
   persistSnapshot: async () => {
     const s = get();
+    const authStatus = s.authStatus === 'error' ? 'ready' : s.authStatus;
     const payload = {
-      authStatus: s.authStatus,
+      authStatus,
       telegramUserId: s.telegramUserId,
       phoneNumberHint: s.phoneNumberHint,
       dialogs: s.dialogs,

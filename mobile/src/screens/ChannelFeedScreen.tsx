@@ -36,7 +36,7 @@ import {
   InteractiveChatBackShell,
   LoadErrorState,
 } from '../components';
-import { CustomAndroidChatHeader } from '../components/CustomAndroidChatHeader';
+import { CustomAndroidChatHeader, ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT } from '../components/CustomAndroidChatHeader';
 import {
   PeerFirstFileBubble,
   PeerFirstImageBubble,
@@ -2146,21 +2146,21 @@ export function ChannelFeedScreen() {
         navigation={navigation}
         gestureEnabled={!menuState && forwardSourceMessageIds.length === 0}
       >
-        {Platform.OS === 'android' ? (
-          <CustomAndroidChatHeader
-            title={headerTitle}
-            subtitle={headerSubtitle}
-            avatarUrl={headerAvatar}
-            isGroupChat={false}
-            peerId={null}
-            chatId={channelId}
-            navigation={navigation}
-            onTitlePress={openChannelProfile}
-          />
-        ) : null}
+        <CustomAndroidChatHeader
+          title={headerTitle}
+          subtitle={headerSubtitle}
+          avatarUrl={headerAvatar}
+          isGroupChat={false}
+          peerId={null}
+          chatId={channelId}
+          navigation={navigation}
+          onTitlePress={openChannelProfile}
+          floating
+        />
 
       <BlurTargetView ref={blurTargetRef} collapsable={false} style={[styles.container, { backgroundColor: c.chatBackground }]}>
       <ChatBackgroundPattern />
+      <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
       {feedError && sortedFeed.length === 0 ? (
         <LoadErrorState message={feedError} onRetry={() => void load()} />
       ) : loading && feed.length === 0 ? (

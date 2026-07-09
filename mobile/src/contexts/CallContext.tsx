@@ -7,7 +7,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { Camera } from 'expo-camera';
 import {
   RTCIceCandidate,
   MediaStream as RTCMediaStream,
@@ -38,6 +39,7 @@ import { getWebRtcIceServers, resolveAvatarUrl } from '../config';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS, type CallGlyph } from '../icons/telegram';
 import { SignalingService } from '../services/SignalingService';
 import { VoicePlayerService } from '../services/VoicePlayerService';
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 import { chatStore } from '../stores/chatStore';
 import { colors, withAlpha } from '../theme/colors';
 
@@ -131,6 +133,8 @@ function buildCallAudioMode(isSpeakerOn: boolean) {
     staysActiveInBackground: false,
     shouldDuckAndroid: true,
     playThroughEarpieceAndroid: !isSpeakerOn,
+    interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+    interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
   } satisfies Parameters<typeof Audio.setAudioModeAsync>[0];
 }
 
@@ -731,6 +735,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const remoteStreamRef = useRef<RTCMediaStream | null>(null);
   const localVideoSenderRef = useRef<RTCRtpSender | null>(null);
   const pendingOfferRef = useRef<PendingOffer | null>(null);
+  const acceptingIncomingRef = useRef(false);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const outgoingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callStateRef = useRef<CallUiState | null>(null);
@@ -873,10 +878,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         return existingStream;
       }
 
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Microphone permission denied');
+      const micPermission = await Camera.getMicrophonePermissionsAsync();
+      if (micPermission.status !== 'granted') {
+        const requested = await Camera.requestMicrophonePermissionsAsync();
+        if (requested.status !== 'granted') {
+          throw new Error('Microphone permission denied');
+        }
       }
+
+      await releaseMediaAudioSession();
 
       const desiredSpeakerOn = callStateRef.current?.isSpeakerOn ?? true;
       await Audio.setAudioModeAsync(buildCallAudioMode(desiredSpeakerOn));
@@ -997,7 +1007,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
           if (
             connectionState === 'failed' ||
-            connectionState === 'disconnected' ||
             connectionState === 'closed'
           ) {
             void cleanupCallSession();
@@ -1093,11 +1102,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const startCall = useCallback(
     async ({ userId, displayName, avatarUrl, chatId, callKind = 'audio' }: StartCallOptions) => {
-      if (callStateRef.current) return;
+      if (callStateRef.current) {
+        await cleanupCallSession();
+      }
+
+      if (!userId?.trim()) {
+        Alert.alert('Не удалось начать звонок', 'Не найден собеседник для звонка.');
+        return;
+      }
 
       try {
         await VoicePlayerService.stop();
-        await SignalingService.whenConnected();
+        await releaseMediaAudioSession();
 
         setCallState({
           phase: 'outgoing',
@@ -1116,6 +1132,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           localStreamUrl: null,
           remoteStreamUrl: null,
         });
+
+        SignalingService.connect();
+        await SignalingService.whenConnected();
 
         const pc = await createPeerConnection(userId, callKind === 'video');
         const offer = await pc.createOffer(buildOfferOptions(callKind === 'video'));
@@ -1142,18 +1161,29 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   );
 
   const acceptIncomingCall = useCallback(async () => {
+    if (acceptingIncomingRef.current) return;
+
     const pendingOffer = pendingOfferRef.current;
     const currentState = callStateRef.current;
-    if (!pendingOffer || !currentState) return;
+    if (!pendingOffer || !currentState) {
+      if (__DEV__) {
+        console.warn('[CallContext] acceptIncomingCall: missing pending offer or call state');
+      }
+      return;
+    }
+
+    acceptingIncomingRef.current = true;
+
+    setCallState({
+      ...currentState,
+      phase: 'connecting',
+    });
 
     try {
       await VoicePlayerService.stop();
+      await releaseMediaAudioSession();
+      SignalingService.connect();
       await SignalingService.whenConnected();
-
-      setCallState({
-        ...currentState,
-        phase: 'connecting',
-      });
 
       const pc = await createPeerConnection(
         pendingOffer.fromUserId,
@@ -1180,15 +1210,14 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
       pendingOfferRef.current = null;
     } catch (error) {
-      const targetUserId = pendingOfferRef.current?.fromUserId;
-      if (targetUserId) {
-        SignalingService.sendCallDecline(targetUserId);
-      }
+      SignalingService.sendCallDecline(pendingOffer.fromUserId);
       await cleanupCallSession();
       Alert.alert(
         'Не удалось принять звонок',
         error instanceof Error ? error.message : 'Попробуй еще раз чуть позже.'
       );
+    } finally {
+      acceptingIncomingRef.current = false;
     }
   }, [cleanupCallSession, createPeerConnection, flushPendingIceCandidates]);
 

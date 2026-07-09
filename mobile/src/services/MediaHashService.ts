@@ -7,6 +7,8 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { ensureLocalFileUri } from '../utils/ensureLocalFileUri';
+
 export function normalizeSha256(value: string | null | undefined): string | null {
   const normalized = value?.trim().toLowerCase();
   return normalized && /^[a-f0-9]{64}$/.test(normalized) ? normalized : null;
@@ -33,14 +35,19 @@ export async function calculateFileSha256(uri: string): Promise<string | null> {
     return null;
   }
 
-  const content = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const bytes = base64ToBytes(content);
-  const buffer = bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength
-  ) as ArrayBuffer;
-  const digest = await subtle.digest('SHA-256', buffer);
-  return bytesToHex(new Uint8Array(digest));
+  try {
+    const localUri = await ensureLocalFileUri(uri, 'hash.bin');
+    const content = await FileSystem.readAsStringAsync(localUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const bytes = base64ToBytes(content);
+    const buffer = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength
+    ) as ArrayBuffer;
+    const digest = await subtle.digest('SHA-256', buffer);
+    return bytesToHex(new Uint8Array(digest));
+  } catch {
+    return null;
+  }
 }
