@@ -238,6 +238,11 @@ export async function updateChannel(
     clear_slug?: boolean;
     allow_comments?: boolean;
     allow_reactions?: boolean;
+    disable_comments_new?: boolean;
+    disable_comments_all?: boolean;
+    disable_voice_comments?: boolean;
+    disable_media_comments?: boolean;
+    comment_cooldown_sec?: number;
   },
 ): Promise<ChatSummary> {
   return apiRequest<ChatSummary>(`/channels/${encodeURIComponent(channelId)}`, {

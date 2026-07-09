@@ -58,6 +58,9 @@ export interface ChatSummary {
   disable_comments_new?: boolean;
   disable_comments_new_since?: number | null;
   disable_comments_all?: boolean;
+  disable_voice_comments?: boolean;
+  disable_media_comments?: boolean;
+  comment_cooldown_sec?: number;
   is_subscribed?: boolean;
   can_post?: boolean;
   can_view_full_feed?: boolean;

@@ -19,6 +19,30 @@ export function isStageableAlbumMedia(file: File): boolean {
   return file.type.startsWith('image/') || file.type.startsWith('video/');
 }
 
+/** Bound concurrency for compress+upload to avoid mobile memory spikes. */
+export const ATTACHMENT_UPLOAD_CONCURRENCY = 3;
+
+export async function mapPool<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+
+  const poolSize = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: poolSize }, () => runWorker()));
+  return results;
+}
+
 async function prepareAndUpload(
   file: File,
   { compressImages, sendAsFile }: { compressImages: boolean; sendAsFile: boolean },
@@ -106,47 +130,50 @@ export function useSendPendingAttachmentsMutation() {
         fileName: string;
       };
 
-      const prepared: PreparedItem[] = [];
+      // Parallel compress+upload (bounded) — serial awaits made multi-photo albums feel stuck.
+      const prepared: PreparedItem[] = await mapPool(
+        attachments,
+        ATTACHMENT_UPLOAD_CONCURRENCY,
+        async (attachment) => {
+          let payload = attachment.uploadedMedia;
+          let msgType = attachment.uploadedMsgType;
+          if (!payload || !msgType) {
+            const { upload, msgType: inferred } = await prepareAndUpload(attachment.file, {
+              compressImages: !attachment.sendAsFile,
+              sendAsFile: attachment.sendAsFile,
+            });
+            payload = buildMediaPayload(upload);
+            msgType = inferred;
+            markPendingAttachmentUploaded(chatId, attachment.id, payload, msgType);
+          }
 
-      for (const attachment of attachments) {
-        let payload = attachment.uploadedMedia;
-        let msgType = attachment.uploadedMsgType;
-        if (!payload || !msgType) {
-          const { upload, msgType: inferred } = await prepareAndUpload(attachment.file, {
-            compressImages: !attachment.sendAsFile,
-            sendAsFile: attachment.sendAsFile,
-          });
-          payload = buildMediaPayload(upload);
-          msgType = inferred;
-          markPendingAttachmentUploaded(chatId, attachment.id, payload, msgType);
-        }
-
-        if (attachment.sendAsFile || msgType === 'file') {
-          prepared.push({
+          if (attachment.sendAsFile || msgType === 'file') {
+            return {
+              attachmentId: attachment.id,
+              msgType,
+              media: payload,
+              bucket: 'file' as const,
+              fileName: attachment.file.name,
+            };
+          }
+          if (msgType === 'image' || msgType === 'video') {
+            return {
+              attachmentId: attachment.id,
+              msgType,
+              media: { ...payload, media_type: msgType },
+              bucket: 'album' as const,
+              fileName: attachment.file.name,
+            };
+          }
+          return {
             attachmentId: attachment.id,
             msgType,
             media: payload,
-            bucket: 'file',
+            bucket: 'file' as const,
             fileName: attachment.file.name,
-          });
-        } else if (msgType === 'image' || msgType === 'video') {
-          prepared.push({
-            attachmentId: attachment.id,
-            msgType,
-            media: { ...payload, media_type: msgType },
-            bucket: 'album',
-            fileName: attachment.file.name,
-          });
-        } else {
-          prepared.push({
-            attachmentId: attachment.id,
-            msgType,
-            media: payload,
-            bucket: 'file',
-            fileName: attachment.file.name,
-          });
-        }
-      }
+          };
+        },
+      );
 
       const albumItems = prepared.filter((item) => item.bucket === 'album');
       const fileItems = prepared.filter((item) => item.bucket === 'file');

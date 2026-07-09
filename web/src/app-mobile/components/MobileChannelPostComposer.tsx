@@ -8,7 +8,11 @@ import { ACCEPT as COMPOSER_ACCEPT } from '@/features/conversation/AttachmentPic
 import { MobileComposerVoiceControls } from './MobileComposerVoiceControls';
 import { useChannelPostVoiceRecorder } from '../hooks/useChannelPostVoiceRecorder';
 import { buildMediaPayload, inferMsgTypeFromUpload, uploadFile } from '@/services/mediaService';
-import { isStageableAlbumMedia } from '@/queries/media.queries';
+import {
+  ATTACHMENT_UPLOAD_CONCURRENCY,
+  isStageableAlbumMedia,
+  mapPool,
+} from '@/queries/media.queries';
 
 interface MobileChannelPostComposerProps {
   channelId: string;
@@ -86,15 +90,17 @@ export function MobileChannelPostComposer({
       }
 
       if (albumItems.length > 1) {
-        const uploaded = await Promise.all(
-          albumItems.map(async (attachment) => {
+        const uploaded = await mapPool(
+          albumItems,
+          ATTACHMENT_UPLOAD_CONCURRENCY,
+          async (attachment) => {
             const result = await uploadFile(attachment.file);
             const msgType = inferMsgTypeFromUpload(attachment.file, result);
             return {
               media_type: msgType,
               ...buildMediaPayload(result),
             };
-          }),
+          },
         );
         const firstType = uploaded[0]?.media_type === 'video' ? 'video' : 'image';
         await publishPost.mutateAsync({

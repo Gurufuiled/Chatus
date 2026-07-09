@@ -243,7 +243,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
             disabled={!canEdit}
             onPress={() => {
               if (!canEdit) return setSnackbar('Недостаточно прав для настроек канала');
-              openComingSoon('Пригласительные ссылки');
+              navigate({ to: '/channel/$channelId/invite-links', params: { channelId } });
             }}
           />
           <div className="mobile-channel-settings__divider" />
@@ -254,7 +254,10 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
             disabled={!canEdit}
             onPress={() => {
               if (!canEdit) return setSnackbar('Недостаточно прав для настроек канала');
-              openComingSoon('Обсуждение');
+              navigate({
+                to: '/channel/$channelId/discussion-settings',
+                params: { channelId },
+              });
             }}
           />
           <div className="mobile-channel-settings__divider" />

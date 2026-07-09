@@ -24,6 +24,8 @@ import { MobileChannelFeedScreen } from './screens/MobileChannelFeedScreen';
 import { MobileChannelProfileScreen } from './screens/MobileChannelProfileScreen';
 import { MobileChannelSettingsScreen } from './screens/MobileChannelSettingsScreen';
 import { MobileChannelTypeScreen } from './screens/MobileChannelTypeScreen';
+import { MobileChannelInviteLinksScreen } from './screens/MobileChannelInviteLinksScreen';
+import { MobileChannelDiscussionSettingsScreen } from './screens/MobileChannelDiscussionSettingsScreen';
 import { MobileChannelDiscussionScreen } from './screens/MobileChannelDiscussionScreen';
 import { MobileChannelMembersScreen } from './screens/MobileChannelMembersScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
@@ -115,6 +117,12 @@ export function MobileAppLayout() {
     }
     if (channelId && pathname.endsWith('/subscribers')) {
       return <MobileChannelMembersScreen channelId={channelId} mode="subscribers" />;
+    }
+    if (channelId && pathname.endsWith('/invite-links')) {
+      return <MobileChannelInviteLinksScreen channelId={channelId} />;
+    }
+    if (channelId && pathname.endsWith('/discussion-settings')) {
+      return <MobileChannelDiscussionSettingsScreen channelId={channelId} />;
     }
     if (channelId && pathname.endsWith('/type')) {
       return <MobileChannelTypeScreen channelId={channelId} />;

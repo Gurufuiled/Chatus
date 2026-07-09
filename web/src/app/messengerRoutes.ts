@@ -154,6 +154,18 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
+  const channelInviteLinksRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/invite-links',
+    component: Layout,
+  });
+
+  const channelDiscussionSettingsRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/discussion-settings',
+    component: Layout,
+  });
+
   const channelDiscussionRoute = createRoute({
     getParentRoute: () => parentRoute,
     path: '/channel/$channelId/discussion/$postId',
@@ -181,6 +193,8 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     channelProfileRoute,
     channelSettingsRoute,
     channelTypeRoute,
+    channelInviteLinksRoute,
+    channelDiscussionSettingsRoute,
     channelDiscussionRoute,
     channelAdminsRoute,
     channelSubscribersRoute,
