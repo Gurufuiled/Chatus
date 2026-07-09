@@ -305,7 +305,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
               if (!canAdminOps) {
                 return setSnackbar('Недостаточно прав для управления администраторами');
               }
-              openComingSoon('Администраторы');
+              navigate({ to: '/channel/$channelId/admins', params: { channelId } });
             }}
           />
           <div className="mobile-channel-settings__divider" />
@@ -319,7 +319,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
               if (!canModerate && !canAdminOps) {
                 return setSnackbar('Недостаточно прав для просмотра подписчиков');
               }
-              openComingSoon('Подписчики');
+              navigate({ to: '/channel/$channelId/subscribers', params: { channelId } });
             }}
           />
           <div className="mobile-channel-settings__divider" />

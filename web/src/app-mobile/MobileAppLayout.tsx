@@ -25,6 +25,7 @@ import { MobileChannelProfileScreen } from './screens/MobileChannelProfileScreen
 import { MobileChannelSettingsScreen } from './screens/MobileChannelSettingsScreen';
 import { MobileChannelTypeScreen } from './screens/MobileChannelTypeScreen';
 import { MobileChannelDiscussionScreen } from './screens/MobileChannelDiscussionScreen';
+import { MobileChannelMembersScreen } from './screens/MobileChannelMembersScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 import { useChatsQuery } from '@/queries/chats.queries';
 
@@ -108,6 +109,12 @@ export function MobileAppLayout() {
     }
     if (channelId && postId && pathname.includes('/discussion/')) {
       return <MobileChannelDiscussionScreen channelId={channelId} postId={postId} />;
+    }
+    if (channelId && pathname.endsWith('/admins')) {
+      return <MobileChannelMembersScreen channelId={channelId} mode="admins" />;
+    }
+    if (channelId && pathname.endsWith('/subscribers')) {
+      return <MobileChannelMembersScreen channelId={channelId} mode="subscribers" />;
     }
     if (channelId && pathname.endsWith('/type')) {
       return <MobileChannelTypeScreen channelId={channelId} />;

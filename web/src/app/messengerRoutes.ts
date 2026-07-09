@@ -160,6 +160,18 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
+  const channelAdminsRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/admins',
+    component: Layout,
+  });
+
+  const channelSubscribersRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/subscribers',
+    component: Layout,
+  });
+
   return [
     indexRoute,
     chatRoute,
@@ -170,6 +182,8 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     channelSettingsRoute,
     channelTypeRoute,
     channelDiscussionRoute,
+    channelAdminsRoute,
+    channelSubscribersRoute,
     contactsRoute,
     settingsRoute,
     settingsProfileRoute,

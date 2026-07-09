@@ -4,6 +4,8 @@ import { VoiceMessagePlayer } from '@/features/conversation/VoiceMessagePlayer';
 import { resolveMediaUrl } from '@/services/mediaService';
 import type { MappedMessage } from '@/types/message';
 import { ChannelPostVisualMedia } from './ChannelPostVisualMedia';
+import { ChannelPostAlbumGrid } from './ChannelPostAlbumGrid';
+import { isChannelAlbumPost } from '../utils/channelPostMedia';
 import {
   canCommentOnPost,
   formatViewCount,
@@ -20,6 +22,14 @@ interface MobileChannelPostCardProps {
 }
 
 function PostMedia({ post }: { post: MappedMessage }) {
+  if (isChannelAlbumPost(post)) {
+    return (
+      <div className="mobile-channel-post__media">
+        <ChannelPostAlbumGrid post={post} />
+      </div>
+    );
+  }
+
   const media = post.media?.[0];
   if (!media?.remote_url) return null;
 
@@ -93,6 +103,7 @@ export function MobileChannelPostCard({
   const viewCount = post.view_count ?? 0;
   const commentCount = post.comment_count ?? 0;
   const isVisualMedia = post.msg_type === 'image' || post.msg_type === 'video';
+  const isAlbum = isChannelAlbumPost(post);
   const isVoice = post.msg_type === 'voice';
 
   const reactionSummary = useMemo(
@@ -110,17 +121,17 @@ export function MobileChannelPostCard({
       <div
         className={[
           'mobile-channel-post__bubble',
-          isVisualMedia ? 'mobile-channel-post__bubble--visual' : '',
+          isVisualMedia || isAlbum ? 'mobile-channel-post__bubble--visual' : '',
           isVoice ? 'mobile-channel-post__bubble--voice' : '',
         ]
           .filter(Boolean)
           .join(' ')}
       >
-        {text && !isVisualMedia ? (
+        {text && !isVisualMedia && !isAlbum ? (
           <p className="mobile-channel-post__text">{text}</p>
         ) : null}
         <PostMedia post={post} />
-        {text && isVisualMedia ? (
+        {text && (isVisualMedia || isAlbum) ? (
           <div className="mobile-channel-post__caption">
             <p className="mobile-channel-post__text">{text}</p>
           </div>
@@ -144,7 +155,7 @@ export function MobileChannelPostCard({
           <div
             className={[
               'mobile-channel-post__actions-row',
-              isVisualMedia ? 'mobile-channel-post__actions-row--visual' : '',
+              isVisualMedia || isAlbum ? 'mobile-channel-post__actions-row--visual' : '',
             ]
               .filter(Boolean)
               .join(' ')}

@@ -4,7 +4,7 @@ import { useSendMessageMutation } from '@/queries/messages.queries';
 import { useSendPendingAttachmentsMutation } from '@/queries/media.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { AttachmentPicker } from '@/features/conversation/AttachmentPicker';
-import { ComposerAttachmentPreview } from '@/features/conversation/ComposerAttachmentPreview';
+import { MobileComposerAttachmentPreview } from './MobileComposerAttachmentPreview';
 import { ComposerErrorBanner } from '@/features/conversation/ComposerErrorBanner';
 import { MobileComposerReplyPreview } from './MobileComposerReplyPreview';
 import { useVoiceRecorder } from '@/features/conversation/useVoiceRecorder';
@@ -171,7 +171,7 @@ export function MobileMessageComposer({
           <>
             {hasAttachments ? (
               <div className="mobile-composer__attachments">
-                <ComposerAttachmentPreview chatId={chatId} />
+                <MobileComposerAttachmentPreview chatId={chatId} />
               </div>
             ) : null}
             <div className="mobile-composer__shell">
@@ -182,6 +182,11 @@ export function MobileMessageComposer({
                 disabled={isDisabled}
                 onClick={() => setAttachmentPickerOpen(true)}
               >
+                {hasAttachments ? (
+                  <span className="mobile-composer__attach-badge" aria-hidden>
+                    {attachments.length}
+                  </span>
+                ) : null}
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
                   <path
                     d="M8 12.5l7.2-7.2a3 3 0 014.2 4.2l-8.4 8.4a4.5 4.5 0 01-6.4-6.4l9-9"

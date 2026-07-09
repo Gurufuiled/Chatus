@@ -1,3 +1,32 @@
+import type { MappedMedia, MappedMessage } from '@/types/message';
+
+/** Mirrors mobile `getVisualMediaKind`. */
+export function getVisualMediaKind(
+  message: Pick<MappedMessage, 'msg_type'>,
+  media: MappedMedia,
+): 'image' | 'video' {
+  const mediaType = media.media_type?.toLowerCase();
+  if (mediaType === 'video') return 'video';
+  if (mediaType === 'image') return 'image';
+  return message.msg_type === 'video' ? 'video' : 'image';
+}
+
+export function getChannelPostAlbumMedia(message: MappedMessage): MappedMedia[] {
+  return (message.media ?? []).filter((entry) => entry.remote_url?.trim()).slice(0, 10);
+}
+
+export function isChannelAlbumPost(message: MappedMessage): boolean {
+  if (message.msg_type !== 'image' && message.msg_type !== 'video') return false;
+  return getChannelPostAlbumMedia(message).length > 1;
+}
+
+export function formatChannelMediaDuration(durationMs: number): string {
+  const totalSec = Math.max(0, Math.floor(durationMs / 1000));
+  const minutes = Math.floor(totalSec / 60);
+  const seconds = totalSec % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 /** Mirrors mobile ChannelFeedScreen media clamp constants. */
 export function getChannelMediaLimits(viewportWidth: number, viewportHeight: number) {
   return {

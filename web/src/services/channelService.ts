@@ -245,3 +245,74 @@ export async function updateChannel(
     body: JSON.stringify(payload),
   });
 }
+
+export type ChannelMemberItem = {
+  user_id: string;
+  role: string;
+  access_status: string;
+  subscription_expires_at: number | null;
+  joined_at: number;
+  is_banned: boolean;
+  user?: {
+    id: string;
+    username: string | null;
+    handle: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+    is_online: boolean;
+    last_seen: number | null;
+  };
+};
+
+type ApiChannelMemberListItem = {
+  user_id: string;
+  role: string;
+  access_status: string;
+  subscription_expires_at?: number | null;
+  joined_at: number;
+  is_banned?: boolean;
+  user?: ChannelMemberItem['user'];
+};
+
+function mapApiChannelMember(item: ApiChannelMemberListItem): ChannelMemberItem {
+  return {
+    user_id: item.user_id,
+    role: item.role,
+    access_status: item.access_status,
+    subscription_expires_at: item.subscription_expires_at ?? null,
+    joined_at: item.joined_at,
+    is_banned: item.is_banned === true,
+    user: item.user,
+  };
+}
+
+export async function fetchChannelMembers(
+  channelId: string,
+  params?: {
+    role?: 'admin' | 'subscriber';
+    query?: string;
+    limit?: number;
+    cursor?: string | null;
+    include_banned?: boolean;
+  },
+): Promise<{ items: ChannelMemberItem[]; next_cursor: string | null }> {
+  const q = new URLSearchParams();
+  if (params?.role) q.set('role', params.role);
+  if (params?.query?.trim()) q.set('q', params.query.trim());
+  if (params?.limit) q.set('limit', String(params.limit));
+  if (params?.cursor) q.set('cursor', params.cursor);
+  if (params?.include_banned) q.set('include_banned', 'true');
+
+  const suffix = q.toString();
+  const data = await apiRequest<{
+    items: ApiChannelMemberListItem[];
+    next_cursor?: string | null;
+  }>(
+    `/channels/${encodeURIComponent(channelId)}/members${suffix ? `?${suffix}` : ''}`,
+  );
+
+  return {
+    items: (data.items ?? []).map(mapApiChannelMember),
+    next_cursor: data.next_cursor ?? null,
+  };
+}

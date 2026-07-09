@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useComposerStore, EMPTY_PENDING_ATTACHMENTS } from '@/stores/composerStore';
 import { usePublishChannelPostMutation } from '@/queries/channel.queries';
 import { useMeQuery } from '@/queries/auth.queries';
-import { ComposerAttachmentPreview } from '@/features/conversation/ComposerAttachmentPreview';
+import { MobileComposerAttachmentPreview } from './MobileComposerAttachmentPreview';
 import { ComposerErrorBanner } from '@/features/conversation/ComposerErrorBanner';
 import { ACCEPT as COMPOSER_ACCEPT } from '@/features/conversation/AttachmentPicker';
 import { MobileComposerVoiceControls } from './MobileComposerVoiceControls';
@@ -233,7 +233,7 @@ export function MobileChannelPostComposer({
             <>
               {hasAttachments ? (
                 <div className="mobile-composer__attachments">
-                  <ComposerAttachmentPreview chatId={channelId} />
+                  <MobileComposerAttachmentPreview chatId={channelId} />
                 </div>
               ) : null}
               <div className="mobile-composer__shell">
@@ -244,6 +244,11 @@ export function MobileChannelPostComposer({
                   disabled={isDisabled}
                   onClick={() => setAttachmentPickerOpen(true)}
                 >
+                  {hasAttachments ? (
+                    <span className="mobile-composer__attach-badge" aria-hidden>
+                      {attachments.length}
+                    </span>
+                  ) : null}
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
                     <path
                       d="M8 12.5l7.2-7.2a3 3 0 014.2 4.2l-8.4 8.4a4.5 4.5 0 01-6.4-6.4l9-9"

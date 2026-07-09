@@ -5013,7 +5013,11 @@ button.mobile-pill-header-title:active {
 }
 
 .mobile-channel-discussion--with-composer .mobile-channel-discussion__scroll {
-  padding-bottom: 4px;
+  padding-bottom: calc(72px + var(--m-safe-bottom));
+}
+
+.mobile-channel-discussion--with-composer.mobile-channel-discussion--reply-open .mobile-channel-discussion__scroll {
+  padding-bottom: calc(116px + var(--m-safe-bottom));
 }
 
 /* Channel type (public / private) */
@@ -5267,4 +5271,392 @@ button.mobile-pill-header-title:active {
 .mobile-channel-type__secondary-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* —— Composer attachment staging (Telegram-style) —— */
+
+.mobile-composer-attachments {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 4px 6px;
+  scrollbar-width: none;
+}
+
+.mobile-composer-attachments::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-composer-attachments__item {
+  position: relative;
+  flex-shrink: 0;
+  width: 58px;
+}
+
+.mobile-composer-attachments__thumb {
+  display: block;
+  width: 58px;
+  height: 78px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #e8edf2;
+}
+
+.mobile-composer-attachments__media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mobile-composer-attachments__edit {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mobile-composer-attachments__remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mobile-composer-attachments__remove svg {
+  width: 12px;
+  height: 12px;
+}
+
+.mobile-composer__attach {
+  position: relative;
+}
+
+.mobile-composer__attach-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #34c759;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+/* —— Channel album grid —— */
+
+.mobile-channel-album {
+  border-radius: 12px;
+  overflow: hidden;
+  background: #e8edf2;
+}
+
+.mobile-channel-album__row,
+.mobile-channel-album__column,
+.mobile-channel-album__grid {
+  display: flex;
+  gap: 1.5px;
+}
+
+.mobile-channel-album__column {
+  flex-direction: column;
+}
+
+.mobile-channel-album__grid {
+  flex-wrap: wrap;
+}
+
+.mobile-channel-album__tile {
+  position: relative;
+  overflow: hidden;
+  background: #dfe6ee;
+}
+
+.mobile-channel-album__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mobile-channel-album__fallback {
+  width: 100%;
+  height: 100%;
+  background: #dfe6ee;
+}
+
+.mobile-channel-album__video-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mobile-channel-album__extra {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* —— Discussion reply quote + menu —— */
+
+.mobile-discussion-reply-quote {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.mobile-discussion-reply-quote--out {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.mobile-discussion-reply-quote__bar {
+  width: 3px;
+  border-radius: 2px;
+  background: var(--m-accent);
+  flex-shrink: 0;
+}
+
+.mobile-discussion-reply-quote__thumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mobile-discussion-reply-quote__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mobile-discussion-reply-quote__author {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--m-accent);
+}
+
+.mobile-discussion-reply-quote--out .mobile-discussion-reply-quote__author {
+  color: #dbeafe;
+}
+
+.mobile-discussion-reply-quote__text {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-discussion-reply-quote--out .mobile-discussion-reply-quote__text {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.mobile-channel-discussion__composer-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  background: linear-gradient(180deg, rgba(246, 248, 252, 0) 0%, rgba(246, 248, 252, 0.96) 28%);
+}
+
+.mobile-composer__field-wrap--discussion {
+  flex: 1;
+}
+
+.mobile-channel-discussion__row--pressed {
+  opacity: 0.92;
+}
+
+.mobile-discussion-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+
+.mobile-discussion-menu__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.18);
+  cursor: default;
+}
+
+.mobile-discussion-menu__card {
+  position: fixed;
+  min-width: 168px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.18);
+}
+
+.mobile-discussion-menu__action {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  background: #fff;
+  text-align: left;
+  font-size: 16px;
+  color: #111827;
+  cursor: pointer;
+}
+
+.mobile-discussion-menu__action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mobile-discussion-menu__action + .mobile-discussion-menu__action {
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+/* —— Channel members list —— */
+
+.mobile-channel-members {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--m-bg);
+}
+
+.mobile-channel-members__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 14px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.mobile-channel-members__search-icon {
+  color: var(--m-text-secondary);
+  flex-shrink: 0;
+}
+
+.mobile-channel-members__search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  outline: none;
+}
+
+.mobile-channel-members__search-btn {
+  border: none;
+  background: transparent;
+  color: var(--m-accent);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mobile-channel-members__hint,
+.mobile-channel-members__empty,
+.mobile-channel-members__loading {
+  padding: 16px;
+  text-align: center;
+  color: var(--m-text-secondary);
+  font-size: 14px;
+}
+
+.mobile-channel-members__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 24px;
+}
+
+.mobile-channel-members__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  background: #fff;
+}
+
+.mobile-channel-members__avatar,
+.mobile-channel-members__avatar-fallback {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  flex-shrink: 0;
+}
+
+.mobile-channel-members__avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+}
+
+.mobile-channel-members__info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mobile-channel-members__name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--m-text);
+}
+
+.mobile-channel-members__role {
+  font-size: 13px;
+  color: var(--m-text-secondary);
 }

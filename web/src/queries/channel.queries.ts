@@ -10,6 +10,7 @@ import {
   unsubscribeFromChannel,
   mockCheckoutChannel,
   updateChannel,
+  fetchChannelMembers,
   type ChannelDetail,
   type ChannelFeedResult,
   type ChannelPostMedia,
@@ -28,6 +29,12 @@ export const channelFeedQueryKey = (channelId: string) =>
 
 export const discussionQueryKey = (channelId: string, postId: string) =>
   ['channel', 'discussion', channelId, postId] as const;
+
+export const channelMembersQueryKey = (
+  channelId: string,
+  mode: 'admins' | 'subscribers',
+  query: string,
+) => ['channel', 'members', channelId, mode, query] as const;
 
 function upsertChatInList(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -76,6 +83,27 @@ export function useDiscussionThreadQuery(
     queryFn: () => fetchDiscussionThread(channelId!, postId!),
     enabled: ready && !!channelId && !!postId,
     staleTime: 10_000,
+  });
+}
+
+export function useChannelMembersQuery(
+  channelId: string | undefined,
+  mode: 'admins' | 'subscribers',
+  query = '',
+) {
+  const ready = useAuthUiStore((s) => s.embedStatus === 'ready');
+
+  return useQuery({
+    queryKey: channelMembersQueryKey(channelId ?? '', mode, query),
+    queryFn: () =>
+      fetchChannelMembers(channelId!, {
+        role: mode === 'admins' ? 'admin' : 'subscriber',
+        query,
+        include_banned: mode === 'subscribers',
+        limit: 50,
+      }),
+    enabled: ready && !!channelId,
+    staleTime: 15_000,
   });
 }
 
