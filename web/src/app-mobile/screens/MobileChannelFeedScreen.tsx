@@ -44,9 +44,10 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
     ? !feedData?.can_view_full_feed && isChannelPreviewRequired(channel, me?.id ?? null)
     : false;
   const isPaid = channel?.access_type === 'paid';
-  const canPost = feedData?.can_post ?? false;
-  const canReact = feedData?.can_react ?? false;
-  const canComment = feedData?.can_comment ?? false;
+  const canPost = feedData?.can_post ?? channel?.can_post ?? false;
+  const canReact = feedData?.can_react ?? channel?.can_react ?? false;
+  const canComment = feedData?.can_comment ?? channel?.can_comment ?? false;
+  const canEditSettings = channel?.channel_permissions?.can_edit_channel === true;
   const title = channel ? getChatDisplayName(channel) : 'Канал';
 
   const handleSubscribe = () => {
@@ -173,7 +174,20 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
             }
           />
         </div>
-        <div className="mobile-chat__header-slot mobile-chat__header-slot--right" aria-hidden />
+        <div className="mobile-chat__header-slot mobile-chat__header-slot--right">
+          {canEditSettings ? (
+            <button
+              type="button"
+              className="mobile-channel-feed__settings-btn"
+              onClick={() =>
+                navigate({ to: '/channel/$channelId/settings', params: { channelId } })
+              }
+              aria-label="Настройки канала"
+            >
+              ⚙
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {needsSubscribe ? (

@@ -9,6 +9,7 @@ import {
   toggleChannelReaction,
   unsubscribeFromChannel,
   mockCheckoutChannel,
+  updateChannel,
   type ChannelDetail,
   type ChannelFeedResult,
   type DiscussionThreadResult,
@@ -224,6 +225,33 @@ export function useToggleChannelReactionMutation() {
           return { ...old, post: patchPost(old.post) };
         },
       );
+    },
+  });
+}
+
+export function useUpdateChannelMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      channelId,
+      payload,
+    }: {
+      channelId: string;
+      payload: Parameters<typeof updateChannel>[1];
+    }) => updateChannel(channelId, payload),
+    onSuccess: (chat, { channelId }) => {
+      upsertChatInList(queryClient, chat);
+      queryClient.setQueryData<ChannelDetail>(channelDetailQueryKey(channelId), (old) => {
+        if (!old) return old;
+        return { ...old, channel: { ...old.channel, ...chat } };
+      });
+      queryClient.setQueryData<ChannelFeedResult>(channelFeedQueryKey(channelId), (old) => {
+        if (!old) return old;
+        return { ...old, channel: { ...old.channel, ...chat } };
+      });
+      void queryClient.invalidateQueries({ queryKey: channelFeedQueryKey(channelId) });
+      void queryClient.invalidateQueries({ queryKey: channelDetailQueryKey(channelId) });
     },
   });
 }

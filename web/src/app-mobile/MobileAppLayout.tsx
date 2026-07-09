@@ -22,8 +22,10 @@ import { MobileCreateChannelScreen } from './screens/MobileCreateChannelScreen';
 import { MobileGroupProfileScreen } from './screens/MobileGroupProfileScreen';
 import { MobileChannelFeedScreen } from './screens/MobileChannelFeedScreen';
 import { MobileChannelProfileScreen } from './screens/MobileChannelProfileScreen';
+import { MobileChannelSettingsScreen } from './screens/MobileChannelSettingsScreen';
 import { MobileChannelDiscussionScreen } from './screens/MobileChannelDiscussionScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
+import { useChatsQuery } from '@/queries/chats.queries';
 
 export function MobileAppLayout() {
   const params = useParams({ strict: false });
@@ -35,6 +37,8 @@ export function MobileAppLayout() {
   const feedbackComposeSearch = useSearch({ strict: false }) as { kind?: 'bug' | 'suggestion' };
   const miniAppSearch = useSearch({ strict: false }) as { title?: string };
   const comingSoonSearch = useSearch({ strict: false }) as { title?: string };
+  const { data: chats } = useChatsQuery();
+  const chatForRoute = chatId ? chats?.find((c) => c.id === chatId) : undefined;
 
   useWsLifecycle(chatId);
 
@@ -96,10 +100,16 @@ export function MobileAppLayout() {
       return <MobileGroupProfileScreen chatId={chatId} />;
     }
     if (chatId && pathname.endsWith('/profile')) {
+      if (chatForRoute?.chat_type === 'group') {
+        return <MobileGroupProfileScreen chatId={chatId} />;
+      }
       return <MobileChatProfileScreen chatId={chatId} />;
     }
     if (channelId && postId && pathname.includes('/discussion/')) {
       return <MobileChannelDiscussionScreen channelId={channelId} postId={postId} />;
+    }
+    if (channelId && pathname.endsWith('/settings')) {
+      return <MobileChannelSettingsScreen channelId={channelId} />;
     }
     if (channelId && pathname.endsWith('/profile')) {
       return <MobileChannelProfileScreen channelId={channelId} />;

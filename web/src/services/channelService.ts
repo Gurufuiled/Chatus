@@ -50,14 +50,78 @@ export async function createChannel(payload: {
   });
 }
 
+type ApiChannelDetailResponse = ChatSummary & {
+  preview_posts: MappedMessage[];
+  can_view_full_feed?: boolean;
+  can_comment?: boolean;
+  can_react?: boolean;
+  can_post?: boolean;
+  is_subscribed?: boolean;
+  linked_discussion_chat_id?: string | null;
+  channel_permissions?: Partial<ChannelPermissions>;
+};
+
+function mapChannelDetailResponse(data: ApiChannelDetailResponse): ChannelDetail {
+  const {
+    preview_posts,
+    can_view_full_feed,
+    can_comment,
+    can_react,
+    can_post,
+    is_subscribed,
+    linked_discussion_chat_id,
+    channel_permissions,
+    ...channelFields
+  } = data;
+
+  return {
+    channel: channelFields,
+    preview_posts: preview_posts ?? [],
+    can_view_full_feed: can_view_full_feed ?? false,
+    can_comment: can_comment ?? false,
+    can_react: can_react ?? false,
+    can_post: can_post ?? false,
+    is_subscribed: is_subscribed ?? false,
+    linked_discussion_chat_id: linked_discussion_chat_id ?? null,
+    channel_permissions,
+  };
+}
+
 export async function fetchChannelDetail(channelId: string): Promise<ChannelDetail> {
-  return apiRequest<ChannelDetail>(`/channels/${encodeURIComponent(channelId)}`);
+  const data = await apiRequest<ApiChannelDetailResponse>(
+    `/channels/${encodeURIComponent(channelId)}`,
+  );
+  return mapChannelDetailResponse(data);
+}
+
+function mapChannelFeedResponse(data: {
+  channel: ChatSummary & {
+    can_view_full_feed?: boolean;
+    can_comment?: boolean;
+    can_react?: boolean;
+    can_post?: boolean;
+    is_subscribed?: boolean;
+    channel_permissions?: Partial<ChannelPermissions>;
+  };
+  posts: MappedMessage[];
+}): ChannelFeedResult {
+  const { channel, posts } = data;
+  return {
+    channel,
+    posts: posts ?? [],
+    can_view_full_feed: channel.can_view_full_feed ?? false,
+    can_comment: channel.can_comment ?? false,
+    can_react: channel.can_react ?? false,
+    can_post: channel.can_post ?? false,
+    is_subscribed: channel.is_subscribed ?? false,
+  };
 }
 
 export async function fetchChannelFeed(channelId: string): Promise<ChannelFeedResult> {
-  return apiRequest<ChannelFeedResult>(
+  const data = await apiRequest<Parameters<typeof mapChannelFeedResponse>[0]>(
     `/channels/${encodeURIComponent(channelId)}/feed?limit=50`,
   );
+  return mapChannelFeedResponse(data);
 }
 
 export async function fetchDiscussionThread(

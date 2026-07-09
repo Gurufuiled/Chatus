@@ -142,6 +142,12 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
+  const channelSettingsRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/settings',
+    component: Layout,
+  });
+
   const channelDiscussionRoute = createRoute({
     getParentRoute: () => parentRoute,
     path: '/channel/$channelId/discussion/$postId',
@@ -155,6 +161,7 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     groupProfileRoute,
     channelFeedRoute,
     channelProfileRoute,
+    channelSettingsRoute,
     channelDiscussionRoute,
     contactsRoute,
     settingsRoute,
