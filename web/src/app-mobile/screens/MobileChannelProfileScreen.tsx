@@ -11,6 +11,7 @@ import { resolveMediaUrl } from '@/services/mediaService';
 import { ApiError } from '@/services/apiClient';
 import { getAvatarColor, resolveAvatarSrc } from '../utils/avatar';
 import { formatSubscriberCount } from '../utils/channelUtils';
+import { ChannelRowIcon, FeatherIcon } from '../icons/featherIcons';
 
 interface MobileChannelProfileScreenProps {
   channelId: string;
@@ -122,7 +123,7 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
             }
             aria-label="Настройки канала"
           >
-            ⚙
+            <FeatherIcon name="settings" size={20} />
           </button>
         ) : null}
       </header>
@@ -167,11 +168,10 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
               }}
               disabled={!canAdminOps}
             >
-              <span className="mobile-channel-settings__row-icon" style={{ backgroundColor: '#1E88E5' }}>
-                🛡
-              </span>
+              <ChannelRowIcon name="shield" bgColor="#1E88E5" />
               <span className="mobile-channel-settings__row-title">Администраторы</span>
               <span className="mobile-channel-settings__row-value">{adminCount}</span>
+              <FeatherIcon name="chevron-right" size={18} className="mobile-channel-settings__row-chevron" />
             </button>
             <div className="mobile-channel-settings__divider" />
             <button
@@ -183,11 +183,10 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
               }}
               disabled={!canModerate && !canAdminOps}
             >
-              <span className="mobile-channel-settings__row-icon" style={{ backgroundColor: '#34C759' }}>
-                👥
-              </span>
+              <ChannelRowIcon name="users" bgColor="#34C759" />
               <span className="mobile-channel-settings__row-title">Подписчики</span>
               <span className="mobile-channel-settings__row-value">{subscriberCount}</span>
+              <FeatherIcon name="chevron-right" size={18} className="mobile-channel-settings__row-chevron" />
             </button>
             <div className="mobile-channel-settings__divider" />
             <button
@@ -199,10 +198,9 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
               }}
               disabled={!canEditSettings}
             >
-              <span className="mobile-channel-settings__row-icon" style={{ backgroundColor: '#F2994A' }}>
-                ⚙
-              </span>
+              <ChannelRowIcon name="sliders" bgColor="#F2994A" />
               <span className="mobile-channel-settings__row-title">Настройки канала</span>
+              <FeatherIcon name="chevron-right" size={18} className="mobile-channel-settings__row-chevron" />
             </button>
           </section>
         ) : null}

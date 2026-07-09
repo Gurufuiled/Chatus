@@ -9,13 +9,14 @@ import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { ApiError } from '@/services/apiClient';
 import { getAvatarColor, resolveAvatarSrc } from '../utils/avatar';
 import { formatSubscriberCount } from '../utils/channelUtils';
+import { ChannelRowIcon, FeatherIcon, type FeatherIconName } from '../icons/featherIcons';
 
 interface MobileChannelSettingsScreenProps {
   channelId: string;
 }
 
 type SettingsRowProps = {
-  icon: string;
+  icon: FeatherIconName;
   iconBg: string;
   title: string;
   value?: string;
@@ -43,32 +44,17 @@ function SettingsRow({
         disabled={disabled}
         onClick={onPress}
       >
-        <span className="mobile-channel-settings__row-icon" style={{ backgroundColor: iconBg }}>
-          {icon}
-        </span>
+        <ChannelRowIcon name={icon} bgColor={iconBg} />
         <span className="mobile-channel-settings__row-title">{title}</span>
         {value ? <span className="mobile-channel-settings__row-value">{value}</span> : null}
-        {trailing ?? (
-          <svg
-            className="mobile-channel-settings__row-chevron"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        )}
+        {trailing ?? <FeatherIcon name="chevron-right" size={18} className="mobile-channel-settings__row-chevron" />}
       </button>
     );
   }
 
   return (
     <div className={`mobile-channel-settings__row${disabled ? ' mobile-channel-settings__row--disabled' : ''}`}>
-      <span className="mobile-channel-settings__row-icon" style={{ backgroundColor: iconBg }}>
-        {icon}
-      </span>
+      <ChannelRowIcon name={icon} bgColor={iconBg} />
       <span className="mobile-channel-settings__row-title">{title}</span>
       {value ? <span className="mobile-channel-settings__row-value">{value}</span> : null}
       {trailing}
@@ -239,19 +225,19 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
 
         <section className="mobile-channel-settings__card">
           <SettingsRow
-            icon="🌐"
+            icon="globe"
             iconBg="#007AFF"
             title="Тип канала"
             value={visibilityLabel}
             disabled={!canEdit}
             onPress={() => {
               if (!canEdit) return setSnackbar('Недостаточно прав для настроек канала');
-              openComingSoon('Тип канала');
+              navigate({ to: '/channel/$channelId/type', params: { channelId } });
             }}
           />
           <div className="mobile-channel-settings__divider" />
           <SettingsRow
-            icon="🔗"
+            icon="link"
             iconBg="#FF9500"
             title="Пригласительные ссылки"
             disabled={!canEdit}
@@ -262,7 +248,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
           />
           <div className="mobile-channel-settings__divider" />
           <SettingsRow
-            icon="💬"
+            icon="message-circle"
             iconBg="#34C759"
             title="Обсуждение"
             disabled={!canEdit}
@@ -273,7 +259,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
           />
           <div className="mobile-channel-settings__divider" />
           <SettingsRow
-            icon="❤️"
+            icon="heart"
             iconBg="#FF3B30"
             title="Реакции"
             disabled={!canEdit}
@@ -295,7 +281,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
           <>
             <section className="mobile-channel-settings__card">
               <SettingsRow
-                icon="📈"
+                icon="trending-up"
                 iconBg="#16A34A"
                 title="Монетизация"
                 value="Демо"
@@ -310,7 +296,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
 
         <section className="mobile-channel-settings__card">
           <SettingsRow
-            icon="🛡"
+            icon="shield"
             iconBg="#5856D6"
             title="Администраторы"
             value={String(adminCount)}
@@ -324,7 +310,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
           />
           <div className="mobile-channel-settings__divider" />
           <SettingsRow
-            icon="👥"
+            icon="users"
             iconBg="#007AFF"
             title="Подписчики"
             value={String(subscriberCount)}
@@ -338,7 +324,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
           />
           <div className="mobile-channel-settings__divider" />
           <SettingsRow
-            icon="⛔"
+            icon="slash"
             iconBg="#FF9500"
             title="Чёрный список"
             disabled={!canModerate && !canAdminOps}
@@ -351,7 +337,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
 
         {showPermissionHint ? (
           <div className="mobile-channel-settings__banner" role="status">
-            <span aria-hidden>🔒</span>
+            <FeatherIcon name="lock" size={14} />
             <span>
               Некоторые разделы доступны в зависимости от ваших прав администратора.
             </span>

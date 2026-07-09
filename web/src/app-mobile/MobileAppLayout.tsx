@@ -23,6 +23,7 @@ import { MobileGroupProfileScreen } from './screens/MobileGroupProfileScreen';
 import { MobileChannelFeedScreen } from './screens/MobileChannelFeedScreen';
 import { MobileChannelProfileScreen } from './screens/MobileChannelProfileScreen';
 import { MobileChannelSettingsScreen } from './screens/MobileChannelSettingsScreen';
+import { MobileChannelTypeScreen } from './screens/MobileChannelTypeScreen';
 import { MobileChannelDiscussionScreen } from './screens/MobileChannelDiscussionScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 import { useChatsQuery } from '@/queries/chats.queries';
@@ -107,6 +108,9 @@ export function MobileAppLayout() {
     }
     if (channelId && postId && pathname.includes('/discussion/')) {
       return <MobileChannelDiscussionScreen channelId={channelId} postId={postId} />;
+    }
+    if (channelId && pathname.endsWith('/type')) {
+      return <MobileChannelTypeScreen channelId={channelId} />;
     }
     if (channelId && pathname.endsWith('/settings')) {
       return <MobileChannelSettingsScreen channelId={channelId} />;

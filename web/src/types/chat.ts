@@ -46,6 +46,7 @@ export interface ChatSummary {
   created_by?: string | null;
   created_by_id?: string | null;
   invite_token?: string | null;
+  slug?: string | null;
   visibility?: 'public' | 'private';
   access_type?: 'free' | 'paid';
   access_status?: 'none' | 'pending' | 'active' | 'expired' | 'canceled' | string;

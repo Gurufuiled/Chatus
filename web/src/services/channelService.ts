@@ -230,6 +230,9 @@ export async function updateChannel(
   payload: {
     name?: string;
     description?: string;
+    visibility?: 'public' | 'private';
+    slug?: string;
+    clear_slug?: boolean;
     allow_comments?: boolean;
     allow_reactions?: boolean;
   },
