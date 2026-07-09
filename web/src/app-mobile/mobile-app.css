@@ -4922,6 +4922,7 @@ button.mobile-pill-header-title:active {
   max-width: 82%;
   padding: 8px 10px;
   border-radius: 16px;
+  min-width: 0;
 }
 
 .mobile-channel-discussion__bubble--in {
@@ -5013,11 +5014,11 @@ button.mobile-pill-header-title:active {
 }
 
 .mobile-channel-discussion--with-composer .mobile-channel-discussion__scroll {
-  padding-bottom: calc(72px + var(--m-safe-bottom));
+  padding-bottom: 12px;
 }
 
 .mobile-channel-discussion--with-composer.mobile-channel-discussion--reply-open .mobile-channel-discussion__scroll {
-  padding-bottom: calc(116px + var(--m-safe-bottom));
+  padding-bottom: 12px;
 }
 
 /* Channel type (public / private) */
@@ -5499,16 +5500,37 @@ button.mobile-pill-header-title:active {
 }
 
 .mobile-channel-discussion__composer-wrap {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 20;
-  background: linear-gradient(180deg, rgba(246, 248, 252, 0) 0%, rgba(246, 248, 252, 0.96) 28%);
+  /* Legacy class kept for safety; discussion now uses shared .mobile-composer-wrap */
+  display: contents;
 }
 
 .mobile-composer__field-wrap--discussion {
   flex: 1;
+}
+
+.mobile-channel-discussion__media {
+  margin: 0 0 4px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.mobile-channel-discussion__media .image-message,
+.mobile-channel-discussion__media .video-message-container {
+  display: block;
+}
+
+.mobile-channel-discussion__media .image-message__img,
+.mobile-channel-discussion__media .video-message {
+  max-width: 100%;
+  border-radius: 12px;
+}
+
+.mobile-channel-discussion__media--voice {
+  min-width: 200px;
+}
+
+.mobile-channel-discussion__bubble--out .mobile-channel-discussion__media--voice {
+  color: #fff;
 }
 
 .mobile-channel-discussion__row--pressed {

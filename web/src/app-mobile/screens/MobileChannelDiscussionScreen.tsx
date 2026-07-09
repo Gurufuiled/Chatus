@@ -8,6 +8,13 @@ import {
 import { useMeQuery } from '@/queries/auth.queries';
 import { useComposerStore } from '@/stores/composerStore';
 import { formatMessageTime } from '@/features/conversation/messageFormatters';
+import { VoiceMessagePlayer } from '@/features/conversation/VoiceMessagePlayer';
+import {
+  ImageMessageContent,
+  VideoMessageContent,
+} from '@/features/conversation/MediaMessageContent';
+import { resolveMediaUrl } from '@/services/mediaService';
+import { isAlbumCaption } from '@/utils/albumCaption';
 import { MobileChannelPostCard } from '../components/MobileChannelPostCard';
 import { MobileDiscussionComposer } from '../components/MobileDiscussionComposer';
 import { MobileDiscussionReplyQuote } from '../components/MobileDiscussionReplyQuote';
@@ -39,6 +46,72 @@ function canSwipeReplyMessage(message: MappedMessage): boolean {
     message.msg_type === 'video' ||
     message.msg_type === 'file'
   );
+}
+
+function DiscussionCommentBody({
+  message,
+  isOutgoing,
+}: {
+  message: MappedMessage;
+  isOutgoing: boolean;
+}) {
+  if (message.is_deleted) {
+    return <p className="mobile-channel-discussion__text">Сообщение удалено</p>;
+  }
+
+  const media = message.media?.[0];
+  const mediaUrl = media?.remote_url ? resolveMediaUrl(media.remote_url) : null;
+  const caption =
+    message.content && isAlbumCaption(message.content) ? message.content.trim() : null;
+
+  if (message.msg_type === 'image' && media?.remote_url) {
+    return (
+      <div className="mobile-channel-discussion__media">
+        <ImageMessageContent url={media.remote_url} />
+        {caption ? <p className="mobile-channel-discussion__text">{caption}</p> : null}
+      </div>
+    );
+  }
+
+  if ((message.msg_type === 'video' || message.msg_type === 'video_note') && media?.remote_url) {
+    return (
+      <div className="mobile-channel-discussion__media">
+        <VideoMessageContent
+          url={media.remote_url}
+          poster={media.thumbnail_url}
+          round={message.msg_type === 'video_note' || Boolean(media.is_round)}
+        />
+        {caption ? <p className="mobile-channel-discussion__text">{caption}</p> : null}
+      </div>
+    );
+  }
+
+  if (message.msg_type === 'voice' && mediaUrl) {
+    return (
+      <div className="mobile-channel-discussion__media mobile-channel-discussion__media--voice">
+        <VoiceMessagePlayer
+          src={mediaUrl}
+          durationMs={media?.duration_ms ?? 0}
+          waveformBase64={media?.waveform}
+          isOutgoing={isOutgoing}
+        />
+      </div>
+    );
+  }
+
+  if (message.msg_type === 'file') {
+    return (
+      <p className="mobile-channel-discussion__text">
+        {media?.file_name?.trim() || message.content?.trim() || 'Файл'}
+      </p>
+    );
+  }
+
+  if (message.content?.trim()) {
+    return <p className="mobile-channel-discussion__text">{message.content}</p>;
+  }
+
+  return null;
 }
 
 export function MobileChannelDiscussionScreen({
@@ -82,6 +155,8 @@ export function MobileChannelDiscussionScreen({
   );
 
   const canComment = thread?.can_comment ?? false;
+  const disableVoiceComments = Boolean(thread?.channel.disable_voice_comments);
+  const disableMediaComments = Boolean(thread?.channel.disable_media_comments);
   const post = thread?.post;
 
   useEffect(() => {
@@ -281,9 +356,7 @@ export function MobileChannelDiscussionScreen({
                         replyMessage={replyMessage}
                         isOutgoing={isOutgoing}
                       />
-                      <p className="mobile-channel-discussion__text">
-                        {message.is_deleted ? 'Сообщение удалено' : message.content}
-                      </p>
+                      <DiscussionCommentBody message={message} isOutgoing={isOutgoing} />
                       <time className="mobile-channel-discussion__time">
                         {formatMessageTime(message.created_at)}
                       </time>
@@ -302,6 +375,8 @@ export function MobileChannelDiscussionScreen({
           postId={postId}
           composerId={composerId}
           messages={messages}
+          disableVoice={disableVoiceComments}
+          disableMedia={disableMediaComments}
           keyboardLift={keyboardLift}
           composerPaddingBottom={composerPaddingBottom}
           onMessageSent={handleSendSuccessScroll}

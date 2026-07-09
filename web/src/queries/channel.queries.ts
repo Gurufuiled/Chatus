@@ -191,23 +191,46 @@ export function useSendDiscussionMessageMutation() {
       channelId,
       postId,
       content,
+      msgType = 'text',
       replyToId,
+      media,
     }: {
       channelId: string;
       postId: string;
-      content: string;
+      content?: string | null;
+      msgType?: string;
       replyToId?: string;
+      media?: {
+        url?: string;
+        duration_ms?: number;
+        thumbnail_url?: string;
+        width?: number;
+        height?: number;
+        file_name?: string;
+        file_size?: number;
+        mime_type?: string;
+        waveform?: number[];
+      };
     }) =>
       sendDiscussionMessage(channelId, postId, {
-        content,
-        msg_type: 'text',
+        content: content ?? null,
+        msg_type: msgType,
         reply_to_id: replyToId ?? null,
+        media,
       }),
     onSuccess: (message, { channelId, postId }) => {
       queryClient.setQueryData<DiscussionThreadResult>(
         discussionQueryKey(channelId, postId),
         (old) => {
           if (!old) return old;
+          if (old.messages.some((item) => item.id === message.id)) {
+            return {
+              ...old,
+              messages: old.messages.map((item) =>
+                item.id === message.id ? message : item,
+              ),
+            };
+          }
           return { ...old, messages: [...old.messages, message] };
         },
       );
