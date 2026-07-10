@@ -454,7 +454,15 @@ export class AuthService {
     });
     if (existing) {
       const updateData: Prisma.UserUpdateInput = {};
-      if (username) updateData.username = username;
+      if (username && username !== existing.username) {
+        const usernameOwner = await this.prisma.user.findUnique({
+          where: { username },
+          select: { id: true },
+        });
+        if (!usernameOwner || usernameOwner.id === existing.id) {
+          updateData.username = username;
+        }
+      }
       if (userInfo.firstName !== undefined) {
         updateData.displayName = displayName;
       }
@@ -480,13 +488,55 @@ export class AuthService {
         return existing;
       }
 
-      return this.prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          ...updateData,
-          ...(phoneUpdate ? { phone: phoneUpdate } : {}),
-        },
-      });
+      try {
+        return await this.prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            ...updateData,
+            ...(phoneUpdate ? { phone: phoneUpdate } : {}),
+          },
+        });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          const target = Array.isArray(err.meta?.target)
+            ? (err.meta.target as string[])
+            : [];
+          const isUsernameConflict = target.some(
+            (f) => f === 'username' || f === 'users_username_key',
+          );
+          const isPhoneConflict = target.some(
+            (f) => f === 'phone' || f === 'users_phone_key',
+          );
+          const retryData: Prisma.UserUpdateInput = { ...updateData };
+          let retryPhone = phoneUpdate;
+          if (isUsernameConflict) {
+            console.warn(
+              `[Auth] Dropping username update for user ${existing.id}: "${String(updateData.username)}" already taken by another account`,
+            );
+            delete retryData.username;
+          }
+          if (isPhoneConflict) {
+            console.warn(
+              `[Auth] Dropping phone update for user ${existing.id}: phone already taken by another account`,
+            );
+            retryPhone = undefined;
+          }
+          if (Object.keys(retryData).length === 0 && !retryPhone) {
+            return existing;
+          }
+          return this.prisma.user.update({
+            where: { id: existing.id },
+            data: {
+              ...retryData,
+              ...(retryPhone ? { phone: retryPhone } : {}),
+            },
+          });
+        }
+        throw err;
+      }
     }
 
     let createPhone = phone;
