@@ -138,3 +138,76 @@ describe('AuthService.syncProfileFromInitData', () => {
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
 });
+
+describe('AuthService.loginWithInitData', () => {
+  let service: AuthService;
+  let jwtService: JwtService;
+  let prisma: PrismaService;
+  const now = Math.floor(Date.now() / 1000);
+
+  const validPayload = {
+    sub: 'loginus-sub-new',
+    email: 'colleague@example.com',
+    firstName: 'Aleksey',
+    lastName: 'D',
+    aud: 'embedded_app',
+    time: now,
+  };
+
+  beforeEach(() => {
+    process.env.LOGINUS_EMBEDDED_SECRET = 'test-secret';
+    jwtService = {
+      verify: jest.fn().mockReturnValue(validPayload),
+      sign: jest.fn().mockReturnValue('access-token'),
+    } as unknown as JwtService;
+    prisma = {
+      user: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+      refreshToken: {
+        create: jest.fn().mockResolvedValue({}),
+      },
+    } as unknown as PrismaService;
+    service = new AuthService(prisma, jwtService);
+  });
+
+  it('links existing user by email when loginusId is not set yet', async () => {
+    const existing = makeUser({
+      id: 'existing-user',
+      loginusId: null,
+      username: 'colleague@example.com',
+      displayName: null,
+      lastName: null,
+    });
+    const linked = makeUser({
+      ...existing,
+      loginusId: 'loginus-sub-new',
+      displayName: 'Aleksey',
+      lastName: 'D',
+    });
+
+    (prisma.user.findUnique as jest.Mock).mockImplementation(
+      async (args: { where: { loginusId?: string; username?: string; id?: string } }) => {
+        if (args.where.loginusId === 'loginus-sub-new') return null;
+        if (args.where.username === 'colleague@example.com') return existing;
+        return null;
+      },
+    );
+    (prisma.user.update as jest.Mock)
+      .mockResolvedValueOnce(linked)
+      .mockResolvedValueOnce(linked);
+
+    const result = await service.loginWithInitData('init-token');
+
+    expect(result.user.id).toBe('existing-user');
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'existing-user' },
+        data: expect.objectContaining({ loginusId: 'loginus-sub-new' }),
+      }),
+    );
+  });
+});

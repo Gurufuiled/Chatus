@@ -305,7 +305,7 @@ export class AuthService {
 
     const userInfo: LoginusUserInfo = {
       id: loginusId,
-      email: fields.email ?? null,
+      email: payload.email?.trim() || null,
       firstName: fields.firstName ?? undefined,
       lastName: fields.lastName ?? undefined,
       phone: fields.phone ?? null,
@@ -500,11 +500,67 @@ export class AuthService {
       }
     }
 
+    if (username) {
+      const byUsername = await this.prisma.user.findUnique({
+        where: { username },
+      });
+      if (byUsername) {
+        if (byUsername.loginusId === loginusId) {
+          return byUsername;
+        }
+        if (!byUsername.loginusId) {
+          let linkPhone: string | undefined;
+          if (createPhone && !byUsername.phone) {
+            const phoneOwner = await this.prisma.user.findUnique({
+              where: { phone: createPhone },
+              select: { id: true },
+            });
+            if (!phoneOwner || phoneOwner.id === byUsername.id) {
+              linkPhone = createPhone;
+            }
+          }
+          try {
+            return await this.prisma.user.update({
+              where: { id: byUsername.id },
+              data: {
+                loginusId,
+                displayName: displayName ?? byUsername.displayName,
+                lastName: lastName ?? byUsername.lastName,
+                ...(linkPhone ? { phone: linkPhone } : {}),
+              },
+            });
+          } catch (err) {
+            if (
+              err instanceof Prisma.PrismaClientKnownRequestError &&
+              err.code === 'P2002'
+            ) {
+              const raced = await this.prisma.user.findUnique({
+                where: { loginusId },
+              });
+              if (raced) return raced;
+            }
+            throw err;
+          }
+        }
+      }
+    }
+
+    let createUsername = username;
+    if (createUsername) {
+      const usernameOwner = await this.prisma.user.findUnique({
+        where: { username: createUsername },
+        select: { id: true },
+      });
+      if (usernameOwner) {
+        createUsername = null;
+      }
+    }
+
     try {
       return await this.prisma.user.create({
         data: {
           loginusId,
-          username,
+          username: createUsername,
           displayName,
           lastName,
           phone: createPhone,
@@ -521,14 +577,28 @@ export class AuthService {
         const isPhoneConflict =
           target.length === 0 ||
           target.some((f) => f === 'phone' || f === 'users_phone_key');
+        const isUsernameConflict =
+          target.length === 0 ||
+          target.some((f) => f === 'username' || f === 'users_username_key');
         if (isPhoneConflict && createPhone) {
           return this.prisma.user.create({
             data: {
               loginusId,
-              username,
+              username: createUsername,
               displayName,
               lastName,
               phone: null,
+            },
+          });
+        }
+        if (isUsernameConflict && createUsername) {
+          return this.prisma.user.create({
+            data: {
+              loginusId,
+              username: null,
+              displayName,
+              lastName,
+              phone: createPhone,
             },
           });
         }
