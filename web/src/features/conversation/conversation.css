@@ -815,6 +815,10 @@
   background: #3b7aed;
 }
 
+.voice-message-player--playing .voice-message-player__bar--filled {
+  transition: background 0.08s linear;
+}
+
 .voice-message-player--outgoing .voice-message-player__bar--filled {
   background: #2f6b2a;
 }

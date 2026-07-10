@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
 import {
@@ -6,13 +6,17 @@ import {
   useMarkChatReadMutation,
   useMessagesQuery,
 } from '@/queries/messages.queries';
+import { resolveMediaUrl } from '@/services/mediaService';
 import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import { ForwardDialog } from '@/features/conversation/ForwardDialog';
 import { MobileChatHeader } from '../components/MobileChatHeader';
 import { MobileMessageList } from '../components/MobileMessageList';
 import { MobileMessageComposer } from '../components/MobileMessageComposer';
 import { MobileMessageContextMenu } from '../components/MobileMessageContextMenu';
+import { MobilePlaybackBanner } from '../components/MobilePlaybackBanner';
 import { useMobileComposerKeyboard } from '../utils/useMobileComposerKeyboard';
+import { VoicePlayerService } from '@/features/conversation/voicePlayerService';
+import { stopActiveVideoNotePlayback } from '@/features/conversation/videoNotePlayerService';
 
 interface MobileChatScreenProps {
   chatId: string;
@@ -21,7 +25,7 @@ interface MobileChatScreenProps {
 export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
   const navigate = useNavigate();
   const { data: chats, isLoading: chatsLoading } = useChatsQuery();
-  const { isLoading: messagesLoading } = useMessagesQuery(chatId);
+  const { data: messages, isLoading: messagesLoading } = useMessagesQuery(chatId);
   const { mutate: markChatRead } = useMarkChatReadMutation();
   const forwardMutation = useForwardMessagesMutation();
   const markedRef = useRef<string | null>(null);
@@ -60,6 +64,54 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
     markedRef.current = chatId;
     markChatRead(chatId);
   }, [chatId, chat, markChatRead]);
+
+  useEffect(() => {
+    return () => {
+      void VoicePlayerService.stop();
+      stopActiveVideoNotePlayback();
+    };
+  }, [chatId]);
+
+  const resolveVoiceAuthor = useCallback(
+    (uri: string) => {
+      const match = messages?.find((message) => {
+        if (message.msg_type !== 'voice') return false;
+        const remote = message.media?.[0]?.remote_url;
+        return remote ? resolveMediaUrl(remote) === uri : false;
+      });
+      return match?.sender_name?.trim() || chat?.name || null;
+    },
+    [chat?.name, messages],
+  );
+
+  const resolveVideoNoteAuthor = useCallback(
+    (messageId: string | null, uri: string | null) => {
+      if (messageId) {
+        const direct = messages?.find((m) => m.id === messageId);
+        if (direct?.sender_name?.trim()) return direct.sender_name.trim();
+      }
+      if (uri) {
+        const match = messages?.find((message) => {
+          if (message.msg_type !== 'video_note') return false;
+          const remote = message.media?.[0]?.remote_url;
+          return remote ? resolveMediaUrl(remote) === uri : false;
+        });
+        if (match?.sender_name?.trim()) return match.sender_name.trim();
+      }
+      return chat?.name || null;
+    },
+    [chat?.name, messages],
+  );
+
+  const banner = useMemo(
+    () => (
+      <MobilePlaybackBanner
+        resolveVoiceAuthor={resolveVoiceAuthor}
+        resolveVideoNoteAuthor={resolveVideoNoteAuthor}
+      />
+    ),
+    [resolveVideoNoteAuthor, resolveVoiceAuthor],
+  );
 
   if (chatsLoading) {
     return (
@@ -102,6 +154,7 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
       style={{ '--mobile-chat-wallpaper': `url(${wallpaperUrl})` } as React.CSSProperties}
     >
       <MobileChatHeader chat={chat} />
+      {banner}
       <MobileMessageList chatId={chatId} keyboardLift={keyboardLift} isGroupChat={chat.chat_type === 'group'} />
       <MobileMessageComposer
         chatId={chatId}

@@ -1,6 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { formatFileSize } from '@/utils/formatFileSize';
+import { VoicePlayerService } from './voicePlayerService';
+import {
+  clearActiveVideoNoteController,
+  clearVideoNotePlaybackSnapshot,
+  getVideoNotePlaybackSnapshot,
+  setActiveVideoNoteController,
+  setVideoNotePlaybackSnapshot,
+  stopActiveVideoNotePlayback,
+} from './videoNotePlayerService';
 
 interface FileMessageContentProps {
   fileName: string | null;
@@ -115,26 +124,187 @@ interface VideoMessageContentProps {
   url: string;
   poster?: string | null;
   round?: boolean;
+  messageId?: string;
+  authorLabel?: string | null;
+  durationMs?: number;
+  registerPlayback?: boolean;
 }
 
-export function VideoMessageContent({ url, poster, round = false }: VideoMessageContentProps) {
+export function VideoMessageContent({
+  url,
+  poster,
+  round = false,
+  messageId,
+  authorLabel = null,
+  durationMs = 0,
+  registerPlayback = true,
+}: VideoMessageContentProps) {
   const src = resolveMediaUrl(url);
   const posterSrc = poster ? resolveMediaUrl(poster) : undefined;
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const noteId = messageId ?? src;
+  const noteIdRef = useRef(noteId);
+  const authorLabelRef = useRef(authorLabel);
+  const durationMsRef = useRef(durationMs);
+  const controllerRef = useRef<{ togglePlayback: () => void; stopPlayback: () => void } | null>(null);
+  noteIdRef.current = noteId;
+  authorLabelRef.current = authorLabel;
+  durationMsRef.current = durationMs;
 
-  const handleTogglePlay = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const publishSnapshot = useCallback(() => {
+    if (!round || !registerPlayback) return;
+    const active = getVideoNotePlaybackSnapshot();
+    // Only the active controller may publish (avoids thrash when switching notes).
+    if (
+      active.messageId != null &&
+      active.messageId !== noteIdRef.current &&
+      controllerRef.current == null
+    ) {
+      return;
+    }
+    const video = videoRef.current;
+    const mediaDurationMs =
+      video && Number.isFinite(video.duration) && video.duration > 0
+        ? Math.round(video.duration * 1000)
+        : durationMsRef.current;
+    const positionMs = video ? Math.round(video.currentTime * 1000) : 0;
+    const progress =
+      mediaDurationMs > 0 ? Math.min(Math.max(positionMs / mediaDurationMs, 0), 1) : 0;
+    setVideoNotePlaybackSnapshot({
+      messageId: noteIdRef.current,
+      uri: src,
+      authorLabel: authorLabelRef.current,
+      isPlaying: Boolean(video && !video.paused && !video.ended),
+      positionMs,
+      durationMs: mediaDurationMs,
+      progress,
+    });
+  }, [registerPlayback, round, src]);
+
+  const stopPlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+      video.currentTime = 0;
+    }
+    setIsPlaying(false);
+    clearVideoNotePlaybackSnapshot(noteIdRef.current);
+    clearActiveVideoNoteController(controllerRef.current);
+    controllerRef.current = null;
+  }, []);
+
+  const togglePlayback = useCallback(() => {
     if (!round) return;
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) {
-      void video.play();
-      setIsPlaying(true);
-    } else {
+    if (!video.paused && !video.ended) {
       video.pause();
       setIsPlaying(false);
+      publishSnapshot();
+      return;
     }
+
+    // Exclusive: stop any other active video note before claiming the controller.
+    const active = getVideoNotePlaybackSnapshot();
+    if (active.messageId && active.messageId !== noteIdRef.current) {
+      stopActiveVideoNotePlayback();
+    }
+
+    void VoicePlayerService.stop();
+    const controller = {
+      togglePlayback: () => {
+        const el = videoRef.current;
+        if (!el) return;
+        if (!el.paused && !el.ended) {
+          el.pause();
+          setIsPlaying(false);
+          publishSnapshot();
+          return;
+        }
+        void VoicePlayerService.stop();
+        void el
+          .play()
+          .then(() => {
+            setIsPlaying(true);
+            publishSnapshot();
+          })
+          .catch(() => {
+            setIsPlaying(false);
+            clearVideoNotePlaybackSnapshot(noteIdRef.current);
+            clearActiveVideoNoteController(controllerRef.current);
+            controllerRef.current = null;
+          });
+      },
+      stopPlayback,
+    };
+    controllerRef.current = controller;
+    setActiveVideoNoteController(controller);
+    void video
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        publishSnapshot();
+      })
+      .catch(() => {
+        setIsPlaying(false);
+        clearVideoNotePlaybackSnapshot(noteIdRef.current);
+        clearActiveVideoNoteController(controller);
+        if (controllerRef.current === controller) {
+          controllerRef.current = null;
+        }
+      });
+  }, [publishSnapshot, round, stopPlayback]);
+
+  useEffect(() => {
+    if (!round || !registerPlayback) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const onTimeUpdate = () => {
+      if (getVideoNotePlaybackSnapshot().messageId !== noteIdRef.current) return;
+      publishSnapshot();
+    };
+    const onPlay = () => {
+      setIsPlaying(true);
+      if (getVideoNotePlaybackSnapshot().messageId === noteIdRef.current) {
+        publishSnapshot();
+      }
+    };
+    const onPause = () => {
+      setIsPlaying(false);
+      if (getVideoNotePlaybackSnapshot().messageId === noteIdRef.current) {
+        publishSnapshot();
+      }
+    };
+    const onEnded = () => {
+      setIsPlaying(false);
+      clearVideoNotePlaybackSnapshot(noteIdRef.current);
+      clearActiveVideoNoteController(controllerRef.current);
+      controllerRef.current = null;
+    };
+
+    video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    video.addEventListener('ended', onEnded);
+    return () => {
+      video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('ended', onEnded);
+      if (controllerRef.current) {
+        video.pause();
+        clearVideoNotePlaybackSnapshot(noteIdRef.current);
+        clearActiveVideoNoteController(controllerRef.current);
+        controllerRef.current = null;
+      }
+    };
+  }, [noteId, publishSnapshot, registerPlayback, round, src]);
+
+  const handleTogglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    togglePlayback();
   };
 
   return (
@@ -149,7 +319,6 @@ export function VideoMessageContent({ url, poster, round = false }: VideoMessage
         poster={posterSrc}
         controls={!round}
         preload="metadata"
-        loop={round}
         playsInline={round}
         onPlay={() => round && setIsPlaying(true)}
         onPause={() => round && setIsPlaying(false)}

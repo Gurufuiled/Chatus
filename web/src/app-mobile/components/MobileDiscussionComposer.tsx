@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useComposerStore, EMPTY_PENDING_ATTACHMENTS } from '@/stores/composerStore';
 import { useSendDiscussionMessageMutation } from '@/queries/channel.queries';
 import { useMeQuery } from '@/queries/auth.queries';
@@ -8,6 +8,10 @@ import { ACCEPT as COMPOSER_ACCEPT } from '@/features/conversation/AttachmentPic
 import { MobileComposerVoiceControls } from './MobileComposerVoiceControls';
 import { MobileDiscussionReplyPreview } from './MobileDiscussionReplyPreview';
 import { useDiscussionVoiceRecorder } from '../hooks/useDiscussionVoiceRecorder';
+import {
+  MobileVideoNoteRecorder,
+  type VideoNoteRecordingResult,
+} from './MobileVideoNoteRecorder';
 import { buildMediaPayload, inferMsgTypeFromUpload, uploadFile } from '@/services/mediaService';
 import {
   ATTACHMENT_UPLOAD_CONCURRENCY,
@@ -63,6 +67,8 @@ export function MobileDiscussionComposer({
   const { data: me } = useMeQuery();
   const hasReply = !!replyToMessageId;
   const sendingLockRef = useRef(false);
+  const [videoNoteOpen, setVideoNoteOpen] = useState(false);
+  const [videoNoteSending, setVideoNoteSending] = useState(false);
 
   const voiceDisabled =
     disabled || disableVoice || !me?.id || sendMessage.isPending;
@@ -273,6 +279,70 @@ export function MobileDiscussionComposer({
     setComposerError,
   ]);
 
+  const handleVideoNoteComplete = useCallback(
+    async (result: VideoNoteRecordingResult) => {
+      if (disabled || disableMedia || !me?.id) {
+        setVideoNoteOpen(false);
+        return;
+      }
+      setVideoNoteOpen(false);
+      setVideoNoteSending(true);
+      try {
+        const ext = result.mimeType.includes('mp4') ? 'mp4' : 'webm';
+        const upload = await uploadFile(
+          new File([result.blob], `video_note.${ext}`, { type: result.mimeType || 'video/webm' }),
+        );
+        let thumbnailUrl = upload.thumbnail_path ?? undefined;
+        if (!thumbnailUrl && result.thumbnailBlob) {
+          try {
+            const thumb = await uploadFile(
+              new File([result.thumbnailBlob], 'video_note_thumb.jpg', { type: 'image/jpeg' }),
+            );
+            thumbnailUrl = thumb.url;
+          } catch {
+            // optional
+          }
+        }
+        const media = {
+          ...buildMediaPayload(upload),
+          duration_ms: result.durationMs,
+          thumbnail_url: thumbnailUrl,
+          width: upload.width ?? 320,
+          height: upload.height ?? 320,
+        };
+        await sendMessage.mutateAsync({
+          channelId,
+          postId,
+          msgType: 'video_note',
+          replyToId: replyToMessageId ?? undefined,
+          media,
+        });
+        clearReply();
+        onMessageSent?.();
+      } catch (err) {
+        setComposerError(
+          composerId,
+          err instanceof Error ? err.message : 'Не удалось отправить видеокружок',
+        );
+      } finally {
+        setVideoNoteSending(false);
+      }
+    },
+    [
+      channelId,
+      clearReply,
+      composerId,
+      disableMedia,
+      disabled,
+      me?.id,
+      onMessageSent,
+      postId,
+      replyToMessageId,
+      sendMessage,
+      setComposerError,
+    ],
+  );
+
   const handleInput = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -288,11 +358,12 @@ export function MobileDiscussionComposer({
   };
 
   const isRecording = voice.isRecording || voice.isProcessing;
-  const isSending = sendMessage.isPending;
+  const isSending = sendMessage.isPending || videoNoteSending;
   const isDisabled = disabled || !me?.id || isRecording || isSending;
   const hasText = draft.trim().length > 0;
   const hasAttachments = attachments.length > 0;
   const canSend = hasText || hasAttachments;
+  const canRecordVideoNote = !disableMedia && !disableVoice;
 
   const wrapPaddingBottom =
     composerPaddingBottom !== undefined
@@ -334,6 +405,9 @@ export function MobileDiscussionComposer({
               onStartRecording={voice.startRecording}
               onCancelRecording={voice.cancelRecording}
               onFinishRecording={voice.finishRecording}
+              onOpenVideoNoteRecorder={
+                canRecordVideoNote ? () => setVideoNoteOpen(true) : undefined
+              }
             />
           ) : (
             <>
@@ -405,12 +479,22 @@ export function MobileDiscussionComposer({
                   }
                   onCancelRecording={voice.cancelRecording}
                   onFinishRecording={voice.finishRecording}
+                  onOpenVideoNoteRecorder={
+                    canRecordVideoNote
+                      ? () => setVideoNoteOpen(true)
+                      : undefined
+                  }
                 />
               </div>
             </>
           )}
         </div>
       </div>
+      <MobileVideoNoteRecorder
+        open={videoNoteOpen}
+        onCancel={() => setVideoNoteOpen(false)}
+        onComplete={handleVideoNoteComplete}
+      />
     </div>
   );
 }

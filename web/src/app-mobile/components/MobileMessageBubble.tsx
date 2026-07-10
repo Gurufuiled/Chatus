@@ -58,8 +58,9 @@ function mediaLabel(msgType: string, content: string | null): string {
     case 'voice':
       return 'Голосовое сообщение';
     case 'video':
-    case 'video_note':
       return 'Видео';
+    case 'video_note':
+      return 'Видеосообщение';
     case 'file':
       return content?.trim() || 'Файл';
     case 'sticker':
@@ -82,15 +83,7 @@ function SenderName({
 
 export function MobileMessageBubble({ message, isOutgoing, showSenderName = false }: MobileMessageBubbleProps) {
   if (message.is_deleted) {
-    return (
-      <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
-        <div
-          className={`mobile-bubble mobile-bubble--${isOutgoing ? 'out' : 'in'} mobile-bubble--deleted`}
-        >
-          <p className="mobile-bubble__text">Сообщение удалено</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const groupCallPayload =
@@ -172,6 +165,10 @@ export function MobileMessageBubble({ message, isOutgoing, showSenderName = fals
               url={firstMedia!.remote_url!}
               poster={firstMedia?.thumbnail_url}
               round={isRoundVideo}
+              messageId={message.id}
+              authorLabel={message.sender_name}
+              durationMs={firstMedia?.duration_ms ?? 0}
+              registerPlayback={isRoundVideo}
             />
             {!caption ? (
               <div className="mobile-bubble__media-overlay">
@@ -197,9 +194,10 @@ export function MobileMessageBubble({ message, isOutgoing, showSenderName = fals
           <div className="mobile-bubble__voice">
             <VoiceMessagePlayer
               src={mediaUrl}
-              durationMs={firstMedia?.duration_ms ?? 1000}
+              durationMs={firstMedia?.duration_ms ?? 0}
               waveformBase64={firstMedia?.waveform}
               isOutgoing={isOutgoing}
+              authorLabel={message.sender_name}
               meta={<BubbleMeta message={message} isOutgoing={isOutgoing} />}
             />
           </div>

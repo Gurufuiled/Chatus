@@ -1,8 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatRecordingTimer } from '@/utils/formatFileSize';
 import { useVoiceHoldGesture } from '../hooks/useVoiceHoldGesture';
 
 const CANCEL_TRIGGER = 0.84;
+const VIDEO_SWIPE_TRIGGER = 72;
+const TAP_SLOP = 10;
 
 interface MobileComposerVoiceControlsProps {
   hasText: boolean;
@@ -15,6 +17,8 @@ interface MobileComposerVoiceControlsProps {
   onStartRecording: () => void;
   onCancelRecording: () => void;
   onFinishRecording: (shouldSend: boolean) => void;
+  /** When set, tap mic toggles voice/video entry; swipe-up or camera tap opens recorder. */
+  onOpenVideoNoteRecorder?: () => void;
 }
 
 function LockIcon() {
@@ -22,6 +26,33 @@ function LockIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <rect x="5" y="11" width="14" height="10" rx="2" />
       <path d="M8 11V8a4 4 0 018 0v3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="9" y="4" width="6" height="11" rx="3" />
+      <path
+        d="M6 11a6 6 0 0012 0M12 17v3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden>
+      <path
+        d="M4 8.5A2.5 2.5 0 016.5 6h2l1.2-1.6A1.5 1.5 0 0110.9 4h2.2a1.5 1.5 0 011.2.4L15.5 6h2A2.5 2.5 0 0120 8.5v7A2.5 2.5 0 0117.5 18h-11A2.5 2.5 0 014 15.5v-7z"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3.2" />
     </svg>
   );
 }
@@ -37,34 +68,96 @@ export function MobileComposerVoiceControls({
   onStartRecording,
   onCancelRecording,
   onFinishRecording,
+  onOpenVideoNoteRecorder,
 }: MobileComposerVoiceControlsProps) {
   const canSend = hasText || hasAttachments;
+  const canUseVideoNotes = typeof onOpenVideoNoteRecorder === 'function';
+  const [entryMode, setEntryMode] = useState<'voice' | 'video'>('voice');
+
+  const videoPointerRef = useRef<{
+    id: number | null;
+    x: number;
+    y: number;
+    moved: boolean;
+    opened: boolean;
+  }>({ id: null, x: 0, y: 0, moved: false, opened: false });
+
   const voiceHold = useVoiceHoldGesture({
-    disabled: isBusy,
+    disabled: isBusy || entryMode === 'video',
     canSend,
     isRecording,
     isProcessing,
     onStartRecording,
     onCancelRecording,
     onFinishRecording,
+    onIdleTap: canUseVideoNotes
+      ? () => setEntryMode((prev) => (prev === 'voice' ? 'video' : 'voice'))
+      : undefined,
   });
 
   useEffect(() => {
     voiceHold.syncRecordingMode();
   }, [isRecording, isProcessing, voiceHold.syncRecordingMode]);
 
+  useEffect(() => {
+    if (!canUseVideoNotes && entryMode !== 'voice') {
+      setEntryMode('voice');
+    }
+  }, [canUseVideoNotes, entryMode]);
+
   const { gesture, onMicPointerDown, resetVisuals } = voiceHold;
   const isLocked = gesture.mode === 'locked';
   const showRecordingUi = isRecording || isProcessing || gesture.mode !== 'idle';
   const cancelActive = gesture.cancelProgress >= CANCEL_TRIGGER;
-  // Show send when locked or when hold tracking was lost (PWA pointercancel).
-  // Keep mic halo during an active hold so release-to-send still feels native.
   const showSendAction =
     isProcessing || isLocked || (isRecording && !gesture.touchTracking);
 
   const handleCancel = () => {
     onCancelRecording();
     resetVisuals('idle');
+  };
+
+  const handleVideoPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (isBusy || canSend) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    videoPointerRef.current = {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+      opened: false,
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleVideoPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const state = videoPointerRef.current;
+    if (state.id !== e.pointerId) return;
+    const dy = e.clientY - state.y;
+    const dx = e.clientX - state.x;
+    if (Math.abs(dx) > TAP_SLOP || Math.abs(dy) > TAP_SLOP) {
+      state.moved = true;
+    }
+    if (!state.opened && dy <= -VIDEO_SWIPE_TRIGGER) {
+      state.opened = true;
+      onOpenVideoNoteRecorder?.();
+    }
+  };
+
+  const handleVideoPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const state = videoPointerRef.current;
+    if (state.id !== e.pointerId) return;
+    videoPointerRef.current = { id: null, x: 0, y: 0, moved: false, opened: false };
+    if (state.opened) return;
+    if (!state.moved) {
+      // Tap in video mode toggles back to voice (mobile parity).
+      setEntryMode('voice');
+    }
   };
 
   if (showRecordingUi) {
@@ -149,16 +242,7 @@ export function MobileComposerVoiceControls({
             </button>
           ) : (
             <div className="mobile-composer__recording-mic-halo" aria-hidden>
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <rect x="9" y="4" width="6" height="11" rx="3" />
-                <path
-                  d="M6 11a6 6 0 0012 0M12 17v3"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <MicIcon />
             </div>
           )}
         </div>
@@ -182,24 +266,46 @@ export function MobileComposerVoiceControls({
     );
   }
 
+  if (entryMode === 'video' && canUseVideoNotes) {
+    return (
+      <div className="mobile-composer__video-entry">
+        <button
+          type="button"
+          className="mobile-composer__voice mobile-composer__voice--video"
+          aria-label="Свайп вверх для видеокружка, нажатие — голосовое"
+          disabled={isBusy}
+          onPointerDown={handleVideoPointerDown}
+          onPointerMove={handleVideoPointerMove}
+          onPointerUp={handleVideoPointerUp}
+          onPointerCancel={handleVideoPointerUp}
+        >
+          <CameraIcon />
+        </button>
+        <button
+          type="button"
+          className="mobile-composer__video-open"
+          onClick={() => onOpenVideoNoteRecorder?.()}
+          disabled={isBusy}
+        >
+          Записать
+        </button>
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
       className="mobile-composer__voice"
-      aria-label="Удерживайте для записи голосового"
+      aria-label={
+        canUseVideoNotes
+          ? 'Удерживайте для голосового, нажмите для видеокружка'
+          : 'Удерживайте для записи голосового'
+      }
       disabled={isBusy}
       onPointerDown={onMicPointerDown}
     >
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <rect x="9" y="4" width="6" height="11" rx="3" />
-        <path
-          d="M6 11a6 6 0 0012 0M12 17v3"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
+      <MicIcon />
     </button>
   );
 }

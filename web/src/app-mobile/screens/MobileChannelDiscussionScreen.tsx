@@ -20,9 +20,12 @@ import { MobileDiscussionComposer } from '../components/MobileDiscussionComposer
 import { MobileDiscussionReplyQuote } from '../components/MobileDiscussionReplyQuote';
 import { MobileDiscussionContextMenu } from '../components/MobileDiscussionContextMenu';
 import { MobileSwipeReplyRow } from '../components/MobileSwipeReplyRow';
+import { MobilePlaybackBanner } from '../components/MobilePlaybackBanner';
 import { getAvatarColor, resolveAvatarSrc } from '../utils/avatar';
 import { getDiscussionComposerId } from '../utils/discussionComposer';
 import { useMobileComposerKeyboard } from '../utils/useMobileComposerKeyboard';
+import { VoicePlayerService } from '@/features/conversation/voicePlayerService';
+import { stopActiveVideoNotePlayback } from '@/features/conversation/videoNotePlayerService';
 import type { MappedMessage } from '@/types/message';
 
 interface MobileChannelDiscussionScreenProps {
@@ -56,7 +59,7 @@ function DiscussionCommentBody({
   isOutgoing: boolean;
 }) {
   if (message.is_deleted) {
-    return <p className="mobile-channel-discussion__text">Сообщение удалено</p>;
+    return null;
   }
 
   const media = message.media?.[0];
@@ -80,6 +83,10 @@ function DiscussionCommentBody({
           url={media.remote_url}
           poster={media.thumbnail_url}
           round={message.msg_type === 'video_note' || Boolean(media.is_round)}
+          messageId={message.id}
+          authorLabel={message.sender_name}
+          durationMs={media.duration_ms ?? 0}
+          registerPlayback={message.msg_type === 'video_note' || Boolean(media.is_round)}
         />
         {caption ? <p className="mobile-channel-discussion__text">{caption}</p> : null}
       </div>
@@ -94,6 +101,7 @@ function DiscussionCommentBody({
           durationMs={media?.duration_ms ?? 0}
           waveformBase64={media?.waveform}
           isOutgoing={isOutgoing}
+          authorLabel={message.sender_name}
         />
       </div>
     );
@@ -149,6 +157,10 @@ export function MobileChannelDiscussionScreen({
     () => [...(thread?.messages ?? [])].sort((a, b) => a.created_at - b.created_at),
     [thread?.messages],
   );
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => !message.is_deleted),
+    [messages],
+  );
   const messageById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
@@ -185,6 +197,44 @@ export function MobileChannelDiscussionScreen({
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     shouldStickToBottomRef.current = distanceFromBottom < 80;
   }, []);
+
+  useEffect(() => {
+    return () => {
+      void VoicePlayerService.stop();
+      stopActiveVideoNotePlayback();
+    };
+  }, [channelId, postId]);
+
+  const resolveVoiceAuthor = useCallback(
+    (uri: string) => {
+      const match = messages.find((message) => {
+        if (message.msg_type !== 'voice') return false;
+        const remote = message.media?.[0]?.remote_url;
+        return remote ? resolveMediaUrl(remote) === uri : false;
+      });
+      return match?.sender_name?.trim() || null;
+    },
+    [messages],
+  );
+
+  const resolveVideoNoteAuthor = useCallback(
+    (messageId: string | null, uri: string | null) => {
+      if (messageId) {
+        const direct = messageById.get(messageId);
+        if (direct?.sender_name?.trim()) return direct.sender_name.trim();
+      }
+      if (uri) {
+        const match = messages.find((message) => {
+          if (message.msg_type !== 'video_note') return false;
+          const remote = message.media?.[0]?.remote_url;
+          return remote ? resolveMediaUrl(remote) === uri : false;
+        });
+        if (match?.sender_name?.trim()) return match.sender_name.trim();
+      }
+      return null;
+    },
+    [messageById, messages],
+  );
 
   const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -291,6 +341,11 @@ export function MobileChannelDiscussionScreen({
         <span className="mobile-chat-profile__toolbar-title">Обсуждение</span>
       </header>
 
+      <MobilePlaybackBanner
+        resolveVoiceAuthor={resolveVoiceAuthor}
+        resolveVideoNoteAuthor={resolveVideoNoteAuthor}
+      />
+
       <div
         ref={scrollRef}
         className="mobile-channel-discussion__scroll"
@@ -310,10 +365,10 @@ export function MobileChannelDiscussionScreen({
         ) : null}
 
         <div className="mobile-channel-discussion__comments">
-          {messages.length === 0 ? (
+          {visibleMessages.length === 0 ? (
             <p className="mobile-channel-discussion__empty">Пока нет комментариев</p>
           ) : (
-            messages.map((message) => {
+            visibleMessages.map((message) => {
               const isOutgoing = !!me?.id && message.sender_id === me.id;
               const name = getSenderName(message);
               const avatar = resolveAvatarSrc(message.sender_avatar_url);

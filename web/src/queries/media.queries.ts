@@ -293,3 +293,64 @@ export function useUploadVoiceMutation() {
     },
   });
 }
+
+export function useUploadVideoNoteMutation() {
+  const sendMedia = useSendMediaMessageMutation();
+  const setError = useComposerStore((s) => s.setComposerError);
+  const clearReply = useComposerStore((s) => s.clearReply);
+
+  return useMutation({
+    mutationFn: async ({
+      chatId,
+      blob,
+      mimeType,
+      replyToId,
+      durationMs,
+      thumbnailBlob,
+    }: {
+      chatId: string;
+      blob: Blob;
+      mimeType: string;
+      replyToId?: string | null;
+      durationMs?: number;
+      thumbnailBlob?: Blob | null;
+    }) => {
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const upload = await uploadFile(new File([blob], `video_note.${ext}`, { type: mimeType || 'video/webm' }));
+      let thumbnailUrl = upload.thumbnail_path ?? undefined;
+      if (!thumbnailUrl && thumbnailBlob) {
+        try {
+          const thumbUpload = await uploadFile(
+            new File([thumbnailBlob], 'video_note_thumb.jpg', { type: 'image/jpeg' }),
+          );
+          thumbnailUrl = thumbUpload.url;
+        } catch {
+          // Thumbnail is optional.
+        }
+      }
+      return { upload, chatId, replyToId, durationMs, thumbnailUrl };
+    },
+    onSuccess: ({ upload, chatId, replyToId, durationMs, thumbnailUrl }) => {
+      const media = {
+        ...buildMediaPayload(upload),
+        duration_ms: durationMs ?? upload.duration_ms ?? undefined,
+        thumbnail_url: thumbnailUrl ?? upload.thumbnail_path ?? undefined,
+        width: upload.width ?? 320,
+        height: upload.height ?? 320,
+      };
+      sendMedia.mutate(
+        {
+          chatId,
+          msgType: 'video_note',
+          media,
+          replyToId,
+          clientTempId: crypto.randomUUID(),
+        },
+        { onSuccess: () => clearReply() },
+      );
+    },
+    onError: (err, { chatId }) => {
+      setError(chatId, err instanceof Error ? err.message : 'Не удалось отправить видеокружок');
+    },
+  });
+}

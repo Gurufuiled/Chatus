@@ -26,6 +26,8 @@ interface UseVoiceHoldGestureOptions {
   onStartRecording: () => void | Promise<void>;
   onCancelRecording: () => void;
   onFinishRecording: (shouldSend: boolean) => void;
+  /** Fired on a quick tap (no hold) while idle — used to toggle video-note entry mode. */
+  onIdleTap?: () => void;
 }
 
 export function useVoiceHoldGesture({
@@ -36,6 +38,7 @@ export function useVoiceHoldGesture({
   onStartRecording,
   onCancelRecording,
   onFinishRecording,
+  onIdleTap,
 }: UseVoiceHoldGestureOptions) {
   const [gesture, setGesture] = useState<VoiceGestureState>({
     mode: 'idle',
@@ -55,13 +58,16 @@ export function useVoiceHoldGesture({
   const startPointRef = useRef({ x: 0, y: 0 });
   const pendingFinishRef = useRef(false);
   const pendingCancelRef = useRef(false);
+  const tapEligibleRef = useRef(true);
   const isRecordingRef = useRef(isRecording);
   const onCancelRecordingRef = useRef(onCancelRecording);
   const onFinishRecordingRef = useRef(onFinishRecording);
+  const onIdleTapRef = useRef(onIdleTap);
 
   isRecordingRef.current = isRecording;
   onCancelRecordingRef.current = onCancelRecording;
   onFinishRecordingRef.current = onFinishRecording;
+  onIdleTapRef.current = onIdleTap;
 
   const resetVisuals = useCallback((mode: VoiceRecordMode = 'idle') => {
     modeRef.current = mode;
@@ -129,7 +135,12 @@ export function useVoiceHoldGesture({
     gestureActiveRef.current = false;
 
     if (!holdActivatedRef.current && modeRef.current === 'idle') {
+      const shouldTap = tapEligibleRef.current;
+      tapEligibleRef.current = true;
       resetVisuals('idle');
+      if (shouldTap) {
+        onIdleTapRef.current?.();
+      }
       return;
     }
 
@@ -141,6 +152,7 @@ export function useVoiceHoldGesture({
     }
 
     holdActivatedRef.current = false;
+    tapEligibleRef.current = true;
 
     if (cancelProgressRef.current >= CANCEL_TRIGGER_PROGRESS) {
       if (isRecordingRef.current) {
@@ -172,6 +184,7 @@ export function useVoiceHoldGesture({
       e.preventDefault();
       gestureActiveRef.current = true;
       holdActivatedRef.current = false;
+      tapEligibleRef.current = true;
       pointerIdRef.current = e.pointerId;
       startPointRef.current = { x: e.clientX, y: e.clientY };
       pendingFinishRef.current = false;
@@ -197,6 +210,7 @@ export function useVoiceHoldGesture({
         holdTimerRef.current = null;
         if (!gestureActiveRef.current || modeRef.current !== 'idle') return;
         holdActivatedRef.current = true;
+        tapEligibleRef.current = false;
         modeRef.current = 'holding';
         setGesture((prev) => ({ ...prev, mode: 'holding' }));
         void onStartRecording();
@@ -208,8 +222,13 @@ export function useVoiceHoldGesture({
   const onMicPointerMove = useCallback(
     (e: React.PointerEvent<HTMLElement> | PointerEvent) => {
       if (!gestureActiveRef.current || pointerIdRef.current !== e.pointerId) return;
+      const dx = e.clientX - startPointRef.current.x;
+      const dy = e.clientY - startPointRef.current.y;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        tapEligibleRef.current = false;
+      }
       if (!holdActivatedRef.current) return;
-      updateDrag(e.clientX - startPointRef.current.x, e.clientY - startPointRef.current.y);
+      updateDrag(dx, dy);
     },
     [updateDrag],
   );

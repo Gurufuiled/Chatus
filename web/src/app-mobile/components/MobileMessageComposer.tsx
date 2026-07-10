@@ -1,7 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useComposerStore, EMPTY_PENDING_ATTACHMENTS } from '@/stores/composerStore';
 import { useSendMessageMutation } from '@/queries/messages.queries';
-import { useSendPendingAttachmentsMutation } from '@/queries/media.queries';
+import {
+  useSendPendingAttachmentsMutation,
+  useUploadVideoNoteMutation,
+} from '@/queries/media.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { AttachmentPicker } from '@/features/conversation/AttachmentPicker';
 import { MobileComposerAttachmentPreview } from './MobileComposerAttachmentPreview';
@@ -9,6 +12,10 @@ import { ComposerErrorBanner } from '@/features/conversation/ComposerErrorBanner
 import { MobileComposerReplyPreview } from './MobileComposerReplyPreview';
 import { useVoiceRecorder } from '@/features/conversation/useVoiceRecorder';
 import { MobileComposerVoiceControls } from './MobileComposerVoiceControls';
+import {
+  MobileVideoNoteRecorder,
+  type VideoNoteRecordingResult,
+} from './MobileVideoNoteRecorder';
 
 interface MobileMessageComposerProps {
   chatId: string;
@@ -38,7 +45,9 @@ export function MobileMessageComposer({
   const hasReply = !!replyToMessageId;
   const sendMutation = useSendMessageMutation();
   const sendPendingMutation = useSendPendingAttachmentsMutation();
+  const uploadVideoNote = useUploadVideoNoteMutation();
   const { data: me } = useMeQuery();
+  const [videoNoteOpen, setVideoNoteOpen] = useState(false);
 
   const voiceDisabled = disabled || !me?.id;
   const voice = useVoiceRecorder(chatId, voiceDisabled);
@@ -115,6 +124,21 @@ export function MobileMessageComposer({
     sendPendingMutation,
   ]);
 
+  const handleVideoNoteComplete = useCallback(
+    async (result: VideoNoteRecordingResult) => {
+      setVideoNoteOpen(false);
+      uploadVideoNote.mutate({
+        chatId,
+        blob: result.blob,
+        mimeType: result.mimeType,
+        durationMs: result.durationMs,
+        thumbnailBlob: result.thumbnailBlob,
+        replyToId: replyToMessageId,
+      });
+    },
+    [chatId, replyToMessageId, uploadVideoNote],
+  );
+
   const handleInput = () => {
     const el = textareaRef.current;
     if (!el) return;
@@ -130,7 +154,8 @@ export function MobileMessageComposer({
   };
 
   const isRecording = voice.isRecording || voice.isProcessing;
-  const isSending = sendMutation.isPending || sendPendingMutation.isPending;
+  const isSending =
+    sendMutation.isPending || sendPendingMutation.isPending || uploadVideoNote.isPending;
   const isDisabled = disabled || !me?.id || isRecording || isSending;
   const hasText = draft.trim().length > 0;
   const hasAttachments = attachments.length > 0;
@@ -154,77 +179,84 @@ export function MobileMessageComposer({
       <div className={`mobile-composer-dock${hasReply ? ' mobile-composer-dock--reply' : ''}`}>
         <MobileComposerReplyPreview chatId={chatId} />
         <div className="mobile-composer">
-        {isRecording ? (
-          <MobileComposerVoiceControls
-            hasText={canSend}
-            hasAttachments={hasAttachments}
-            onSend={send}
-            elapsedMs={voice.elapsedMs}
-            isRecording={voice.isRecording}
-            isProcessing={voice.isProcessing}
-            isBusy={voice.isBusy || isSending}
-            onStartRecording={voice.startRecording}
-            onCancelRecording={voice.cancelRecording}
-            onFinishRecording={voice.finishRecording}
-          />
-        ) : (
-          <>
-            {hasAttachments ? (
-              <div className="mobile-composer__attachments">
-                <MobileComposerAttachmentPreview chatId={chatId} />
-              </div>
-            ) : null}
-            <div className="mobile-composer__shell">
-              <button
-                type="button"
-                className="mobile-composer__attach"
-                aria-label="Прикрепить файл"
-                disabled={isDisabled}
-                onClick={() => setAttachmentPickerOpen(true)}
-              >
-                {hasAttachments ? (
-                  <span className="mobile-composer__attach-badge" aria-hidden>
-                    {attachments.length}
-                  </span>
-                ) : null}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                  <path
-                    d="M8 12.5l7.2-7.2a3 3 0 014.2 4.2l-8.4 8.4a4.5 4.5 0 01-6.4-6.4l9-9"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-              <div className="mobile-composer__field-wrap">
-                <textarea
-                  ref={textareaRef}
-                  className="mobile-composer__input"
-                  rows={1}
-                  placeholder={hasAttachments ? 'Подпись' : 'Сообщение'}
-                  value={draft}
-                  onChange={(e) => setDraft(chatId, e.target.value)}
-                  onInput={handleInput}
-                  onKeyDown={handleKeyDown}
+          {isRecording ? (
+            <MobileComposerVoiceControls
+              hasText={canSend}
+              hasAttachments={hasAttachments}
+              onSend={send}
+              elapsedMs={voice.elapsedMs}
+              isRecording={voice.isRecording}
+              isProcessing={voice.isProcessing}
+              isBusy={voice.isBusy || isSending}
+              onStartRecording={voice.startRecording}
+              onCancelRecording={voice.cancelRecording}
+              onFinishRecording={voice.finishRecording}
+              onOpenVideoNoteRecorder={() => setVideoNoteOpen(true)}
+            />
+          ) : (
+            <>
+              {hasAttachments ? (
+                <div className="mobile-composer__attachments">
+                  <MobileComposerAttachmentPreview chatId={chatId} />
+                </div>
+              ) : null}
+              <div className="mobile-composer__shell">
+                <button
+                  type="button"
+                  className="mobile-composer__attach"
+                  aria-label="Прикрепить файл"
                   disabled={isDisabled}
-                  aria-label={hasAttachments ? 'Подпись к медиа' : 'Текст сообщения'}
+                  onClick={() => setAttachmentPickerOpen(true)}
+                >
+                  {hasAttachments ? (
+                    <span className="mobile-composer__attach-badge" aria-hidden>
+                      {attachments.length}
+                    </span>
+                  ) : null}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <path
+                      d="M8 12.5l7.2-7.2a3 3 0 014.2 4.2l-8.4 8.4a4.5 4.5 0 01-6.4-6.4l9-9"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+                <div className="mobile-composer__field-wrap">
+                  <textarea
+                    ref={textareaRef}
+                    className="mobile-composer__input"
+                    rows={1}
+                    placeholder={hasAttachments ? 'Подпись' : 'Сообщение'}
+                    value={draft}
+                    onChange={(e) => setDraft(chatId, e.target.value)}
+                    onInput={handleInput}
+                    onKeyDown={handleKeyDown}
+                    disabled={isDisabled}
+                    aria-label={hasAttachments ? 'Подпись к медиа' : 'Текст сообщения'}
+                  />
+                </div>
+                <MobileComposerVoiceControls
+                  hasText={canSend}
+                  hasAttachments={hasAttachments}
+                  onSend={send}
+                  elapsedMs={voice.elapsedMs}
+                  isRecording={voice.isRecording}
+                  isProcessing={voice.isProcessing}
+                  isBusy={voice.isBusy || isSending}
+                  onStartRecording={voice.startRecording}
+                  onCancelRecording={voice.cancelRecording}
+                  onFinishRecording={voice.finishRecording}
+                  onOpenVideoNoteRecorder={() => setVideoNoteOpen(true)}
                 />
               </div>
-              <MobileComposerVoiceControls
-                hasText={canSend}
-                hasAttachments={hasAttachments}
-                onSend={send}
-                elapsedMs={voice.elapsedMs}
-                isRecording={voice.isRecording}
-                isProcessing={voice.isProcessing}
-                isBusy={voice.isBusy || isSending}
-                onStartRecording={voice.startRecording}
-                onCancelRecording={voice.cancelRecording}
-                onFinishRecording={voice.finishRecording}
-              />
-            </div>
-          </>
-        )}
+            </>
+          )}
         </div>
       </div>
+      <MobileVideoNoteRecorder
+        open={videoNoteOpen}
+        onCancel={() => setVideoNoteOpen(false)}
+        onComplete={handleVideoNoteComplete}
+      />
     </div>
   );
 }

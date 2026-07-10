@@ -70,13 +70,7 @@ export function MessageBubble({
   const groupCall = useOptionalGroupCall();
 
   if (message.is_deleted) {
-    return (
-      <div
-        className={`message-bubble message-bubble--deleted${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}`}
-      >
-        <span className="message-bubble__deleted-text">Deleted message</span>
-      </div>
-    );
+    return null;
   }
 
   const { data: messages } = useMessagesQuery(chatId);
@@ -230,9 +224,10 @@ export function MessageBubble({
     body = (
       <VoiceMessagePlayer
         src={mediaUrl}
-        durationMs={media?.duration_ms ?? 1000}
+        durationMs={media?.duration_ms ?? 0}
         waveformBase64={media?.waveform}
         isOutgoing={isOutgoing}
+        authorLabel={message.sender_name}
       />
     );
   } else if (message.msg_type === 'file' && mediaUrl) {
@@ -251,6 +246,10 @@ export function MessageBubble({
           url={mediaUrl}
           poster={media?.thumbnail_url}
           round={message.msg_type === 'video_note' || Boolean(media?.is_round)}
+          messageId={message.id}
+          authorLabel={message.sender_name}
+          durationMs={media?.duration_ms ?? 0}
+          registerPlayback={message.msg_type === 'video_note' || Boolean(media?.is_round)}
         />
         {videoCaption ? (
           <p className="message-bubble__text message-bubble__caption">{videoCaption}</p>
