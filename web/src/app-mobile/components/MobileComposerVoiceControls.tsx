@@ -3,7 +3,7 @@ import { formatRecordingTimer } from '@/utils/formatFileSize';
 import { useVoiceHoldGesture } from '../hooks/useVoiceHoldGesture';
 
 const CANCEL_TRIGGER = 0.84;
-const VIDEO_SWIPE_TRIGGER = 72;
+const VIDEO_SWIPE_TRIGGER = 34;
 const TAP_SLOP = 10;
 
 interface MobileComposerVoiceControlsProps {
@@ -268,28 +268,18 @@ export function MobileComposerVoiceControls({
 
   if (entryMode === 'video' && canUseVideoNotes) {
     return (
-      <div className="mobile-composer__video-entry">
-        <button
-          type="button"
-          className="mobile-composer__voice mobile-composer__voice--video"
-          aria-label="Свайп вверх для видеокружка, нажатие — голосовое"
-          disabled={isBusy}
-          onPointerDown={handleVideoPointerDown}
-          onPointerMove={handleVideoPointerMove}
-          onPointerUp={handleVideoPointerUp}
-          onPointerCancel={handleVideoPointerUp}
-        >
-          <CameraIcon />
-        </button>
-        <button
-          type="button"
-          className="mobile-composer__video-open"
-          onClick={() => onOpenVideoNoteRecorder?.()}
-          disabled={isBusy}
-        >
-          Записать
-        </button>
-      </div>
+      <button
+        type="button"
+        className="mobile-composer__voice mobile-composer__voice--video"
+        aria-label="Свайп вверх для видеокружка, нажатие — голосовое"
+        disabled={isBusy}
+        onPointerDown={handleVideoPointerDown}
+        onPointerMove={handleVideoPointerMove}
+        onPointerUp={handleVideoPointerUp}
+        onPointerCancel={handleVideoPointerUp}
+      >
+        <CameraIcon />
+      </button>
     );
   }
 

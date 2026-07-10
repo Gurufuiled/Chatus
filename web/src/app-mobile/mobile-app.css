@@ -1182,11 +1182,24 @@ button.mobile-pill-header-title:active {
   border-color: rgba(255, 255, 255, 0.35);
 }
 
-.mobile-bubble--out .voice-message-player__bar {
-  background: rgba(255, 255, 255, 0.35);
+.mobile-bubble__voice .voice-message-player__bar {
+  flex: 0 0 auto;
+  width: 2.2px;
+  border-radius: 999px;
+  min-height: 2.5px;
+  background: #d2d5da;
 }
 
-.mobile-bubble--out .voice-message-player__bar--filled {
+.mobile-bubble--out .mobile-bubble__voice .voice-message-player__bar {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.mobile-bubble__voice .voice-message-player__bar--filled,
+.mobile-bubble--in .mobile-bubble__voice .voice-message-player__bar--filled {
+  background: #4a8ff5;
+}
+
+.mobile-bubble--out .mobile-bubble__voice .voice-message-player__bar--filled {
   background: rgba(255, 255, 255, 0.92);
 }
 
@@ -1198,10 +1211,6 @@ button.mobile-pill-header-title:active {
   background: var(--m-bubble-me);
   color: #fff;
   border-color: transparent;
-}
-
-.mobile-bubble--in .voice-message-player__bar--filled {
-  background: var(--m-bubble-me);
 }
 
 .mobile-bubble__voice .voice-message-player__play {
@@ -1225,15 +1234,12 @@ button.mobile-pill-header-title:active {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0;
+  width: 100%;
   height: 28px;
+  overflow: hidden;
   cursor: pointer;
-}
-
-.mobile-bubble__voice .voice-message-player__bar {
-  width: 2px;
-  border-radius: 999px;
-  background: rgba(120, 126, 138, 0.35);
-  min-height: 4px;
+  position: relative;
 }
 
 .mobile-bubble__media .image-message {
@@ -6001,26 +6007,8 @@ button.mobile-pill-header-title:active {
 }
 
 /* --- Video note entry + recorder --- */
-.mobile-composer__video-entry {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
 .mobile-composer__voice--video {
   color: #8b5cf6;
-}
-
-.mobile-composer__video-open {
-  border: none;
-  background: transparent;
-  color: var(--m-accent, #3b7aed);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 0 2px;
-  cursor: pointer;
 }
 
 .mobile-video-note-recorder {
@@ -6028,150 +6016,306 @@ button.mobile-pill-header-title:active {
   inset: 0;
   z-index: 80;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mobile-video-note-recorder__backdrop,
+.mobile-video-note-recorder__wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .mobile-video-note-recorder__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(28px) saturate(1.15);
+  -webkit-backdrop-filter: blur(28px) saturate(1.15);
+  background: rgba(248, 250, 252, 0.42);
 }
 
-.mobile-video-note-recorder__sheet {
+.mobile-video-note-recorder__wash {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mobile-video-note-recorder__content {
   position: relative;
-  width: min(100%, 420px);
-  padding: 16px 16px calc(20px + var(--m-safe-bottom, 0px));
-  border-radius: 24px 24px 0 0;
-  background: var(--m-surface, #fff);
+  z-index: 1;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 16px;
+  justify-content: space-between;
+  padding: calc(18px + var(--m-safe-top, 0px)) 18px calc(18px + var(--m-safe-bottom, 0px));
 }
 
-.mobile-video-note-recorder__header {
-  width: 100%;
+.mobile-video-note-recorder__stage {
+  position: relative;
+  flex: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.mobile-video-note-recorder__title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--m-text, #0f172a);
-}
-
-.mobile-video-note-recorder__close,
-.mobile-video-note-recorder__flip {
-  width: 40px;
-  height: 40px;
-  border: none;
-  border-radius: 20px;
-  background: var(--m-input-bg, #f2f4f7);
-  color: var(--m-text, #0f172a);
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  cursor: pointer;
-}
-
-.mobile-video-note-recorder__close svg,
-.mobile-video-note-recorder__flip svg {
-  width: 20px;
-  height: 20px;
 }
 
 .mobile-video-note-recorder__circle {
   position: relative;
-  width: min(72vw, 280px);
-  height: min(72vw, 280px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   overflow: hidden;
-  background: #0b1020;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.28);
+  padding: 0;
+  margin: 0;
+  background: #0e1116;
+  box-shadow: 0 16px 26px rgba(15, 23, 42, 0.22);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.mobile-video-note-recorder__circle:focus-visible {
+  outline: 2px solid #5d72ff;
+  outline-offset: 3px;
+}
+
+.mobile-video-note-recorder__camera-mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .mobile-video-note-recorder__preview {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.mobile-video-note-recorder__preview--mirror {
   transform: scaleX(-1);
 }
 
-.mobile-video-note-recorder__timer,
-.mobile-video-note-recorder__loading,
-.mobile-video-note-recorder__error {
+.mobile-video-note-recorder__loading {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.55);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.mobile-video-note-recorder__timer {
-  top: 14px;
-}
-
-.mobile-video-note-recorder__loading,
-.mobile-video-note-recorder__error {
-  bottom: 18px;
-  max-width: 80%;
-  text-align: center;
-  white-space: normal;
-}
-
-.mobile-video-note-recorder__actions {
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 24px;
-  min-height: 72px;
+  background: rgba(15, 23, 42, 0.2);
 }
 
-.mobile-video-note-recorder__record,
-.mobile-video-note-recorder__stop {
-  width: 72px;
-  height: 72px;
-  border-radius: 36px;
-  border: 3px solid rgba(235, 87, 87, 0.35);
-  background: transparent;
+.mobile-video-note-recorder__spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: mobile-video-note-spin 0.8s linear infinite;
+}
+
+@keyframes mobile-video-note-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mobile-video-note-recorder__permission {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 34px;
+  background: rgba(19, 28, 38, 0.92);
+  color: #ecf8ff;
+  text-align: center;
+}
+
+.mobile-video-note-recorder__permission svg {
+  width: 28px;
+  height: 28px;
+}
+
+.mobile-video-note-recorder__permission strong {
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #fff;
+}
+
+.mobile-video-note-recorder__permission p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: rgba(236, 248, 255, 0.8);
+}
+
+.mobile-video-note-recorder__permission-btn {
+  margin-top: 8px;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: #5d72ff;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mobile-video-note-recorder__right-rail {
+  position: absolute;
+  right: 8px;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-video-note-recorder__rail-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 21px;
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.74);
+  color: #17577c;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
 
-.mobile-video-note-recorder__record span {
-  width: 54px;
-  height: 54px;
-  border-radius: 27px;
-  background: #eb5757;
+.mobile-video-note-recorder__rail-btn:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
 }
 
-.mobile-video-note-recorder__stop span {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: #eb5757;
+.mobile-video-note-recorder__rail-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
-.mobile-video-note-recorder__secondary {
+.mobile-video-note-recorder__video-badge {
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.58);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #17577c;
+}
+
+.mobile-video-note-recorder__bottom {
+  position: relative;
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+}
+
+.mobile-video-note-recorder__controls-bar {
+  position: relative;
+  flex: 1;
+  height: 42px;
+  margin-right: 24px;
+  border-radius: 21px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mobile-video-note-recorder__controls-wash {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.mobile-video-note-recorder__controls-tint {
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  border-radius: 40px;
+  pointer-events: none;
+}
+
+.mobile-video-note-recorder__controls-tint--left {
+  left: -18px;
+  width: 44%;
+  background: rgba(246, 177, 232, 0.22);
+}
+
+.mobile-video-note-recorder__controls-tint--right {
+  right: -22px;
+  width: 48%;
+  background: rgba(146, 241, 238, 0.2);
+}
+
+.mobile-video-note-recorder__controls-content {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 82px 0 10px;
+}
+
+.mobile-video-note-recorder__timer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  color: #283547;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-video-note-recorder__record-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: #ff4d6d;
+}
+
+.mobile-video-note-recorder__cancel {
   border: none;
   background: transparent;
-  color: var(--m-text-secondary, #667085);
+  padding: 4px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
+  color: #5676ff;
   cursor: pointer;
 }
 
-.mobile-video-note-recorder__record:disabled {
-  opacity: 0.45;
+.mobile-video-note-recorder__send {
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 66px;
+  height: 66px;
+  border-radius: 33px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: #5d72ff;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 15px rgba(93, 114, 255, 0.22);
+  cursor: pointer;
+}
+
+.mobile-video-note-recorder__send:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
+}
+
+.mobile-video-note-recorder__send svg {
+  width: 28px;
+  height: 28px;
 }

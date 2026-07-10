@@ -12,7 +12,12 @@ interface VoiceMessagePlayerProps {
   authorLabel?: string | null;
 }
 
-const BAR_COUNT = 48;
+/** Match mobile VoiceBubble bar density. */
+const BAR_COUNT = 74;
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
 
 function subscribe(listener: () => void) {
   return VoicePlayerService.subscribe(listener);
@@ -20,6 +25,42 @@ function subscribe(listener: () => void) {
 
 function getSnapshot() {
   return VoicePlayerService.getSnapshot();
+}
+
+function buildTelegramLikeBars(
+  src: string,
+  waveform: number[],
+  targetCount: number,
+): number[] {
+  if (waveform.length === 0) {
+    return buildDecorativeWaveform(src, targetCount);
+  }
+
+  const clamped = waveform.map(clamp01);
+  const bucketSize = clamped.length / targetCount;
+  const bars = Array.from({ length: targetCount }, (_, i) => {
+    const start = Math.floor(i * bucketSize);
+    const end = Math.min(clamped.length, Math.ceil((i + 1) * bucketSize));
+    const bucket = clamped.slice(start, Math.max(end, start + 1));
+    if (bucket.length === 0) return 0;
+    const peak = Math.max(...bucket);
+    const avg = bucket.reduce((s, v) => s + v, 0) / bucket.length;
+    return peak * 0.6 + avg * 0.4;
+  });
+
+  const min = Math.min(...bars);
+  const max = Math.max(...bars);
+  const spread = max - min;
+  if (spread < 0.005) {
+    return buildDecorativeWaveform(src, targetCount);
+  }
+
+  return bars.map((value, index) => {
+    const normalized = (value - min) / spread;
+    const t = targetCount <= 1 ? 0.5 : index / (targetCount - 1);
+    const edgeTaper = 0.88 + Math.sin(t * Math.PI) * 0.12;
+    return clamp01(normalized * edgeTaper);
+  });
 }
 
 export function VoiceMessagePlayer({
@@ -33,34 +74,33 @@ export function VoiceMessagePlayer({
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const isCurrent = snapshot.currentVoiceUri === src;
   const isPlaying = isCurrent && snapshot.status.isPlaying;
-  const progress =
+  const effectiveDurationMs =
     isCurrent && snapshot.status.durationMs > 0
-      ? Math.min(snapshot.status.positionMs / snapshot.status.durationMs, 1)
-      : isCurrent && durationMs > 0
-        ? Math.min(snapshot.status.positionMs / durationMs, 1)
+      ? snapshot.status.durationMs
+      : durationMs > 0
+        ? durationMs
         : 0;
+  const progress =
+    isCurrent && effectiveDurationMs > 0
+      ? Math.min(snapshot.status.positionMs / effectiveDurationMs, 1)
+      : 0;
   const remainingMs = isCurrent
-    ? Math.max(
-        (snapshot.status.durationMs > 0 ? snapshot.status.durationMs : durationMs) -
-          snapshot.status.positionMs,
-        0,
-      )
+    ? Math.max(effectiveDurationMs - snapshot.status.positionMs, 0)
     : durationMs;
 
   const bars = useMemo(() => {
     const decoded = decodeWaveformBase64(waveformBase64);
-    if (decoded.length > 0) {
-      const bucketSize = decoded.length / BAR_COUNT;
-      return Array.from({ length: BAR_COUNT }, (_, i) => {
-        const start = Math.floor(i * bucketSize);
-        const end = Math.min(decoded.length, Math.ceil((i + 1) * bucketSize));
-        const bucket = decoded.slice(start, Math.max(end, start + 1));
-        const peak = Math.max(...bucket, 0);
-        return 0.15 + peak * 0.85;
-      });
-    }
-    return buildDecorativeWaveform(src, BAR_COUNT);
+    return buildTelegramLikeBars(src, decoded, BAR_COUNT);
   }, [src, waveformBase64]);
+
+  const barHeights = useMemo(
+    () =>
+      bars.map((value) => {
+        const v = clamp01(value ?? 0);
+        return 2 + Math.pow(v, 1.4) * 22;
+      }),
+    [bars],
+  );
 
   const handleToggle = useCallback(() => {
     if (isCurrent && isPlaying) {
@@ -77,21 +117,21 @@ export function VoiceMessagePlayer({
 
   const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const effectiveDuration =
+    const ratio = clamp01((e.clientX - rect.left) / rect.width);
+    const seekDuration =
       (isCurrent && snapshot.status.durationMs > 0 ? snapshot.status.durationMs : 0) ||
       (durationMs > 0 ? durationMs : 0);
-    if (effectiveDuration <= 0) {
+    if (seekDuration <= 0) {
       void VoicePlayerService.play(src, { authorLabel, durationMs: durationMs || undefined });
       return;
     }
-    const targetMs = Math.round(ratio * effectiveDuration);
+    const targetMs = Math.round(ratio * seekDuration);
 
     if (!isCurrent) {
       void VoicePlayerService.play(src, {
         positionMs: targetMs,
         authorLabel,
-        durationMs: effectiveDuration,
+        durationMs: seekDuration,
       });
       return;
     }
@@ -101,14 +141,13 @@ export function VoiceMessagePlayer({
       void VoicePlayerService.play(src, {
         positionMs: targetMs,
         authorLabel,
-        durationMs: effectiveDuration,
+        durationMs: seekDuration,
       });
     }
   };
 
-  const filledCount = Math.round(progress * BAR_COUNT);
   const durationLabel =
-    isPlaying || progress > 0
+    isCurrent && (isPlaying || progress > 0)
       ? formatVoiceDuration(remainingMs)
       : formatVoiceDuration(durationMs);
 
@@ -143,13 +182,17 @@ export function VoiceMessagePlayer({
           aria-valuenow={Math.round(progress * 100)}
           onClick={handleWaveformClick}
         >
-          {bars.map((value, index) => (
-            <span
-              key={index}
-              className={`voice-message-player__bar${index < filledCount ? ' voice-message-player__bar--filled' : ''}`}
-              style={{ height: `${Math.round(4 + value * 18)}px` }}
-            />
-          ))}
+          {barHeights.map((barHeight, index) => {
+            // Match mobile VoiceBubble: fill bars by playback ratio.
+            const isFilled = progress > 0 && index / BAR_COUNT <= progress;
+            return (
+              <span
+                key={index}
+                className={`voice-message-player__bar${isFilled ? ' voice-message-player__bar--filled' : ''}`}
+                style={{ height: `${Math.round(barHeight)}px` }}
+              />
+            );
+          })}
         </div>
         <div className="voice-message-player__meta-row">
           <span className="voice-message-player__duration">{durationLabel}</span>
