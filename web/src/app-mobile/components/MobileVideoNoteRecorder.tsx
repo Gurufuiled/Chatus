@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { normalizeVideoUploadMime } from '@/services/mediaService';
 
 const MAX_DURATION_MS = 60_000;
 const CIRCLE_SIZE_PX = 320;
@@ -15,6 +17,10 @@ export type VideoNoteRecordingResult = {
   mimeType: string;
   thumbnailBlob: Blob | null;
 };
+
+function getMobileAppPortalRoot(): HTMLElement {
+  return document.querySelector('.mobile-app') ?? document.body;
+}
 
 interface MobileVideoNoteRecorderProps {
   open: boolean;
@@ -291,7 +297,7 @@ export function MobileVideoNoteRecorder({
         }
       });
 
-      const mimeType = recorder.mimeType || 'video/webm';
+      const mimeType = normalizeVideoUploadMime(recorder.mimeType || chunksRef.current[0]?.type);
       const blob = new Blob(chunksRef.current, { type: mimeType });
       stopStream();
       recorderRef.current = null;
@@ -410,7 +416,9 @@ export function MobileVideoNoteRecorder({
   const showPermission = permissionDenied;
   const showGenericError = Boolean(error) && !permissionDenied;
 
-  return (
+  // Portal out of `.mobile-composer-wrap` — it uses `will-change: transform` /
+  // keyboard `translateY`, which makes `position: fixed` cover only the composer strip.
+  return createPortal(
     <div className="mobile-video-note-recorder" role="dialog" aria-modal="true" aria-label="Видеокружок">
       <div className="mobile-video-note-recorder__backdrop" />
       <div className="mobile-video-note-recorder__wash" />
@@ -534,6 +542,7 @@ export function MobileVideoNoteRecorder({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    getMobileAppPortalRoot(),
   );
 }

@@ -97,6 +97,41 @@ export async function uploadVoiceBlob(blob: Blob): Promise<UploadResult> {
   throw lastError instanceof Error ? lastError : new Error('Voice upload failed');
 }
 
+const VIDEO_NOTE_MIME_CANDIDATES = ['video/webm', 'video/mp4'];
+
+/** Normalize MediaRecorder mime (often includes `;codecs=...`) to a bare video/* type. */
+export function normalizeVideoUploadMime(mimeType: string | undefined | null): string {
+  const raw = (mimeType ?? '').trim().toLowerCase();
+  const base = raw.split(';', 1)[0]?.trim() ?? '';
+  if (base.startsWith('video/')) return base;
+  if (raw.includes('mp4') || raw.includes('avc1') || raw.includes('h264')) return 'video/mp4';
+  return 'video/webm';
+}
+
+export async function uploadVideoNoteBlob(
+  blob: Blob,
+  mimeType?: string | null,
+): Promise<UploadResult> {
+  const preferred = normalizeVideoUploadMime(mimeType || blob.type);
+  const candidates = [
+    preferred,
+    ...VIDEO_NOTE_MIME_CANDIDATES.filter((m) => m !== preferred),
+  ];
+  let lastError: unknown = null;
+  for (const mime of candidates) {
+    try {
+      const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+      return await uploadFile(new File([blob], `video_note.${ext}`, { type: mime }));
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : '';
+      // Only try an alternate container mime on type rejection — not on auth/network/5xx.
+      if (!/invalid file type/i.test(msg)) break;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('Video note upload failed');
+}
+
 export function inferMsgTypeFromUpload(
   file: File,
   upload: UploadResult,

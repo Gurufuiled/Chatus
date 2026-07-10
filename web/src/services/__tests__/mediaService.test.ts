@@ -3,8 +3,10 @@ import {
   MAX_UPLOAD_BYTES,
   buildMediaPayload,
   inferMsgTypeFromUpload,
+  normalizeVideoUploadMime,
   resolveMediaUrl,
   uploadFile,
+  uploadVideoNoteBlob,
   uploadVoiceBlob,
   type UploadResult,
 } from '@/services/mediaService';
@@ -121,6 +123,59 @@ describe('mediaService', () => {
       const result = await uploadVoiceBlob(blob);
       expect(result.url).toBe('/uploads/test.jpg');
       expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('normalizeVideoUploadMime', () => {
+    it('strips codecs and falls back to webm', () => {
+      expect(normalizeVideoUploadMime('video/webm;codecs=vp9,opus')).toBe('video/webm');
+      expect(normalizeVideoUploadMime('')).toBe('video/webm');
+      expect(normalizeVideoUploadMime('video/mp4')).toBe('video/mp4');
+    });
+  });
+
+  describe('uploadVideoNoteBlob', () => {
+    it('uploads with bare video mime (no codecs)', async () => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify({ ...uploadResult, media_kind: 'video', mime_type: 'video/webm' }), {
+          status: 200,
+        }),
+      );
+      const blob = new Blob(['video'], { type: 'video/webm;codecs=vp8,opus' });
+      await uploadVideoNoteBlob(blob, 'video/webm;codecs=vp8,opus');
+      const [, init] = vi.mocked(fetch).mock.calls[0];
+      const body = init?.body as FormData;
+      const file = body.get('file') as File;
+      expect(file.type).toBe('video/webm');
+      expect(file.name).toBe('video_note.webm');
+    });
+
+    it('retries alternate mime only on invalid file type', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ message: 'Invalid file type. Allowed: images, audio, video, PDF' }), {
+            status: 400,
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ ...uploadResult, media_kind: 'video', mime_type: 'video/mp4' }), {
+            status: 200,
+          }),
+        );
+      const blob = new Blob(['video'], { type: 'video/webm' });
+      await uploadVideoNoteBlob(blob, 'video/webm');
+      expect(fetch).toHaveBeenCalledTimes(2);
+      const secondBody = vi.mocked(fetch).mock.calls[1][1]?.body as FormData;
+      expect((secondBody.get('file') as File).type).toBe('video/mp4');
+    });
+
+    it('does not retry on non-type failures', async () => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 }),
+      );
+      const blob = new Blob(['video'], { type: 'video/webm' });
+      await expect(uploadVideoNoteBlob(blob, 'video/webm')).rejects.toThrow('Unauthorized');
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
   });
 });

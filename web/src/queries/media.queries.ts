@@ -3,6 +3,7 @@ import {
   buildMediaPayload,
   inferMsgTypeFromUpload,
   uploadFile,
+  uploadVideoNoteBlob,
   uploadVoiceBlob,
 } from '@/services/mediaService';
 import { useSendMediaMessageMutation } from '@/queries/messages.queries';
@@ -315,8 +316,7 @@ export function useUploadVideoNoteMutation() {
       durationMs?: number;
       thumbnailBlob?: Blob | null;
     }) => {
-      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-      const upload = await uploadFile(new File([blob], `video_note.${ext}`, { type: mimeType || 'video/webm' }));
+      const upload = await uploadVideoNoteBlob(blob, mimeType);
       let thumbnailUrl = upload.thumbnail_path ?? undefined;
       if (!thumbnailUrl && thumbnailBlob) {
         try {
