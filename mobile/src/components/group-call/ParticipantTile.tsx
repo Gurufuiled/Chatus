@@ -16,7 +16,7 @@ type ParticipantTileProps = {
   height?: number;
   /** True when this participant is the sole active speaker in the call. */
   isDominantSpeaker?: boolean;
-  /** Optional video layer (e.g. LiveKit VideoView). Falls back to avatar when absent. */
+  /** Avatar always rendered; optional LiveKit video overlays on top when ready. */
   videoSlot?: React.ReactNode;
 };
 
@@ -87,21 +87,20 @@ export function ParticipantTile({
           { borderColor, borderWidth },
         ]}
       >
-        {videoSlot ?? (
-          <View style={styles.mediaSlot}>
-            {participant.avatarUrl ? (
-              <Image
-                source={{ uri: participant.avatarUrl }}
-                style={styles.avatar}
-                contentFit="cover"
-              />
-            ) : (
-              <View style={[styles.initialFallback, { backgroundColor: accentTintBg }]}>
-                <Text style={styles.initialText}>{buildInitial(participant.displayName)}</Text>
-              </View>
-            )}
-          </View>
-        )}
+        <View style={styles.mediaSlot}>
+          {participant.avatarUrl ? (
+            <Image
+              source={{ uri: participant.avatarUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={[styles.initialFallback, { backgroundColor: accentTintBg }]}>
+              <Text style={styles.initialText}>{buildInitial(participant.displayName)}</Text>
+            </View>
+          )}
+        </View>
+        {videoSlot ? <View style={styles.videoOverlay}>{videoSlot}</View> : null}
 
         <LinearGradient
           colors={['transparent', withAlpha('#000000', 0.72)]}
@@ -145,6 +144,10 @@ const styles = StyleSheet.create({
   },
   mediaSlot: {
     ...StyleSheet.absoluteFillObject,
+  },
+  videoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
   },
   avatar: {
     width: '100%',

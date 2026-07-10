@@ -102,17 +102,20 @@ export function GroupCallOverlay() {
   const canToggleVideo = state.connectionState === ConnectionState.Connected;
 
   const statusLine = useMemo(() => {
+    const timerText = state.startedAt ? formatDuration(state.startedAt, now) : null;
     const isConnecting =
       (state.phase === 'creating' || state.phase === 'joining') &&
       state.connectionState !== ConnectionState.Connected;
     if (isConnecting) {
-      return 'Подключение...';
+      return timerText ? `Подключение... · ${timerText}` : 'Подключение...';
     }
     if (state.connectionState !== ConnectionState.Connected) {
-      return 'Пытаемся переподключиться...';
+      return timerText
+        ? `Пытаемся переподключиться... · ${timerText}`
+        : 'Пытаемся переподключиться...';
     }
     const count = Math.max(state.participants.length, 1);
-    return `${count} участник${count === 1 ? '' : count < 5 ? 'а' : 'ов'} · ${formatDuration(state.startedAt, now)}`;
+    return `${count} участник${count === 1 ? '' : count < 5 ? 'а' : 'ов'} · ${timerText ?? '0:00'}`;
   }, [now, state.connectionState, state.participants.length, state.phase, state.startedAt]);
 
   const confirmLeave = () => {
@@ -156,30 +159,32 @@ export function GroupCallOverlay() {
         return undefined;
       }
       if (participant.isLocal) {
-        if (!localCameraTrack) return undefined;
+        if (!localCameraTrack?.mediaStream) return undefined;
         const isScreenShare = localCameraTrack.source === Track.Source.ScreenShare;
         return (
           <VideoView
+            key={localCameraTrack.sid}
             videoTrack={localCameraTrack}
-            style={[
+            style={StyleSheet.flatten([
               styles.participantVideo,
               isScreenShare ? styles.participantVideoContain : null,
-            ]}
+            ])}
             objectFit={isScreenShare ? 'contain' : 'cover'}
             mirror={!isScreenShare}
           />
         );
       }
       const remoteTrack = remoteVideoTracks[participant.userId];
-      if (!remoteTrack) return undefined;
+      if (!remoteTrack?.mediaStream) return undefined;
       const isScreenShare = remoteTrack.source === Track.Source.ScreenShare;
       return (
         <VideoView
+          key={remoteTrack.sid}
           videoTrack={remoteTrack}
-          style={[
+          style={StyleSheet.flatten([
             styles.participantVideo,
             isScreenShare ? styles.participantVideoContain : null,
-          ]}
+          ])}
           objectFit={isScreenShare ? 'contain' : 'cover'}
         />
       );
@@ -279,7 +284,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   participantVideoContain: {
-    backgroundColor: '#0A0D12',
+    backgroundColor: 'transparent',
   },
   controls: {
     flexDirection: 'row',
