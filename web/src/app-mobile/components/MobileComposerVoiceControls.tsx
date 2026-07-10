@@ -53,16 +53,24 @@ export function MobileComposerVoiceControls({
     voiceHold.syncRecordingMode();
   }, [isRecording, isProcessing, voiceHold.syncRecordingMode]);
 
-  const { gesture, onMicPointerDown } = voiceHold;
+  const { gesture, onMicPointerDown, resetVisuals } = voiceHold;
   const isLocked = gesture.mode === 'locked';
   const showRecordingUi = isRecording || isProcessing || gesture.mode !== 'idle';
   const cancelActive = gesture.cancelProgress >= CANCEL_TRIGGER;
-  const showSendAction = isLocked;
+  // Show send when locked or when hold tracking was lost (PWA pointercancel).
+  // Keep mic halo during an active hold so release-to-send still feels native.
+  const showSendAction =
+    isProcessing || isLocked || (isRecording && !gesture.touchTracking);
+
+  const handleCancel = () => {
+    onCancelRecording();
+    resetVisuals('idle');
+  };
 
   if (showRecordingUi) {
     return (
       <div
-        className={`mobile-composer__recording-stage${isLocked ? ' mobile-composer__recording-stage--locked' : ''}${cancelActive ? ' mobile-composer__recording-stage--cancel' : ''}`}
+        className={`mobile-composer__recording-stage${showSendAction ? ' mobile-composer__recording-stage--locked' : ''}${cancelActive ? ' mobile-composer__recording-stage--cancel' : ''}`}
         aria-live="polite"
       >
         {gesture.touchTracking && !isLocked ? (
@@ -83,19 +91,17 @@ export function MobileComposerVoiceControls({
         ) : null}
 
         <div className="mobile-composer__recording">
-          {isLocked ? (
-            <button
-              type="button"
-              className="mobile-composer__recording-cancel"
-              aria-label="Удалить запись"
-              disabled={isProcessing}
-              onClick={onCancelRecording}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v11a2 2 0 01-2 2H8a2 2 0 01-2-2V7h12z" />
-              </svg>
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="mobile-composer__recording-cancel"
+            aria-label="Удалить запись"
+            disabled={isProcessing}
+            onClick={handleCancel}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m2 0v11a2 2 0 01-2 2H8a2 2 0 01-2-2V7h12z" />
+            </svg>
+          </button>
 
           <div
             className="mobile-composer__recording-bubble"
@@ -113,7 +119,7 @@ export function MobileComposerVoiceControls({
                 {formatRecordingTimer(elapsedMs)}
               </span>
             </div>
-            {!isLocked ? (
+            {!isLocked && gesture.touchTracking ? (
               <span className="mobile-composer__recording-slide-hint">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M15 18l-6-6 6-6" />
@@ -134,7 +140,7 @@ export function MobileComposerVoiceControls({
               type="button"
               className="mobile-composer__send mobile-composer__recording-send"
               aria-label="Отправить голосовое"
-              disabled={isProcessing}
+              disabled={isProcessing || !isRecording}
               onClick={() => onFinishRecording(true)}
             >
               <svg viewBox="0 0 24 24" fill="currentColor">

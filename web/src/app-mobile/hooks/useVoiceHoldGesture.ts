@@ -55,6 +55,13 @@ export function useVoiceHoldGesture({
   const startPointRef = useRef({ x: 0, y: 0 });
   const pendingFinishRef = useRef(false);
   const pendingCancelRef = useRef(false);
+  const isRecordingRef = useRef(isRecording);
+  const onCancelRecordingRef = useRef(onCancelRecording);
+  const onFinishRecordingRef = useRef(onFinishRecording);
+
+  isRecordingRef.current = isRecording;
+  onCancelRecordingRef.current = onCancelRecording;
+  onFinishRecordingRef.current = onFinishRecording;
 
   const resetVisuals = useCallback((mode: VoiceRecordMode = 'idle') => {
     modeRef.current = mode;
@@ -77,18 +84,19 @@ export function useVoiceHoldGesture({
   }, []);
 
   const lockRecording = useCallback(() => {
-    if (modeRef.current === 'idle') return;
+    if (modeRef.current === 'idle' && !isRecordingRef.current) return;
     clearHoldTimer();
     modeRef.current = 'locked';
-    setGesture((prev) => ({
-      ...prev,
+    gestureActiveRef.current = false;
+    cancelProgressRef.current = 0;
+    setGesture({
       mode: 'locked',
       dragX: 0,
       dragY: 0,
       cancelProgress: 0,
       lockProgress: 1,
       touchTracking: false,
-    }));
+    });
   }, [clearHoldTimer]);
 
   const updateDrag = useCallback(
@@ -125,6 +133,7 @@ export function useVoiceHoldGesture({
       return;
     }
 
+    // Locked: keep recording UI with send/cancel (mobile parity).
     if (modeRef.current === 'locked') {
       holdActivatedRef.current = false;
       setGesture((prev) => ({ ...prev, touchTracking: false }));
@@ -134,8 +143,8 @@ export function useVoiceHoldGesture({
     holdActivatedRef.current = false;
 
     if (cancelProgressRef.current >= CANCEL_TRIGGER_PROGRESS) {
-      if (isRecording) {
-        onCancelRecording();
+      if (isRecordingRef.current) {
+        onCancelRecordingRef.current();
       } else {
         pendingCancelRef.current = true;
       }
@@ -143,13 +152,17 @@ export function useVoiceHoldGesture({
       return;
     }
 
-    if (isRecording) {
-      onFinishRecording(true);
-    } else {
-      pendingFinishRef.current = true;
+    // Release while holding → send (mobile parity).
+    if (isRecordingRef.current) {
+      onFinishRecordingRef.current(true);
+      resetVisuals('idle');
+      return;
     }
+
+    // Mic permission / MediaRecorder still starting: wait, then send.
+    pendingFinishRef.current = true;
     resetVisuals('idle');
-  }, [clearHoldTimer, isRecording, onCancelRecording, onFinishRecording, resetVisuals]);
+  }, [clearHoldTimer, resetVisuals]);
 
   const onMicPointerDown = useCallback(
     (e: React.PointerEvent<HTMLElement>) => {
@@ -161,6 +174,14 @@ export function useVoiceHoldGesture({
       holdActivatedRef.current = false;
       pointerIdRef.current = e.pointerId;
       startPointRef.current = { x: e.clientX, y: e.clientY };
+      pendingFinishRef.current = false;
+      pendingCancelRef.current = false;
+
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // Some browsers reject capture on non-primary pointers.
+      }
 
       setGesture({
         mode: 'idle',
@@ -208,12 +229,28 @@ export function useVoiceHoldGesture({
       pointerIdRef.current = null;
       clearHoldTimer();
       gestureActiveRef.current = false;
-      if (isRecording && modeRef.current !== 'locked') {
-        onCancelRecording();
+
+      if (cancelProgressRef.current >= CANCEL_TRIGGER_PROGRESS) {
+        holdActivatedRef.current = false;
+        if (isRecordingRef.current) {
+          onCancelRecordingRef.current();
+        } else {
+          pendingCancelRef.current = true;
+        }
+        resetVisuals('idle');
+        return;
+      }
+
+      // On web/iOS, pointercancel is common when the mic button unmounts into
+      // the recording stage. Lock so the user can still send or delete.
+      if (isRecordingRef.current || holdActivatedRef.current || modeRef.current === 'holding') {
+        holdActivatedRef.current = false;
+        lockRecording();
+        return;
       }
       resetVisuals('idle');
     },
-    [clearHoldTimer, isRecording, onCancelRecording, resetVisuals],
+    [clearHoldTimer, lockRecording, resetVisuals],
   );
 
   useEffect(() => {
@@ -236,28 +273,47 @@ export function useVoiceHoldGesture({
 
   const syncRecordingMode = useCallback(() => {
     if (isRecording && modeRef.current === 'idle') {
-      modeRef.current = 'holding';
-      holdActivatedRef.current = true;
-      setGesture((prev) => ({ ...prev, mode: 'holding', touchTracking: true }));
+      // Recording started without an active hold (or after release race) → lock
+      // so Cancel + Send are always available in PWA.
       if (pendingCancelRef.current) {
         pendingCancelRef.current = false;
         pendingFinishRef.current = false;
-        onCancelRecording();
+        onCancelRecordingRef.current();
         resetVisuals('idle');
         return;
       }
       if (pendingFinishRef.current) {
         pendingFinishRef.current = false;
-        onFinishRecording(true);
+        onFinishRecordingRef.current(true);
         resetVisuals('idle');
+        return;
       }
+      if (!gestureActiveRef.current) {
+        lockRecording();
+        return;
+      }
+      modeRef.current = 'holding';
+      holdActivatedRef.current = true;
+      setGesture((prev) => ({ ...prev, mode: 'holding', touchTracking: true }));
     }
+
+    // Hold gesture lost while still recording → lock with send button.
+    if (
+      isRecording &&
+      modeRef.current === 'holding' &&
+      !gestureActiveRef.current &&
+      !gesture.touchTracking
+    ) {
+      lockRecording();
+      return;
+    }
+
     if (!isRecording && !isProcessing && modeRef.current !== 'idle') {
       pendingFinishRef.current = false;
       pendingCancelRef.current = false;
       resetVisuals('idle');
     }
-  }, [isProcessing, isRecording, onCancelRecording, onFinishRecording, resetVisuals]);
+  }, [gesture.touchTracking, isProcessing, isRecording, lockRecording, resetVisuals]);
 
   return {
     gesture,

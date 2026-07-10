@@ -29,6 +29,8 @@ export function useVoiceRecorder(chatId: string, disabled = false) {
   const startedAtRef = useRef<number>(0);
   const startSessionRef = useRef(0);
   const finishingRef = useRef(false);
+  const recordingStateRef = useRef(recordingState);
+  recordingStateRef.current = recordingState;
   const [elapsedMs, setElapsedMs] = useState(0);
 
   const cleanupStream = useCallback(() => {
@@ -65,6 +67,7 @@ export function useVoiceRecorder(chatId: string, disabled = false) {
   }, [recordingState]);
 
   const cancelRecording = useCallback(() => {
+    startSessionRef.current += 1;
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
       recorder.onstop = () => {
@@ -80,7 +83,7 @@ export function useVoiceRecorder(chatId: string, disabled = false) {
 
   const finishRecording = useCallback(
     (shouldSend: boolean) => {
-      if (finishingRef.current || recordingState !== 'recording') return;
+      if (finishingRef.current || recordingStateRef.current !== 'recording') return;
       const recorder = recorderRef.current;
       if (!recorder || recorder.state === 'inactive') {
         cleanupStream();
@@ -117,15 +120,7 @@ export function useVoiceRecorder(chatId: string, disabled = false) {
       }
       recorder.stop();
     },
-    [
-      chatId,
-      cleanupStream,
-      recordingState,
-      replyToMessageId,
-      setError,
-      setRecordingState,
-      uploadVoice,
-    ],
+    [chatId, cleanupStream, replyToMessageId, setError, setRecordingState, uploadVoice],
   );
 
   const startRecording = useCallback(async () => {

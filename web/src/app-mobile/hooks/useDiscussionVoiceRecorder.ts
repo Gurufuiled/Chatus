@@ -53,6 +53,8 @@ export function useDiscussionVoiceRecorder(
   const startedAtRef = useRef<number>(0);
   const startSessionRef = useRef(0);
   const finishingRef = useRef(false);
+  const recordingStateRef = useRef(recordingState);
+  recordingStateRef.current = recordingState;
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isPublishing, setIsPublishing] = useState(false);
 
@@ -90,6 +92,7 @@ export function useDiscussionVoiceRecorder(
   }, [recordingState]);
 
   const cancelRecording = useCallback(() => {
+    startSessionRef.current += 1;
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
       recorder.onstop = () => {
@@ -105,7 +108,7 @@ export function useDiscussionVoiceRecorder(
 
   const finishRecording = useCallback(
     (shouldSend: boolean) => {
-      if (finishingRef.current || recordingState !== 'recording') return;
+      if (finishingRef.current || recordingStateRef.current !== 'recording') return;
       const recorder = recorderRef.current;
       if (!recorder || recorder.state === 'inactive') {
         cleanupStream();
@@ -175,7 +178,6 @@ export function useDiscussionVoiceRecorder(
       composerId,
       onSent,
       postId,
-      recordingState,
       replyToMessageId,
       sendVoice,
       setError,
