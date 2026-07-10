@@ -41,6 +41,8 @@ target/
 *.p12
 *.key
 *.mobileprovision
+.secrets/deploy_ssh_key
+.secrets/*.pem
 
 # Firebase secrets (service account key for server FCM push)
 firebase-service-account*.json

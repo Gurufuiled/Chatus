@@ -2,14 +2,27 @@
 
 Краткая шпаргалка для агента и разработчика. **Приватный SSH-ключ в репозиторий не кладём** — только алиас и команды.
 
+## Cloud Agent (Cursor)
+
+1. Секрет в Cursor Cloud: **`DEPLOY_SSH_KEY`** — приватный ключ `cursor-cloud-chatus-deploy`.
+2. Один раз в окружении агента: `./scripts/cloud-agent-ssh-setup.sh`
+3. Деплой API: `./scripts/deploy-api-prod.sh`
+
+Локальный fallback (gitignored): `.secrets/deploy_ssh_key`.  
+SSH-алиас в облаке: **`chatus-cloud-deploy`** → `root@45.11.93.210`.
+
+Предпочтительный путь для `main`: GitHub Actions `.github/workflows/deploy-server.yml` (секреты `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`).
+
 ## SSH
 
 | Параметр | Значение |
 |----------|----------|
-| Алиас в `~/.ssh/config` | **`chatus-prod`** |
+| Алиас в `~/.ssh/config` (локально) | **`chatus-prod`** |
+| Алиас в `~/.ssh/config` (Cloud Agent) | **`chatus-cloud-deploy`** |
 | Хост | `45.11.93.210` |
 | Пользователь | `root` |
 | Ключ (локально, не в git) | `~/.ssh/id_ed25519_startupus_chatus` |
+| Ключ (Cloud Agent, не в git) | `~/.ssh/id_ed25519_cursor_cloud_chatus` |
 | Каталог репозитория на VPS | `/root/chatus` |
 | Docker Compose | `/root/chatus/server` |
 
