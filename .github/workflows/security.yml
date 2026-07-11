@@ -36,7 +36,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@b7b51e0df5fcfd3ed4bf97b6a4a15995dcde2e73
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
@@ -121,7 +121,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Scan server tree
-        uses: aquasecurity/trivy-action@593122c608f656dd3d1e9e8ef6e61f2249c57d2a
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
           scan-ref: server/
@@ -140,7 +140,7 @@ jobs:
         run: docker build -f server/Dockerfile -t chatus-api:ci .
 
       - name: Scan API image
-        uses: aquasecurity/trivy-action@593122c608f656dd3d1e9e8ef6e61f2249c57d2a
+        uses: aquasecurity/trivy-action@master
         with:
           scan-type: image
           image-ref: chatus-api:ci
