@@ -77,7 +77,7 @@ export function buildBridgeScript(context: BridgeInitContext): string {
       window.ReactNativeWebView.postMessage(raw);
     }
     if (window.parent && window.parent !== window) {
-      try { window.parent.postMessage(raw, '*'); } catch (e) {}
+      try { window.parent.postMessage(raw, window.location.ancestorOrigins ? window.location.ancestorOrigins[0] || '*' : '*'); } catch (e) {}
     }
   }
 
@@ -175,6 +175,7 @@ export function injectBridgeIntoFrame(
   iframe: HTMLIFrameElement,
   script: string,
   initMessage: Record<string, unknown>,
+  targetOrigin?: string,
 ): void {
   try {
     const doc = iframe.contentDocument;
@@ -187,5 +188,16 @@ export function injectBridgeIntoFrame(
   } catch {
     /* cross-origin */
   }
-  iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), '*');
+
+  // Try to determine the iframe's src origin if targetOrigin is not provided
+  let origin = targetOrigin;
+  if (!origin && iframe.src) {
+    try {
+      origin = new URL(iframe.src).origin;
+    } catch {
+      // invalid URL
+    }
+  }
+
+  iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), origin || '*');
 }
