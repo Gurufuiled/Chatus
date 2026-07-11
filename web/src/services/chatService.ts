@@ -53,6 +53,20 @@ export async function updateGroupChat(
   });
 }
 
+export async function updateGroupMemberTag(
+  chatId: string,
+  memberId: string,
+  payload: { tag: string; tag_color?: string | null },
+): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>(
+    `/chats/${encodeURIComponent(chatId)}/members/${encodeURIComponent(memberId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export async function addGroupMembers(chatId: string, memberIds: string[]): Promise<ChatSummary> {
   return apiRequest<ChatSummary>(`/chats/${encodeURIComponent(chatId)}/members`, {
     method: 'POST',

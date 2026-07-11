@@ -21,7 +21,10 @@ export type FeatherIconName =
   | 'info'
   | 'minus'
   | 'plus'
-  | 'more-horizontal';
+  | 'more-horizontal'
+  | 'bell'
+  | 'bell-off'
+  | 'log-out';
 
 const STROKE_PROPS = {
   fill: 'none',
@@ -170,6 +173,31 @@ function iconChildren(name: FeatherIconName) {
           <circle cx="12" cy="12" r="1" />
           <circle cx="19" cy="12" r="1" />
           <circle cx="5" cy="12" r="1" />
+        </>
+      );
+    case 'bell':
+      return (
+        <>
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </>
+      );
+    case 'bell-off':
+      return (
+        <>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          <path d="M18.63 13A17.89 17.89 0 0 1 18 8" />
+          <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14" />
+          <path d="M18 8a6 6 0 0 0-9.33-5" />
+          <line x1="1" y1="1" x2="23" y2="23" />
+        </>
+      );
+    case 'log-out':
+      return (
+        <>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
         </>
       );
     default:

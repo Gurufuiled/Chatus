@@ -234,6 +234,7 @@ export async function updateChannel(
   payload: {
     name?: string;
     description?: string;
+    avatar_url?: string;
     visibility?: 'public' | 'private';
     slug?: string;
     clear_slug?: boolean;
@@ -300,6 +301,7 @@ export async function fetchChannelMembers(
     limit?: number;
     cursor?: string | null;
     include_banned?: boolean;
+    banned_only?: boolean;
   },
 ): Promise<{ items: ChannelMemberItem[]; next_cursor: string | null }> {
   const q = new URLSearchParams();
@@ -308,6 +310,7 @@ export async function fetchChannelMembers(
   if (params?.limit) q.set('limit', String(params.limit));
   if (params?.cursor) q.set('cursor', params.cursor);
   if (params?.include_banned) q.set('include_banned', 'true');
+  if (params?.banned_only) q.set('banned_only', 'true');
 
   const suffix = q.toString();
   const data = await apiRequest<{
@@ -321,4 +324,66 @@ export async function fetchChannelMembers(
     items: (data.items ?? []).map(mapApiChannelMember),
     next_cursor: data.next_cursor ?? null,
   };
+}
+
+export type UpdateChannelMemberPayload = {
+  role?: 'admin' | 'member';
+  can_post?: boolean;
+  can_manage_admins?: boolean;
+  can_edit_channel?: boolean;
+  can_moderate_subscribers?: boolean;
+  can_edit_channel_avatar?: boolean;
+  can_edit_channel_name?: boolean;
+  can_edit_channel_description?: boolean;
+  can_add_admins?: boolean;
+  can_remove_admins?: boolean;
+  can_edit_admin_permissions?: boolean;
+};
+
+export async function updateChannelMemberRolePermissions(
+  channelId: string,
+  memberId: string,
+  payload: UpdateChannelMemberPayload,
+): Promise<ChatSummary> {
+  const data = await apiRequest<{ channel: ChatSummary }>(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+  );
+  return data.channel;
+}
+
+export async function removeChannelMember(
+  channelId: string,
+  memberId: string,
+): Promise<ChatSummary> {
+  const data = await apiRequest<{ channel: ChatSummary }>(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}`,
+    { method: 'DELETE' },
+  );
+  return data.channel;
+}
+
+export async function banChannelMember(
+  channelId: string,
+  memberId: string,
+): Promise<ChatSummary> {
+  const data = await apiRequest<{ channel: ChatSummary }>(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}/ban`,
+    { method: 'POST' },
+  );
+  return data.channel;
+}
+
+export async function unbanChannelMember(
+  channelId: string,
+  memberId: string,
+): Promise<ChatSummary> {
+  const data = await apiRequest<{ channel: ChatSummary }>(
+    `/channels/${encodeURIComponent(channelId)}/members/${encodeURIComponent(memberId)}/ban`,
+    { method: 'DELETE' },
+  );
+  return data.channel;
 }

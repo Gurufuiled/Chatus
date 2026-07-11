@@ -333,7 +333,7 @@ export function MobileChannelSettingsScreen({ channelId }: MobileChannelSettings
             disabled={!canModerate && !canAdminOps}
             onPress={() => {
               if (!canModerate && !canAdminOps) return setSnackbar('Недостаточно прав');
-              openComingSoon('Чёрный список');
+              navigate({ to: '/channel/$channelId/banned', params: { channelId } });
             }}
           />
         </section>

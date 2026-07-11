@@ -25,5 +25,10 @@ export class GetChannelMembersQueryDto {
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   include_banned?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  banned_only?: boolean;
 }
 

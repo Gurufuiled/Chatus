@@ -6,6 +6,7 @@ import {
   createOrFindPrivateChat,
   createGroupChat,
   updateGroupChat,
+  updateGroupMemberTag,
   addGroupMembers,
   removeGroupMember,
   leaveGroup,
@@ -179,6 +180,25 @@ export function useUpdateGroupChatMutation() {
       description?: string;
       avatar_url?: string;
     }) => updateGroupChat(chatId, payload),
+    onSuccess: (chat) => upsertChatInCache(queryClient, chat),
+  });
+}
+
+export function useUpdateGroupMemberTagMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      chatId,
+      memberId,
+      tag,
+      tag_color,
+    }: {
+      chatId: string;
+      memberId: string;
+      tag: string;
+      tag_color?: string | null;
+    }) => updateGroupMemberTag(chatId, memberId, { tag, tag_color }),
     onSuccess: (chat) => upsertChatInCache(queryClient, chat),
   });
 }

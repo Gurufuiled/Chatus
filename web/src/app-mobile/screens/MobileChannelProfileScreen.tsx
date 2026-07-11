@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
   useChannelDetailQuery,
@@ -11,6 +11,10 @@ import { resolveMediaUrl } from '@/services/mediaService';
 import { ApiError } from '@/services/apiClient';
 import { getAvatarColor, resolveAvatarSrc } from '../utils/avatar';
 import { formatSubscriberCount } from '../utils/channelUtils';
+import {
+  buildChannelInviteDeepLink,
+  buildChannelSlugDeepLink,
+} from '../utils/channelLinks';
 import { ChannelRowIcon, FeatherIcon } from '../icons/featherIcons';
 
 interface MobileChannelProfileScreenProps {
@@ -24,6 +28,8 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
   const unsubscribe = useUnsubscribeChannelMutation();
   const muteChat = useMuteChatMutation();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [leaveConfirmVisible, setLeaveConfirmVisible] = useState(false);
+  const [snackbar, setSnackbar] = useState<string | null>(null);
 
   const channel = detail?.channel;
   const displayName = channel ? getChatDisplayName(channel) : 'Канал';
@@ -38,6 +44,20 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
     permissions?.can_manage_admins === true;
   const canModerate = permissions?.can_moderate_subscribers === true;
   const canEditSettings = permissions?.can_edit_channel === true;
+  const canOpenEdit =
+    permissions?.can_edit_channel_avatar === true ||
+    permissions?.can_edit_channel_name === true ||
+    permissions?.can_edit_channel_description === true ||
+    canEditSettings;
+  const showManagementMenu = canAdminOps || canModerate || canEditSettings;
+
+  const membership = channel?.members?.find((m) => m.user_id === me?.id);
+  const isOwnerOrAdmin = membership?.role === 'owner' || membership?.role === 'admin';
+  const showSubscriberToolbar =
+    detail?.is_subscribed === true &&
+    !canEditSettings &&
+    !detail.can_post &&
+    !isOwnerOrAdmin;
 
   const mediaItems = useMemo(() => {
     return (detail?.preview_posts ?? [])
@@ -51,13 +71,23 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
       .slice(0, 12);
   }, [detail?.preview_posts]);
 
-  const handleUnsubscribe = () => {
-    if (!window.confirm('Отписаться от канала?')) return;
+  useEffect(() => {
+    if (!snackbar) return;
+    const timer = window.setTimeout(() => setSnackbar(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [snackbar]);
+
+  const handleConfirmLeave = () => {
     setActionError(null);
     unsubscribe.mutate(channelId, {
-      onSuccess: () => navigate({ to: '/' }),
-      onError: (err) =>
-        setActionError(err instanceof Error ? err.message : 'Не удалось отписаться'),
+      onSuccess: () => {
+        setLeaveConfirmVisible(false);
+        navigate({ to: '/' });
+      },
+      onError: (err) => {
+        setLeaveConfirmVisible(false);
+        setActionError(err instanceof Error ? err.message : 'Не удалось отписаться');
+      },
     });
   };
 
@@ -98,7 +128,14 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
   const adminCount = (channel.members ?? []).filter(
     (m) => m.role === 'owner' || m.role === 'admin',
   ).length;
-  const isOwner = channel.members?.some((m) => m.user_id === me?.id && m.role === 'owner');
+  const publicDeepLink =
+    channel.visibility === 'public' && channel.slug?.trim()
+      ? buildChannelSlugDeepLink(channel.slug.trim())
+      : null;
+  const inviteDeepLink = channel.invite_token
+    ? buildChannelInviteDeepLink(channel.invite_token)
+    : null;
+  const description = channel.description?.trim() || 'Описание не указано';
 
   return (
     <div className="mobile-chat-profile mobile-channel-profile">
@@ -114,16 +151,16 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
           </svg>
         </button>
         <span className="mobile-chat-profile__toolbar-title">Канал</span>
-        {canEditSettings ? (
+        {canOpenEdit ? (
           <button
             type="button"
-            className="mobile-channel-profile__settings-btn"
+            className="mobile-channel-profile__edit-pill"
             onClick={() =>
-              navigate({ to: '/channel/$channelId/settings', params: { channelId } })
+              navigate({ to: '/channel/$channelId/edit', params: { channelId } })
             }
-            aria-label="Настройки канала"
           >
-            <FeatherIcon name="settings" size={20} />
+            <span className="mobile-channel-profile__edit-plus">+</span>
+            <span>Изм.</span>
           </button>
         ) : null}
       </header>
@@ -146,61 +183,110 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
           </p>
         </div>
 
-        <section className="mobile-channel-settings__card mobile-channel-profile__menu">
-          <button
-            type="button"
-            className="mobile-group-profile__settings-row"
-            onClick={() => muteChat.mutate({ chatId: channelId, muted: !channel.is_muted })}
-          >
-            <span>Уведомления</span>
-            <span>{channel.is_muted ? 'выкл.' : 'вкл.'}</span>
-          </button>
+        {showSubscriberToolbar ? (
+          <section className="mobile-channel-profile__subscriber-toolbar">
+            <button
+              type="button"
+              className="mobile-channel-profile__toolbar-pill"
+              onClick={() => muteChat.mutate({ chatId: channelId, muted: !channel.is_muted })}
+              disabled={muteChat.isPending}
+            >
+              <FeatherIcon name={channel.is_muted ? 'bell' : 'bell-off'} size={22} />
+              <span>{channel.is_muted ? 'Звук' : 'Без звука'}</span>
+            </button>
+            <button
+              type="button"
+              className="mobile-channel-profile__toolbar-pill"
+              onClick={() => setLeaveConfirmVisible(true)}
+              disabled={unsubscribe.isPending}
+            >
+              <FeatherIcon name="log-out" size={22} />
+              <span>Покинуть</span>
+            </button>
+          </section>
+        ) : null}
+
+        <section className="mobile-channel-profile__info-card">
+          {publicDeepLink ? (
+            <>
+              <p className="mobile-channel-profile__info-label">ссылка</p>
+              <p className="mobile-channel-profile__info-link">{publicDeepLink}</p>
+              <div className="mobile-channel-profile__info-divider" />
+            </>
+          ) : null}
+          {channel.visibility === 'private' && inviteDeepLink ? (
+            <>
+              <p className="mobile-channel-profile__info-label">приглашение</p>
+              <p className="mobile-channel-profile__info-link">{inviteDeepLink}</p>
+              <div className="mobile-channel-profile__info-divider" />
+            </>
+          ) : null}
+          <p className="mobile-channel-profile__info-label">описание</p>
+          <p className="mobile-channel-profile__info-text">{description}</p>
         </section>
 
-        {detail?.can_post ? (
+        {showManagementMenu ? (
           <section className="mobile-channel-settings__card mobile-channel-profile__menu">
             <button
               type="button"
               className="mobile-channel-settings__row mobile-channel-settings__row--plain"
               onClick={() => {
-                if (!canAdminOps) return;
-                navigate({ to: '/settings/coming-soon', search: { title: 'Администраторы' } });
+                if (!canAdminOps) {
+                  setSnackbar('Недостаточно прав для управления администраторами');
+                  return;
+                }
+                navigate({ to: '/channel/$channelId/admins', params: { channelId } });
               }}
-              disabled={!canAdminOps}
             >
               <ChannelRowIcon name="shield" bgColor="#1E88E5" />
               <span className="mobile-channel-settings__row-title">Администраторы</span>
               <span className="mobile-channel-settings__row-value">{adminCount}</span>
-              <FeatherIcon name="chevron-right" size={18} className="mobile-channel-settings__row-chevron" />
+              <FeatherIcon
+                name="chevron-right"
+                size={18}
+                className="mobile-channel-settings__row-chevron"
+              />
             </button>
             <div className="mobile-channel-settings__divider" />
             <button
               type="button"
               className="mobile-channel-settings__row mobile-channel-settings__row--plain"
               onClick={() => {
-                if (!canModerate && !canAdminOps) return;
-                navigate({ to: '/settings/coming-soon', search: { title: 'Подписчики' } });
+                if (!canModerate && !canAdminOps) {
+                  setSnackbar('Недостаточно прав для просмотра подписчиков');
+                  return;
+                }
+                navigate({ to: '/channel/$channelId/subscribers', params: { channelId } });
               }}
-              disabled={!canModerate && !canAdminOps}
             >
               <ChannelRowIcon name="users" bgColor="#34C759" />
               <span className="mobile-channel-settings__row-title">Подписчики</span>
               <span className="mobile-channel-settings__row-value">{subscriberCount}</span>
-              <FeatherIcon name="chevron-right" size={18} className="mobile-channel-settings__row-chevron" />
+              <FeatherIcon
+                name="chevron-right"
+                size={18}
+                className="mobile-channel-settings__row-chevron"
+              />
             </button>
             <div className="mobile-channel-settings__divider" />
             <button
               type="button"
               className="mobile-channel-settings__row mobile-channel-settings__row--plain"
               onClick={() => {
-                if (!canEditSettings) return;
+                if (!canEditSettings) {
+                  setSnackbar('Недостаточно прав для настроек канала');
+                  return;
+                }
                 navigate({ to: '/channel/$channelId/settings', params: { channelId } });
               }}
-              disabled={!canEditSettings}
             >
               <ChannelRowIcon name="sliders" bgColor="#F2994A" />
               <span className="mobile-channel-settings__row-title">Настройки канала</span>
-              <FeatherIcon name="chevron-right" size={18} className="mobile-channel-settings__row-chevron" />
+              <FeatherIcon
+                name="chevron-right"
+                size={18}
+                className="mobile-channel-settings__row-chevron"
+              />
             </button>
           </section>
         ) : null}
@@ -227,24 +313,63 @@ export function MobileChannelProfileScreen({ channelId }: MobileChannelProfileSc
           )}
         </section>
 
-        {detail?.is_subscribed && !detail.can_post && !isOwner ? (
-          <section className="mobile-group-profile__danger">
-            <button
-              type="button"
-              className="mobile-group-profile__danger-btn"
-              onClick={handleUnsubscribe}
-            >
-              Отписаться
-            </button>
-          </section>
-        ) : null}
-
         {actionError ? (
           <p className="mobile-group-profile__error" role="alert">
             {actionError}
           </p>
         ) : null}
       </div>
+
+      {leaveConfirmVisible ? (
+        <div
+          className="mobile-channel-profile__confirm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="channel-leave-title"
+        >
+          <button
+            type="button"
+            className="mobile-channel-profile__confirm-backdrop"
+            aria-label="Закрыть"
+            disabled={unsubscribe.isPending}
+            onClick={() => {
+              if (!unsubscribe.isPending) setLeaveConfirmVisible(false);
+            }}
+          />
+          <div className="mobile-channel-profile__confirm-card">
+            <h2 id="channel-leave-title" className="mobile-channel-profile__confirm-title">
+              Отписка от канала
+            </h2>
+            <p className="mobile-channel-profile__confirm-body">
+              Вы точно хотите покинуть канал <strong>{displayName}</strong>?
+            </p>
+            <div className="mobile-channel-profile__confirm-actions">
+              <button
+                type="button"
+                className="mobile-channel-profile__confirm-danger"
+                disabled={unsubscribe.isPending}
+                onClick={handleConfirmLeave}
+              >
+                {unsubscribe.isPending ? '…' : 'Покинуть'}
+              </button>
+              <button
+                type="button"
+                className="mobile-channel-profile__confirm-cancel"
+                disabled={unsubscribe.isPending}
+                onClick={() => setLeaveConfirmVisible(false)}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {snackbar ? (
+        <div className="mobile-channel-profile__snackbar" role="status">
+          {snackbar}
+        </div>
+      ) : null}
     </div>
   );
 }

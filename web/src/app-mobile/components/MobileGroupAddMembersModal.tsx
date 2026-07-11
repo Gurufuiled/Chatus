@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatsQuery } from '@/queries/chats.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { useUserSearchQuery } from '@/queries/users.queries';
@@ -26,16 +26,23 @@ function MemberRow({
   user,
   selected,
   onToggle,
+  disabled,
 }: {
   user: AuthUser;
   selected: boolean;
   onToggle: () => void;
+  disabled?: boolean;
 }) {
   const name = getDisplayName(user);
   const src = resolveAvatarSrc(user.avatar_url);
 
   return (
-    <button type="button" className="mobile-group-add-modal__row" onClick={onToggle}>
+    <button
+      type="button"
+      className="mobile-group-add-modal__row"
+      onClick={onToggle}
+      disabled={disabled}
+    >
       {src ? (
         <img className="mobile-group-add-modal__avatar" src={src} alt="" />
       ) : (
@@ -68,8 +75,13 @@ export function MobileGroupAddMembersModal({
   const { data: chats } = useChatsQuery();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<AuthUser[]>([]);
+  const searchRef = useRef<HTMLInputElement>(null);
   const debouncedQuery = useDebouncedValue(query.trim(), SEARCH_DEBOUNCE_MS);
   const { data: searchResults = [] } = useUserSearchQuery(debouncedQuery);
+
+  useEffect(() => {
+    searchRef.current?.focus();
+  }, []);
 
   const contacts = useMemo(
     () =>
@@ -89,6 +101,7 @@ export function MobileGroupAddMembersModal({
   const selectedIds = useMemo(() => new Set(selected.map((u) => u.id)), [selected]);
 
   const toggleUser = (user: AuthUser) => {
+    if (pending) return;
     setSelected((prev) =>
       prev.some((u) => u.id === user.id)
         ? prev.filter((u) => u.id !== user.id)
@@ -98,10 +111,22 @@ export function MobileGroupAddMembersModal({
 
   return (
     <div className="mobile-group-add-modal" role="dialog" aria-modal="true" aria-labelledby="add-members-title">
-      <button type="button" className="mobile-group-add-modal__backdrop" onClick={onClose} aria-label="Закрыть" />
+      <button
+        type="button"
+        className="mobile-group-add-modal__backdrop"
+        onClick={() => {
+          if (!pending) onClose();
+        }}
+        aria-label="Закрыть"
+      />
       <div className="mobile-group-add-modal__sheet">
         <header className="mobile-group-add-modal__header">
-          <button type="button" className="mobile-group-add-modal__cancel" onClick={onClose}>
+          <button
+            type="button"
+            className="mobile-group-add-modal__cancel"
+            onClick={onClose}
+            disabled={pending}
+          >
             Отмена
           </button>
           <h2 id="add-members-title" className="mobile-group-add-modal__title">
@@ -118,11 +143,13 @@ export function MobileGroupAddMembersModal({
         </header>
         <label className="mobile-group-add-modal__search">
           <input
+            ref={searchRef}
             type="search"
             placeholder="Поиск"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Поиск пользователей"
+            disabled={pending}
           />
         </label>
         <div className="mobile-group-add-modal__list">
@@ -135,6 +162,7 @@ export function MobileGroupAddMembersModal({
                 user={user}
                 selected={selectedIds.has(user.id)}
                 onToggle={() => toggleUser(user)}
+                disabled={pending}
               />
             ))
           )}

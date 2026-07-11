@@ -22,10 +22,10 @@ export function MobileMyProfileScreen() {
   const displayName = getDisplayName(me);
   const avatarUrl = me.avatar_url ? resolveMediaUrl(me.avatar_url) : null;
   const rows = [
-    { label: 'Телефон', value: formatPhone(me.phone) },
-    { label: 'Имя пользователя', value: formatUsername(me.handle) },
-    { label: 'День рождения', value: formatBirthday(me.birthday) },
-    { label: 'О себе', value: me.bio },
+    { label: 'мобильный', value: formatPhone(me.phone), accent: true },
+    { label: 'имя пользователя', value: formatUsername(me.handle), accent: true },
+    { label: 'день рождения', value: formatBirthday(me.birthday), accent: false },
+    { label: 'о себе', value: me.bio, accent: false },
   ];
 
   return (
@@ -47,7 +47,13 @@ export function MobileMyProfileScreen() {
             >
               <span className="mobile-settings-profile__label">{row.label}</span>
               <span
-                className={`mobile-settings-profile__value${row.value ? '' : ' mobile-settings-profile__value--muted'}`}
+                className={`mobile-settings-profile__value${
+                  row.value
+                    ? row.accent
+                      ? ' mobile-settings-profile__value--accent'
+                      : ''
+                    : ' mobile-settings-profile__value--muted'
+                }`}
               >
                 {row.value || '—'}
               </span>

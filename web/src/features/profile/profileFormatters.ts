@@ -41,7 +41,7 @@ export function formatBirthday(ms: number | null): string | null {
   if (!ms) return null;
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return null;
-  return `${date.getUTCDate()} ${MONTHS_RU[date.getUTCMonth()]}`;
+  return `${date.getUTCDate()} ${MONTHS_RU[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
 export function birthdayMsToInputValue(ms: number | null): string {

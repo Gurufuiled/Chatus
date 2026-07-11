@@ -28,6 +28,7 @@ import { MobileChannelInviteLinksScreen } from './screens/MobileChannelInviteLin
 import { MobileChannelDiscussionSettingsScreen } from './screens/MobileChannelDiscussionSettingsScreen';
 import { MobileChannelDiscussionScreen } from './screens/MobileChannelDiscussionScreen';
 import { MobileChannelMembersScreen } from './screens/MobileChannelMembersScreen';
+import { MobileChannelEditScreen } from './screens/MobileChannelEditScreen';
 import { MobileBottomTabs, shouldShowMobileTabs } from './components/MobileBottomTabs';
 import { useChatsQuery } from '@/queries/chats.queries';
 
@@ -117,6 +118,12 @@ export function MobileAppLayout() {
     }
     if (channelId && pathname.endsWith('/subscribers')) {
       return <MobileChannelMembersScreen channelId={channelId} mode="subscribers" />;
+    }
+    if (channelId && pathname.endsWith('/banned')) {
+      return <MobileChannelMembersScreen channelId={channelId} mode="banned" />;
+    }
+    if (channelId && pathname.endsWith('/edit')) {
+      return <MobileChannelEditScreen channelId={channelId} />;
     }
     if (channelId && pathname.endsWith('/invite-links')) {
       return <MobileChannelInviteLinksScreen channelId={channelId} />;

@@ -184,6 +184,18 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     component: Layout,
   });
 
+  const channelBannedRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/banned',
+    component: Layout,
+  });
+
+  const channelEditRoute = createRoute({
+    getParentRoute: () => parentRoute,
+    path: '/channel/$channelId/edit',
+    component: Layout,
+  });
+
   return [
     indexRoute,
     chatRoute,
@@ -198,6 +210,8 @@ export function createMessengerChildRoutes(parentRoute: AnyRoute, Layout: RouteC
     channelDiscussionRoute,
     channelAdminsRoute,
     channelSubscribersRoute,
+    channelBannedRoute,
+    channelEditRoute,
     contactsRoute,
     settingsRoute,
     settingsProfileRoute,

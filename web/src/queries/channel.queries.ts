@@ -11,10 +11,15 @@ import {
   mockCheckoutChannel,
   updateChannel,
   fetchChannelMembers,
+  banChannelMember,
+  unbanChannelMember,
+  removeChannelMember,
+  updateChannelMemberRolePermissions,
   type ChannelDetail,
   type ChannelFeedResult,
   type ChannelPostMedia,
   type DiscussionThreadResult,
+  type UpdateChannelMemberPayload,
 } from '@/services/channelService';
 import type { MappedMessage } from '@/types/message';
 import type { ChatSummary } from '@/types/chat';
@@ -30,9 +35,11 @@ export const channelFeedQueryKey = (channelId: string) =>
 export const discussionQueryKey = (channelId: string, postId: string) =>
   ['channel', 'discussion', channelId, postId] as const;
 
+export type ChannelMembersMode = 'admins' | 'subscribers' | 'banned';
+
 export const channelMembersQueryKey = (
   channelId: string,
-  mode: 'admins' | 'subscribers',
+  mode: ChannelMembersMode,
   query: string,
 ) => ['channel', 'members', channelId, mode, query] as const;
 
@@ -48,6 +55,15 @@ function upsertChatInList(
     }
     return [chat, ...old];
   });
+}
+
+function invalidateChannelMemberCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  channelId: string,
+) {
+  void queryClient.invalidateQueries({ queryKey: ['channel', 'members', channelId] });
+  void queryClient.invalidateQueries({ queryKey: channelDetailQueryKey(channelId) });
+  void queryClient.invalidateQueries({ queryKey: channelFeedQueryKey(channelId) });
 }
 
 export function useChannelDetailQuery(channelId: string | undefined) {
@@ -88,20 +104,22 @@ export function useDiscussionThreadQuery(
 
 export function useChannelMembersQuery(
   channelId: string | undefined,
-  mode: 'admins' | 'subscribers',
+  mode: ChannelMembersMode,
   query = '',
 ) {
   const ready = useAuthUiStore((s) => s.embedStatus === 'ready');
 
   return useQuery({
     queryKey: channelMembersQueryKey(channelId ?? '', mode, query),
-    queryFn: () =>
-      fetchChannelMembers(channelId!, {
+    queryFn: async () => {
+      return fetchChannelMembers(channelId!, {
         role: mode === 'admins' ? 'admin' : 'subscriber',
         query,
-        include_banned: mode === 'subscribers',
+        include_banned: mode === 'subscribers' || mode === 'banned',
+        banned_only: mode === 'banned',
         limit: 50,
-      }),
+      });
+    },
     enabled: ready && !!channelId,
     staleTime: 15_000,
   });
@@ -304,6 +322,58 @@ export function useUpdateChannelMutation() {
       });
       void queryClient.invalidateQueries({ queryKey: channelFeedQueryKey(channelId) });
       void queryClient.invalidateQueries({ queryKey: channelDetailQueryKey(channelId) });
+    },
+  });
+}
+
+function useChannelMemberMutation(
+  mutationFn: (args: { channelId: string; memberId: string }) => Promise<ChatSummary>,
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn,
+    onSuccess: (chat, { channelId }) => {
+      upsertChatInList(queryClient, chat);
+      invalidateChannelMemberCaches(queryClient, channelId);
+    },
+  });
+}
+
+export function useBanChannelMemberMutation() {
+  return useChannelMemberMutation(({ channelId, memberId }) =>
+    banChannelMember(channelId, memberId),
+  );
+}
+
+export function useUnbanChannelMemberMutation() {
+  return useChannelMemberMutation(({ channelId, memberId }) =>
+    unbanChannelMember(channelId, memberId),
+  );
+}
+
+export function useRemoveChannelMemberMutation() {
+  return useChannelMemberMutation(({ channelId, memberId }) =>
+    removeChannelMember(channelId, memberId),
+  );
+}
+
+export function useUpdateChannelMemberRolePermissionsMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      channelId,
+      memberId,
+      payload,
+    }: {
+      channelId: string;
+      memberId: string;
+      payload: UpdateChannelMemberPayload;
+    }) => updateChannelMemberRolePermissions(channelId, memberId, payload),
+    onSuccess: (chat, { channelId }) => {
+      upsertChatInList(queryClient, chat);
+      invalidateChannelMemberCaches(queryClient, channelId);
     },
   });
 }

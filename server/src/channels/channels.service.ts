@@ -1339,6 +1339,7 @@ export class ChannelsService {
     const take = Math.max(1, Math.min(query.limit ?? 40, 100));
     const cursorDate = query.cursor ? new Date(Number(query.cursor)) : null;
     const includeBanned = query.include_banned === true;
+    const bannedOnly = query.banned_only === true;
     const roleFilter = query.role;
     const text = query.q?.trim() ?? '';
 
@@ -1349,18 +1350,25 @@ export class ChannelsService {
             joinedAt: { lt: cursorDate },
           }
         : {}),
-      ...(roleFilter === 'admin'
-        ? { role: { in: [ChatMemberRole.owner, ChatMemberRole.admin] } }
-        : roleFilter === 'subscriber'
-          ? { role: ChatMemberRole.member }
-          : {}),
-      ...(includeBanned
-        ? {}
+      ...(bannedOnly
+        ? {
+            role: ChatMemberRole.member,
+            accessStatus: SubscriptionStatus.canceled,
+          }
         : {
-            OR: [
-              { role: { in: [ChatMemberRole.owner, ChatMemberRole.admin] } },
-              { accessStatus: { not: SubscriptionStatus.canceled } },
-            ],
+            ...(roleFilter === 'admin'
+              ? { role: { in: [ChatMemberRole.owner, ChatMemberRole.admin] } }
+              : roleFilter === 'subscriber'
+                ? { role: ChatMemberRole.member }
+                : {}),
+            ...(includeBanned
+              ? {}
+              : {
+                  OR: [
+                    { role: { in: [ChatMemberRole.owner, ChatMemberRole.admin] } },
+                    { accessStatus: { not: SubscriptionStatus.canceled } },
+                  ],
+                }),
           }),
       ...(text
         ? {
