@@ -6,6 +6,14 @@ import type { TelegramMessageRow } from './types';
 const CACHE_READ_LIMIT = 100;
 const CACHE_KEEP_PER_THREAD = 400;
 
+/** Optimistic / in-flight rows must not survive chat reopen via SQLite. */
+export function isPersistableTelegramMessage(row: TelegramMessageRow): boolean {
+  if (row.messageId <= 0) return false;
+  if (row.id.startsWith('temp-')) return false;
+  if (row.status === 'sending' || row.status === 'failed') return false;
+  return true;
+}
+
 function isTelegramMessageRow(value: unknown): value is TelegramMessageRow {
   if (!value || typeof value !== 'object') return false;
   const row = value as TelegramMessageRow;
@@ -67,9 +75,18 @@ export async function loadTelegramMessagesFromCache(
   const dao = new TelegramMessageDao();
   const records = await dao.getByChatThread(telegramChatId, messageThreadId, limit);
   const rows: TelegramMessageRow[] = [];
+  const staleMessageIds: number[] = [];
   for (const record of records) {
     const row = cacheRecordToRow(record);
-    if (row) rows.push(row);
+    if (!row) continue;
+    if (!isPersistableTelegramMessage(row)) {
+      staleMessageIds.push(record.message_id);
+      continue;
+    }
+    rows.push(row);
+  }
+  if (staleMessageIds.length > 0) {
+    await dao.deleteByMessageIds(telegramChatId, messageThreadId, staleMessageIds).catch(() => {});
   }
   return rows;
 }
@@ -79,10 +96,11 @@ export async function persistTelegramMessages(
   messageThreadId: number,
   messages: TelegramMessageRow[],
 ): Promise<void> {
-  if (messages.length === 0) return;
+  const persistable = messages.filter(isPersistableTelegramMessage);
+  if (persistable.length === 0) return;
   await initDatabase();
   const dao = new TelegramMessageDao();
-  const records = messages.map((row) => rowToCacheRecord(row, telegramChatId, messageThreadId));
+  const records = persistable.map((row) => rowToCacheRecord(row, telegramChatId, messageThreadId));
   await dao.upsertBatch(records);
   await dao.pruneToLimit(telegramChatId, messageThreadId, CACHE_KEEP_PER_THREAD);
 }

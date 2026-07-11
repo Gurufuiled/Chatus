@@ -103,6 +103,7 @@ class VoiceRecorderServiceClass {
     }
 
     await VoicePlayerService.stop().catch(() => {});
+    VoicePlayerService.invalidateAudioMode();
     await releaseMediaAudioSession();
 
     const granted = await this.requestPermissions();
@@ -182,6 +183,7 @@ class VoiceRecorderServiceClass {
       this.emitLiveWaveform([]);
       this.startTimeMs = 0;
       await this.restorePlaybackAudioMode().catch(() => {});
+      VoicePlayerService.invalidateAudioMode();
     }
   }
 

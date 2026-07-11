@@ -882,19 +882,12 @@ export function ChatProfileScreen() {
     }
   }, [mediaItems.length, selectedMediaIndex]);
 
-  const isPinned = (chat?.is_pinned ?? 0) === 1;
-
   const moreMenuItems = useMemo<AnchoredPopoverMenuItem[]>(
     () => [
       {
         key: 'change-wallpaper',
         label: 'Изменить обои',
         iconImage: WALLPAPER_MENU_ICON,
-      },
-      {
-        key: 'toggle-pin',
-        label: isPinned ? 'Открепить' : 'Закрепить',
-        icon: 'pin' as any,
       },
       {
         key: 'delete-chat',
@@ -908,7 +901,7 @@ export function ChatProfileScreen() {
         color: isBlocked ? undefined : '#D04857',
       },
     ],
-    [isBlocked, isPinned]
+    [isBlocked]
   );
 
   const moreMenuDeletePanelHeight = useMemo(
@@ -944,20 +937,6 @@ export function ChatProfileScreen() {
         openThemePicker();
         return;
       }
-      
-      if (key === 'toggle-pin') {
-        closeMoreMenu(() => {
-          if (!chat) return;
-          const nextChat = { ...chat, is_pinned: isPinned ? 0 : 1, updated_at: Date.now() };
-          chatStore.getState().updateChat(nextChat);
-          new ChatDao().update({
-            id: chat.id,
-            is_pinned: nextChat.is_pinned,
-            updated_at: nextChat.updated_at,
-          }).catch(() => undefined);
-        });
-        return;
-      }
 
       if (key === 'toggle-block') {
         handleBlockMenuItem();
@@ -969,7 +948,7 @@ export function ChatProfileScreen() {
         setMoreMenuPhase('delete');
       }
     },
-    [handleBlockMenuItem, openThemePicker, closeMoreMenu, chat, isPinned]
+    [handleBlockMenuItem, openThemePicker]
   );
 
   return (

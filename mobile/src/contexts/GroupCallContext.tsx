@@ -8,7 +8,11 @@ import React, {
   useState,
 } from 'react';
 import { Alert, Platform } from 'react-native';
-import { Audio } from 'expo-av';
+import { Camera } from 'expo-camera';
+import {
+  AudioSession,
+  AndroidAudioTypePresets,
+} from '@livekit/react-native';
 import {
   Room,
   RoomEvent,
@@ -16,7 +20,6 @@ import {
   Track,
   type Participant,
 } from 'livekit-client';
-import { AudioSession } from '@livekit/react-native';
 import { authStore } from '../stores/authStore';
 import { useCall } from './CallContext';
 import { resolveAvatarUrl } from '../config';
@@ -32,6 +35,8 @@ import {
 import { GroupCallOverlay } from '../components/group-call/GroupCallOverlay';
 import { GroupCallInviteSheet } from '../components/group-call/GroupCallInviteSheet';
 import { WebSocketService } from '../services/WebSocketService';
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
+import { VoicePlayerService } from '../services/VoicePlayerService';
 
 export type GroupCallPhase =
   | 'idle'
@@ -57,6 +62,7 @@ type GroupCallState = {
   participants: GroupCallParticipant[];
   isMuted: boolean;
   isSpeakerOn: boolean;
+  isVideoEnabled: boolean;
   startedAt?: number;
   isCreator: boolean;
   connectionState: ConnectionState | 'idle';
@@ -82,6 +88,7 @@ type GroupCallContextType = {
   expand: () => void;
   toggleMute: () => Promise<void>;
   toggleSpeaker: () => Promise<void>;
+  toggleVideo: () => Promise<void>;
   isInCallForChat: (chatId: string) => boolean;
 };
 
@@ -93,6 +100,7 @@ const initialState: GroupCallState = {
   participants: [],
   isMuted: false,
   isSpeakerOn: true,
+  isVideoEnabled: false,
   isCreator: false,
   connectionState: 'idle',
 };
@@ -128,14 +136,21 @@ function mapLiveKitParticipant(
   };
 }
 
-function buildCallAudioMode(isSpeakerOn: boolean) {
-  return {
-    allowsRecordingIOS: true,
-    playsInSilentModeIOS: true,
-    staysActiveInBackground: false,
-    shouldDuckAndroid: true,
-    playThroughEarpieceAndroid: !isSpeakerOn,
-  } satisfies Parameters<typeof Audio.setAudioModeAsync>[0];
+async function prepareLiveKitAudioSession(isSpeakerOn: boolean): Promise<void> {
+  await AudioSession.configureAudio({
+    android: {
+      audioTypeOptions: AndroidAudioTypePresets.communication,
+    },
+    ios: {
+      defaultOutput: isSpeakerOn ? 'speaker' : 'earpiece',
+    },
+  });
+  await AudioSession.startAudioSession();
+  if (Platform.OS === 'ios') {
+    await AudioSession.selectAudioOutput(isSpeakerOn ? 'force_speaker' : 'default');
+  } else if (Platform.OS === 'android') {
+    await AudioSession.selectAudioOutput(isSpeakerOn ? 'speaker' : 'earpiece');
+  }
 }
 
 export function GroupCallProvider({ children }: { children: React.ReactNode }) {
@@ -159,16 +174,12 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
-    try {
-      await AudioSession.stopAudioSession();
-    } catch {
-      // ignore
-    }
   }, []);
 
   const resetCallState = useCallback(async () => {
     await detachRoom();
     setState(initialState);
+    await releaseMediaAudioSession();
   }, [detachRoom]);
 
   const syncParticipantsFromRoom = useCallback((room: Room) => {
@@ -202,15 +213,24 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       if (!currentUserId) {
         throw new Error('Not authenticated');
       }
-
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        throw new Error('Microphone permission denied');
+      if (!params.token?.trim() || !params.livekitUrl?.trim()) {
+        throw new Error('Сервер не вернул данные для подключения к звонку');
       }
 
+      const micPermission = await Camera.getMicrophonePermissionsAsync();
+      if (micPermission.status !== 'granted') {
+        const requested = await Camera.requestMicrophonePermissionsAsync();
+        if (requested.status !== 'granted') {
+          throw new Error('Microphone permission denied');
+        }
+      }
+
+      await VoicePlayerService.stop().catch(() => undefined);
+      VoicePlayerService.invalidateAudioMode();
+      // Reset expo-av mode only — do not call LiveKit AudioSession.stop here (can crash on iOS).
+      await releaseMediaAudioSession();
       await detachRoom();
-      await Audio.setAudioModeAsync(buildCallAudioMode(true));
-      await AudioSession.startAudioSession();
+      await prepareLiveKitAudioSession(true);
 
       const room = new Room({
         adaptiveStream: true,
@@ -257,10 +277,21 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         })();
       });
 
-      await room.connect(params.livekitUrl, params.token, {
-        autoSubscribe: true,
-      });
       try {
+        await room.connect(params.livekitUrl, params.token, {
+          autoSubscribe: true,
+        });
+      } catch (connectErr) {
+        await detachRoom();
+        throw connectErr instanceof Error
+          ? connectErr
+          : new Error(String(connectErr));
+      }
+
+      try {
+        if (!room.localParticipant) {
+          throw new Error('Local participant unavailable');
+        }
         await room.localParticipant.setMicrophoneEnabled(true);
       } catch (micErr) {
         await detachRoom();
@@ -278,6 +309,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           : [],
         isMuted: false,
         isSpeakerOn: true,
+        isVideoEnabled: false,
         startedAt: params.startedAt,
         isCreator: params.isCreator,
         connectionState: room.state,
@@ -364,10 +396,17 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         Alert.alert('Голосовой чат', 'Сначала завершите текущий звонок.');
         return;
       }
-      if (
-        stateRef.current.phase !== 'idle' &&
-        stateRef.current.roomId !== roomId
-      ) {
+      const phase = stateRef.current.phase;
+      if (phase === 'joining' || phase === 'creating') {
+        return;
+      }
+      if (phase === 'active' || phase === 'minimized') {
+        if (stateRef.current.roomId === roomId) {
+          setState((prev) =>
+            prev.phase === 'minimized' ? { ...prev, phase: 'active' } : prev,
+          );
+          return;
+        }
         Alert.alert('Голосовой чат', 'Сначала выйдите из текущего голосового чата.');
         return;
       }
@@ -469,8 +508,40 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
 
   const toggleSpeaker = useCallback(async () => {
     const nextSpeakerOn = !stateRef.current.isSpeakerOn;
-    await Audio.setAudioModeAsync(buildCallAudioMode(nextSpeakerOn));
+    try {
+      if (Platform.OS === 'ios') {
+        await AudioSession.selectAudioOutput(nextSpeakerOn ? 'force_speaker' : 'default');
+      } else if (Platform.OS === 'android') {
+        await AudioSession.selectAudioOutput(nextSpeakerOn ? 'speaker' : 'earpiece');
+      }
+    } catch {
+      // Keep UI in sync even if route switch fails mid-call.
+    }
     setState((prev) => ({ ...prev, isSpeakerOn: nextSpeakerOn }));
+  }, []);
+
+  const toggleVideo = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+    const nextEnabled = !stateRef.current.isVideoEnabled;
+    try {
+      if (nextEnabled) {
+        const current = await Camera.getCameraPermissionsAsync();
+        const granted =
+          current.granted || (await Camera.requestCameraPermissionsAsync()).granted;
+        if (!granted) {
+          Alert.alert('Нет доступа к камере', 'Разрешите доступ к камере в настройках.');
+          return;
+        }
+      }
+      await room.localParticipant.setCameraEnabled(nextEnabled);
+      setState((prev) => ({ ...prev, isVideoEnabled: nextEnabled }));
+    } catch (error) {
+      Alert.alert(
+        'Не удалось переключить видео',
+        error instanceof Error ? error.message : 'Проверьте доступ к камере и попробуйте ещё раз.',
+      );
+    }
   }, []);
 
   const isInCallForChat = useCallback(
@@ -548,6 +619,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       expand,
       toggleMute,
       toggleSpeaker,
+      toggleVideo,
       isInCallForChat,
     }),
     [
@@ -565,6 +637,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       expand,
       toggleMute,
       toggleSpeaker,
+      toggleVideo,
       isInCallForChat,
     ],
   );

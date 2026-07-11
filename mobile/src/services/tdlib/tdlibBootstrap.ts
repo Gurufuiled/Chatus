@@ -47,6 +47,21 @@ let lastNativeVerifyMs = 0;
 const NATIVE_VERIFY_MIN_INTERVAL_MS = 12_000;
 const RECOVERY_COOLDOWN_MS = 45_000;
 
+/** Set from telegramAccountStore to avoid a circular import with bootstrap. */
+let stickySessionProbe: (() => boolean) | null = null;
+
+export function setTdlibStickySessionProbe(probe: (() => boolean) | null): void {
+  stickySessionProbe = probe;
+}
+
+function hasStickyLocalTelegramSession(): boolean {
+  try {
+    return stickySessionProbe?.() === true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Только если нативный клиент TDLib реально пересоздан (новый процесс приложения).
  * Не вызывать при «выходе из Telegram» в JS: нативный `client_id` тот же — повторный
@@ -57,35 +72,76 @@ export function resetTdlibParametersLock(): void {
   applyInFlight = null;
 }
 
+export function isTdlibRecoveryInFlight(): boolean {
+  return recoveryInFlight != null;
+}
+
+/** Cancel pending background recreate (e.g. after explicit Settings logout). */
+export function cancelBackgroundTdlibRecovery(): void {
+  if (backgroundRecoveryTimer) {
+    clearTimeout(backgroundRecoveryTimer);
+    backgroundRecoveryTimer = null;
+  }
+}
+
+/**
+ * Wait until native recreate finishes (or timeout). Does NOT start a new recreate.
+ * Use this when sends fail with "client is being recreated".
+ */
+export async function waitUntilTdlibNotRecreating(timeoutMs = 30_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!recoveryInFlight) return true;
+    await recoveryInFlight.catch(() => false);
+    if (!recoveryInFlight) return true;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return !recoveryInFlight;
+}
+
 /**
  * Recreate native TDLib client and reload the on-disk session (no SMS if DB is valid).
- * Call when authorizationStateClosed but the user should still be logged in.
+ * Call ONLY when authorizationStateClosed / Closing — never as a reaction to Unauthorized
+ * during send (that creates a recreate↔reject loop).
  */
 export async function recoverTdlibSession(): Promise<boolean> {
   if (recoveryInFlight) return recoveryInFlight;
   recoveryInFlight = (async () => {
     const sinceLast = Date.now() - lastRecoveryFinishedMs;
     if (sinceLast < RECOVERY_COOLDOWN_MS) {
-      return false;
+      // Previous recreate already ran recently — wait briefly for Ready, do not destroy again.
+      const { ready } = await waitForTdlibAuthorizationReady(8_000, {
+        stickySession: hasStickyLocalTelegramSession(),
+      });
+      return ready || (await canCallAuthorizedApis());
     }
     resetTdlibParametersLock();
+    let didRecreate = false;
     try {
       const recreated = await tdlibClient.recreateClient();
+      didRecreate = recreated;
       if (!recreated && __DEV__) {
         console.warn('[tdlib] recreateClient not available on this platform build');
       }
     } catch (e) {
       if (__DEV__) console.warn('[tdlib] recreateClient failed', e);
+      lastRecoveryFinishedMs = Date.now();
       return false;
     }
     try {
       await applyTdlibParameters({ force: true });
-      const { ready } = await waitForTdlibAuthorizationReady(45_000);
-      if (ready) {
+      // Short wait: sticky grace on WaitPhone is ~2.5s inside waitForTdlibAuthorizationReady.
+      const { ready } = await waitForTdlibAuthorizationReady(12_000, {
+        stickySession: hasStickyLocalTelegramSession(),
+      });
+      if (didRecreate || ready) {
         lastRecoveryFinishedMs = Date.now();
       }
-      return ready;
+      return ready || (await canCallAuthorizedApis());
     } catch {
+      if (didRecreate) {
+        lastRecoveryFinishedMs = Date.now();
+      }
       return false;
     }
   })().finally(() => {
@@ -114,11 +170,23 @@ export function scheduleBackgroundTdlibRecovery(): void {
 }
 
 export function applyTdlibParameters(options?: { force?: boolean }): Promise<void> {
+  if (options?.force) {
+    tdlibParametersAppliedThisProcess = false;
+  }
   if (tdlibParametersAppliedThisProcess && !options?.force) {
     return verifyTdlibNativeStillInitialized();
   }
   if (applyInFlight) {
-    return applyInFlight;
+    if (!options?.force) return applyInFlight;
+    return applyInFlight
+      .catch(() => undefined)
+      .then(() => {
+        tdlibParametersAppliedThisProcess = false;
+        applyInFlight = doApplyTdlibParameters().finally(() => {
+          applyInFlight = null;
+        });
+        return applyInFlight;
+      });
   }
   applyInFlight = doApplyTdlibParameters().finally(() => {
     applyInFlight = null;
@@ -170,6 +238,15 @@ async function doApplyTdlibParameters(): Promise<void> {
   if (!probeType) {
     throw new Error('TDLib: пустой ответ getAuthorizationState');
   }
+  if (
+    probeType === 'authorizationStateClosed' ||
+    probeType === 'authorizationStateClosing' ||
+    probeType === 'authorizationStateLoggingOut'
+  ) {
+    // Closed client cannot accept setTdlibParameters — must recreate first.
+    tdlibParametersAppliedThisProcess = false;
+    throw new Error('TDLib client is closed');
+  }
   if (probeType !== 'authorizationStateWaitTdlibParameters') {
     tdlibParametersAppliedThisProcess = true;
     return;
@@ -209,15 +286,33 @@ async function doApplyTdlibParameters(): Promise<void> {
 
 const AUTH_READY_POLL_MS = 120;
 const AUTH_READY_TIMEOUT_MS = 25_000;
+/** After recreate, WaitPhone can flash briefly while DB opens — only this short grace. */
+const STICKY_WAIT_PHONE_GRACE_MS = 2_500;
+
+const LOGIN_GATE_STATES = new Set([
+  'authorizationStateWaitPhoneNumber',
+  'authorizationStateWaitCode',
+  'authorizationStateWaitPassword',
+  'authorizationStateWaitRegistration',
+  'authorizationStateWaitEmailAddress',
+  'authorizationStateWaitEmailCode',
+  'authorizationStateWaitOtherDeviceConfirmation',
+]);
 
 /**
- * После `setTdlibParameters` TDLib поднимает сессию из БД асинхронно; сразу вызывать `getChats` часто даёт Unauthorized.
+ * После `setTdlibParameters` TDLib поднимает сессию из БД асинхронно.
+ * stickySession: WaitPhone/WaitCode briefly tolerated (~2.5s) while DB loads after recreate.
+ * Never poll WaitPhone for the full timeout — that blocked sends and login for 45s+.
  */
 export async function waitForTdlibAuthorizationReady(
   timeoutMs = AUTH_READY_TIMEOUT_MS,
+  options?: { stickySession?: boolean },
 ): Promise<{ ready: boolean; state: string | null }> {
+  const sticky = options?.stickySession === true;
   const deadline = Date.now() + timeoutMs;
   let lastState: string | null = null;
+  let appliedParameters = false;
+  let loginGateSeenAt: number | null = null;
   while (Date.now() < deadline) {
     const auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<string, unknown>;
     throwIfTdError(auth);
@@ -226,16 +321,170 @@ export async function waitForTdlibAuthorizationReady(
     if (t === 'authorizationStateReady') {
       return { ready: true, state: t };
     }
-    if (
-      t === 'authorizationStateWaitPhoneNumber' ||
-      t === 'authorizationStateWaitCode' ||
-      t === 'authorizationStateWaitPassword' ||
-      t === 'authorizationStateWaitRegistration' ||
-      t === 'authorizationStateWaitTdlibParameters'
-    ) {
+    if (t === 'authorizationStateWaitTdlibParameters') {
+      loginGateSeenAt = null;
+      if (!appliedParameters) {
+        appliedParameters = true;
+        tdlibParametersAppliedThisProcess = false;
+        await applyTdlibParameters({ force: true }).catch(() => undefined);
+      }
+      await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
+      continue;
+    }
+    if (LOGIN_GATE_STATES.has(t ?? '')) {
+      if (t === 'authorizationStateWaitPassword') {
+        return { ready: false, state: t };
+      }
+      if (sticky) {
+        if (loginGateSeenAt == null) loginGateSeenAt = Date.now();
+        if (Date.now() - loginGateSeenAt < STICKY_WAIT_PHONE_GRACE_MS) {
+          await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
+          continue;
+        }
+      }
       return { ready: false, state: t };
     }
+    loginGateSeenAt = null;
     await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
   }
   return { ready: false, state: lastState };
+}
+
+async function readLiveAuthState(): Promise<string | null> {
+  const auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<string, unknown>;
+  throwIfTdError(auth);
+  return readAuthStateType(auth) || null;
+}
+
+async function canCallAuthorizedApis(): Promise<boolean> {
+  try {
+    const me = (await tdlibClient.send({ '@type': 'getMe' })) as Record<string, unknown>;
+    throwIfTdError(me);
+    return me['@type'] === 'user';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fast gate for send/openChat. Prefer a quick Ready/getMe check — never block 45s on WaitPhone.
+ */
+export async function ensureTdlibAuthorizedForSend(options?: {
+  allowSessionReload?: boolean;
+}): Promise<void> {
+  const allowSessionReload = options?.allowSessionReload !== false;
+  const sticky = hasStickyLocalTelegramSession();
+  await waitUntilTdlibNotRecreating(8_000);
+  await applyTdlibParameters();
+
+  let live = await readLiveAuthState().catch(() => null);
+  if (live === 'authorizationStateReady' || (await canCallAuthorizedApis())) return;
+
+  if (live === 'authorizationStateWaitPassword') {
+    throw new Error('Нужен облачный пароль 2FA Telegram. Откройте Настройки → Telegram.');
+  }
+
+  const isClosed =
+    live === 'authorizationStateClosed' ||
+    live === 'authorizationStateClosing' ||
+    live === 'authorizationStateLoggingOut';
+  const needsParams = live === 'authorizationStateWaitTdlibParameters' || live == null;
+
+  if (needsParams || isClosed) {
+    const { ready, state } = await waitForTdlibAuthorizationReady(8_000, {
+      stickySession: sticky,
+    });
+    live = state;
+    if (ready || (await canCallAuthorizedApis())) return;
+  } else if (sticky && LOGIN_GATE_STATES.has(live ?? '')) {
+    // Brief DB-load grace only — do not hang the send button.
+    const { ready, state } = await waitForTdlibAuthorizationReady(STICKY_WAIT_PHONE_GRACE_MS + 500, {
+      stickySession: true,
+    });
+    live = state;
+    if (ready || (await canCallAuthorizedApis())) return;
+  }
+
+  if (
+    allowSessionReload &&
+    (isClosed || needsParams || (sticky && LOGIN_GATE_STATES.has(live ?? '')))
+  ) {
+    const recovered = await recoverTdlibSession().catch(() => false);
+    if (recovered || (await canCallAuthorizedApis())) return;
+    live = await readLiveAuthState().catch(() => live);
+  }
+
+  if (live === 'authorizationStateWaitPassword') {
+    throw new Error('Нужен облачный пароль 2FA Telegram. Откройте Настройки → Telegram.');
+  }
+
+  if (sticky) {
+    scheduleBackgroundTdlibRecovery();
+    throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
+  }
+
+  if (
+    live === 'authorizationStateWaitPhoneNumber' ||
+    live === 'authorizationStateWaitCode' ||
+    live === 'authorizationStateWaitRegistration'
+  ) {
+    throw new Error('Сессия Telegram истекла. Откройте Настройки → Telegram и войдите снова.');
+  }
+  throw new Error(`Сессия Telegram не готова (${live ?? 'таймаут'}). Попробуйте ещё раз.`);
+}
+
+const PHONE_LOGIN_OK_STATES = new Set([
+  'authorizationStateReady',
+  'authorizationStateWaitPhoneNumber',
+  'authorizationStateWaitEmailAddress',
+  'authorizationStateWaitRegistration',
+  'authorizationStateWaitCode',
+  'authorizationStateWaitEmailCode',
+  'authorizationStateWaitOtherDeviceConfirmation',
+  'authorizationStateWaitPassword',
+]);
+
+/**
+ * After logOut the native client stays Closed until recreated + setTdlibParameters.
+ * Brings TDLib to WaitPhoneNumber (or Ready/WaitCode/…) so the auth form can proceed.
+ */
+export async function ensureTdlibReadyForPhoneLogin(): Promise<string> {
+  cancelBackgroundTdlibRecovery();
+  await waitUntilTdlibNotRecreating(8_000);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let state = await readLiveAuthState().catch(() => null);
+    if (state != null && PHONE_LOGIN_OK_STATES.has(state)) {
+      return state;
+    }
+
+    resetTdlibParametersLock();
+    try {
+      await tdlibClient.recreateClient();
+    } catch (e) {
+      if (__DEV__) console.warn('[tdlib] recreate for phone login failed', e);
+    }
+
+    try {
+      await applyTdlibParameters({ force: true });
+    } catch (e) {
+      if (__DEV__) console.warn('[tdlib] apply params for phone login failed', e);
+      // Closed mid-apply — loop and recreate again.
+      continue;
+    }
+
+    const deadline = Date.now() + 6_000;
+    while (Date.now() < deadline) {
+      state = await readLiveAuthState().catch(() => null);
+      if (state != null && PHONE_LOGIN_OK_STATES.has(state)) {
+        return state;
+      }
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  }
+
+  const finalState = await readLiveAuthState().catch(() => null);
+  throw new Error(
+    `Не удалось подготовить вход Telegram (${finalState ?? 'unknown'}). Перезапустите приложение.`,
+  );
 }

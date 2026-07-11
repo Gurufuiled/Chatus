@@ -1,16 +1,11 @@
-import { AudioSession } from '@livekit/react-native';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 
 /**
- * Release audio sessions that block expo-av voice recording after calls or camera capture.
+ * Normalize audio mode after calls/capture so expo-av playback/recording works again.
+ * NOTE: Avoid direct LiveKit AudioSession stop calls here — they can crash on iOS
+ * while transport is tearing down. We only reset Expo audio mode.
  */
 export async function releaseMediaAudioSession(): Promise<void> {
-  try {
-    await AudioSession.stopAudioSession();
-  } catch {
-    // LiveKit not active — ignore.
-  }
-
   try {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,

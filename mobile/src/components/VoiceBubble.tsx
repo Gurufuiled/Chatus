@@ -1,16 +1,18 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { ActivityIndicator, Dimensions, type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
 } from '../contexts/VoicePlayerContext';
+import { VoicePlayerService } from '../services/VoicePlayerService';
 import { bubbleRadius, colors, typography } from '../theme/colors';
 import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
 } from '../utils/mediaDuration';
+import { normalizeVoicePlaybackKey } from '../utils/voicePlaybackKey';
 import { stopActiveVideoNotePlayback } from './VideoNoteBubble';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
@@ -193,25 +195,62 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   );
   const [waveformWidth, setWaveformWidth] = useState(0);
 
-  // Throttle the progress value used for waveform rendering to avoid
-  // excessive re-renders from 100ms service ticks. UI looks identical at 8fps.
-  const throttledProgressRef = useRef(0);
-  const lastThrottleTimestampRef = useRef(0);
+  // Poll native player while this bubble is current. expo-av status callbacks
+  // often lag on iOS (isPlaying flips false, position stays 0 until pause).
   const [renderProgress, setRenderProgress] = useState(0);
+  const [renderRemainingMs, setRenderRemainingMs] = useState(remainingMs);
+  const [uiPlaying, setUiPlaying] = useState(isPlaying);
   React.useEffect(() => {
-    const now = Date.now();
-    if (!isPlaying || now - lastThrottleTimestampRef.current >= WAVEFORM_RENDER_THROTTLE_MS) {
-      lastThrottleTimestampRef.current = now;
-      if (throttledProgressRef.current !== progress) {
-        throttledProgressRef.current = progress;
-        setRenderProgress(progress);
-      }
+    if (!isCurrent) {
+      setRenderProgress(progress);
+      setRenderRemainingMs(remainingMs);
+      setUiPlaying(false);
+      return;
     }
-  }, [isPlaying, progress]);
 
-  const shouldShowRemainingDuration = isCurrent && (isPlaying || progress > 0);
+    let cancelled = false;
+    const tick = () => {
+      void VoicePlayerService.sampleLiveStatus().then((snapshot) => {
+        if (cancelled) return;
+        const keyCandidates = [playbackKey, uri]
+          .filter((value): value is string => Boolean(value?.trim()))
+          .map((value) => normalizeVoicePlaybackKey(value));
+        const stillCurrent =
+          Boolean(snapshot.currentVoiceUri) &&
+          keyCandidates.some((key) => key === snapshot.currentVoiceUri);
+        if (!stillCurrent) {
+          setUiPlaying(false);
+          return;
+        }
+
+        const duration =
+          snapshot.status.durationMs > 0 ? snapshot.status.durationMs : durationMs;
+        const position = snapshot.status.positionMs;
+        const nextProgress =
+          duration > 0 ? Math.min(position / duration, 1) : 0;
+        setRenderProgress(nextProgress);
+        setRenderRemainingMs(Math.max(duration - position, 0));
+        setUiPlaying(snapshot.status.isPlaying);
+      });
+    };
+
+    tick();
+    const timer = setInterval(tick, WAVEFORM_RENDER_THROTTLE_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [durationMs, isCurrent, playbackKey, progress, remainingMs, uri]);
+
+  React.useEffect(() => {
+    if (isCurrent) {
+      setUiPlaying(isPlaying);
+    }
+  }, [isCurrent, isPlaying]);
+
+  const shouldShowRemainingDuration = isCurrent && (uiPlaying || renderProgress > 0);
   const durationLabel = shouldShowRemainingDuration
-    ? formatRemainingPlaybackDuration(remainingMs)
+    ? formatRemainingPlaybackDuration(renderRemainingMs)
     : formatMediaDuration(durationMs);
 
   const bars = useMemo(
@@ -234,17 +273,20 @@ export const VoiceBubble = React.memo(function VoiceBubble({
 
   const handlePress = () => {
     if (!uri || loading) return;
-    if (isPlaying) {
+    if (uiPlaying || isPlaying) {
       void pause();
       return;
     }
 
     try {
       stopActiveVideoNotePlayback();
+      setUiPlaying(true);
       void play(uri, undefined, playbackKey).catch((err) => {
+        setUiPlaying(false);
         if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
       });
     } catch (err) {
+      setUiPlaying(false);
       if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
     }
   };
@@ -298,8 +340,8 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           <View style={styles.mainRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={loading ? 'Voice message is loading' : isPlaying ? 'Pause voice message' : 'Play voice message'}
-              accessibilityState={{ selected: isPlaying }}
+              accessibilityLabel={loading ? 'Voice message is loading' : uiPlaying ? 'Pause voice message' : 'Play voice message'}
+              accessibilityState={{ selected: uiPlaying }}
               style={({ pressed }) => [
                 styles.playButton,
                 isMe ? styles.playButtonMe : styles.playButtonOther,
@@ -308,18 +350,11 @@ export const VoiceBubble = React.memo(function VoiceBubble({
               onPress={handlePress}
               hitSlop={8}
             >
-              {loading ? (
-                <ActivityIndicator
-                  size="small"
-                  color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
-                />
-              ) : (
-                <AnimatedPlayPauseIcon
-                  isPlaying={isPlaying}
-                  size={18}
-                  color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
-                />
-              )}
+              <AnimatedPlayPauseIcon
+                isPlaying={uiPlaying}
+                size={18}
+                color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
+              />
             </Pressable>
 
             <View style={styles.contentColumn}>

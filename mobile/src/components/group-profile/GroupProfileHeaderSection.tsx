@@ -47,7 +47,7 @@ type GroupProfileHeaderSectionProps = {
   onChangeName: (value: string) => void;
   onChangeDescription: (value: string) => void;
   onToggleMute: () => void;
-  onGroupVoicePress: () => void;
+  onStartCall: () => void;
   onSearch: () => void;
   onOpenMoreMenu: () => void;
 };
@@ -79,7 +79,7 @@ export function GroupProfileHeaderSection({
   onChangeName,
   onChangeDescription,
   onToggleMute,
-  onGroupVoicePress,
+  onStartCall,
   onSearch,
   onOpenMoreMenu,
 }: GroupProfileHeaderSectionProps) {
@@ -236,11 +236,8 @@ export function GroupProfileHeaderSection({
             <View style={styles.actionsSlot}>
               <View style={styles.actionsRow}>
                 <Pressable
-                  onPress={onGroupVoicePress}
-                  style={({ pressed }) => [
-                    styles.actionButton,
-                    pressed && styles.cardPressed,
-                  ]}
+                  onPress={onStartCall}
+                  style={({ pressed }) => [styles.actionButton, pressed && styles.cardPressed]}
                 >
                   <ProfileActionIcon name="call" size={20} color={themeColors.accent} />
                   <Text style={styles.actionButtonLabel}>Звонок</Text>

@@ -116,8 +116,33 @@ export function collapseTelegramAlbumRows(rows: TelegramMessageRow[]): TelegramM
   return [...standalone, ...collapsedAlbums].sort((a, b) => b.messageId - a.messageId);
 }
 
+function dropConfirmedOutgoingSendingTwins(rows: TelegramMessageRow[]): TelegramMessageRow[] {
+  const confirmedOutgoing = rows.filter(
+    (row) =>
+      row.outgoing &&
+      row.messageId > 0 &&
+      row.status !== 'sending' &&
+      row.status !== 'failed',
+  );
+  if (confirmedOutgoing.length === 0) return rows;
+
+  return rows.filter((item) => {
+    if (!item.outgoing || item.status !== 'sending') return true;
+    return !confirmedOutgoing.some((next) => {
+      if (next.kind !== item.kind) return false;
+      if (Math.abs(item.dateMs - next.dateMs) >= 120_000) return false;
+      if (next.kind === 'text') {
+        return (item.text ?? '').trim() === (next.text ?? '').trim();
+      }
+      return true;
+    });
+  });
+}
+
 export function normalizeTelegramFeedRows(rows: TelegramMessageRow[]): TelegramMessageRow[] {
-  return collapseTelegramAlbumRows([...rows].sort((a, b) => b.messageId - a.messageId));
+  return collapseTelegramAlbumRows(
+    dropConfirmedOutgoingSendingTwins([...rows].sort((a, b) => b.messageId - a.messageId)),
+  );
 }
 
 /** Merge history/updates into feed: replace overlapping album parts and re-collapse. */

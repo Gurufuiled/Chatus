@@ -174,23 +174,11 @@ async function resolveTdVoiceFileUri(
   if (mediaLocalOnly) return null;
 
   const fileId = getTdFileId(file);
-  if (fileId == null) return null;
-
-  try {
-    const downloaded = (await tdlibClient.send({
-      '@type': 'downloadFile',
-      file_id: fileId,
-      priority: 32,
-      offset: 0,
-      limit: 0,
-      synchronous: true,
-    })) as Record<string, unknown>;
-    throwIfTdError(downloaded);
-    return getTdFileLocalUri(downloaded) ?? getTdFileLocalUri(file);
-  } catch {
-    scheduleTdlibFileDownload(fileId);
-    return null;
+  if (fileId != null) {
+    // Non-blocking to avoid UI stalls/hangs when opening chats with many voice notes.
+    scheduleTdlibFileDownload(fileId, 32);
   }
+  return null;
 }
 
 function parseTdVoiceWaveform(voiceNote: Record<string, unknown> | null): number[] {

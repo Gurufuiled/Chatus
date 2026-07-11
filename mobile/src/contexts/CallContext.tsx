@@ -21,7 +21,7 @@ import {
 } from '@livekit/react-native-webrtc';
 import {
   Alert,
-  Modal,
+  BackHandler,
   Platform,
   Pressable,
   StatusBar,
@@ -33,6 +33,7 @@ import {
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, { clamp, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { FullWindowOverlay } from 'react-native-screens';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from './AuthContext';
 import { getWebRtcIceServers, resolveAvatarUrl } from '../config';
@@ -564,14 +565,23 @@ const CallOverlay = React.memo(function CallOverlay({
   const endLabel = callState?.phase === 'active' ? 'Завершить' : 'Отменить';
   const controlsLayout = useMemo(() => getCallControlsLayout(screenWidth), [screenWidth]);
 
+  useEffect(() => {
+    if (!callState) return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onEnd();
+      return true;
+    });
+    return () => sub.remove();
+  }, [callState, onEnd]);
+
+  if (!callState) {
+    return null;
+  }
+
+  // Absolute fullscreen overlay (not RN Modal): native-stack on iOS often fails to
+  // present a Modal from CallProvider above NavigationContainer.
   return (
-    <Modal
-      visible={callState != null}
-      animationType="fade"
-      presentationStyle="fullScreen"
-      statusBarTranslucent
-      onRequestClose={onEnd}
-    >
+    <View style={styles.overlayHost}>
       <GestureHandlerRootView style={styles.overlayRoot}>
         <View style={styles.overlay}>
           <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
@@ -611,13 +621,13 @@ const CallOverlay = React.memo(function CallOverlay({
               {!showVideoStage && (
                 <View style={styles.topMeta} pointerEvents="box-none">
                   <Text style={styles.topMetaText}>
-                    {callState?.callKind === 'video' ? 'Видео' : 'Звонок'}
+                    {callState.callKind === 'video' ? 'Видео' : 'Звонок'}
                   </Text>
                 </View>
               )}
               <View style={[styles.centerStage, showVideoStage && styles.centerStageVideo]}>
                 {!showVideoStage ? (
-                  callState?.avatarUrl ? (
+                  callState.avatarUrl ? (
                     <Image
                       source={{ uri: callState.avatarUrl }}
                       style={styles.avatar}
@@ -630,7 +640,7 @@ const CallOverlay = React.memo(function CallOverlay({
                     </View>
                   )
                 ) : null}
-                <Text style={[styles.name, showVideoStage && styles.nameVideo]}>{callState?.displayName ?? ''}</Text>
+                <Text style={[styles.name, showVideoStage && styles.nameVideo]}>{callState.displayName}</Text>
                 <Text style={[styles.status, showVideoStage && styles.statusVideo]}>{statusText}</Text>
                 {!showVideoStage ? <Text style={styles.phaseCaption}>{phaseCaption}</Text> : null}
               </View>
@@ -640,9 +650,9 @@ const CallOverlay = React.memo(function CallOverlay({
               <View style={[styles.controlsRow, { gap: controlsLayout.rowGap }]}>
                 <CallActionButton
                   icon={TELEGRAM_CALL_GLYPHS.speaker}
-                  label={callState?.isSpeakerOn ? 'Динамик' : 'Разговорный'}
+                  label={callState.isSpeakerOn ? 'Динамик' : 'Разговорный'}
                   layout={controlsLayout}
-                  tone={callState?.isSpeakerOn ? 'accent' : 'neutral'}
+                  tone={callState.isSpeakerOn ? 'accent' : 'neutral'}
                   disabled={!canToggleSpeaker}
                   onPress={onToggleSpeaker}
                 />
@@ -650,15 +660,15 @@ const CallOverlay = React.memo(function CallOverlay({
                   icon={TELEGRAM_CALL_GLYPHS.video}
                   label="Видео"
                   layout={controlsLayout}
-                  tone={callState?.isLocalVideoEnabled ? 'accent' : 'neutral'}
+                  tone={callState.isLocalVideoEnabled ? 'accent' : 'neutral'}
                   disabled={!canToggleVideo}
                   onPress={onToggleVideo}
                 />
                 <CallActionButton
-                  icon={callState?.isMuted ? TELEGRAM_CALL_GLYPHS.unmute : TELEGRAM_CALL_GLYPHS.mute}
-                  label={callState?.isMuted ? 'Микрофон выкл.' : 'Микрофон'}
+                  icon={callState.isMuted ? TELEGRAM_CALL_GLYPHS.unmute : TELEGRAM_CALL_GLYPHS.mute}
+                  label={callState.isMuted ? 'Микрофон выкл.' : 'Микрофон'}
                   layout={controlsLayout}
-                  tone={callState?.isMuted ? 'accent' : 'neutral'}
+                  tone={callState.isMuted ? 'accent' : 'neutral'}
                   disabled={!canToggleMute}
                   onPress={onToggleMute}
                 />
@@ -722,7 +732,7 @@ const CallOverlay = React.memo(function CallOverlay({
           </GestureDetector>
         ) : null}
       </GestureHandlerRootView>
-    </Modal>
+    </View>
   );
 });
 
@@ -812,6 +822,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     pendingOfferRef.current = null;
     clearOutgoingTimeout();
     await resetAudioMode();
+    VoicePlayerService.invalidateAudioMode();
   }, [clearOutgoingTimeout, resetAudioMode]);
 
   const cleanupCallSession = useCallback(async () => {
@@ -995,6 +1006,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         });
       };
 
+      const shouldEndCallOnTransportFailure = () => {
+        const phase = callStateRef.current?.phase;
+        // Ringing / setup often flaps ICE on iOS — keep the overlay until hangup/timeout/answer path.
+        return phase === 'active';
+      };
+
       (pc as RTCPeerConnection & { onconnectionstatechange?: () => void }).onconnectionstatechange =
         () => {
           const connectionState = (pc as RTCPeerConnection & { connectionState?: string })
@@ -1006,8 +1023,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           }
 
           if (
-            connectionState === 'failed' ||
-            connectionState === 'closed'
+            (connectionState === 'failed' || connectionState === 'closed') &&
+            shouldEndCallOnTransportFailure()
           ) {
             void cleanupCallSession();
           }
@@ -1027,7 +1044,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          if (iceState === 'failed' || iceState === 'closed') {
+          if (
+            (iceState === 'failed' || iceState === 'closed') &&
+            shouldEndCallOnTransportFailure()
+          ) {
             void cleanupCallSession();
           }
         };
@@ -1112,10 +1132,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        await VoicePlayerService.stop();
-        await releaseMediaAudioSession();
-
-        setCallState({
+        // Show outgoing UI before any async audio/WebRTC work so the caller
+        // always sees the overlay immediately on iOS.
+        const nextState: CallUiState = {
           phase: 'outgoing',
           remoteUserId: userId,
           displayName,
@@ -1131,12 +1150,22 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           hasRemoteVideoEverEnabled: false,
           localStreamUrl: null,
           remoteStreamUrl: null,
-        });
+        };
+        callStateRef.current = nextState;
+        setCallState(nextState);
+
+        await VoicePlayerService.stop();
+        await releaseMediaAudioSession();
 
         SignalingService.connect();
         await SignalingService.whenConnected();
 
         const pc = await createPeerConnection(userId, callKind === 'video');
+        // Bail if user already hung up while we were setting up.
+        if (callStateRef.current?.remoteUserId !== userId) {
+          return;
+        }
+
         const offer = await pc.createOffer(buildOfferOptions(callKind === 'video'));
         await pc.setLocalDescription(offer);
 
@@ -1469,26 +1498,54 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   );
   return (
     <CallContext.Provider value={contextValue}>
-      {children}
-      <CallOverlay
-        callState={callState}
-        onAccept={() => {
-          void acceptIncomingCall();
-        }}
-        onDecline={() => {
-          void declineIncomingCall();
-        }}
-        onEnd={() => {
-          void endCall();
-        }}
-        onToggleMute={toggleMute}
-        onToggleSpeaker={() => {
-          void toggleSpeaker();
-        }}
-        onToggleVideo={() => {
-          void toggleVideo();
-        }}
-      />
+      <View style={styles.providerRoot}>
+        {children}
+        {callState ? (
+          Platform.OS === 'ios' ? (
+            <FullWindowOverlay>
+              <CallOverlay
+                callState={callState}
+                onAccept={() => {
+                  void acceptIncomingCall();
+                }}
+                onDecline={() => {
+                  void declineIncomingCall();
+                }}
+                onEnd={() => {
+                  void endCall();
+                }}
+                onToggleMute={toggleMute}
+                onToggleSpeaker={() => {
+                  void toggleSpeaker();
+                }}
+                onToggleVideo={() => {
+                  void toggleVideo();
+                }}
+              />
+            </FullWindowOverlay>
+          ) : (
+            <CallOverlay
+              callState={callState}
+              onAccept={() => {
+                void acceptIncomingCall();
+              }}
+              onDecline={() => {
+                void declineIncomingCall();
+              }}
+              onEnd={() => {
+                void endCall();
+              }}
+              onToggleMute={toggleMute}
+              onToggleSpeaker={() => {
+                void toggleSpeaker();
+              }}
+              onToggleVideo={() => {
+                void toggleVideo();
+              }}
+            />
+          )
+        ) : null}
+      </View>
     </CallContext.Provider>
   );
 }
@@ -1501,6 +1558,16 @@ export function useCall() {
 }
 
 const styles = StyleSheet.create({
+  providerRoot: {
+    flex: 1,
+  },
+  overlayHost: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    zIndex: 10000,
+    elevation: 10000,
+  },
   overlayRoot: {
     flex: 1,
   },

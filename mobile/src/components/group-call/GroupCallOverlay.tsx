@@ -28,14 +28,18 @@ function formatDuration(startedAt?: number, now = Date.now()) {
 type ActionButtonProps = {
   label: string;
   icon: keyof typeof TELEGRAM_CALL_GLYPHS;
-  tone?: 'neutral' | 'danger';
+  tone?: 'neutral' | 'danger' | 'active';
   onPress: () => void;
   onLongPress?: () => void;
 };
 
 function ActionButton({ label, icon, tone = 'neutral', onPress, onLongPress }: ActionButtonProps) {
   const bg =
-    tone === 'danger' ? '#E53935' : withAlpha(colors.textPrimary, 0.14);
+    tone === 'danger'
+      ? '#E53935'
+      : tone === 'active'
+        ? colors.accent
+        : withAlpha(colors.textPrimary, 0.14);
   return (
     <Pressable
       accessibilityLabel={label}
@@ -65,6 +69,7 @@ export function GroupCallOverlay() {
     endGroupCallForAll,
     toggleMute,
     toggleSpeaker,
+    toggleVideo,
     setInviteSheetVisible,
   } = useGroupCall();
   const [now, setNow] = useState(Date.now());
@@ -150,6 +155,14 @@ export function GroupCallOverlay() {
             icon={state.isMuted ? 'unmute' : 'mute'}
             onPress={() => {
               void toggleMute();
+            }}
+          />
+          <ActionButton
+            label="video"
+            icon="video"
+            tone={state.isVideoEnabled ? 'active' : 'neutral'}
+            onPress={() => {
+              void toggleVideo();
             }}
           />
           <ActionButton

@@ -7,7 +7,8 @@ const TERMINAL_AUTH_STATES = new Set([
 
 /**
  * Map TDLib authorization state to store status.
- * While UI shows an active session (`ready`), transient close must not flip to `error`.
+ * While UI shows an active session (`ready`), transient close / WaitPhone must not
+ * flip the user back to the login flow — only explicit Settings logout clears that.
  */
 export function mapTdlibAuthStateToStore(
   authType: string | undefined,
@@ -17,15 +18,17 @@ export function mapTdlibAuthStateToStore(
     case 'authorizationStateReady':
       return 'ready';
     case 'authorizationStateWaitPassword':
+      // 2FA unlock is a real gate even for an existing session.
       return 'waiting_password';
     case 'authorizationStateWaitCode':
     case 'authorizationStateWaitEmailCode':
     case 'authorizationStateWaitOtherDeviceConfirmation':
-      return 'waiting_code';
+      // Mid-login only. Never kick a Ready session back to SMS entry on a brief glitch.
+      return current === 'ready' || current === 'error' ? 'ready' : 'waiting_code';
     case 'authorizationStateWaitPhoneNumber':
     case 'authorizationStateWaitEmailAddress':
     case 'authorizationStateWaitRegistration':
-      return 'waiting_phone';
+      return current === 'ready' || current === 'error' ? 'ready' : 'waiting_phone';
     case 'authorizationStateWaitTdlibParameters':
       return current === 'ready' ? current : 'waiting_parameters';
     case 'authorizationStateClosing':

@@ -70,9 +70,14 @@ export function TelegramTdlibNotificationListener() {
 
     const reconcileAuthStatus = async () => {
       const store = telegramAccountStore.getState();
-      if (store.authStatus === 'idle') return;
       try {
-        const { status } = await probeTdlibAuthStatus(store.authStatus);
+        // Always probe — including idle — so an on-disk TDLib session can restore after
+        // SecureStore miss / crash without forcing the user through SMS again.
+        const probeFrom =
+          store.authStatus === 'idle' && store.telegramUserId != null
+            ? 'ready'
+            : store.authStatus;
+        const { status } = await probeTdlibAuthStatus(probeFrom);
         if (status !== store.authStatus) {
           store.setAuthStatus(status);
           if (status === 'ready') {
@@ -121,10 +126,14 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateWaitPhoneNumber':
             case 'authorizationStateWaitEmailAddress':
             case 'authorizationStateWaitRegistration':
+              // Never drop a Ready session back to phone entry — only Settings logout does.
+              if (store.authStatus === 'ready' || store.telegramUserId != null) {
+                scheduleBackgroundTdlibRecovery();
+                break;
+              }
               if (
                 store.authStatus !== 'waiting_code' &&
-                store.authStatus !== 'waiting_password' &&
-                store.authStatus !== 'ready'
+                store.authStatus !== 'waiting_password'
               ) {
                 store.setAuthStatus('waiting_phone');
                 scheduleAuthPersist();

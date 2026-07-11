@@ -48,9 +48,12 @@ function buildVoicePlaybackSelection(
   fallbackDurationMs: number,
   playbackKey?: string
 ): VoicePlaybackForUri {
-  const keySource = playbackKey ?? uri;
-  const normalizedKey = keySource ? normalizeVoicePlaybackKey(keySource) : '';
-  const isCurrent = Boolean(normalizedKey) && snapshot.currentVoiceUri === normalizedKey;
+  const candidateKeys = [playbackKey, uri]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => normalizeVoicePlaybackKey(value));
+  const isCurrent =
+    Boolean(snapshot.currentVoiceUri) &&
+    candidateKeys.some((key) => key === snapshot.currentVoiceUri);
   const positionMs = isCurrent ? snapshot.status.positionMs : 0;
   /** Use loaded media duration for progress — message metadata can be inflated (e.g. recording wall-clock bug). */
   const durationMs = isCurrent
@@ -85,10 +88,12 @@ function isSameVoicePlaybackSelection(
   if (!next.isCurrent) {
     return true;
   }
+  // Keep thresholds tight so long voice notes still advance the waveform while playing.
+  // (Previously 200ms / 1.2% skipped most mid-playback ticks.)
   return (
-    Math.abs(prev.progress - next.progress) < 0.012 &&
-    Math.abs(prev.positionMs - next.positionMs) < 200 &&
-    Math.abs(prev.remainingMs - next.remainingMs) < 200
+    Math.abs(prev.progress - next.progress) < 0.003 &&
+    Math.abs(prev.positionMs - next.positionMs) < 40 &&
+    Math.abs(prev.remainingMs - next.remainingMs) < 40
   );
 }
 

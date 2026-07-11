@@ -1,6 +1,11 @@
 import { tdlibClient } from '../../services/tdlib/TdlibClient';
-import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../../services/tdlib/tdlibBootstrap';
+import {
+  applyTdlibParameters,
+  scheduleBackgroundTdlibRecovery,
+  waitForTdlibAuthorizationReady,
+} from '../../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../../services/tdlib/tdlibErrors';
+import { probeTdlibAuthStatus } from '../../services/tdlib/tdlibAuthState';
 import {
   telegramAccountStore,
   type TelegramChatType,
@@ -12,6 +17,19 @@ import { scheduleTopTelegramChatsPreload } from './telegramChatPreload';
 
 /** Задержка перед фоновой предзагрузкой истории после первичного синка диалогов. */
 const PRELOAD_AFTER_SYNC_DELAY_MS = 2500;
+
+/** Prevent overlapping full refreshes from TDLib update storms / recovery races. */
+let refreshInFlight: Promise<void> | null = null;
+
+function shouldKeepExistingDialogs(): boolean {
+  const { authStatus, dialogs } = telegramAccountStore.getState();
+  return authStatus === 'ready' && dialogs.length > 0;
+}
+
+function shouldProtectCurrentTelegramSession(): boolean {
+  const { authStatus, telegramUserId, dialogs } = telegramAccountStore.getState();
+  return authStatus === 'ready' || telegramUserId != null || dialogs.length > 0;
+}
 
 export function matchesDialogQuery(row: TelegramDialogRow, normalizedQuery: string) {
   const typeLabel =
@@ -174,12 +192,29 @@ export async function loadChatRow(
   }
 }
 
-export async function refreshTelegramDialogs(): Promise<void> {
+async function refreshTelegramDialogsOnce(): Promise<void> {
   telegramAccountStore.getState().setDialogsSyncing(true);
   try {
     await applyTdlibParameters();
     const { ready, state } = await waitForTdlibAuthorizationReady();
     if (!ready) {
+      // If TDLib briefly reports WaitPhoneNumber/WaitCode while a known session exists,
+      // treat it as transient recovery and keep the current dialogs/session UX intact.
+      if (shouldProtectCurrentTelegramSession()) {
+        try {
+          const probe = await probeTdlibAuthStatus('ready');
+          if (probe.status === 'ready') {
+            return;
+          }
+        } catch {
+          // Fall through to soft recovery path below.
+        }
+        scheduleBackgroundTdlibRecovery();
+        telegramAccountStore
+          .getState()
+          .setLastError('Telegram временно переподключается. Диалоги будут восстановлены автоматически.');
+        return;
+      }
       if (state === 'authorizationStateWaitPassword') {
         telegramAccountStore.getState().setAuthStatus('waiting_password');
       }
@@ -190,8 +225,9 @@ export async function refreshTelegramDialogs(): Promise<void> {
             ? 'Нужен облачный пароль 2FA: Настройки → Telegram, введите пароль из настроек Telegram.'
             : `Сессия TDLib не готова (${state ?? 'таймаут'}). Потяните список вниз.`;
       telegramAccountStore.getState().setLastError(hint);
-      telegramAccountStore.getState().setDialogs([]);
-      await telegramAccountStore.getState().persistSnapshot();
+      // Never wipe an already-loaded dialog list on transient TDLib unready /
+      // recovery timeouts (~25s) — that made chats vanish while Settings still
+      // showed Telegram as online.
       return;
     }
     const res = (await tdlibClient.send({
@@ -213,6 +249,14 @@ export async function refreshTelegramDialogs(): Promise<void> {
           .filter((n) => Number.isFinite(n))
       : [];
     if (ids.length === 0) {
+      // Empty getChats right after recreateClient / sync lag is transient —
+      // keep the previous list while the session is still ready.
+      if (shouldKeepExistingDialogs()) {
+        telegramAccountStore
+          .getState()
+          .setLastError('Список чатов временно пуст после синхронизации. Потяните вниз.');
+        return;
+      }
       telegramAccountStore.getState().setDialogs([]);
       await telegramAccountStore.getState().persistSnapshot();
       return;
@@ -237,8 +281,27 @@ export async function refreshTelegramDialogs(): Promise<void> {
     setTimeout(() => scheduleTopTelegramChatsPreload(rows), PRELOAD_AFTER_SYNC_DELAY_MS);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (/unauthor/i.test(msg) || /authorization/i.test(msg)) {
+      if (shouldKeepExistingDialogs()) {
+        scheduleBackgroundTdlibRecovery();
+      }
+      telegramAccountStore
+        .getState()
+        .setLastError('Telegram временно переподключается. Диалоги будут восстановлены автоматически.');
+      return;
+    }
     telegramAccountStore.getState().setLastError(msg);
   } finally {
     telegramAccountStore.getState().setDialogsSyncing(false);
   }
+}
+
+export async function refreshTelegramDialogs(): Promise<void> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+  refreshInFlight = refreshTelegramDialogsOnce().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
 }

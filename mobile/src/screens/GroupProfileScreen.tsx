@@ -43,7 +43,6 @@ import type {
 } from '../components/group-profile/groupProfile.types';
 import { getDisplayNameFromMember } from '../components/group-profile/groupProfile.utils';
 import { useGroupCall } from '../contexts/GroupCallContext';
-import { GroupCallStartSheet } from '../components/group-call/GroupCallStartSheet';
 import { resolveAvatarUrl } from '../config';
 import type { ChatsStackParamList } from '../navigation/types';
 import { apiUpload } from '../services/apiClient';
@@ -386,7 +385,6 @@ export function GroupProfileScreen() {
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [moreMenu, setMoreMenu] = useState<AnchoredMenuState>(null);
-  const [groupCallSheetVisible, setGroupCallSheetVisible] = useState(false);
   const {
     activeRoomByChatId,
     refreshActiveRoom,
@@ -450,7 +448,7 @@ export function GroupProfileScreen() {
     }, [chatId, refreshActiveRoom]),
   );
 
-  const handleGroupVoicePress = useCallback(() => {
+  const handleOpenGroupCall = useCallback(() => {
     if (activeGroupCallRoom && !isUserInGroupCall) {
       void joinGroupCall(activeGroupCallRoom.id, chatId, displayName);
       return;
@@ -459,7 +457,7 @@ export function GroupProfileScreen() {
       expand();
       return;
     }
-    setGroupCallSheetVisible(true);
+    void startGroupCall(chatId, displayName);
   }, [
     activeGroupCallRoom,
     chatId,
@@ -467,7 +465,9 @@ export function GroupProfileScreen() {
     expand,
     isUserInGroupCall,
     joinGroupCall,
+    startGroupCall,
   ]);
+
   const selectedUserIds = useMemo(
     () => new Set(selectedUsers.map((user) => user.id)),
     [selectedUsers]
@@ -1076,17 +1076,9 @@ export function GroupProfileScreen() {
     ]);
   }, [chat, closeMoreMenu, navigation]);
 
-  const isPinned = (chat?.is_pinned ?? 0) === 1;
-
   const moreMenuItems = useMemo<AnchoredPopoverMenuItem[]>(
     () => {
-      const items: AnchoredPopoverMenuItem[] = [
-        {
-          key: 'toggle-pin',
-          label: isPinned ? 'Открепить' : 'Закрепить',
-          icon: 'pin' as any,
-        },
-      ];
+      const items: AnchoredPopoverMenuItem[] = [];
       if (isOwner) {
         items.push({
           key: 'delete-group',
@@ -1104,7 +1096,7 @@ export function GroupProfileScreen() {
       }
       return items;
     },
-    [isOwner, isPinned]
+    [isOwner]
   );
 
   const handleMoreMenuAction = useCallback(
@@ -1114,25 +1106,11 @@ export function GroupProfileScreen() {
         return;
       }
 
-      if (key === 'toggle-pin') {
-        closeMoreMenu(() => {
-          if (!chat) return;
-          const nextChat = { ...chat, is_pinned: isPinned ? 0 : 1, updated_at: Date.now() };
-          chatStore.getState().updateChat(nextChat);
-          new ChatDao().update({
-            id: chat.id,
-            is_pinned: nextChat.is_pinned,
-            updated_at: nextChat.updated_at,
-          }).catch(() => undefined);
-        });
-        return;
-      }
-
       if (key === 'delete-group') {
         handleDeleteGroup();
       }
     },
-    [handleDeleteGroup, handleLeaveGroup, closeMoreMenu, chat, isPinned]
+    [handleDeleteGroup, handleLeaveGroup]
   );
 
   const actionMenuItems = useMemo<AnchoredPopoverMenuItem[]>(
@@ -1402,7 +1380,7 @@ export function GroupProfileScreen() {
           onChangeName={setNameDraft}
           onChangeDescription={setDescriptionDraft}
           onToggleMute={handleToggleMute}
-          onGroupVoicePress={handleGroupVoicePress}
+          onStartCall={handleOpenGroupCall}
           onSearch={handleSearchPress}
           onOpenMoreMenu={openMoreMenu}
         />
@@ -1425,7 +1403,7 @@ export function GroupProfileScreen() {
         onClose={closeMoreMenu}
         onSelect={handleMoreMenuAction}
         horizontalAlign="end"
-        offsetY={8}
+        offsetY={10}
       />
 
       <AnchoredPopoverMenu
@@ -1524,13 +1502,6 @@ export function GroupProfileScreen() {
         subtitle="Фото группы"
       />
 
-      <GroupCallStartSheet
-        visible={groupCallSheetVisible}
-        onClose={() => setGroupCallSheetVisible(false)}
-        onStartVoice={() => {
-          void startGroupCall(chatId, displayName);
-        }}
-      />
     </View>
   );
 }

@@ -59,7 +59,10 @@ import {
 } from '../components/OutgoingBubbleViewportGradient';
 import { useTheme } from '../contexts/ThemeContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
-import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
+import {
+  ensureTdlibAuthorizedForSend,
+  waitUntilTdlibNotRecreating,
+} from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
@@ -415,12 +418,78 @@ export function TelegramChatScreen() {
   const canBatchTdLib = selectedTdMessageIds.length > 0;
 
   const ensureReady = useCallback(async () => {
-    await applyTdlibParameters();
-    const { ready, state } = await waitForTdlibAuthorizationReady();
-    if (!ready) {
-      throw new Error(`Сессия Telegram не готова (${state ?? 'таймаут'})`);
-    }
+    const store = telegramAccountStore.getState();
+    const allowSessionReload =
+      store.authStatus === 'ready' ||
+      store.telegramUserId != null ||
+      store.dialogs.length > 0;
+    await ensureTdlibAuthorizedForSend({ allowSessionReload });
   }, []);
+
+  const isTransientTdlibRecoveryError = useCallback((error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error);
+    return (
+      /client is being recreated/i.test(message) ||
+      /temporarily unavailable/i.test(message) ||
+      /authorization/i.test(message) ||
+      /unauthor/i.test(message) ||
+      /переподключается/i.test(message) ||
+      /timeout/i.test(message)
+    );
+  }, []);
+
+  const wait = useCallback((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)), []);
+
+  const sendTdlibWithRecovery = useCallback(
+    async (query: Record<string, unknown>, maxAttempts = 4) => {
+      let lastError: unknown = null;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          await ensureReady();
+          const response = (await tdlibClient.send(query)) as Record<string, unknown>;
+          throwIfTdError(response);
+          return response;
+        } catch (error) {
+          lastError = error;
+          const message = error instanceof Error ? error.message : String(error);
+          const isRecoverable = isTransientTdlibRecoveryError(error);
+          // Permanent reauth only when there is no local sticky session.
+          const sticky = telegramAccountStore.getState().hasLocalSession();
+          if (!sticky && (/истекла/i.test(message) || /войдите снова/i.test(message))) {
+            throw error;
+          }
+          if (/2FA/i.test(message) || /облачный пароль/i.test(message)) {
+            throw error;
+          }
+          if (!isRecoverable || attempt >= maxAttempts) {
+            throw error;
+          }
+
+          if (/client is being recreated/i.test(message)) {
+            await waitUntilTdlibNotRecreating(30_000);
+            await wait(400 * attempt);
+            continue;
+          }
+
+          if (
+            /unauthor/i.test(message) ||
+            /not authorized/i.test(message) ||
+            /переподключается/i.test(message) ||
+            /истекла/i.test(message)
+          ) {
+            // One hard auth gate (may reload DB once), then retry send.
+            await ensureTdlibAuthorizedForSend({ allowSessionReload: true }).catch(() => undefined);
+            await wait(500 * attempt);
+            continue;
+          }
+
+          await wait(700 * attempt);
+        }
+      }
+      throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    },
+    [ensureReady, isTransientTdlibRecoveryError, wait],
+  );
 
   /** TDLib шлёт updateMessageInteractionInfo только для открытого чата. */
   useFocusEffect(
@@ -1367,6 +1436,11 @@ export function TelegramChatScreen() {
             for (const fileId of collectPendingTdlibFileIds([row])) {
               scheduleTdlibFileDownload(fileId);
             }
+            if (type === 'updateMessageSendSucceeded' && oldMessageId != null) {
+              void deleteTelegramMessagesFromCache(chatId, threadParam, [oldMessageId]).catch(
+                () => {},
+              );
+            }
             void persistTelegramMessages(chatId, threadParam, [row]).catch(() => {});
           });
         } catch {
@@ -1397,8 +1471,7 @@ export function TelegramChatScreen() {
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
       try {
-        await ensureReady();
-        const response = (await tdlibClient.send({
+        const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
           chat_id: chatId,
           reply_to: getInputReplyTo(activeReplyToMessageId),
@@ -1410,11 +1483,18 @@ export function TelegramChatScreen() {
               entities: [],
             },
           },
-        })) as Record<string, unknown>;
-        throwIfTdError(response);
+        });
         const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
         if (mapped) {
-          setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped));
+          setMessages((prev) =>
+            upsertMessage(
+              prev.filter((item) => item.id !== optimistic.id && item.messageId !== optimistic.messageId),
+              mapped,
+            ),
+          );
+        } else {
+          // Response without mappable row — still drop optimistic if an update already inserted the real message.
+          setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1422,7 +1502,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить', message);
       }
     },
-    [chatId, ensureReady, onComposerMessageSent, replyToMessageId],
+    [chatId, onComposerMessageSent, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendVoice = useCallback(
@@ -1447,8 +1527,7 @@ export function TelegramChatScreen() {
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
       try {
-        await ensureReady();
-        const response = (await tdlibClient.send({
+        const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
           chat_id: chatId,
           reply_to: getInputReplyTo(activeReplyToMessageId),
@@ -1460,15 +1539,21 @@ export function TelegramChatScreen() {
             },
             duration: Math.max(1, Math.round(result.durationMs / 1000)),
           },
-        })) as Record<string, unknown>;
-        throwIfTdError(response);
+        });
         const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
         if (mapped) {
-          setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), {
-            ...mapped,
-            voiceUri: mapped.voiceUri ?? result.uri,
-            waveform: mapped.waveform && mapped.waveform.length > 0 ? mapped.waveform : result.waveform,
-          }));
+          setMessages((prev) =>
+            upsertMessage(
+              prev.filter((item) => item.id !== optimistic.id && item.messageId !== optimistic.messageId),
+              {
+                ...mapped,
+                voiceUri: mapped.voiceUri ?? result.uri,
+                waveform: mapped.waveform && mapped.waveform.length > 0 ? mapped.waveform : result.waveform,
+              },
+            ),
+          );
+        } else {
+          setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1476,7 +1561,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить голосовое', message);
       }
     },
-    [chatId, ensureReady, replyToMessageId],
+    [chatId, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendVideoNote = useCallback(
@@ -1514,20 +1599,18 @@ export function TelegramChatScreen() {
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
       try {
-        await ensureReady();
         const inputMessageContent = buildInputMessageVideoNoteContent({
           videoUri: result.uri,
           thumbnailUri: result.thumbnailUri,
           durationMs: result.durationMs,
           lengthPx,
         });
-        const response = (await tdlibClient.send({
+        const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
           chat_id: chatId,
           reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_content: inputMessageContent,
-        })) as Record<string, unknown>;
-        throwIfTdError(response);
+        });
         const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
         if (!mapped) {
           throw new Error('Telegram не вернул отправленное сообщение.');
@@ -1541,19 +1624,24 @@ export function TelegramChatScreen() {
             'Файл не подошёл для кружка (нужно квадратное видео). Запишите ещё раз: свайп вверх по кнопке микрофона → удержание → отпустите.',
           );
         }
-        setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), {
-          ...mapped,
-          mediaUri: mapped.mediaUri ?? result.uri,
-          thumbnailUri: mapped.thumbnailUri ?? result.thumbnailUri,
-          durationMs: mapped.durationMs ?? result.durationMs,
-        }));
+        setMessages((prev) =>
+          upsertMessage(
+            prev.filter((item) => item.id !== optimistic.id && item.messageId !== optimistic.messageId),
+            {
+              ...mapped,
+              mediaUri: mapped.mediaUri ?? result.uri,
+              thumbnailUri: mapped.thumbnailUri ?? result.thumbnailUri,
+              durationMs: mapped.durationMs ?? result.durationMs,
+            },
+          ),
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
         Alert.alert('Не удалось отправить видеосообщение', message);
       }
     },
-    [chatId, ensureReady, replyToMessageId],
+    [chatId, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendInputMessageContent = useCallback(
@@ -1576,17 +1664,22 @@ export function TelegramChatScreen() {
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
       try {
-        await ensureReady();
-        const response = (await tdlibClient.send({
+        const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
           chat_id: chatId,
           reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_content: inputMessageContent,
-        })) as Record<string, unknown>;
-        throwIfTdError(response);
+        });
         const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
         if (mapped) {
-          setMessages((prev) => upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped));
+          setMessages((prev) =>
+            upsertMessage(
+              prev.filter((item) => item.id !== optimistic.id && item.messageId !== optimistic.messageId),
+              mapped,
+            ),
+          );
+        } else {
+          setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1594,7 +1687,7 @@ export function TelegramChatScreen() {
         Alert.alert(failureTitle, message);
       }
     },
-    [chatId, ensureReady, replyToMessageId],
+    [chatId, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendMedia = useCallback(
@@ -1697,14 +1790,12 @@ export function TelegramChatScreen() {
       });
 
       try {
-        await ensureReady();
-        const response = (await tdlibClient.send({
+        const response = await sendTdlibWithRecovery({
           '@type': 'sendMessageAlbum',
           chat_id: chatId,
           reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_contents: contents,
-        })) as Record<string, unknown>;
-        throwIfTdError(response);
+        });
         const rawMessages = Array.isArray(response.messages) ? response.messages : [];
         const mapped = await mapTdMessages(
           rawMessages.filter(
@@ -1729,7 +1820,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить альбом', message);
       }
     },
-    [chatId, ensureReady, replyToMessageId, sendMedia],
+    [chatId, replyToMessageId, sendMedia, sendTdlibWithRecovery],
   );
 
   const sendFile = useCallback(

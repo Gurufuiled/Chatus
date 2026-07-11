@@ -10,8 +10,8 @@ import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 import { normalizeVoicePlaybackKey } from '../utils/voicePlaybackKey';
 
 const PROGRESS_UPDATE_INTERVAL_MS = 100;
-/** Cap React store broadcasts during playback so ChatScreen / bubbles are not repainted 10×/s. */
-const STORE_BROADCAST_MIN_INTERVAL_MS = 160;
+/** Cap React store broadcasts during playback (~12fps) so the waveform can advance smoothly. */
+const STORE_BROADCAST_MIN_INTERVAL_MS = 80;
 
 export interface VoicePlayerStatus {
   positionMs: number;
@@ -53,6 +53,8 @@ class VoicePlayerServiceClass {
   private playbackRate = 1;
   private audioModeReady = false;
   private lastStoreBroadcastAt = 0;
+  /** True between play() and pause/stop/finish — iOS often reports isPlaying=false while audio is starting. */
+  private wantsPlaying = false;
 
   private async ensureVoiceCacheDir(): Promise<string> {
     if (this.voiceCacheDir) return this.voiceCacheDir;
@@ -118,9 +120,14 @@ class VoicePlayerServiceClass {
     }
   }
 
+  /** Mark playback audio mode dirty (call after recording / calls). */
+  invalidateAudioMode(): void {
+    this.audioModeReady = false;
+  }
+
   /** Ensure audio mode allows playback (plays in silent mode on iOS). */
-  private async ensureAudioMode(): Promise<void> {
-    if (this.audioModeReady) return;
+  private async ensureAudioMode(force = false): Promise<void> {
+    if (this.audioModeReady && !force) return;
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
@@ -131,6 +138,77 @@ class VoicePlayerServiceClass {
       interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
     });
     this.audioModeReady = true;
+  }
+
+  private async preparePlaybackAudioMode(): Promise<void> {
+    // LiveKit / camera may still own the native session after calls or video notes.
+    if (!this.audioModeReady) {
+      await releaseMediaAudioSession();
+    }
+    await this.ensureAudioMode(true);
+  }
+
+  private async applyLoadedStatus(sound: Audio.Sound): Promise<void> {
+    let status = await sound.getStatusAsync();
+    if (status.isLoaded && !status.isPlaying && this.wantsPlaying) {
+      try {
+        await sound.playAsync();
+      } catch {
+        // Retry once after forcing playback audio mode (common after calls/recording).
+        this.audioModeReady = false;
+        await this.preparePlaybackAudioMode();
+        await sound.playAsync();
+      }
+      status = await sound.getStatusAsync();
+    }
+    if (status.isLoaded) {
+      this.lastStatus = {
+        positionMs: status.positionMillis ?? 0,
+        durationMs: status.durationMillis ?? 0,
+        // Trust play intent: expo-av on iOS often lags isPlaying right after playAsync.
+        isPlaying: this.wantsPlaying || Boolean(status.isPlaying),
+        rate: status.rate ?? this.playbackRate,
+      };
+      this.notifyListeners({ throttleStore: false });
+    }
+  }
+
+  /**
+   * Read live position from the native player. Status callbacks alone are unreliable on iOS.
+   */
+  async sampleLiveStatus(): Promise<VoicePlayerSnapshot> {
+    const sound = this.soundRef;
+    if (!sound) {
+      return this.getSnapshot();
+    }
+
+    try {
+      const status = await sound.getStatusAsync();
+      if (!status.isLoaded) {
+        return this.getSnapshot();
+      }
+
+      if (status.didJustFinish) {
+        this.wantsPlaying = false;
+        this.lastStatus = {
+          positionMs: status.durationMillis ?? this.lastStatus.durationMs,
+          durationMs: status.durationMillis ?? this.lastStatus.durationMs,
+          isPlaying: false,
+          rate: status.rate ?? this.playbackRate,
+        };
+      } else {
+        this.lastStatus = {
+          positionMs: status.positionMillis ?? 0,
+          durationMs: status.durationMillis ?? this.lastStatus.durationMs,
+          isPlaying: this.wantsPlaying || Boolean(status.isPlaying),
+          rate: status.rate ?? this.playbackRate,
+        };
+      }
+      this.refreshSnapshot();
+      return this.lastSnapshot;
+    } catch {
+      return this.getSnapshot();
+    }
   }
 
   /** Stop and unload current sound if any. */
@@ -145,6 +223,7 @@ class VoicePlayerServiceClass {
     }
     this.soundRef = null;
     this.currentUri = null;
+    this.wantsPlaying = false;
     this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
     this.notifyListeners({ throttleStore: false });
   }
@@ -192,6 +271,7 @@ class VoicePlayerServiceClass {
     if (!status.isLoaded) return;
 
     if (status.didJustFinish) {
+      this.wantsPlaying = false;
       const finalDurationMs = status.durationMillis ?? this.lastStatus.durationMs;
       this.lastStatus = {
         // Keep positionMs at the full duration so the timer shows 0:00 remaining
@@ -209,7 +289,7 @@ class VoicePlayerServiceClass {
     this.lastStatus = {
       positionMs: status.positionMillis ?? 0,
       durationMs: status.durationMillis ?? 0,
-      isPlaying: status.isPlaying ?? false,
+      isPlaying: this.wantsPlaying || Boolean(status.isPlaying),
       rate: status.rate ?? this.playbackRate,
     };
     const throttleStore = this.lastStatus.isPlaying;
@@ -237,16 +317,7 @@ class VoicePlayerServiceClass {
       );
       this.soundRef = sound;
       this.currentUri = playbackKey;
-      const status = await sound.getStatusAsync();
-      if (status.isLoaded) {
-        this.lastStatus = {
-          positionMs: status.positionMillis ?? 0,
-          durationMs: status.durationMillis ?? 0,
-          isPlaying: status.isPlaying ?? false,
-          rate: status.rate ?? this.playbackRate,
-        };
-      }
-      this.notifyListeners({ throttleStore: false });
+      await this.applyLoadedStatus(sound);
       return true;
     } catch {
       await this.stopAndUnloadCurrent().catch(() => {});
@@ -260,76 +331,94 @@ class VoicePlayerServiceClass {
    * Serialized to avoid race when play() is called concurrently.
    */
   async play(uri: string, positionMs?: number, playbackKey?: string): Promise<void> {
-    const normalizedKey = normalizeVoicePlaybackKey(playbackKey ?? uri);
+    const keyCandidates = [playbackKey, uri]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((value) => normalizeVoicePlaybackKey(value));
+    const normalizedKey = keyCandidates[0] ?? normalizeVoicePlaybackKey(uri);
     const previous = this.playPromise;
     this.playPromise = (async () => {
       await previous;
 
-      this.audioModeReady = false;
-      await releaseMediaAudioSession();
+      try {
+        this.wantsPlaying = true;
+        await this.preparePlaybackAudioMode();
 
-      if (this.soundRef && this.currentUri === normalizedKey) {
-        const currentStatus = await this.soundRef.getStatusAsync();
-        if (currentStatus.isLoaded) {
-          if (positionMs != null) {
-            const durationMs = currentStatus.durationMillis ?? this.lastStatus.durationMs ?? 0;
-            const nextPosition = Math.max(0, Math.min(positionMs, durationMs));
-            await this.soundRef.setPositionAsync(nextPosition);
-          }
-          if (!currentStatus.isPlaying) {
-            const durationMs = currentStatus.durationMillis ?? 0;
-            const currentPosition = positionMs ?? currentStatus.positionMillis ?? 0;
-            if (durationMs > 0 && currentPosition >= durationMs - 80) {
-              await this.soundRef.setPositionAsync(0);
+        const matchesCurrent =
+          this.soundRef != null &&
+          this.currentUri != null &&
+          (this.currentUri === normalizedKey || keyCandidates.includes(this.currentUri));
+
+        if (matchesCurrent && this.soundRef) {
+          const currentStatus = await this.soundRef.getStatusAsync();
+          if (currentStatus.isLoaded) {
+            if (positionMs != null) {
+              const durationMs = currentStatus.durationMillis ?? this.lastStatus.durationMs ?? 0;
+              const nextPosition = Math.max(0, Math.min(positionMs, durationMs));
+              await this.soundRef.setPositionAsync(nextPosition);
             }
-            await this.soundRef.playAsync();
-            const resumedStatus = await this.soundRef.getStatusAsync();
-            if (resumedStatus.isLoaded) {
+            if (!currentStatus.isPlaying) {
+              const durationMs = currentStatus.durationMillis ?? 0;
+              const currentPosition = positionMs ?? currentStatus.positionMillis ?? 0;
+              if (durationMs > 0 && currentPosition >= durationMs - 80) {
+                await this.soundRef.setPositionAsync(0);
+              }
+              await this.soundRef.playAsync();
+              await this.applyLoadedStatus(this.soundRef);
+            } else {
               this.lastStatus = {
-                positionMs: resumedStatus.positionMillis ?? 0,
-                durationMs: resumedStatus.durationMillis ?? 0,
-                isPlaying: resumedStatus.isPlaying ?? false,
-                rate: resumedStatus.rate ?? this.playbackRate,
+                ...this.lastStatus,
+                isPlaying: true,
               };
               this.notifyListeners({ throttleStore: false });
             }
+            return;
           }
-          return;
         }
-      }
 
-      await this.stopAndUnloadCurrent();
-      await this.ensureAudioMode();
-      if (/^https?:\/\//i.test(uri)) {
-        const streamed = await this.tryPlayFromUriDirect(uri, normalizedKey, positionMs);
-        if (streamed) return;
-      }
-      const playableUri = await this.resolvePlayableUri(uri);
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: playableUri },
-        {
-          shouldPlay: true,
-          progressUpdateIntervalMillis: PROGRESS_UPDATE_INTERVAL_MS,
-          rate: this.playbackRate,
-          shouldCorrectPitch: true,
-          positionMillis: positionMs != null ? Math.max(0, positionMs) : 0,
-        },
-        this.handlePlaybackStatusUpdate,
-        false
-      );
-
-      this.soundRef = sound;
-      this.currentUri = normalizedKey;
-      const status = await sound.getStatusAsync();
-      if (status.isLoaded) {
+        await this.stopAndUnloadCurrent();
+        this.wantsPlaying = true;
+        this.audioModeReady = false;
+        await this.preparePlaybackAudioMode();
+        // Keep key sticky so UI can mark this bubble current while the file loads.
+        this.currentUri = normalizedKey;
         this.lastStatus = {
-          positionMs: status.positionMillis ?? 0,
-          durationMs: status.durationMillis ?? 0,
-          isPlaying: status.isPlaying ?? false,
-          rate: status.rate ?? this.playbackRate,
+          positionMs: positionMs ?? 0,
+          durationMs: this.lastStatus.durationMs,
+          isPlaying: true,
+          rate: this.playbackRate,
         };
         this.notifyListeners({ throttleStore: false });
+
+        if (/^https?:\/\//i.test(uri)) {
+          const streamed = await this.tryPlayFromUriDirect(uri, normalizedKey, positionMs);
+          if (streamed) return;
+        }
+        const playableUri = await this.resolvePlayableUri(uri);
+
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: playableUri },
+          {
+            shouldPlay: true,
+            progressUpdateIntervalMillis: PROGRESS_UPDATE_INTERVAL_MS,
+            rate: this.playbackRate,
+            shouldCorrectPitch: true,
+            positionMillis: positionMs != null ? Math.max(0, positionMs) : 0,
+          },
+          this.handlePlaybackStatusUpdate,
+          false
+        );
+
+        this.soundRef = sound;
+        this.currentUri = normalizedKey;
+        await this.applyLoadedStatus(sound);
+      } catch (error) {
+        this.wantsPlaying = false;
+        this.lastStatus = {
+          ...this.lastStatus,
+          isPlaying: false,
+        };
+        this.notifyListeners({ throttleStore: false });
+        throw error;
       }
     })();
     return this.playPromise;
@@ -338,7 +427,12 @@ class VoicePlayerServiceClass {
   /** Pause current playback. */
   async pause(): Promise<void> {
     const sound = this.soundRef;
-    if (!sound) return;
+    this.wantsPlaying = false;
+    if (!sound) {
+      this.lastStatus = { ...this.lastStatus, isPlaying: false };
+      this.notifyListeners({ throttleStore: false });
+      return;
+    }
 
     try {
       await sound.pauseAsync();
@@ -352,6 +446,7 @@ class VoicePlayerServiceClass {
     } catch {
       this.soundRef = null;
       this.currentUri = null;
+      this.wantsPlaying = false;
       this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
       this.notifyListeners({ throttleStore: false });
       throw new Error('Failed to pause playback');

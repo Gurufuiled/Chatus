@@ -32,7 +32,7 @@ import {
   getTelegramBuildCredentials,
   tdlibClient,
 } from "../services/tdlib/TdlibClient";
-import { applyTdlibParameters } from "../services/tdlib/tdlibBootstrap";
+import { applyTdlibParameters, ensureTdlibReadyForPhoneLogin } from "../services/tdlib/tdlibBootstrap";
 import { probeTdlibAuthStatus } from "../services/tdlib/tdlibAuthState";
 import { throwIfTdError } from "../services/tdlib/tdlibErrors";
 import { runTdlibAuthorizationQuery } from "../services/tdlib/tdlibAuthQueue";
@@ -230,15 +230,12 @@ export function TelegramAuthScreen() {
       if (apiId == null || !apiHash) {
         return telegramAccountStore.getState().authStatus;
       }
-      await applyTdlibParameters();
-      let auth = (await tdlibClient.send({
-        "@type": "getAuthorizationState",
-      })) as { "@type"?: string };
-      throwIfTdError(auth);
-      let t = auth["@type"];
-      if (t === "authorizationStateWaitTdlibParameters") {
-        await applyTdlibParameters();
-        auth = (await tdlibClient.send({
+      let t: string | undefined;
+      try {
+        t = await ensureTdlibReadyForPhoneLogin();
+      } catch {
+        await applyTdlibParameters().catch(() => undefined);
+        const auth = (await tdlibClient.send({
           "@type": "getAuthorizationState",
         })) as { "@type"?: string };
         throwIfTdError(auth);
@@ -257,6 +254,42 @@ export function TelegramAuthScreen() {
         return "ready";
       }
       const current = telegramAccountStore.getState().authStatus;
+      // After logout we already know we need the phone form — don't wait for probe recovery.
+      if (
+        current === "waiting_phone" ||
+        current === "waiting_code" ||
+        current === "waiting_password" ||
+        current === "idle"
+      ) {
+        if (
+          t === "authorizationStateWaitPhoneNumber" ||
+          t === "authorizationStateWaitEmailAddress" ||
+          t === "authorizationStateWaitRegistration"
+        ) {
+          if (current !== "waiting_phone") {
+            telegramAccountStore.getState().setAuthStatus("waiting_phone");
+            await telegramAccountStore.getState().persistSnapshot();
+          }
+          return "waiting_phone";
+        }
+        if (
+          t === "authorizationStateWaitCode" ||
+          t === "authorizationStateWaitEmailCode"
+        ) {
+          if (current !== "waiting_code") {
+            telegramAccountStore.getState().setAuthStatus("waiting_code");
+            await telegramAccountStore.getState().persistSnapshot();
+          }
+          return "waiting_code";
+        }
+        if (t === "authorizationStateWaitPassword") {
+          if (current !== "waiting_password") {
+            telegramAccountStore.getState().setAuthStatus("waiting_password");
+            await telegramAccountStore.getState().persistSnapshot();
+          }
+          return "waiting_password";
+        }
+      }
       const probed = await probeTdlibAuthStatus(current);
       if (probed.status !== current) {
         telegramAccountStore.getState().setAuthStatus(probed.status);
@@ -338,9 +371,9 @@ export function TelegramAuthScreen() {
       }
 
       await withTimeout(
-        applyTdlibParameters(),
+        ensureTdlibReadyForPhoneLogin(),
         30000,
-        "TDLib не смог инициализировать параметры за 30 с. Перезапустите приложение.",
+        "TDLib не смог подготовить вход за 30 с. Перезапустите приложение.",
       );
 
       const authProbe = (await withTimeout(
@@ -351,7 +384,21 @@ export function TelegramAuthScreen() {
         "TDLib не ответил на getAuthorizationState за 20 с.",
       )) as { "@type"?: string };
       throwIfTdError(authProbe);
-      const probeType = authProbe["@type"];
+      let probeType = authProbe["@type"];
+
+      // Last-chance recover if still Closed after ensure (race with native logout).
+      if (
+        probeType === "authorizationStateClosed" ||
+        probeType === "authorizationStateClosing" ||
+        probeType === "authorizationStateLoggingOut" ||
+        probeType === "authorizationStateWaitTdlibParameters"
+      ) {
+        probeType = await withTimeout(
+          ensureTdlibReadyForPhoneLogin(),
+          20000,
+          "TDLib застрял после закрытия сессии. Перезапустите приложение.",
+        );
+      }
 
       if (probeType === "authorizationStateReady") {
         await completeAuthSuccess();
@@ -382,7 +429,7 @@ export function TelegramAuthScreen() {
       ) {
         Alert.alert(
           "Telegram",
-          `Не удалось начать вход (состояние: ${probeType ?? "?"}). Закройте экран и откройте снова.`,
+          `Не удалось начать вход (состояние: ${probeType ?? "?"}). Перезапустите приложение и попробуйте снова.`,
         );
         return;
       }

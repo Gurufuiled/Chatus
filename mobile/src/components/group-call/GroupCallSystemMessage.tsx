@@ -4,8 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { withAlpha } from '../../theme/colors';
 import { MessageTimeStatus } from '../MessageTimeStatus';
+import type { MessageSource } from '../../stores/types';
 import type { GroupCallSystemPayload } from '../../utils/groupCallSystemMessage';
-import { getGroupCallSystemBubbleBackground } from '../../utils/groupCallSystemMessage';
 
 type GroupCallSystemMessageProps = {
   payload: GroupCallSystemPayload;
@@ -13,6 +13,8 @@ type GroupCallSystemMessageProps = {
   onJoin?: () => void;
   time?: string;
   status?: string;
+  isMe?: boolean;
+  source?: MessageSource;
 };
 
 export function GroupCallSystemMessage({
@@ -20,10 +22,11 @@ export function GroupCallSystemMessage({
   canJoin,
   onJoin,
   time,
-  status = 'read',
+  status,
+  isMe = true,
+  source,
 }: GroupCallSystemMessageProps) {
   const { colors } = useTheme();
-  const bubbleBackground = getGroupCallSystemBubbleBackground(colors.bubbleOther);
 
   const durationLine =
     payload.action === 'ended' && payload.duration_minutes
@@ -31,50 +34,47 @@ export function GroupCallSystemMessage({
       : null;
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, isMe ? styles.wrapMe : styles.wrapOther]}>
       <View
         style={[
           styles.card,
           {
-            backgroundColor: bubbleBackground,
-            borderColor: colors.bubbleOtherBorder,
+            backgroundColor: colors.bubbleOther,
+            borderColor: withAlpha(colors.bubbleOtherBorder, 0.7),
           },
         ]}
       >
         <View style={styles.row}>
-          <View style={[styles.iconCircle, { backgroundColor: withAlpha(colors.accent, 0.14) }]}>
+          <View style={[styles.iconCircle, { backgroundColor: withAlpha(colors.accent, 0.18) }]}>
             <Feather name="phone" size={16} color={colors.accent} />
           </View>
-          <View style={styles.textCol}>
+          <View style={styles.body}>
             <Text style={[styles.text, { color: colors.textPrimary }]}>{payload.display}</Text>
             {durationLine ? (
-              <Text style={[styles.duration, { color: colors.textSecondary }]}>{durationLine}</Text>
+              <Text style={[styles.duration, { color: colors.accent }]}>{durationLine}</Text>
+            ) : null}
+            {payload.action === 'started' && canJoin && onJoin ? (
+              <Pressable
+                onPress={onJoin}
+                style={({ pressed }) => [
+                  styles.joinButton,
+                  { backgroundColor: colors.accent },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.joinText}>Присоединиться</Text>
+              </Pressable>
             ) : null}
           </View>
         </View>
-
-        {payload.action === 'started' && canJoin && onJoin ? (
-          <Pressable
-            onPress={onJoin}
-            style={({ pressed }) => [
-              styles.joinButton,
-              { backgroundColor: colors.accent },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.joinText}>Присоединиться</Text>
-          </Pressable>
-        ) : null}
-
         {time ? (
-          <View style={styles.metaRow}>
+          <View style={styles.meta}>
             <MessageTimeStatus
               time={time}
-              status={status}
-              isMe={false}
+              status={status ?? 'sent'}
+              isMe={isMe}
               compact
-              timeColor={colors.textSecondary}
-              iconColor={colors.textSecondary}
+              source={source}
             />
           </View>
         ) : null}
@@ -85,18 +85,24 @@ export function GroupCallSystemMessage({
 
 const styles = StyleSheet.create({
   wrap: {
-    alignItems: 'flex-start',
     paddingVertical: 4,
     paddingHorizontal: 10,
-    maxWidth: '88%',
+    width: '100%',
+  },
+  wrapMe: {
+    alignItems: 'flex-end',
+  },
+  wrapOther: {
+    alignItems: 'flex-start',
   },
   card: {
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    alignSelf: 'flex-start',
-    minWidth: 220,
+    paddingTop: 10,
+    paddingBottom: 6,
+    maxWidth: '86%',
+    minWidth: 210,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   row: {
     flexDirection: 'row',
@@ -111,34 +117,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 1,
   },
-  textCol: {
-    flex: 1,
+  body: {
+    flexShrink: 1,
     minWidth: 0,
+    paddingRight: 4,
   },
   text: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 15,
+    fontWeight: '600',
+    lineHeight: 20,
   },
   duration: {
-    marginTop: 4,
+    marginTop: 3,
     fontSize: 13,
-    lineHeight: 16,
+    fontWeight: '500',
   },
   joinButton: {
     marginTop: 10,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    alignSelf: 'stretch',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     alignItems: 'center',
+    alignSelf: 'stretch',
   },
   joinText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
-  metaRow: {
-    marginTop: 6,
+  meta: {
+    marginTop: 4,
     alignSelf: 'flex-end',
   },
   pressed: {

@@ -32,9 +32,26 @@ export function parseGroupCallSystemContent(
   return null;
 }
 
-/** Solid incoming-bubble fill for in-chat group call system messages (Android parity). */
-export function getGroupCallSystemBubbleBackground(bubbleOtherColor: string): string {
-  return bubbleOtherColor;
+/** Human-readable chat-list preview for group-call system messages. */
+export function formatGroupCallDialogPreview(
+  content: string | null | undefined,
+): string | null {
+  const payload = parseGroupCallSystemContent(content);
+  if (payload) {
+    const display = payload.display.trim();
+    if (display) return display;
+    return payload.action === 'ended'
+      ? 'Голосовой звонок завершён'
+      : 'Голосовой звонок';
+  }
+
+  // Broken/truncated previews sometimes lose JSON punctuation.
+  if (content && /kind["\s:=]*group_call/.test(content)) {
+    if (/ended|заверш/i.test(content)) return 'Голосовой звонок завершён';
+    return 'Голосовой звонок';
+  }
+
+  return null;
 }
 
 export function formatGroupCallParticipantNames(

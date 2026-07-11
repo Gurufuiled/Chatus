@@ -206,7 +206,7 @@ export function ChatsStack() {
       <Stack.Screen
         name="ChatProfile"
         component={ChatProfileScreen}
-        options={{ title: 'Профиль', headerBackTitle: 'Назад' }}
+        options={{ headerShown: false }}
       />
 
       <Stack.Screen

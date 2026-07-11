@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
-import { withAlpha } from '../../theme/colors';
 import type { ApiGroupCallRoom } from '../../services/groupCallService';
 
 type GroupCallBannerProps = {
@@ -13,49 +13,50 @@ type GroupCallBannerProps = {
   onOpen: () => void;
 };
 
+function formatParticipantCount(count: number) {
+  if (count === 1) return '1 участник';
+  if (count > 1 && count < 5) return `${count} участника`;
+  return `${count} участников`;
+}
+
 export function GroupCallBanner({
   activeRoom,
   isUserInCall,
-  participantPreview,
   onJoin,
   onOpen,
 }: GroupCallBannerProps) {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors.accent), [colors.accent]);
 
   if (!activeRoom) return null;
 
   const count = activeRoom.participant_count || 0;
-  const subtitle =
-    participantPreview?.trim() ||
-    (count > 0 ? `${count} участник${count === 1 ? '' : count < 5 ? 'а' : 'ов'}` : '');
+  const countLabel = count > 0 ? formatParticipantCount(count) : '…';
 
   return (
     <View style={styles.wrap}>
       <View style={styles.card}>
-        <Text style={styles.emoji}>🔊</Text>
-        <View style={styles.textCol}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
-            {`Голосовой чат · ${count || '…'} участник${count === 1 ? '' : count < 5 ? 'а' : 'ов'}`}
+        <View style={styles.textRow}>
+          <View style={styles.dot} />
+          <Text style={styles.title} numberOfLines={1}>
+            {`Голосовой чат · ${countLabel}`}
           </Text>
-          {subtitle ? (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-              {subtitle}
-            </Text>
-          ) : null}
         </View>
         <Pressable
           onPress={isUserInCall ? onOpen : onJoin}
           style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
         >
-          <Text style={styles.ctaText}>{isUserInCall ? 'Открыть' : 'Присоединиться'}</Text>
+          <Feather name="phone" size={15} color={colors.accent} />
+          <Text style={[styles.ctaText, { color: colors.accent }]}>
+            {isUserInCall ? 'Открыть' : 'Присоединиться'}
+          </Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-function createStyles(colors: { accent: string; textPrimary: string; textSecondary: string }) {
+function createStyles(accent: string) {
   return StyleSheet.create({
     wrap: {
       paddingHorizontal: 12,
@@ -64,40 +65,48 @@ function createStyles(colors: { accent: string; textPrimary: string; textSeconda
     },
     card: {
       borderRadius: 14,
-      backgroundColor: withAlpha(colors.accent, 0.12),
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+      backgroundColor: accent,
+      paddingLeft: 14,
+      paddingRight: 8,
+      paddingVertical: 8,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
+      minHeight: 48,
     },
-    emoji: {
-      fontSize: 20,
-    },
-    textCol: {
+    textRow: {
       flex: 1,
       minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    dot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: '#FFFFFF',
     },
     title: {
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    subtitle: {
-      marginTop: 2,
-      fontSize: 13,
+      flex: 1,
+      color: '#FFFFFF',
+      fontSize: 15,
+      fontWeight: '600',
     },
     cta: {
       borderRadius: 12,
-      backgroundColor: colors.accent,
+      backgroundColor: '#FFFFFF',
       paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingVertical: 9,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
     },
     ctaPressed: {
       opacity: 0.88,
     },
     ctaText: {
-      color: '#fff',
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: '700',
     },
   });

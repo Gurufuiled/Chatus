@@ -1,13 +1,8 @@
 import assert from 'node:assert/strict';
 import {
-  getGroupCallSystemBubbleBackground,
+  formatGroupCallDialogPreview,
   parseGroupCallSystemContent,
 } from './groupCallSystemMessage';
-
-function testBubbleBackgroundUsesIncomingBubbleColor() {
-  assert.equal(getGroupCallSystemBubbleBackground('#FFFFFF'), '#FFFFFF');
-  assert.equal(getGroupCallSystemBubbleBackground('#2B2C2E'), '#2B2C2E');
-}
 
 function testParseStartedPayload() {
   const payload = parseGroupCallSystemContent(
@@ -43,9 +38,26 @@ function testParseRejectsInvalidPayload() {
   assert.equal(parseGroupCallSystemContent(JSON.stringify({ kind: 'other' })), null);
 }
 
-testBubbleBackgroundUsesIncomingBubbleColor();
+function testFormatDialogPreview() {
+  assert.equal(
+    formatGroupCallDialogPreview(
+      JSON.stringify({
+        v: 1,
+        kind: 'group_call',
+        action: 'started',
+        room_id: 'room-1',
+        display: 'Аня начала голосовой чат',
+      }),
+    ),
+    'Аня начала голосовой чат',
+  );
+  assert.equal(formatGroupCallDialogPreview('"v":1kind:group_call'), 'Голосовой звонок');
+  assert.equal(formatGroupCallDialogPreview('hello'), null);
+}
+
 testParseStartedPayload();
 testParseEndedPayloadWithDuration();
 testParseRejectsInvalidPayload();
+testFormatDialogPreview();
 
 console.log('groupCallSystemMessage.test.ts: ok');

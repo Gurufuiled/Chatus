@@ -109,7 +109,7 @@ export const ChatProfileOverlayLayer = React.memo(function ChatProfileOverlayLay
         onClose={onCloseMoreMenu}
         onSelect={onMoreMenuAction}
         horizontalAlign="end"
-        offsetY={8}
+        offsetY={10}
       />
 
       <ChatProfileMediaViewerModal

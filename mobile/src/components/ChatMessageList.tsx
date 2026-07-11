@@ -1355,8 +1355,10 @@ const MessageRow = React.memo(function MessageRow({
             payload={payload}
             canJoin={canJoin}
             onJoin={canJoin && onJoinGroupCall ? () => onJoinGroupCall(payload.room_id) : undefined}
-            time={formatTime(bodyItem.created_at)}
-            status={bodyItem.status}
+            time={formatTime(item.created_at)}
+            status={item.status}
+            isMe={isMe}
+            source={item.source}
           />
         );
       }

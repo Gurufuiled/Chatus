@@ -21,6 +21,7 @@ interface CustomAndroidChatHeaderProps {
   navigation: NativeStackNavigationProp<ChatsStackParamList, 'Chat'> | { navigate: (...args: unknown[]) => void };
   /** When set, title row opens this instead of Chatus GroupProfile / ChatProfile. */
   onTitlePress?: () => void;
+  onSearchPress?: () => void;
   /** Telegram chat: never fall back to Chatus profile routes when `onTitlePress` is unset. */
   telegramTitleOnly?: boolean;
   titleNavDisabled?: boolean;
@@ -36,6 +37,7 @@ export function CustomAndroidChatHeader({
   chatId,
   navigation,
   onTitlePress,
+  onSearchPress,
   telegramTitleOnly = false,
   titleNavDisabled = false,
   floating = false,
@@ -43,6 +45,9 @@ export function CustomAndroidChatHeader({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const hasRightActions = Boolean(onSearchPress);
+  const pillLeft = PILL_TITLE_SIDE_INSET;
+  const pillRight = hasRightActions ? 104 : PILL_TITLE_SIDE_INSET;
 
   const openProfile = () => {
     if (isGroupChat) {
@@ -90,7 +95,10 @@ export function CustomAndroidChatHeader({
           pointerEvents="box-none"
           style={[
             styles.pillTitleRoot,
-            { left: PILL_TITLE_SIDE_INSET, right: PILL_TITLE_SIDE_INSET },
+            {
+              left: pillLeft,
+              right: pillRight,
+            },
           ]}
         >
           <ChatPillHeaderTitle
@@ -106,6 +114,22 @@ export function CustomAndroidChatHeader({
             accessibilityHint="Открывает профиль"
           />
         </View>
+
+        {hasRightActions ? (
+          <View style={styles.rightActions}>
+            {onSearchPress ? (
+              <Pressable
+                onPress={onSearchPress}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Поиск"
+                style={({ pressed }) => [styles.actionButton, pressed && styles.backButtonPressed]}
+              >
+                <Feather name="search" size={22} color={colors.textPrimary} />
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -162,6 +186,22 @@ function createStyles(colors: ThemeColors) {
       bottom: 5,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    rightActions: {
+      marginLeft: 'auto',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    actionButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.inputBackgroundSolid,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.separator,
     },
   });
 }

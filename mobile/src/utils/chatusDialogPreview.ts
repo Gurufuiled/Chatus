@@ -3,6 +3,7 @@ import type { Chat } from '../stores/types';
 import type { Message } from '../stores/types';
 import { isChatusStickerMessage } from '../stickers/chatusStickerCatalog';
 import { getCompositeTextBody, tryParseCompositeMessage } from '../stickers/chatusCompositePayload';
+import { formatGroupCallDialogPreview } from './groupCallSystemMessage';
 
 const DIALOG_PREVIEW_TEXT_MAX = 80;
 
@@ -17,6 +18,32 @@ function excerptDialogPreviewText(text: string): string {
   const trimmed = text.trim();
   if (trimmed.length <= DIALOG_PREVIEW_TEXT_MAX) return trimmed;
   return `${trimmed.slice(0, DIALOG_PREVIEW_TEXT_MAX - 1).trimEnd()}…`;
+}
+
+function sanitizeRawDialogPreview(raw: string): string {
+  const text = raw.trim();
+  if (!text) return '';
+  if (isChatusStickerMessage(text)) return 'Стикер';
+
+  // Defensive normalization for transient raw payload/log flashes in chat list.
+  if (/messageVoiceNote|voice_note|\"msg_type\"\s*:\s*\"voice\"/i.test(text)) return 'Голосовое';
+  if (/messageVideoNote|video_note/i.test(text)) return 'Видеосообщение';
+  if (/messageSticker|sticker/i.test(text)) return 'Стикер';
+  if (/messagePhoto|\"msg_type\"\s*:\s*\"image\"/i.test(text)) return 'Фотография';
+  if (/messageVideo|\"msg_type\"\s*:\s*\"video\"/i.test(text)) return 'Видео';
+
+  // If a backend/transport payload leaks into preview, hide technical text.
+  const looksLikePayload =
+    text.startsWith('{') ||
+    text.startsWith('[') ||
+    text.includes('"@type"') ||
+    text.includes('"message"') ||
+    text.includes('line_sync') ||
+    text.includes('transport') ||
+    text.includes('payload');
+  if (looksLikePayload) return 'Сообщение';
+
+  return excerptDialogPreviewText(text);
 }
 
 function resolveStoredMediaUri(raw: string | null | undefined): string | null {
@@ -117,6 +144,15 @@ export function buildChatusDialogPreviewFromMessage(
     return { text: '', thumbnailUris: [], accentLabel: false };
   }
 
+  const groupCallPreview = formatGroupCallDialogPreview(msg.content);
+  if (groupCallPreview || msg.msg_type === 'system') {
+    return {
+      text: groupCallPreview ?? 'Системное сообщение',
+      thumbnailUris: [],
+      accentLabel: true,
+    };
+  }
+
   const textOnly = textPreviewFromContent(msg);
   if (textOnly) return textOnly;
 
@@ -204,9 +240,19 @@ export function buildChatusDialogPreviewForChat(
     return buildChatusDialogPreviewFromMessage(lastMessage);
   }
 
-  const fallback =
+  const rawFallback =
     chat.last_message_preview?.trim() ||
     (chat.chat_type === 'channel' ? chat.description?.trim() || 'Канал' : '');
+  const fallback = sanitizeRawDialogPreview(rawFallback);
+
+  const groupCallPreview = formatGroupCallDialogPreview(fallback);
+  if (groupCallPreview) {
+    return {
+      text: groupCallPreview,
+      thumbnailUris: [],
+      accentLabel: true,
+    };
+  }
 
   return {
     text: fallback,

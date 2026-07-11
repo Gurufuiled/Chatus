@@ -36,8 +36,13 @@ import { ChatProfileDeleteHistoryPanel } from '../components/ChatProfileDeleteHi
 import { ChatProfileBlockSheet } from '../components/ChatProfileBlockSheet';
 import type { ChatsStackParamList } from '../navigation/types';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
-import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
+import {
+  applyTdlibParameters,
+  scheduleBackgroundTdlibRecovery,
+  waitForTdlibAuthorizationReady,
+} from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
+import { probeTdlibAuthStatus } from '../services/tdlib/tdlibAuthState';
 import { useTheme } from '../contexts/ThemeContext';
 import { uiStore } from '../stores/uiStore';
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
@@ -49,6 +54,7 @@ import {
   getNestedRecord,
   loadLastReadOutboxMessageId,
   mapTdMessages,
+  scheduleTdlibFileDownload,
 } from './telegramChat/tdlibMapping';
 import {
   tdlibBlockUser,
@@ -56,7 +62,6 @@ import {
   tdlibLeaveChat,
   tdlibSetChatMuted,
   tdlibUnblockUser,
-  tdlibToggleChatIsPinned,
 } from './telegramChat/tdlibChatActions';
 import {
   fetchTdlibChatPhotoUri,
@@ -68,7 +73,10 @@ import {
 } from './telegramChat/tdlibUserProfile';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramRowsToProfileBuckets } from './telegramChat/telegramProfileMedia';
-import { patchMessagesWithTdlibFile } from './telegramChat/telegramFileUpdates';
+import {
+  collectPendingTdlibFileIds,
+  patchMessagesWithTdlibFile,
+} from './telegramChat/telegramFileUpdates';
 import type { TelegramMessageRow } from './telegramChat/types';
 
 if (Platform.OS === 'android') {
@@ -209,9 +217,6 @@ export function TelegramChatProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(routeAvatarUri ?? null);
   const [isMuted, setIsMuted] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
-  const [isPinned, setIsPinned] = useState(() => {
-    return telegramAccountStore.getState().dialogs.find((d) => d.chatId === telegramChatId)?.isPinned ?? false;
-  });
   const [infoRows, setInfoRows] = useState<InfoRow[]>([]);
   const [peerUserId, setPeerUserId] = useState<number | null>(null);
   const [isGroupPeer, setIsGroupPeer] = useState(false);
@@ -262,9 +267,25 @@ export function TelegramChatProfileScreen() {
   const ensureReady = useCallback(async () => {
     await applyTdlibParameters();
     const { ready, state } = await waitForTdlibAuthorizationReady();
-    if (!ready) {
-      throw new Error(`Сессия Telegram не готова (${state ?? 'таймаут'})`);
+    if (ready) return;
+    const store = telegramAccountStore.getState();
+    const shouldProtectSession =
+      store.authStatus === 'ready' ||
+      store.telegramUserId != null ||
+      store.dialogs.length > 0;
+    const probe = await probeTdlibAuthStatus(shouldProtectSession ? 'ready' : store.authStatus);
+    if (probe.status === 'ready') return;
+    scheduleBackgroundTdlibRecovery();
+    if (shouldProtectSession) {
+      throw new Error('Telegram временно переподключается. Повторите действие через пару секунд.');
     }
+    throw new Error(`Сессия Telegram не готова (${state ?? probe.state ?? 'таймаут'})`);
+  }, []);
+
+  const warmupPendingMediaDownloads = useCallback((rows: TelegramMessageRow[]) => {
+    const pending = collectPendingTdlibFileIds(rows);
+    // Keep startup snappy: warm up a bounded subset, then updateFile events fill the rest.
+    pending.slice(0, 120).forEach((fileId) => scheduleTdlibFileDownload(fileId, 24));
   }, []);
 
   useLayoutEffect(() => {
@@ -371,6 +392,33 @@ export function TelegramChatProfileScreen() {
           return mapped;
         };
 
+        const loadAndApplyHistory = async (lastRead: number) => {
+          const mapped = await loadRichHistory(lastRead);
+          if (cancelled) return;
+          setHistoryRows(mapped);
+          warmupPendingMediaDownloads(mapped);
+          // One delayed retry improves completeness when TDLib indexes/media settle.
+          setTimeout(() => {
+            void (async () => {
+              if (cancelled) return;
+              try {
+                await ensureReady();
+                const retryMapped = await loadRichHistory(lastRead);
+                if (cancelled) return;
+                warmupPendingMediaDownloads(retryMapped);
+                setHistoryRows((prev) => {
+                  const byId = new Map<string, TelegramMessageRow>();
+                  prev.forEach((row) => byId.set(row.id, row));
+                  retryMapped.forEach((row) => byId.set(row.id, row));
+                  return Array.from(byId.values()).sort((a, b) => b.dateMs - a.dateMs);
+                });
+              } catch {
+                // best effort
+              }
+            })();
+          }, 2200);
+        };
+
         const peer = await tdlibResolveChatPeer(chatId);
         if (cancelled) return;
 
@@ -436,8 +484,7 @@ export function TelegramChatProfileScreen() {
           setIsBlocked(blocked);
 
           const lastRead = await loadLastReadOutboxMessageId(chatId);
-          const mapped = await loadRichHistory(lastRead);
-          if (!cancelled) setHistoryRows(mapped);
+          await loadAndApplyHistory(lastRead);
           return;
         }
 
@@ -489,8 +536,7 @@ export function TelegramChatProfileScreen() {
         setInfoRows(buildTdlibInfoRows(null, null, description));
 
         const lastRead = await loadLastReadOutboxMessageId(chatId);
-        const mapped = await loadRichHistory(lastRead);
-        if (!cancelled) setHistoryRows(mapped);
+        await loadAndApplyHistory(lastRead);
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Не удалось загрузить профиль');
@@ -857,11 +903,6 @@ export function TelegramChatProfileScreen() {
         iconImage: WALLPAPER_MENU_ICON,
       },
       {
-        key: 'toggle-pin',
-        label: isPinned ? 'Открепить' : 'Закрепить',
-        icon: 'pin' as any,
-      },
-      {
         key: 'delete-chat',
         label: isBroadcastChannel ? 'Покинуть канал' : isGroupPeer ? 'Выйти из чата' : 'Удалить чат',
         icon: 'trash-2',
@@ -876,7 +917,7 @@ export function TelegramChatProfileScreen() {
       });
     }
     return items;
-  }, [isBlocked, isBroadcastChannel, isGroupPeer, peerUserId, isPinned]);
+  }, [isBlocked, isBroadcastChannel, isGroupPeer, peerUserId]);
 
   const moreMenuDeletePanelHeight = isGroupPeer ? 198 : 198;
 
@@ -897,14 +938,6 @@ export function TelegramChatProfileScreen() {
     (key: string) => {
       if (key === 'change-wallpaper') {
         openThemePicker();
-        return;
-      }
-      if (key === 'toggle-pin') {
-        closeMoreMenu(() => {
-          const nextPinned = !isPinned;
-          setIsPinned(nextPinned);
-          tdlibToggleChatIsPinned(chatId, nextPinned).catch(() => setIsPinned(isPinned));
-        });
         return;
       }
       if (key === 'toggle-block') {

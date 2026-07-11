@@ -217,18 +217,35 @@ export function isSameGroup(
   );
 }
 
+function isUnconfirmedOutgoingTwin(
+  item: TelegramMessageRow,
+  next: TelegramMessageRow,
+): boolean {
+  if (!next.outgoing || next.messageId <= 0) return false;
+  if (next.status === 'sending' || next.status === 'failed') return false;
+  if (!item.outgoing || item.status !== 'sending') return false;
+  if (item.kind !== next.kind) return false;
+  if (Math.abs(item.dateMs - next.dateMs) >= 120_000) return false;
+
+  if (next.kind === 'text') {
+    return (item.text ?? '').trim() === (next.text ?? '').trim();
+  }
+  // voice / media / album: one recent sending bubble of the same kind is the twin
+  return true;
+}
+
 export function upsertMessage(
   rows: TelegramMessageRow[],
   next: TelegramMessageRow,
   oldMessageId?: number | null,
 ): TelegramMessageRow[] {
-  const withoutSame = rows.filter(
-    (item) =>
-      item.id !== next.id &&
-      item.messageId !== next.messageId &&
-      (oldMessageId == null || item.messageId !== oldMessageId) &&
-      !(oldMessageId != null && item.albumMessageIds?.includes(oldMessageId)),
-  );
+  const withoutSame = rows.filter((item) => {
+    if (item.id === next.id || item.messageId === next.messageId) return false;
+    if (oldMessageId != null && item.messageId === oldMessageId) return false;
+    if (oldMessageId != null && item.albumMessageIds?.includes(oldMessageId)) return false;
+    if (isUnconfirmedOutgoingTwin(item, next)) return false;
+    return true;
+  });
   return [next, ...withoutSame].sort((a, b) => b.messageId - a.messageId);
 }
 
