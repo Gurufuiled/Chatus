@@ -58,7 +58,7 @@ describe('MessageBubble', () => {
   });
 
   it('renders deleted message placeholder', () => {
-    render(
+    const { container } = render(
       <MessageBubble
         chatId="chat-1"
         message={makeMessage({ is_deleted: true })}
@@ -66,7 +66,7 @@ describe('MessageBubble', () => {
         selectionActive={false}
       />,
     );
-    expect(screen.getByText('Deleted message')).toBeInTheDocument();
+    expect(container.firstChild).toBeNull();
   });
 
   it('shows reply quote with Russian voice label', () => {

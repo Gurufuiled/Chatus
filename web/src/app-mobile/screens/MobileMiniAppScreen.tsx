@@ -156,15 +156,25 @@ export function MobileMiniAppScreen({ appId, title }: MobileMiniAppScreenProps) 
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow || !bridgeContext) return;
+
+    let targetOrigin = session?.base_url ? new URL(session.base_url).origin : '*';
+    if (targetOrigin === '*' && iframe.src) {
+      try {
+        targetOrigin = new URL(iframe.src).origin;
+      } catch {
+        // ignore invalid URL
+      }
+    }
+
     iframe.contentWindow.postMessage(
       JSON.stringify({
         type: 'theme',
         themeParams: bridgeContext.themeParams,
         colorScheme: bridgeContext.colorScheme,
       }),
-      '*',
+      targetOrigin,
     );
-  }, [bridgeContext]);
+  }, [bridgeContext, session?.base_url]);
 
   const handleBack = useCallback(() => {
     if (window.history.length > 1) {
