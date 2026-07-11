@@ -19,6 +19,7 @@ interface MobileChannelPostComposerProps {
   disabled?: boolean;
   keyboardLift?: number;
   composerPaddingBottom?: number;
+  onComposerPointerDown?: () => void;
 }
 
 export function MobileChannelPostComposer({
@@ -26,6 +27,7 @@ export function MobileChannelPostComposer({
   disabled = false,
   keyboardLift = 0,
   composerPaddingBottom,
+  onComposerPointerDown,
 }: MobileChannelPostComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -214,6 +216,7 @@ export function MobileChannelPostComposer({
         type="file"
         accept={COMPOSER_ACCEPT}
         multiple
+        tabIndex={-1}
         className="mobile-channel-post-composer__file-input"
         onChange={(e) => {
           handleFilesSelected(e.target.files);
@@ -272,6 +275,10 @@ export function MobileChannelPostComposer({
                     onChange={(e) => setDraft(channelId, e.target.value)}
                     onInput={handleInput}
                     onKeyDown={handleKeyDown}
+                    onMouseDown={() => onComposerPointerDown?.()}
+                    onTouchStart={() => onComposerPointerDown?.()}
+                    enterKeyHint="send"
+                    autoComplete="off"
                     disabled={isDisabled}
                     aria-label={hasAttachments ? 'Подпись к публикации' : 'Текст публикации'}
                   />

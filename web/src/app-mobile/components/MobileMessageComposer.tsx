@@ -22,6 +22,8 @@ interface MobileMessageComposerProps {
   disabled?: boolean;
   keyboardLift?: number;
   composerPaddingBottom?: number;
+  /** Call from textarea onMouseDown so iOS Safari pre-lifts before focus. */
+  onComposerPointerDown?: () => void;
 }
 
 export function MobileMessageComposer({
@@ -29,6 +31,7 @@ export function MobileMessageComposer({
   disabled = false,
   keyboardLift = 0,
   composerPaddingBottom,
+  onComposerPointerDown,
 }: MobileMessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const draft = useComposerStore((s) => s.drafts[chatId] ?? '');
@@ -230,6 +233,11 @@ export function MobileMessageComposer({
                     onChange={(e) => setDraft(chatId, e.target.value)}
                     onInput={handleInput}
                     onKeyDown={handleKeyDown}
+                    onMouseDown={() => onComposerPointerDown?.()}
+                    onTouchStart={() => onComposerPointerDown?.()}
+                    enterKeyHint="send"
+                    autoComplete="off"
+                    autoCorrect="on"
                     disabled={isDisabled}
                     aria-label={hasAttachments ? 'Подпись к медиа' : 'Текст сообщения'}
                   />

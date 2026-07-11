@@ -30,6 +30,7 @@ interface MobileDiscussionComposerProps {
   disableMedia?: boolean;
   keyboardLift?: number;
   composerPaddingBottom?: number;
+  onComposerPointerDown?: () => void;
   onMessageSent?: () => void;
 }
 
@@ -43,6 +44,7 @@ export function MobileDiscussionComposer({
   disableMedia = false,
   keyboardLift = 0,
   composerPaddingBottom,
+  onComposerPointerDown,
   onMessageSent,
 }: MobileDiscussionComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -384,6 +386,7 @@ export function MobileDiscussionComposer({
         type="file"
         accept={COMPOSER_ACCEPT}
         multiple
+        tabIndex={-1}
         className="mobile-channel-post-composer__file-input"
         onChange={(e) => {
           handleFilesSelected(e.target.files);
@@ -455,6 +458,10 @@ export function MobileDiscussionComposer({
                     onChange={(e) => setDraft(composerId, e.target.value)}
                     onInput={handleInput}
                     onKeyDown={handleKeyDown}
+                    onMouseDown={() => onComposerPointerDown?.()}
+                    onTouchStart={() => onComposerPointerDown?.()}
+                    enterKeyHint="send"
+                    autoComplete="off"
                     disabled={isDisabled}
                     aria-label={hasAttachments ? 'Подпись к медиа' : 'Текст комментария'}
                   />

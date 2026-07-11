@@ -138,7 +138,7 @@ export function MobileChannelDiscussionScreen({
     s.replyChatId === composerId ? s.replyToMessageId : null,
   );
   const hasReply = !!replyToMessageId;
-  const { keyboardLift, composerPaddingBottom } = useMobileComposerKeyboard();
+  const { keyboardLift, composerPaddingBottom, triggerPreLift } = useMobileComposerKeyboard();
 
   const [menuMessage, setMenuMessage] = useState<MappedMessage | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{
@@ -350,6 +350,7 @@ export function MobileChannelDiscussionScreen({
         ref={scrollRef}
         className="mobile-channel-discussion__scroll"
         onScroll={handleDiscussionScroll}
+        style={keyboardLift > 0 ? { paddingBottom: keyboardLift + 8 } : undefined}
       >
         {post ? (
           <div className="mobile-channel-discussion__post">
@@ -434,6 +435,7 @@ export function MobileChannelDiscussionScreen({
           disableMedia={disableMediaComments}
           keyboardLift={keyboardLift}
           composerPaddingBottom={composerPaddingBottom}
+          onComposerPointerDown={triggerPreLift}
           onMessageSent={handleSendSuccessScroll}
         />
       ) : (

@@ -26,7 +26,7 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
   const subscribe = useSubscribeChannelMutation();
   const checkout = useMockCheckoutChannelMutation();
   const toggleReaction = useToggleChannelReactionMutation();
-  const { keyboardLift, composerPaddingBottom } = useMobileComposerKeyboard();
+  const { keyboardLift, composerPaddingBottom, triggerPreLift } = useMobileComposerKeyboard();
 
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
 
@@ -222,6 +222,7 @@ export function MobileChannelFeedScreen({ channelId }: MobileChannelFeedScreenPr
           channelId={channelId}
           keyboardLift={keyboardLift}
           composerPaddingBottom={composerPaddingBottom}
+          onComposerPointerDown={triggerPreLift}
         />
       ) : null}
 

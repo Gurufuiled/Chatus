@@ -35,7 +35,7 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
     if (!chat || chat.chat_type !== 'channel') return;
     navigate({ to: '/channel/$channelId', params: { channelId: chat.id }, replace: true });
   }, [chat, navigate]);
-  const { keyboardLift, composerPaddingBottom } = useMobileComposerKeyboard();
+  const { keyboardLift, composerPaddingBottom, triggerPreLift } = useMobileComposerKeyboard();
   const [forwardMessageIds, setForwardMessageIds] = useState<string[]>([]);
   const closeForward = useCallback(() => setForwardMessageIds([]), []);
 
@@ -161,6 +161,7 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
         disabled={messagesLoading}
         keyboardLift={keyboardLift}
         composerPaddingBottom={composerPaddingBottom}
+        onComposerPointerDown={triggerPreLift}
       />
       <MobileMessageContextMenu
         chatId={chatId}
