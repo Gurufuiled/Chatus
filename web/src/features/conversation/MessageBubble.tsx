@@ -70,7 +70,15 @@ export function MessageBubble({
   const groupCall = useOptionalGroupCall();
 
   if (message.is_deleted) {
-    return null;
+    return (
+      <div className={`message-stack${isOutgoing ? ' message-stack--outgoing' : ' message-stack--incoming'}`}>
+        <div className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}`}>
+          <div className="message-bubble__content">
+            <p className="message-bubble__text message-bubble__text--placeholder">Deleted message</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const { data: messages } = useMessagesQuery(chatId);

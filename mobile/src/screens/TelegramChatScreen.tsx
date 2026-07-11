@@ -2967,6 +2967,12 @@ export function TelegramChatScreen() {
                 { paddingTop: CHAT_MSG_VERTICAL_PADDING + inputBarHeight },
               ]}
               keyboardShouldPersistTaps="handled"
+              // ⚡ Bolt: Added virtualization props to optimize long message lists
+              removeClippedSubviews={Platform.OS === 'android'}
+              initialNumToRender={12}
+              maxToRenderPerBatch={Platform.OS === 'android' ? 5 : 8}
+              updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : 45}
+              windowSize={Platform.OS === 'android' ? 5 : 8}
               refreshing={loading}
               onRefresh={() => void loadHistory(false)}
               onEndReached={() => void loadHistory(true)}

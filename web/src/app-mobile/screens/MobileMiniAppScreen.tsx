@@ -156,13 +156,14 @@ export function MobileMiniAppScreen({ appId, title }: MobileMiniAppScreenProps) 
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow || !bridgeContext) return;
+    const targetOrigin = iframe.src ? new URL(iframe.src).origin : '*';
     iframe.contentWindow.postMessage(
       JSON.stringify({
         type: 'theme',
         themeParams: bridgeContext.themeParams,
         colorScheme: bridgeContext.colorScheme,
       }),
-      '*',
+      targetOrigin,
     );
   }, [bridgeContext]);
 
