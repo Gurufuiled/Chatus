@@ -98,12 +98,18 @@ export function MobileMiniAppScreen({ appId, title }: MobileMiniAppScreenProps) 
   const injectBridge = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe || !bridgeScript || !bridgeContext) return;
-    injectBridgeIntoFrame(iframe, bridgeScript, {
-      themeParams: bridgeContext.themeParams,
-      colorScheme: bridgeContext.colorScheme,
-      viewportHeight: bridgeContext.viewportHeight,
-    });
-  }, [bridgeContext, bridgeScript]);
+    const targetOrigin = session?.base_url ? new URL(session.base_url).origin : '*';
+    injectBridgeIntoFrame(
+      iframe,
+      bridgeScript,
+      {
+        themeParams: bridgeContext.themeParams,
+        colorScheme: bridgeContext.colorScheme,
+        viewportHeight: bridgeContext.viewportHeight,
+      },
+      targetOrigin
+    );
+  }, [bridgeContext, bridgeScript, session?.base_url]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -156,15 +162,16 @@ export function MobileMiniAppScreen({ appId, title }: MobileMiniAppScreenProps) 
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe?.contentWindow || !bridgeContext) return;
+    const targetOrigin = session?.base_url ? new URL(session.base_url).origin : '*';
     iframe.contentWindow.postMessage(
       JSON.stringify({
         type: 'theme',
         themeParams: bridgeContext.themeParams,
         colorScheme: bridgeContext.colorScheme,
       }),
-      '*',
+      targetOrigin,
     );
-  }, [bridgeContext]);
+  }, [bridgeContext, session?.base_url]);
 
   const handleBack = useCallback(() => {
     if (window.history.length > 1) {

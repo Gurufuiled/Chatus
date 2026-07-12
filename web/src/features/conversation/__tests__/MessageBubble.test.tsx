@@ -57,8 +57,8 @@ describe('MessageBubble', () => {
     vi.mocked(useMessagesQuery).mockReturnValue(mockMessagesQuery([]));
   });
 
-  it('renders deleted message placeholder', () => {
-    render(
+  it('does not render anything for a deleted message root', () => {
+    const { container } = render(
       <MessageBubble
         chatId="chat-1"
         message={makeMessage({ is_deleted: true })}
@@ -66,7 +66,7 @@ describe('MessageBubble', () => {
         selectionActive={false}
       />,
     );
-    expect(screen.getByText('Deleted message')).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('shows reply quote with Russian voice label', () => {
