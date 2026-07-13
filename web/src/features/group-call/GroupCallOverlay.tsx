@@ -8,6 +8,7 @@ import {
   IconMic,
   IconMicOff,
   IconRecord,
+  IconRecordStop,
   IconScreenShare,
   IconScreenShareOff,
   IconVideo,
@@ -32,13 +33,12 @@ function formatRecordingElapsed(startedAt: number | null, now: number): string {
 
 type ActionButtonProps = {
   label: string;
-  tone?: 'neutral' | 'accent' | 'danger' | 'disabled' | 'recording';
+  tone?: 'neutral' | 'accent' | 'danger' | 'disabled' | 'record' | 'recording';
   onClick: () => void;
   children: React.ReactNode;
-  badge?: React.ReactNode;
 };
 
-function ActionButton({ label, tone = 'neutral', onClick, children, badge }: ActionButtonProps) {
+function ActionButton({ label, tone = 'neutral', onClick, children }: ActionButtonProps) {
   return (
     <button
       type="button"
@@ -48,7 +48,6 @@ function ActionButton({ label, tone = 'neutral', onClick, children, badge }: Act
       onClick={onClick}
     >
       {children}
-      {badge}
     </button>
   );
 }
@@ -68,6 +67,7 @@ export function GroupCallOverlay() {
     unlockAudioPlayback,
     recording,
     recordingSupported,
+    remoteRecording,
     startRecording,
     stopRecording,
     saveRecording,
@@ -198,6 +198,12 @@ export function GroupCallOverlay() {
   const bannerText = recording.error || recording.warning || mediaErrorBanner;
   const isRecordingActive =
     recording.phase === 'recording' || recording.phase === 'stopping';
+  const showRecordingBadge = isRecordingActive || remoteRecording.active;
+  const recordingBadgeLabel = isRecordingActive
+    ? 'Идёт запись'
+    : remoteRecording.byDisplayName
+      ? `Идёт запись · ${remoteRecording.byDisplayName}`
+      : 'Идёт запись';
   const recordDisabled =
     !canToggleMedia ||
     !recordingSupported ||
@@ -225,6 +231,12 @@ export function GroupCallOverlay() {
               >
                 Нажмите, чтобы включить звук собеседников
               </button>
+            ) : null}
+            {showRecordingBadge ? (
+              <div className="group-call-recording-badge" role="status" aria-live="polite">
+                <span className="group-call-recording-badge__dot" aria-hidden />
+                <span>{recordingBadgeLabel}</span>
+              </div>
             ) : null}
           </div>
 
@@ -304,16 +316,11 @@ export function GroupCallOverlay() {
                     ? 'disabled'
                     : isRecordingActive
                       ? 'recording'
-                      : 'neutral'
+                      : 'record'
                 }
                 onClick={onRecordClick}
-                badge={
-                  isRecordingActive ? (
-                    <span className="group-call-action__rec-dot" aria-hidden />
-                  ) : undefined
-                }
               >
-                <IconRecord />
+                {isRecordingActive ? <IconRecordStop /> : <IconRecord />}
               </ActionButton>
               {isRecordingActive ? (
                 <span className="group-call-record-timer" aria-live="polite">

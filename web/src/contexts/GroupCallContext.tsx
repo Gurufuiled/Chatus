@@ -39,6 +39,10 @@ import {
   isCallRecordingSupported,
 } from '@/features/group-call/CallRecordingService';
 import {
+  buildGroupCallRecordingPayload,
+  parseGroupCallRecordingMessage,
+} from '@/features/group-call/groupCallRecordingMessage';
+import {
   formatCameraAccessError,
   formatDisplayMediaAccessError,
   formatMicrophoneAccessError,
@@ -99,6 +103,8 @@ type GroupCallContextType = {
   isInCallForChat: (chatId: string) => boolean;
   recording: CallRecordingSnapshot;
   recordingSupported: boolean;
+  /** Remote participant recording indicator (LiveKit data channel). */
+  remoteRecording: { active: boolean; byDisplayName: string | null };
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   saveRecording: () => Promise<void>;
@@ -162,6 +168,23 @@ function localParticipantProfile(currentUserId: string): {
     displayName,
     avatarUrl: resolveAvatarUrl(user.avatar_url),
   };
+}
+
+const initialRemoteRecording = { active: false, byDisplayName: null as string | null };
+
+async function publishGroupCallRecordingState(room: Room, active: boolean): Promise<void> {
+  if (room.state !== ConnectionState.Connected) return;
+  const currentUserId = useAuthUiStore.getState().user?.id;
+  if (!currentUserId) return;
+  const { displayName } = localParticipantProfile(currentUserId);
+  try {
+    await room.localParticipant.publishData(
+      buildGroupCallRecordingPayload(active, currentUserId, displayName || 'Участник'),
+      { reliable: true },
+    );
+  } catch (err) {
+    console.warn('[GroupCall] failed to publish recording state', err);
+  }
 }
 
 function isScreenShareTrackEnabled(participant: Participant): boolean {
@@ -368,6 +391,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     Record<string, ApiGroupCallRoom | null>
   >({});
   const [recording, setRecording] = useState<CallRecordingSnapshot>(initialRecordingSnapshot);
+  const [remoteRecording, setRemoteRecording] = useState(initialRemoteRecording);
   const [mediaErrorBanner, setMediaErrorBanner] = useState<string | null>(null);
   const roomRef = useRef<Room | null>(null);
   const stateRef = useRef(state);
@@ -377,6 +401,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const videoToggleInFlightRef = useRef(false);
   const screenShareToggleInFlightRef = useRef(false);
   const remoteVolumesRef = useRef<Record<string, number>>({});
+  const localRecordingActiveRef = useRef(false);
+  const remoteRecordingByUserIdRef = useRef<string | null>(null);
   const recordingServiceRef = useRef<CallRecordingService | null>(null);
   if (!recordingServiceRef.current) {
     recordingServiceRef.current = new CallRecordingService();
@@ -404,6 +430,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
 
   const resetCallState = useCallback(async () => {
     const recordingService = recordingServiceRef.current;
+    const room = roomRef.current;
     if (recordingService) {
       const phase = recordingService.snapshot().phase;
       if (phase === 'recording' || phase === 'requesting' || phase === 'stopping') {
@@ -411,6 +438,13 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         await recordingService.stopBecauseCallEnded();
       }
     }
+    if (localRecordingActiveRef.current && room) {
+      localRecordingActiveRef.current = false;
+      await publishGroupCallRecordingState(room, false);
+    }
+    localRecordingActiveRef.current = false;
+    remoteRecordingByUserIdRef.current = null;
+    setRemoteRecording(initialRemoteRecording);
     leavingIntentionallyRef.current = false;
     remoteVolumesRef.current = {};
     setLocalCameraTrack(undefined);
@@ -504,8 +538,19 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       });
       roomRef.current = room;
 
-      room.on(RoomEvent.ParticipantConnected, () => syncParticipantsFromRoom(room));
-      room.on(RoomEvent.ParticipantDisconnected, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.ParticipantConnected, () => {
+        syncParticipantsFromRoom(room);
+        if (localRecordingActiveRef.current) {
+          void publishGroupCallRecordingState(room, true);
+        }
+      });
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        syncParticipantsFromRoom(room);
+        if (remoteRecordingByUserIdRef.current === participant.identity) {
+          remoteRecordingByUserIdRef.current = null;
+          setRemoteRecording(initialRemoteRecording);
+        }
+      });
       room.on(RoomEvent.TrackMuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackUnmuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackPublished, () => syncParticipantsFromRoom(room));
@@ -526,6 +571,34 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       });
       room.on(RoomEvent.TrackUnpublished, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackUnsubscribed, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.DataReceived, (payload, participant) => {
+        const msg = parseGroupCallRecordingMessage(payload);
+        if (!msg || !participant) return;
+        const senderId = participant.identity;
+        if (!senderId || msg.byUserId !== senderId) return;
+        const selfId = useAuthUiStore.getState().user?.id;
+        if (selfId && senderId === selfId) return;
+        if (msg.active) {
+          // First active recorder wins until they stop or leave.
+          if (
+            remoteRecordingByUserIdRef.current &&
+            remoteRecordingByUserIdRef.current !== senderId
+          ) {
+            return;
+          }
+          remoteRecordingByUserIdRef.current = senderId;
+          setRemoteRecording({
+            active: true,
+            byDisplayName: msg.byDisplayName || null,
+          });
+          return;
+        }
+        if (remoteRecordingByUserIdRef.current !== senderId) {
+          return;
+        }
+        remoteRecordingByUserIdRef.current = null;
+        setRemoteRecording(initialRemoteRecording);
+      });
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
         const speakingIds = new Set(speakers.map((s) => s.identity));
         setState((prev) => ({
@@ -539,6 +612,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       room.on(RoomEvent.ConnectionStateChanged, (connectionState) => {
         if (connectionState === ConnectionState.Connected) {
           syncParticipantsFromRoom(room);
+          // Re-sync recording flag after reconnect (including active: false if we stopped offline).
+          void publishGroupCallRecordingState(room, localRecordingActiveRef.current);
         }
         setState((prev) => ({
           ...prev,
@@ -775,9 +850,18 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const leaveGroupCallAction = useCallback(async () => {
     const roomId = stateRef.current.roomId;
     const chatId = stateRef.current.chatId;
+    const room = roomRef.current;
     leavingIntentionallyRef.current = true;
     // Finalize local recording while LiveKit tracks are still alive.
+    const wasRecording =
+      localRecordingActiveRef.current ||
+      recordingServiceRef.current?.snapshot().phase === 'recording';
     await recordingServiceRef.current?.stopBecauseCallEnded();
+    if (wasRecording && room) {
+      localRecordingActiveRef.current = false;
+      await publishGroupCallRecordingState(room, false);
+    }
+    localRecordingActiveRef.current = false;
     if (!roomId) {
       await resetCallState();
       return;
@@ -807,8 +891,17 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     const roomId = stateRef.current.roomId;
     const chatId = stateRef.current.chatId;
     if (!roomId) return;
+    const room = roomRef.current;
     leavingIntentionallyRef.current = true;
+    const wasRecording =
+      localRecordingActiveRef.current ||
+      recordingServiceRef.current?.snapshot().phase === 'recording';
     await recordingServiceRef.current?.stopBecauseCallEnded();
+    if (wasRecording && room) {
+      localRecordingActiveRef.current = false;
+      await publishGroupCallRecordingState(room, false);
+    }
+    localRecordingActiveRef.current = false;
     try {
       await endGroupCallForAll(roomId);
     } catch (err) {
@@ -947,13 +1040,44 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     await service.start(room);
+    if (
+      roomRef.current !== room ||
+      room.state !== ConnectionState.Connected ||
+      service.snapshot().phase !== 'recording'
+    ) {
+      return;
+    }
+    localRecordingActiveRef.current = true;
+    await publishGroupCallRecordingState(room, true);
   }, []);
 
   const stopRecording = useCallback(async () => {
     const service = recordingServiceRef.current;
+    const room = roomRef.current;
     if (!service) return;
+    const wasRecording =
+      localRecordingActiveRef.current || service.snapshot().phase === 'recording';
     await service.stop();
+    if (wasRecording) {
+      localRecordingActiveRef.current = false;
+      if (room) {
+        await publishGroupCallRecordingState(room, false);
+      }
+    }
   }, []);
+
+  // If recording ends via error salvage while still in-call, clear the remote indicator.
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!localRecordingActiveRef.current) return;
+    if (recording.phase === 'recording' || recording.phase === 'stopping' || recording.phase === 'requesting') {
+      return;
+    }
+    localRecordingActiveRef.current = false;
+    if (room && room.state === ConnectionState.Connected) {
+      void publishGroupCallRecordingState(room, false);
+    }
+  }, [recording.phase]);
 
   const saveRecording = useCallback(async () => {
     const service = recordingServiceRef.current;
@@ -1061,6 +1185,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       isInCallForChat,
       recording,
       recordingSupported: isCallRecordingSupported(),
+      remoteRecording,
       startRecording,
       stopRecording,
       saveRecording,
@@ -1089,6 +1214,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       unlockAudioPlayback,
       isInCallForChat,
       recording,
+      remoteRecording,
       startRecording,
       stopRecording,
       saveRecording,

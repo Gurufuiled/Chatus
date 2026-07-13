@@ -64,11 +64,21 @@ export function IconScreenShareOff({ size = 26, className }: IconProps) {
   );
 }
 
-/** Record / stop-record glyph for local call recording. */
+/** Idle record affordance — filled disc with outer ring. */
 export function IconRecord({ size = 26, className }: IconProps) {
   return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.75" opacity="0.85" />
+      <circle cx="12" cy="12" r="5.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Stop glyph while local recording is active. */
+export function IconRecordStop({ size = 26, className }: IconProps) {
+  return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
-      <circle cx="12" cy="12" r="7" />
+      <rect x="7" y="7" width="10" height="10" rx="2" />
     </svg>
   );
 }
