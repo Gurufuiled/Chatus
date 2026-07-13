@@ -21,7 +21,7 @@ export function buildStickerGroupedChatRows(
   messages: Message[],
   _currentUserId: string | null,
 ): ChatListRow[] {
-  return messages.map((m) => m);
+  return messages.filter((m) => m.is_deleted !== 1).map((m) => m);
 }
 
 /** Индекс строки в `buildStickerGroupedChatRows` для любого `messageId` из исходного списка. */

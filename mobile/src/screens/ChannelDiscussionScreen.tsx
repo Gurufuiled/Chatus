@@ -393,17 +393,11 @@ function DiscussionMessageBubble({
   const media = item.media?.[0];
   const replySnippet = renderReplySnippet();
 
-  const content = (() => {
-    if (item.is_deleted === 1) {
-      return (
-        <View style={[st.textBubble, isMe ? st.textBubbleMe : st.textBubbleOther]}>
-          {replySnippet}
-          <Text style={st.deletedText}>{isMe ? 'Вы удалили сообщение' : 'Сообщение удалено'}</Text>
-          <MessageTimeStatus time={time} status={displayStatus} isMe={isMe} compact />
-        </View>
-      );
-    }
+  if (item.is_deleted === 1) {
+    return null;
+  }
 
+  const content = (() => {
     if (item.msg_type === 'voice' && media) {
       const voiceUri =
         resolveVoiceMessageUri(item) ?? media.remote_url ?? `file://${item.id}`;
@@ -766,6 +760,10 @@ export function ChannelDiscussionScreen() {
 
   const messages = thread?.messages ?? EMPTY_MESSAGES;
   const sortedMessages = React.useMemo(() => [...messages].sort((a, b) => a.created_at - b.created_at), [messages]);
+  const visibleMessages = React.useMemo(
+    () => sortedMessages.filter((m) => m.is_deleted !== 1),
+    [sortedMessages],
+  );
   const messageById = React.useMemo(() => {
     const map = new Map<string, Message>();
     for (const message of sortedMessages) {
@@ -1242,7 +1240,7 @@ export function ChannelDiscussionScreen() {
             setContentRef={(node) => setContentRef(item.id, node)}
             onLongPress={() => openMessageMenu(item)}
             onReplyPreviewPress={(messageId) => {
-              const targetIndex = sortedMessages.findIndex((m) => m.id === messageId);
+              const targetIndex = visibleMessages.findIndex((m) => m.id === messageId);
               if (targetIndex < 0) return;
               listRef.current?.scrollToIndex({ index: targetIndex, animated: true, viewPosition: 0.5 });
             }}
@@ -1250,7 +1248,7 @@ export function ChannelDiscussionScreen() {
         </View>
       </ReplySwipeWrapper>
     );
-  }, [canSwipeReply, c.accent, currentUserId, messageById, openMessageMenu, setContentRef, sortedMessages, styles, thread?.can_comment, thread?.discussion_chat_id]);
+  }, [canSwipeReply, c.accent, currentUserId, messageById, openMessageMenu, setContentRef, visibleMessages, styles, thread?.can_comment, thread?.discussion_chat_id]);
 
   const renderMenuPreviewBody = React.useCallback((item: Message, forcedWidth?: number) => {
     const replied = item.reply_to_id ? messageById.get(item.reply_to_id) ?? null : null;
@@ -1300,7 +1298,7 @@ export function ChannelDiscussionScreen() {
           <Reanimated.View style={[styles.listWrap, listWrapAnimatedStyle]}>
           <FlatList
               ref={listRef}
-              data={sortedMessages}
+              data={visibleMessages}
             keyExtractor={(item) => item.id}
               renderItem={renderRow}
             refreshing={loading}

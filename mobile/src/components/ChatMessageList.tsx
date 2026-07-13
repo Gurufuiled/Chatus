@@ -1324,26 +1324,7 @@ const MessageRow = React.memo(function MessageRow({
 
   const renderBody = () => {
     if (item.is_deleted === 1) {
-      return (
-        <View
-          style={[
-            styles.deletedBubble,
-            isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
-            isMe ? { backgroundColor: chatTheme.deletedBubbleMe } : null,
-          ]}
-        >
-          <Text style={[styles.deletedText, isMe && { color: chatTheme.deletedTextMe }]}>
-            {getDeletedPlaceholder(isMe)}
-          </Text>
-          <MessageTimeStatus
-            time={formatTime(item.created_at)}
-            status={item.status}
-            isMe={isMe}
-            compact
-            source={item.source}
-          />
-        </View>
-      );
+      return null;
     }
 
     if (bodyItem.msg_type === 'system') {

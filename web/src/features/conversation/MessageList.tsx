@@ -101,7 +101,7 @@ export function MessageList({ chatId }: MessageListProps) {
   return (
     <div className="message-list" ref={containerRef} role="log" aria-relevant="additions">
       <div className="message-list__inner">
-        {messages.map((message) => {
+        {messages.filter((message) => !message.is_deleted).map((message) => {
           const isOutgoing = !!me?.id && message.sender_id === me.id;
           const isSelected = selectedIds.includes(message.id);
           return (

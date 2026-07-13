@@ -159,9 +159,9 @@ export function MessageTimeStatus({
 }: MessageTimeStatusProps) {
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      {source && (
-        <PlatformSourceIcon source={source} size={compact ? 10 : 12} />
-      )}
+      {source === 'telegram' ? (
+        <PlatformSourceIcon source="telegram" size={compact ? 10 : 12} />
+      ) : null}
       {viewCount ? (
         <View style={styles.viewCountWrap}>
           <Feather name="eye" size={compact ? 11 : 12} color={timeColor || colors.textSecondary} />

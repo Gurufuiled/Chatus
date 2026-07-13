@@ -2128,26 +2128,7 @@ export function ChatScreen() {
     };
 
     if (item.is_deleted === 1) {
-      return (
-        <View
-          style={[
-            styles.deletedBubble,
-            fixedWidthStyle,
-            isMe ? styles.deletedBubbleMe : styles.deletedBubbleOther,
-            isMe ? { backgroundColor: chatTheme.deletedBubbleMe } : null,
-          ]}
-        >
-          <Text style={[styles.deletedText, isMe && { color: chatTheme.deletedTextMe }]}>
-            {getDeletedPlaceholder(isMe)}
-          </Text>
-          <MessageTimeStatus
-            time={formatTime(item.created_at)}
-            status={item.status}
-            isMe={isMe}
-            compact
-          />
-        </View>
-      );
+      return null;
     }
 
     if (item.msg_type === 'text') {

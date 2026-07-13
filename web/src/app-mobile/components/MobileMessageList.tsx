@@ -145,7 +145,9 @@ export function MobileMessageList({ chatId, keyboardLift = 0, isGroupChat = fals
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
     >
-      {messages.map((message) => {
+      {messages
+        .filter((message) => !message.is_deleted)
+        .map((message) => {
         const isOutgoing = !!me?.id && message.sender_id === me.id;
         return (
           <MobileSwipeReplyRow
