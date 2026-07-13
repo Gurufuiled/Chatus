@@ -5,16 +5,15 @@
  * - idle → requesting → recording → stopping → save_prompt → idle
  * - Toolbar: «Записать»; while recording — red indicator + elapsed timer; click soft-stops
  * - Soft stop opens «Сохранить запись?» (Save / Discard) — no confirm() before stop
- * - Filename: `Запись звонка YYYY-MM-DD HH-mm.webm`
+ * - Filename: `Запись звонка YYYY-MM-DD HH-mm.webm` (or .mp4 when MediaRecorder supports it)
+ * - After stop: WebM duration fix so players can seek; brief «Обработка записи…» if >~300ms
  * - Errors: Russian in-call banners (never alert())
  *
- * MVP capture (client-only MediaRecorder → WebM download):
- * - Video: canvas composite of `.group-call-stage` `<video>` tiles (what the user sees)
- * - Audio: AudioContext mix of local mic + remote LiveKit microphone tracks
- *   (MVP: tracks connected at start only — late joiners’ mics are not added mid-recording)
- * - Not yet: pixel-perfect avatar-only tiles, getDisplayMedia tab capture, LiveKit Egress,
- *   dynamic audio remix when participants join after recording starts
- * - Memory: timeslice chunks; soft warn after LONG_RECORDING_WARN_MS
+ * Capture (client-only MediaRecorder → download):
+ * - Video: canvas composite of stage tiles + LiveKit camera/screen tracks (screen preferred;
+ *   mid-call screen share is picked up dynamically)
+ * - Audio: AudioContext mix of local mic + remote LiveKit microphone tracks present at start
+ * - Avatar/name tiles drawn when a participant has no video
  */
 
 import type { Room } from 'livekit-client';
@@ -24,6 +23,16 @@ import {
   isEmbeddedInIframe,
   notifyParentMicrophoneRequired,
 } from '@/utils/microphoneAccess';
+import {
+  clearOffscreenVideos,
+  drawStageToCanvas,
+  type CanvasLayoutLock,
+  type OffscreenVideoMap,
+} from './callRecordingCanvas';
+import {
+  makeRecordingSeekable,
+  recordingExtensionForMime,
+} from './makeRecordingSeekable';
 
 export type CallRecordingPhase =
   | 'idle'
@@ -45,12 +54,12 @@ export type CallRecordingListener = (snapshot: CallRecordingSnapshot) => void;
 
 const TIMESLICE_MS = 1000;
 const DRAW_FPS = 15;
-const MAX_CANVAS_WIDTH = 1280;
 const LONG_RECORDING_WARN_MS = 30 * 60 * 1000;
-const STAGE_SELECTOR = '.group-call-stage';
-const VIDEO_SELECTOR = '.group-call-stage video.group-call-tile__video';
+const PROCESSING_HINT_DELAY_MS = 300;
 
 const MIME_CANDIDATES = [
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4',
   'video/webm;codecs=vp9,opus',
   'video/webm;codecs=vp8,opus',
   'video/webm;codecs=vp9',
@@ -62,13 +71,16 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
-export function buildCallRecordingFilename(date = new Date()): string {
+export function buildCallRecordingFilename(
+  date = new Date(),
+  ext: 'webm' | 'mp4' = 'webm',
+): string {
   const y = date.getFullYear();
   const m = pad2(date.getMonth() + 1);
   const d = pad2(date.getDate());
   const hh = pad2(date.getHours());
   const mm = pad2(date.getMinutes());
-  return `Запись звонка ${y}-${m}-${d} ${hh}-${mm}.webm`;
+  return `Запись звонка ${y}-${m}-${d} ${hh}-${mm}.${ext}`;
 }
 
 export function pickRecordingMimeType(): string | undefined {
@@ -118,81 +130,6 @@ function collectLiveKitAudioTracks(room: Room): MediaStreamTrack[] {
   return tracks;
 }
 
-function drawStageToCanvas(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): void {
-  const stage = document.querySelector(STAGE_SELECTOR) as HTMLElement | null;
-  const videos = Array.from(
-    document.querySelectorAll(VIDEO_SELECTOR),
-  ) as HTMLVideoElement[];
-
-  const stageW = Math.max(1, stage?.clientWidth ?? canvas.width);
-  const stageH = Math.max(1, stage?.clientHeight ?? canvas.height);
-  const scale = Math.min(1, MAX_CANVAS_WIDTH / stageW);
-  const targetW = Math.max(2, Math.round(stageW * scale));
-  const targetH = Math.max(2, Math.round(stageH * scale));
-  if (canvas.width !== targetW || canvas.height !== targetH) {
-    canvas.width = targetW;
-    canvas.height = targetH;
-  }
-
-  ctx.fillStyle = '#0e1116';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  if (videos.length === 0) {
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.font = `${Math.max(14, Math.round(canvas.width * 0.035))}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Голосовой чат', canvas.width / 2, canvas.height / 2);
-    return;
-  }
-
-  const stageRect = stage?.getBoundingClientRect();
-  for (const video of videos) {
-    if (video.readyState < 2 || video.videoWidth <= 0) continue;
-    const rect = video.getBoundingClientRect();
-    if (!stageRect) continue;
-    const x = (rect.left - stageRect.left) * scale;
-    const y = (rect.top - stageRect.top) * scale;
-    const w = Math.max(1, rect.width * scale);
-    const h = Math.max(1, rect.height * scale);
-    try {
-      ctx.save();
-      const radius = Math.min(16 * scale, w / 4, h / 4);
-      roundRectPath(ctx, x, y, w, h, radius);
-      ctx.clip();
-      const mirrored = video.classList.contains('group-call-tile__video--mirror');
-      if (mirrored) {
-        ctx.translate(x + w, y);
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, w, h);
-      } else {
-        ctx.drawImage(video, x, y, w, h);
-      }
-      ctx.restore();
-    } catch {
-      // Cross-origin / closed frame — skip tile
-    }
-  }
-}
-
-function roundRectPath(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + w, y, x + w, y + h, radius);
-  ctx.arcTo(x + w, y + h, x, y + h, radius);
-  ctx.arcTo(x, y + h, x, y, radius);
-  ctx.arcTo(x, y, x + w, y, radius);
-  ctx.closePath();
-}
-
 type FileSystemWritableFileStreamLike = {
   write: (data: Blob) => Promise<void>;
   close: () => Promise<void>;
@@ -210,16 +147,18 @@ async function saveBlobLocally(blob: Blob, filename: string): Promise<void> {
     }) => Promise<FileSystemFileHandleLike>;
   };
 
+  const ext = recordingExtensionForMime(blob.type || filename);
+  const accept =
+    ext === 'mp4'
+      ? ({ 'video/mp4': ['.mp4'] } as Record<string, string[]>)
+      : ({ 'video/webm': ['.webm'] } as Record<string, string[]>);
+  const description = ext === 'mp4' ? 'MP4 video' : 'WebM video';
+
   if (typeof w.showSaveFilePicker === 'function') {
     try {
       const handle = await w.showSaveFilePicker({
         suggestedName: filename,
-        types: [
-          {
-            description: 'WebM video',
-            accept: { 'video/webm': ['.webm'] },
-          },
-        ],
+        types: [{ description, accept }],
       });
       const writable = await handle.createWritable();
       await writable.write(blob);
@@ -314,6 +253,10 @@ export class CallRecordingService {
   private stopPromise: Promise<void> | null = null;
   private visibilityHandler: (() => void) | null = null;
   private finalizedSessionId: number | null = null;
+  private room: Room | null = null;
+  private offscreenVideos: OffscreenVideoMap = new Map();
+  private canvasLayout: CanvasLayoutLock | null = null;
+  private recordingMimeType: string | null = null;
 
   subscribe(listener: CallRecordingListener): () => void {
     this.listeners.add(listener);
@@ -381,6 +324,9 @@ export class CallRecordingService {
     this.pendingBlob = null;
     this.pendingFilename = null;
     this.finalizedSessionId = null;
+    this.room = room;
+    this.canvasLayout = null;
+    this.recordingMimeType = mimeType;
     this.setPhase('requesting');
 
     try {
@@ -393,7 +339,8 @@ export class CallRecordingService {
       }
       this.canvas = canvas;
 
-      drawStageToCanvas(canvas, ctx);
+      const firstDraw = drawStageToCanvas(canvas, ctx, room, this.offscreenVideos, null);
+      this.canvasLayout = { ...firstDraw.layout, locked: true };
       const videoStream = canvas.captureStream(DRAW_FPS);
       const videoTrack = videoStream.getVideoTracks()[0];
       if (!videoTrack) {
@@ -480,6 +427,7 @@ export class CallRecordingService {
       this.releaseCaptureResources();
       this.chunks = [];
       this.startedAt = null;
+      this.recordingMimeType = null;
       this.setPhase('idle');
       return;
     }
@@ -495,11 +443,12 @@ export class CallRecordingService {
   private async runFinalize(session: number): Promise<void> {
     try {
       const recorder = this.recorder;
+      const durationMs = this.startedAt ? Math.max(0, Date.now() - this.startedAt) : 0;
       if (recorder && recorder.state !== 'inactive') {
         await waitForRecorderStop(recorder, 2500);
       }
       if (session !== this.sessionId) return;
-      this.finishWithChunks(session);
+      await this.finishWithChunks(session, durationMs);
     } finally {
       this.stopPromise = null;
     }
@@ -563,6 +512,7 @@ export class CallRecordingService {
     this.pendingBlob = null;
     this.pendingFilename = null;
     this.startedAt = null;
+    this.recordingMimeType = null;
     this.error = null;
     this.warning = null;
     this.stopPromise = null;
@@ -570,20 +520,21 @@ export class CallRecordingService {
     this.emit();
   }
 
-  private finishWithChunks(session: number): void {
+  private async finishWithChunks(session: number, durationMs: number): Promise<void> {
     if (this.finalizedSessionId === session) return;
     this.finalizedSessionId = session;
     this.releaseCaptureResources();
     this.unbindVisibilityWatch();
     if (session !== this.sessionId) return;
 
-    const mimeType = pickRecordingMimeType() ?? 'video/webm';
-    const blob = new Blob(this.chunks, { type: mimeType });
+    const mimeType = this.recordingMimeType ?? pickRecordingMimeType() ?? 'video/webm';
+    const rawBlob = new Blob(this.chunks, { type: mimeType });
     this.chunks = [];
-    this.startedAt = null;
+    // Keep startedAt until save_prompt so the stopping/processing timer does not jump to 0:00.
 
-    if (blob.size === 0) {
-      // If a prior finish already produced a pending blob, keep save_prompt.
+    if (rawBlob.size === 0) {
+      this.startedAt = null;
+      this.recordingMimeType = null;
       if (this.phase === 'save_prompt' && this.pendingBlob) {
         this.emit();
         return;
@@ -597,8 +548,33 @@ export class CallRecordingService {
       return;
     }
 
+    let processingHintTimer: number | null = window.setTimeout(() => {
+      processingHintTimer = null;
+      if (session !== this.sessionId) return;
+      if (this.phase !== 'stopping') return;
+      this.warning = 'Обработка записи…';
+      this.emit();
+    }, PROCESSING_HINT_DELAY_MS);
+
+    let blob = rawBlob;
+    try {
+      blob = await makeRecordingSeekable(rawBlob, durationMs);
+    } finally {
+      if (processingHintTimer != null) {
+        window.clearTimeout(processingHintTimer);
+      }
+    }
+
+    if (session !== this.sessionId) return;
+
+    const ext = recordingExtensionForMime(blob.type || mimeType);
     this.pendingBlob = blob;
-    this.pendingFilename = buildCallRecordingFilename();
+    this.pendingFilename = buildCallRecordingFilename(new Date(), ext);
+    if (this.warning === 'Обработка записи…') {
+      this.warning = null;
+    }
+    this.startedAt = null;
+    this.recordingMimeType = null;
     this.setPhase('save_prompt');
   }
 
@@ -629,7 +605,8 @@ export class CallRecordingService {
     }
 
     if (this.finalizedSessionId !== session && this.chunks.length > 0) {
-      this.finishWithChunks(session);
+      const durationMs = this.startedAt ? Math.max(0, Date.now() - this.startedAt) : 0;
+      await this.finishWithChunks(session, durationMs);
     }
   }
 
@@ -728,7 +705,18 @@ export class CallRecordingService {
     this.clearDrawLoop();
     const tick = () => {
       if (this.phase !== 'recording' || !this.canvas) return;
-      drawStageToCanvas(canvas, ctx);
+      const result = drawStageToCanvas(
+        canvas,
+        ctx,
+        this.room,
+        this.offscreenVideos,
+        this.canvasLayout,
+      );
+      // Preserve lock flag if already capturing.
+      this.canvasLayout = {
+        ...result.layout,
+        locked: this.canvasLayout?.locked ?? result.layout.locked,
+      };
     };
     tick();
     this.drawTimer = window.setInterval(tick, Math.round(1000 / DRAW_FPS));
@@ -787,8 +775,12 @@ export class CallRecordingService {
       this.audioContext = null;
     }
 
+    clearOffscreenVideos(this.offscreenVideos);
     this.canvas = null;
+    this.canvasLayout = null;
     this.recorder = null;
+    this.room = null;
+    // Keep recordingMimeType until finishWithChunks builds the blob / next start().
   }
 
   private setPhase(phase: CallRecordingPhase): void {

@@ -93,6 +93,7 @@ export function ParticipantTile({
     <div
       className={`group-call-tile${isHighlighted ? ' group-call-tile--speaking' : ''}${isDominantSpeaker ? ' group-call-tile--dominant' : ''}${canAdjustVolume ? ' group-call-tile--clickable' : ''}`}
       style={{ width, height }}
+      data-participant-id={participant.userId}
       role={canAdjustVolume ? 'group' : undefined}
       tabIndex={canAdjustVolume && !showVolumePopover ? 0 : undefined}
       onClick={canAdjustVolume && !showVolumePopover ? handleTileClick : undefined}

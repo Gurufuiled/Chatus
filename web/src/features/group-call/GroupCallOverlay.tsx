@@ -199,11 +199,16 @@ export function GroupCallOverlay() {
   const isRecordingActive =
     recording.phase === 'recording' || recording.phase === 'stopping';
   const showRecordingBadge = isRecordingActive || remoteRecording.active;
-  const recordingBadgeLabel = isRecordingActive
-    ? 'Идёт запись'
-    : remoteRecording.byDisplayName
-      ? `Идёт запись · ${remoteRecording.byDisplayName}`
-      : 'Идёт запись';
+  const recordingBadgeLabel =
+    recording.phase === 'stopping'
+      ? recording.warning === 'Обработка записи…'
+        ? 'Обработка записи…'
+        : 'Остановка записи…'
+      : isRecordingActive
+        ? 'Идёт запись'
+        : remoteRecording.byDisplayName
+          ? `Идёт запись · ${remoteRecording.byDisplayName}`
+          : 'Идёт запись';
   const recordDisabled =
     !canToggleMedia ||
     !recordingSupported ||

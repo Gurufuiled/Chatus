@@ -554,6 +554,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       room.on(RoomEvent.TrackMuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackUnmuted, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackPublished, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.LocalTrackPublished, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.LocalTrackUnpublished, () => syncParticipantsFromRoom(room));
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         applyMicVolumeToRemoteTrack(
           track,
