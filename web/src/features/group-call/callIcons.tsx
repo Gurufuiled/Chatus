@@ -82,3 +82,21 @@ export function IconRecordStop({ size = 26, className }: IconProps) {
     </svg>
   );
 }
+
+/** Expand — enter fullscreen presentation mode for a screen-share tile. */
+export function IconFullscreenEnter({ size = 18, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M4 9V4h5v2H6v3H4zm10-5h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm14 3v-3h2v5h-5v-2h3z" />
+    </svg>
+  );
+}
+
+/** Collapse — exit fullscreen presentation mode. */
+export function IconFullscreenExit({ size = 18, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M9 4h2v5H4V7h3V4h2zm11 3v2h-5V4h2v3h3zM6 15h3v2H4v-5h2v3zm12 3h-3v2h5v-5h-2v3z" />
+    </svg>
+  );
+}

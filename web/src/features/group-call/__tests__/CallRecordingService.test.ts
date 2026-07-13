@@ -10,12 +10,41 @@ import {
   recordingExtensionForMime,
 } from '../makeRecordingSeekable';
 
-vi.mock('fix-webm-duration', () => ({
-  default: vi.fn(async (blob: Blob, _duration: number) => {
-    // Simulate a fixed WebM with preserved type.
-    return new Blob([blob, new Uint8Array([0x00])], { type: blob.type || 'video/webm' });
-  }),
-}));
+const readCalls: unknown[] = [];
+
+vi.mock('ts-ebml', () => {
+  class FakeDecoder {
+    decode(_buffer: ArrayBuffer) {
+      // A single fake "element" is enough to drive the Reader mock below.
+      return [{ id: 0x1a45dfa3, name: 'EBML' }];
+    }
+  }
+  class FakeReader {
+    logging = false;
+    drop_default_duration = false;
+    metadatas: unknown[] = [{ id: 0x1a45dfa3, name: 'EBML' }];
+    metadataSize = 4;
+    timestampScale = 1_000_000;
+    duration = 0;
+    cues: Array<{ CueTrack: number; CueClusterPosition: number; CueTime: number }> = [];
+    read(elm: unknown) {
+      readCalls.push(elm);
+    }
+    stop() {
+      // no-op for the mock
+    }
+  }
+  return {
+    Decoder: FakeDecoder,
+    Reader: FakeReader,
+    tools: {
+      makeMetadataSeekable: vi.fn(
+        (_metadatas: unknown, _duration: number, _cues: unknown) =>
+          new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]).buffer,
+      ),
+    },
+  };
+});
 
 describe('CallRecordingService helpers', () => {
   it('builds Telemost-style filename with webm extension by default', () => {
@@ -53,21 +82,22 @@ describe('makeRecordingSeekable', () => {
     expect(await makeRecordingSeekable(mp4, 1000)).toBe(mp4);
   });
 
-  it('invokes webm duration fixer for webm blobs with positive duration', async () => {
-    const { default: fixWebmDuration } = await import('fix-webm-duration');
+  it('remuxes webm blobs with positive duration via ts-ebml (adds Cues/SeekHead)', async () => {
+    const { tools } = await import('ts-ebml');
     const input = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'video/webm;codecs=vp8,opus' });
     const fixed = await makeRecordingSeekable(input, 2500);
-    expect(fixWebmDuration).toHaveBeenCalled();
-    expect(fixed.size).toBeGreaterThan(input.size);
+    expect(tools.makeMetadataSeekable).toHaveBeenCalled();
     expect(fixed.type).toContain('webm');
+    // Fixed metadata (4 bytes) + body after the fake metadataSize (0 bytes left) = 4 bytes.
+    expect(fixed.size).toBe(4);
   });
 
-  it('skips fixer when duration is invalid', async () => {
-    const { default: fixWebmDuration } = await import('fix-webm-duration');
-    vi.mocked(fixWebmDuration).mockClear();
+  it('skips remux when duration is invalid', async () => {
+    const { tools } = await import('ts-ebml');
+    vi.mocked(tools.makeMetadataSeekable).mockClear();
     const input = new Blob([new Uint8Array([1, 2, 3])], { type: 'video/webm' });
     const out = await makeRecordingSeekable(input, 0);
     expect(out).toBe(input);
-    expect(fixWebmDuration).not.toHaveBeenCalled();
+    expect(tools.makeMetadataSeekable).not.toHaveBeenCalled();
   });
 });

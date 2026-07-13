@@ -1,5 +1,6 @@
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { GroupCallParticipant } from '@/contexts/GroupCallContext';
+import { IconFullscreenEnter } from './callIcons';
 
 export const TILE_ASPECT_RATIO = 16 / 9;
 
@@ -13,6 +14,9 @@ type ParticipantTileProps = {
   showVolumePopover?: boolean;
   onVolumeChange?: (volume: number) => void;
   onVolumeToggle?: () => void;
+  /** True when this tile's video is a screen-share track — enables the fullscreen toggle. */
+  isScreenShare?: boolean;
+  onFullscreenToggle?: () => void;
 };
 
 function buildInitial(name: string) {
@@ -67,6 +71,8 @@ export function ParticipantTile({
   showVolumePopover = false,
   onVolumeChange,
   onVolumeToggle,
+  isScreenShare = false,
+  onFullscreenToggle,
 }: ParticipantTileProps) {
   const height = heightProp ?? width / TILE_ASPECT_RATIO;
   const isSpeaking = participant.isSpeaking;
@@ -139,6 +145,20 @@ export function ParticipantTile({
               <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" />
             </svg>
           </span>
+        ) : null}
+        {isScreenShare && onFullscreenToggle ? (
+          <button
+            type="button"
+            className="group-call-tile__fullscreen-btn"
+            aria-label="Полноэкранная демонстрация экрана"
+            title="Развернуть на весь экран"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFullscreenToggle();
+            }}
+          >
+            <IconFullscreenEnter size={16} />
+          </button>
         ) : null}
       </div>
     </div>

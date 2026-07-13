@@ -374,6 +374,111 @@
   cursor: pointer;
 }
 
+.group-call-tile__fullscreen-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.group-call-tile__fullscreen-btn:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.group-call-fullscreen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px 4px;
+}
+
+.group-call-fullscreen__main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0a0d12;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.group-call-fullscreen__main-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.group-call-fullscreen__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 14px;
+}
+
+.group-call-fullscreen__exit {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.group-call-fullscreen__exit:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.group-call-fullscreen__label {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  font-weight: 600;
+  z-index: 2;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-call-fullscreen__strip {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+}
+
+.group-call-fullscreen__strip .group-call-tile {
+  flex-shrink: 0;
+}
+
 .group-call-overlay__controls {
   display: flex;
   align-items: center;
@@ -512,16 +617,24 @@
   animation: group-call-rec-dot-pulse 1.4s ease-out infinite;
 }
 
+/*
+ * Fixed-size box matching .group-call-action (56×56) so the record button
+ * stays vertically aligned with the other controls. The label/timer is
+ * absolutely positioned below it, so it never affects the row's box height.
+ */
 .group-call-record-wrap {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  min-width: 56px;
+  position: relative;
+  width: 56px;
+  height: 56px;
 }
 
 .group-call-record-label,
 .group-call-record-timer {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
   font-size: 11px;
   line-height: 1;
   color: rgba(255, 255, 255, 0.72);
@@ -534,10 +647,10 @@
   font-weight: 600;
 }
 
+/* Idle state: neutral, matching the other controls — red is reserved for active recording. */
 .group-call-action--record {
-  background: rgba(229, 57, 53, 0.2);
-  color: #ff6b6b;
-  box-shadow: inset 0 0 0 2px rgba(229, 57, 53, 0.8);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 .group-call-action--recording {

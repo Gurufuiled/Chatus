@@ -11,7 +11,9 @@ import {
   Room,
   RoomEvent,
   ConnectionState,
+  ScreenSharePresets,
   Track,
+  VideoPresets,
   type LocalVideoTrack,
   type Participant,
   type RemoteAudioTrack,
@@ -48,6 +50,32 @@ import {
   formatMicrophoneAccessError,
   notifyParentMicrophoneRequired,
 } from '@/utils/microphoneAccess';
+
+/**
+ * Publish quality (trade-off notes):
+ * - Webcam: 720p/30fps (~1.7 Mbps default LiveKit bitrate for h720) with
+ *   simulcast on — sharp enough for a talking-head tile while still letting
+ *   LiveKit's dynacast/adaptiveStream drop unused higher layers for viewers
+ *   on small tiles or a poor connection.
+ * - Screen share: 1080p but capped at 15fps (LiveKit's `h1080fps15` preset,
+ *   ~2.5 Mbps). Screen shares are usually static/text-heavy — trading frame
+ *   rate for resolution keeps text legible without spending bandwidth on
+ *   motion smoothness nobody needs. Simulcast is left off for screen share
+ *   since a second lower-res layer would just blur text further; dynacast
+ *   still stops sending entirely when nobody is subscribed.
+ */
+const CAMERA_CAPTURE_DEFAULTS = { resolution: VideoPresets.h720.resolution };
+const CAMERA_PUBLISH_DEFAULTS = {
+  videoEncoding: VideoPresets.h720.encoding,
+  simulcast: true,
+};
+const SCREEN_SHARE_CAPTURE_OPTIONS = {
+  resolution: ScreenSharePresets.h1080fps15.resolution,
+};
+const SCREEN_SHARE_PUBLISH_OPTIONS = {
+  videoEncoding: ScreenSharePresets.h1080fps15.encoding,
+  simulcast: false,
+};
 
 export type GroupCallPhase = 'idle' | 'creating' | 'joining' | 'active';
 
@@ -535,6 +563,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       const room = new Room({
         adaptiveStream: true,
         dynacast: true,
+        videoCaptureDefaults: CAMERA_CAPTURE_DEFAULTS,
+        publishDefaults: CAMERA_PUBLISH_DEFAULTS,
       });
       roomRef.current = room;
 
@@ -949,6 +979,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       if (nextEnabled) {
         await ensureCameraPermission();
       }
+      // Resolution/bitrate come from the Room's videoCaptureDefaults/publishDefaults
+      // (see CAMERA_CAPTURE_DEFAULTS/CAMERA_PUBLISH_DEFAULTS above).
       await room.localParticipant.setCameraEnabled(nextEnabled);
       if (!roomRef.current || stateRef.current.phase === 'idle') return;
       syncVideoTracksFromRoom(room);
@@ -1011,7 +1043,11 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     const nextEnabled = !stateRef.current.isScreenShareEnabled;
     screenShareToggleInFlightRef.current = true;
     try {
-      await room.localParticipant.setScreenShareEnabled(nextEnabled, { audio: false });
+      await room.localParticipant.setScreenShareEnabled(
+        nextEnabled,
+        { ...SCREEN_SHARE_CAPTURE_OPTIONS, audio: false },
+        SCREEN_SHARE_PUBLISH_OPTIONS,
+      );
       if (!roomRef.current || stateRef.current.phase === 'idle') return;
       syncVideoTracksFromRoom(room);
       setState((prev) => ({

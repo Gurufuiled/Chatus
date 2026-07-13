@@ -14,6 +14,8 @@ type ParticipantStageProps = {
   getParticipantVolume?: (userId: string) => number;
   onParticipantVolumeChange?: (userId: string, volume: number) => void;
   onVolumeUserIdChange?: (userId: string | null) => void;
+  isParticipantScreenSharing?: (participant: GroupCallParticipant) => boolean;
+  onFullscreenToggle?: (userId: string) => void;
 };
 
 type StageLayout = {
@@ -111,6 +113,8 @@ export function ParticipantStage({
   getParticipantVolume,
   onParticipantVolumeChange,
   onVolumeUserIdChange,
+  isParticipantScreenSharing,
+  onFullscreenToggle,
 }: ParticipantStageProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
@@ -186,6 +190,10 @@ export function ParticipantStage({
                         onVolumeUserIdChange(
                           volumeUserId === participant.userId ? null : participant.userId,
                         )
+                }
+                isScreenShare={isParticipantScreenSharing?.(participant) ?? false}
+                onFullscreenToggle={
+                  onFullscreenToggle ? () => onFullscreenToggle(participant.userId) : undefined
                 }
               />
             ))}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConnectionState, Track } from 'livekit-client';
-import { useGroupCall } from '@/contexts/GroupCallContext';
+import { useGroupCall, type GroupCallParticipant } from '@/contexts/GroupCallContext';
 import { ParticipantStage } from './ParticipantStage';
+import { FullscreenStage } from './FullscreenStage';
 import { LiveKitVideoRenderer } from './LiveKitVideoRenderer';
 import {
   IconHangup,
@@ -78,6 +79,7 @@ export function GroupCallOverlay() {
   } = useGroupCall();
   const [now, setNow] = useState(Date.now());
   const [volumeUserId, setVolumeUserId] = useState<string | null>(null);
+  const [fullscreenUserId, setFullscreenUserId] = useState<string | null>(null);
 
   const callVisible =
     state.phase === 'creating' || state.phase === 'joining' || state.phase === 'active';
@@ -165,6 +167,25 @@ export function GroupCallOverlay() {
       void startRecording();
     }
   }, [recording.phase, startRecording, stopRecording]);
+
+  const isParticipantScreenSharing = useCallback(
+    (participant: GroupCallParticipant) => {
+      if (participant.isLocal) {
+        return localCameraTrack?.source === Track.Source.ScreenShare;
+      }
+      return remoteVideoTracks[participant.userId]?.source === Track.Source.ScreenShare;
+    },
+    [localCameraTrack, remoteVideoTracks],
+  );
+
+  // Auto-exit fullscreen once the presenter stops sharing their screen or leaves.
+  useEffect(() => {
+    if (!fullscreenUserId) return;
+    const participant = state.participants.find((p) => p.userId === fullscreenUserId);
+    if (!participant || !isParticipantScreenSharing(participant)) {
+      setFullscreenUserId(null);
+    }
+  }, [fullscreenUserId, state.participants, isParticipantScreenSharing]);
 
   const renderVideoSlot = useCallback(
     (participant: (typeof state.participants)[number]) => {
@@ -265,14 +286,25 @@ export function GroupCallOverlay() {
             </div>
           ) : null}
 
-          <ParticipantStage
-            participants={state.participants}
-            renderVideoSlot={renderVideoSlot}
-            volumeUserId={volumeUserId}
-            getParticipantVolume={getParticipantVolume}
-            onParticipantVolumeChange={setParticipantVolume}
-            onVolumeUserIdChange={setVolumeUserId}
-          />
+          {fullscreenUserId ? (
+            <FullscreenStage
+              participants={state.participants}
+              fullscreenUserId={fullscreenUserId}
+              renderVideoSlot={renderVideoSlot}
+              onExitFullscreen={() => setFullscreenUserId(null)}
+            />
+          ) : (
+            <ParticipantStage
+              participants={state.participants}
+              renderVideoSlot={renderVideoSlot}
+              volumeUserId={volumeUserId}
+              getParticipantVolume={getParticipantVolume}
+              onParticipantVolumeChange={setParticipantVolume}
+              onVolumeUserIdChange={setVolumeUserId}
+              isParticipantScreenSharing={isParticipantScreenSharing}
+              onFullscreenToggle={setFullscreenUserId}
+            />
+          )}
 
           <div className="group-call-overlay__controls">
             <ActionButton
