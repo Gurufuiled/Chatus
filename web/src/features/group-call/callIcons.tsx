@@ -63,3 +63,12 @@ export function IconScreenShareOff({ size = 26, className }: IconProps) {
     </svg>
   );
 }
+
+/** Record / stop-record glyph for local call recording. */
+export function IconRecord({ size = 26, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <circle cx="12" cy="12" r="7" />
+    </svg>
+  );
+}

@@ -33,6 +33,17 @@ import {
 } from '@/services/groupCallService';
 import { wsClient } from '@/ws/wsClient';
 import { GroupCallOverlay } from '@/features/group-call/GroupCallOverlay';
+import {
+  CallRecordingService,
+  type CallRecordingSnapshot,
+  isCallRecordingSupported,
+} from '@/features/group-call/CallRecordingService';
+import {
+  formatCameraAccessError,
+  formatDisplayMediaAccessError,
+  formatMicrophoneAccessError,
+  notifyParentMicrophoneRequired,
+} from '@/utils/microphoneAccess';
 
 export type GroupCallPhase = 'idle' | 'creating' | 'joining' | 'active';
 
@@ -86,6 +97,15 @@ type GroupCallContextType = {
   getParticipantVolume: (userId: string) => number;
   unlockAudioPlayback: () => Promise<void>;
   isInCallForChat: (chatId: string) => boolean;
+  recording: CallRecordingSnapshot;
+  recordingSupported: boolean;
+  startRecording: () => Promise<void>;
+  stopRecording: () => Promise<void>;
+  saveRecording: () => Promise<void>;
+  discardRecording: () => void;
+  clearRecordingError: () => void;
+  mediaErrorBanner: string | null;
+  clearMediaErrorBanner: () => void;
 };
 
 const initialState: GroupCallState = {
@@ -331,6 +351,15 @@ async function ensureCameraPermission(): Promise<void> {
   }
 }
 
+const initialRecordingSnapshot: CallRecordingSnapshot = {
+  phase: 'idle',
+  startedAt: null,
+  error: null,
+  warning: null,
+  pendingBlob: null,
+  pendingFilename: null,
+};
+
 export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<GroupCallState>(initialState);
   const [localCameraTrack, setLocalCameraTrack] = useState<LocalVideoTrack | undefined>();
@@ -338,6 +367,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const [activeRoomByChatId, setActiveRoomByChatId] = useState<
     Record<string, ApiGroupCallRoom | null>
   >({});
+  const [recording, setRecording] = useState<CallRecordingSnapshot>(initialRecordingSnapshot);
+  const [mediaErrorBanner, setMediaErrorBanner] = useState<string | null>(null);
   const roomRef = useRef<Room | null>(null);
   const stateRef = useRef(state);
   const activeRoomByChatIdRef = useRef(activeRoomByChatId);
@@ -346,8 +377,18 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const videoToggleInFlightRef = useRef(false);
   const screenShareToggleInFlightRef = useRef(false);
   const remoteVolumesRef = useRef<Record<string, number>>({});
+  const recordingServiceRef = useRef<CallRecordingService | null>(null);
+  if (!recordingServiceRef.current) {
+    recordingServiceRef.current = new CallRecordingService();
+  }
   stateRef.current = state;
   activeRoomByChatIdRef.current = activeRoomByChatId;
+
+  useEffect(() => {
+    const service = recordingServiceRef.current;
+    if (!service) return;
+    return service.subscribe(setRecording);
+  }, []);
 
   const detachRoom = useCallback(async () => {
     const room = roomRef.current;
@@ -362,10 +403,19 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetCallState = useCallback(async () => {
+    const recordingService = recordingServiceRef.current;
+    if (recordingService) {
+      const phase = recordingService.snapshot().phase;
+      if (phase === 'recording' || phase === 'requesting' || phase === 'stopping') {
+        // Stop while LiveKit tracks are still available for a clean final chunk.
+        await recordingService.stopBecauseCallEnded();
+      }
+    }
     leavingIntentionallyRef.current = false;
     remoteVolumesRef.current = {};
     setLocalCameraTrack(undefined);
     setRemoteVideoTracks({});
+    setMediaErrorBanner(null);
     await detachRoom();
     setState(initialState);
   }, [detachRoom]);
@@ -726,6 +776,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     const roomId = stateRef.current.roomId;
     const chatId = stateRef.current.chatId;
     leavingIntentionallyRef.current = true;
+    // Finalize local recording while LiveKit tracks are still alive.
+    await recordingServiceRef.current?.stopBecauseCallEnded();
     if (!roomId) {
       await resetCallState();
       return;
@@ -756,6 +808,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     const chatId = stateRef.current.chatId;
     if (!roomId) return;
     leavingIntentionallyRef.current = true;
+    await recordingServiceRef.current?.stopBecauseCallEnded();
     try {
       await endGroupCallForAll(roomId);
     } catch (err) {
@@ -785,10 +838,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         ),
       }));
     } catch (err) {
-      showAlert(
-        'Микрофон',
-        err instanceof Error ? err.message : 'Не удалось переключить микрофон',
-      );
+      notifyParentMicrophoneRequired();
+      setMediaErrorBanner(formatMicrophoneAccessError(err));
     }
   }, []);
 
@@ -818,11 +869,12 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       }));
     } catch (err) {
       if (!roomRef.current || stateRef.current.phase === 'idle') return;
-      showAlert(
-        nextEnabled ? 'Не удалось включить видео' : 'Не удалось выключить видео',
-        err instanceof Error
-          ? err.message
-          : 'Проверьте доступ к камере и попробуйте ещё раз.',
+      setMediaErrorBanner(
+        formatCameraAccessError(
+          err instanceof Error
+            ? err
+            : new Error('Проверьте доступ к камере и попробуйте ещё раз.'),
+        ),
       );
     } finally {
       videoToggleInFlightRef.current = false;
@@ -876,14 +928,50 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       }));
     } catch (err) {
       if (!roomRef.current || stateRef.current.phase === 'idle') return;
-      showAlert(
-        nextEnabled ? 'Не удалось включить демонстрацию' : 'Не удалось выключить демонстрацию',
-        err instanceof Error ? err.message : 'Проверьте разрешение на запись экрана.',
+      setMediaErrorBanner(
+        formatDisplayMediaAccessError(
+          err instanceof Error ? err : new Error('Проверьте разрешение на запись экрана.'),
+        ),
       );
     } finally {
       screenShareToggleInFlightRef.current = false;
     }
   }, [syncVideoTracksFromRoom]);
+
+  const startRecording = useCallback(async () => {
+    const room = roomRef.current;
+    const service = recordingServiceRef.current;
+    if (!room || !service) return;
+    if (room.state !== ConnectionState.Connected) {
+      service.reportError('Запись доступна после подключения к звонку');
+      return;
+    }
+    await service.start(room);
+  }, []);
+
+  const stopRecording = useCallback(async () => {
+    const service = recordingServiceRef.current;
+    if (!service) return;
+    await service.stop();
+  }, []);
+
+  const saveRecording = useCallback(async () => {
+    const service = recordingServiceRef.current;
+    if (!service) return;
+    await service.savePending();
+  }, []);
+
+  const discardRecording = useCallback(() => {
+    recordingServiceRef.current?.discardPending();
+  }, []);
+
+  const clearRecordingError = useCallback(() => {
+    recordingServiceRef.current?.clearError();
+  }, []);
+
+  const clearMediaErrorBanner = useCallback(() => {
+    setMediaErrorBanner(null);
+  }, []);
 
   const isInCallForChat = useCallback(
     (chatId: string) =>
@@ -946,6 +1034,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return () => {
+      recordingServiceRef.current?.dispose();
       void detachRoom();
     };
   }, [detachRoom]);
@@ -970,6 +1059,15 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       getParticipantVolume,
       unlockAudioPlayback,
       isInCallForChat,
+      recording,
+      recordingSupported: isCallRecordingSupported(),
+      startRecording,
+      stopRecording,
+      saveRecording,
+      discardRecording,
+      clearRecordingError,
+      mediaErrorBanner,
+      clearMediaErrorBanner,
     }),
     [
       state,
@@ -990,6 +1088,14 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       getParticipantVolume,
       unlockAudioPlayback,
       isInCallForChat,
+      recording,
+      startRecording,
+      stopRecording,
+      saveRecording,
+      discardRecording,
+      clearRecordingError,
+      mediaErrorBanner,
+      clearMediaErrorBanner,
     ],
   );
 

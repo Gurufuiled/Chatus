@@ -442,3 +442,163 @@
 .conversation-header__call-btn:hover {
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
+
+.group-call-overlay--save-only {
+  background: rgba(14, 17, 22, 0.72);
+  justify-content: center;
+  align-items: center;
+}
+
+.group-call-banner-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 8px 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.group-call-banner-inline--error {
+  background: rgba(229, 57, 53, 0.22);
+}
+
+.group-call-banner-inline--warn {
+  background: rgba(255, 193, 7, 0.16);
+}
+
+.group-call-banner-inline__text {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.group-call-banner-inline__dismiss {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.group-call-record-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 56px;
+}
+
+.group-call-record-label,
+.group-call-record-timer {
+  font-size: 11px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+.group-call-record-timer {
+  color: #ff6b6b;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.group-call-action--recording {
+  background: rgba(229, 57, 53, 0.92);
+  position: relative;
+}
+
+.group-call-action__rec-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+  animation: group-call-rec-pulse 1.4s ease-out infinite;
+}
+
+@keyframes group-call-rec-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+}
+
+.group-call-save-sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.group-call-save-sheet__card {
+  width: min(360px, 100%);
+  border-radius: 16px;
+  background: #1a1f26;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 18px 16px 14px;
+}
+
+.group-call-save-sheet__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.group-call-save-sheet__subtitle {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  word-break: break-word;
+}
+
+.group-call-save-sheet__error {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: #ff8a80;
+}
+
+.group-call-save-sheet__actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.group-call-save-sheet__btn {
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.group-call-save-sheet__btn--ghost {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.group-call-save-sheet__btn--primary {
+  background: var(--color-accent, #5b8def);
+  color: #fff;
+}

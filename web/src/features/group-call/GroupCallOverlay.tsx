@@ -7,6 +7,7 @@ import {
   IconHangup,
   IconMic,
   IconMicOff,
+  IconRecord,
   IconScreenShare,
   IconScreenShareOff,
   IconVideo,
@@ -21,14 +22,23 @@ function formatDuration(startedAt?: number, now = Date.now()) {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+function formatRecordingElapsed(startedAt: number | null, now: number): string {
+  if (!startedAt) return '0:00';
+  const totalSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 type ActionButtonProps = {
   label: string;
-  tone?: 'neutral' | 'accent' | 'danger' | 'disabled';
+  tone?: 'neutral' | 'accent' | 'danger' | 'disabled' | 'recording';
   onClick: () => void;
   children: React.ReactNode;
+  badge?: React.ReactNode;
 };
 
-function ActionButton({ label, tone = 'neutral', onClick, children }: ActionButtonProps) {
+function ActionButton({ label, tone = 'neutral', onClick, children, badge }: ActionButtonProps) {
   return (
     <button
       type="button"
@@ -38,6 +48,7 @@ function ActionButton({ label, tone = 'neutral', onClick, children }: ActionButt
       onClick={onClick}
     >
       {children}
+      {badge}
     </button>
   );
 }
@@ -55,18 +66,34 @@ export function GroupCallOverlay() {
     getParticipantVolume,
     setParticipantVolume,
     unlockAudioPlayback,
+    recording,
+    recordingSupported,
+    startRecording,
+    stopRecording,
+    saveRecording,
+    discardRecording,
+    clearRecordingError,
+    mediaErrorBanner,
+    clearMediaErrorBanner,
   } = useGroupCall();
   const [now, setNow] = useState(Date.now());
   const [volumeUserId, setVolumeUserId] = useState<string | null>(null);
 
-  const visible =
+  const callVisible =
     state.phase === 'creating' || state.phase === 'joining' || state.phase === 'active';
+  const savePromptVisible = recording.phase === 'save_prompt';
+  const visible = callVisible || savePromptVisible;
 
   useEffect(() => {
-    if (!visible || !state.startedAt) return;
+    if (!visible) return;
+    const needsTick =
+      Boolean(state.startedAt && callVisible) ||
+      recording.phase === 'recording' ||
+      recording.phase === 'stopping';
+    if (!needsTick) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, [visible, state.startedAt]);
+  }, [visible, state.startedAt, callVisible, recording.phase]);
 
   useEffect(() => {
     if (!volumeUserId) return;
@@ -129,6 +156,16 @@ export function GroupCallOverlay() {
     }
   };
 
+  const onRecordClick = useCallback(() => {
+    if (recording.phase === 'recording') {
+      void stopRecording();
+      return;
+    }
+    if (recording.phase === 'idle') {
+      void startRecording();
+    }
+  }, [recording.phase, startRecording, stopRecording]);
+
   const renderVideoSlot = useCallback(
     (participant: (typeof state.participants)[number]) => {
       if (!participant.isVideoEnabled) return undefined;
@@ -158,80 +195,185 @@ export function GroupCallOverlay() {
 
   if (!visible) return null;
 
+  const bannerText = recording.error || recording.warning || mediaErrorBanner;
+  const isRecordingActive =
+    recording.phase === 'recording' || recording.phase === 'stopping';
+  const recordDisabled =
+    !canToggleMedia ||
+    !recordingSupported ||
+    recording.phase === 'requesting' ||
+    recording.phase === 'stopping' ||
+    recording.phase === 'save_prompt';
+
   return (
-    <div className="group-call-overlay" role="dialog" aria-modal="true" aria-label="Голосовой чат">
-      <div className="group-call-overlay__header">
-        <h2 className="group-call-overlay__title">{state.chatTitle}</h2>
-        <p className="group-call-overlay__subtitle">{statusLine}</p>
-        {state.audioPlaybackBlocked ? (
-          <button
-            type="button"
-            className="group-call-overlay__audio-unlock"
-            onClick={() => void unlockAudioPlayback()}
-          >
-            Нажмите, чтобы включить звук собеседников
-          </button>
-        ) : null}
-      </div>
+    <div
+      className={`group-call-overlay${savePromptVisible && !callVisible ? ' group-call-overlay--save-only' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Голосовой чат"
+    >
+      {callVisible ? (
+        <>
+          <div className="group-call-overlay__header">
+            <h2 className="group-call-overlay__title">{state.chatTitle}</h2>
+            <p className="group-call-overlay__subtitle">{statusLine}</p>
+            {state.audioPlaybackBlocked ? (
+              <button
+                type="button"
+                className="group-call-overlay__audio-unlock"
+                onClick={() => void unlockAudioPlayback()}
+              >
+                Нажмите, чтобы включить звук собеседников
+              </button>
+            ) : null}
+          </div>
 
-      <ParticipantStage
-        participants={state.participants}
-        renderVideoSlot={renderVideoSlot}
-        volumeUserId={volumeUserId}
-        getParticipantVolume={getParticipantVolume}
-        onParticipantVolumeChange={setParticipantVolume}
-        onVolumeUserIdChange={setVolumeUserId}
-      />
+          {bannerText ? (
+            <div
+              className={`group-call-banner-inline${recording.error || mediaErrorBanner ? ' group-call-banner-inline--error' : ' group-call-banner-inline--warn'}`}
+              role="status"
+            >
+              <p className="group-call-banner-inline__text">{bannerText}</p>
+              <button
+                type="button"
+                className="group-call-banner-inline__dismiss"
+                aria-label="Закрыть"
+                onClick={() => {
+                  if (recording.error || recording.warning) clearRecordingError();
+                  if (mediaErrorBanner) clearMediaErrorBanner();
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
 
-      <div className="group-call-overlay__controls">
-        <ActionButton
-          label={state.isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
-          tone={!canToggleMedia ? 'disabled' : 'neutral'}
-          onClick={() => void toggleMute()}
-        >
-          {state.isMuted ? <IconMicOff /> : <IconMic />}
-        </ActionButton>
+          <ParticipantStage
+            participants={state.participants}
+            renderVideoSlot={renderVideoSlot}
+            volumeUserId={volumeUserId}
+            getParticipantVolume={getParticipantVolume}
+            onParticipantVolumeChange={setParticipantVolume}
+            onVolumeUserIdChange={setVolumeUserId}
+          />
 
-        <ActionButton
-          label={state.isVideoEnabled ? 'Выключить камеру' : 'Включить камеру'}
-          tone={!canToggleMedia ? 'disabled' : state.isVideoEnabled ? 'accent' : 'neutral'}
-          onClick={() => void toggleVideo()}
-        >
-          <IconVideo />
-        </ActionButton>
+          <div className="group-call-overlay__controls">
+            <ActionButton
+              label={state.isMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+              tone={!canToggleMedia ? 'disabled' : 'neutral'}
+              onClick={() => void toggleMute()}
+            >
+              {state.isMuted ? <IconMicOff /> : <IconMic />}
+            </ActionButton>
 
-        <ActionButton
-          label={
-            state.isScreenShareEnabled
-              ? 'Остановить демонстрацию экрана'
-              : 'Демонстрация экрана'
-          }
-          tone={
-            !canToggleMedia ? 'disabled' : state.isScreenShareEnabled ? 'accent' : 'neutral'
-          }
-          onClick={() => void toggleScreenShare()}
-        >
-          {state.isScreenShareEnabled ? <IconScreenShareOff /> : <IconScreenShare />}
-        </ActionButton>
+            <ActionButton
+              label={state.isVideoEnabled ? 'Выключить камеру' : 'Включить камеру'}
+              tone={!canToggleMedia ? 'disabled' : state.isVideoEnabled ? 'accent' : 'neutral'}
+              onClick={() => void toggleVideo()}
+            >
+              <IconVideo />
+            </ActionButton>
 
-        <ActionButton label="Завершить звонок" tone="danger" onClick={confirmLeave}>
-          <IconHangup />
-        </ActionButton>
-
-        {state.isCreator ? (
-          <button
-            type="button"
-            className="group-call-overlay__end-all"
-            onClick={() => {
-              if (window.confirm('Завершить голосовой чат для всех участников?')) {
-                void endGroupCallForAll();
+            <ActionButton
+              label={
+                state.isScreenShareEnabled
+                  ? 'Остановить демонстрацию экрана'
+                  : 'Демонстрация экрана'
               }
-            }}
-          >
-            Завершить для всех
-          </button>
-        ) : null}
-      </div>
+              tone={
+                !canToggleMedia ? 'disabled' : state.isScreenShareEnabled ? 'accent' : 'neutral'
+              }
+              onClick={() => void toggleScreenShare()}
+            >
+              {state.isScreenShareEnabled ? <IconScreenShareOff /> : <IconScreenShare />}
+            </ActionButton>
+
+            <div className="group-call-record-wrap">
+              <ActionButton
+                label={
+                  !recordingSupported
+                    ? 'Запись не поддерживается'
+                    : isRecordingActive
+                      ? 'Остановить запись'
+                      : recording.phase === 'requesting'
+                        ? 'Подготовка записи'
+                        : 'Записать'
+                }
+                tone={
+                  recordDisabled
+                    ? 'disabled'
+                    : isRecordingActive
+                      ? 'recording'
+                      : 'neutral'
+                }
+                onClick={onRecordClick}
+                badge={
+                  isRecordingActive ? (
+                    <span className="group-call-action__rec-dot" aria-hidden />
+                  ) : undefined
+                }
+              >
+                <IconRecord />
+              </ActionButton>
+              {isRecordingActive ? (
+                <span className="group-call-record-timer" aria-live="polite">
+                  {formatRecordingElapsed(recording.startedAt, now)}
+                </span>
+              ) : (
+                <span className="group-call-record-label">Записать</span>
+              )}
+            </div>
+
+            <ActionButton label="Завершить звонок" tone="danger" onClick={confirmLeave}>
+              <IconHangup />
+            </ActionButton>
+
+            {state.isCreator ? (
+              <button
+                type="button"
+                className="group-call-overlay__end-all"
+                onClick={() => {
+                  if (window.confirm('Завершить голосовой чат для всех участников?')) {
+                    void endGroupCallForAll();
+                  }
+                }}
+              >
+                Завершить для всех
+              </button>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {savePromptVisible ? (
+        <div className="group-call-save-sheet" role="dialog" aria-label="Сохранить запись">
+          <div className="group-call-save-sheet__card">
+            <h3 className="group-call-save-sheet__title">Сохранить запись?</h3>
+            <p className="group-call-save-sheet__subtitle">
+              {recording.pendingFilename ?? 'Запись звонка.webm'}
+            </p>
+            {recording.error ? (
+              <p className="group-call-save-sheet__error">{recording.error}</p>
+            ) : null}
+            <div className="group-call-save-sheet__actions">
+              <button
+                type="button"
+                className="group-call-save-sheet__btn group-call-save-sheet__btn--ghost"
+                onClick={discardRecording}
+              >
+                Удалить
+              </button>
+              <button
+                type="button"
+                className="group-call-save-sheet__btn group-call-save-sheet__btn--primary"
+                onClick={() => void saveRecording()}
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
