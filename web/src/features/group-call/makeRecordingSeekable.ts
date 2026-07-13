@@ -2,26 +2,16 @@
  * Post-process MediaRecorder output so players get a Duration and can seek.
  *
  * Chrome's WebM output from MediaRecorder omits both the Segment Info
- * `Duration` field and any `Cues` (seek index) — see the long-standing
- * Chromium bugs 561606 / 569840 / 642012. A prior attempt used
- * `fix-webm-duration`, which only patches the `Duration` field: players then
- * report the correct length, but scrubbing/seeking still fails or is very
- * coarse because there is still no seek index for the demuxer to jump to.
+ * `Duration` field and any `Cues` (seek index). We use `ts-ebml` to rebuild
+ * the header with SeekHead + Cues + Duration.
  *
- * We now use `ts-ebml`, which parses the EBML/WebM structure while tracking
- * cluster byte offsets and per-track timestamps as it reads, and can then
- * rebuild the header with a `SeekHead` + `Cues` element in addition to the
- * `Duration` — this is the same technique used by RecordRTC's
- * `getSeekableBlob()` and is what actually restores scrubbing in the
- * `<video>` element (verified against a real MediaRecorder capture, see
- * `__tests__/makeRecordingSeekable.browser.test.ts` notes in the PR/commit
- * description — Cues are present and `video.currentTime` seeks correctly).
+ * Important: `ts-ebml` must be loaded via dynamic import. A static top-level
+ * import crashes the Vite browser bundle at startup (`readVint` of undefined)
+ * and leaves the whole embed stuck on an infinite loading screen.
  *
  * MP4 (when MediaRecorder supports it) already carries duration/seek
  * metadata and is returned as-is.
  */
-
-import { Decoder, Reader, tools } from 'ts-ebml';
 
 export type RecordingContainer = 'webm' | 'mp4';
 
@@ -56,6 +46,8 @@ export async function makeRecordingSeekable(
   }
 
   try {
+    // Dynamic import — keep ts-ebml out of the critical startup path.
+    const { Decoder, Reader, tools } = await import('ts-ebml');
     const buffer = await blob.arrayBuffer();
 
     const decoder = new Decoder();
