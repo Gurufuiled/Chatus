@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Platform, RefreshControl, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -76,6 +76,16 @@ export function TelegramDialogsScreen() {
         renderItem={renderItem}
         keyboardShouldPersistTaps="handled"
         ItemSeparatorComponent={renderItemSeparator}
+        // ⚡ Bolt Performance Optimization
+        // Why: Standard FlatList settings cause high memory usage and frame drops on long chat lists.
+        // What: Tuning virtualization props explicitly controls memory footprint and render batching.
+        // Impact: Reduces RAM usage and prevents stuttering when scrolling past dozens of complex chat items.
+        // removeClippedSubviews is disabled on iOS when search is active to prevent keyboard/layout thrashing bugs.
+        removeClippedSubviews={Platform.OS === 'android' ? true : !isSearchActive}
+        initialNumToRender={12}
+        maxToRenderPerBatch={Platform.OS === 'android' ? 5 : 8}
+        updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : 45}
+        windowSize={Platform.OS === 'android' ? 5 : 8}
         ListHeaderComponent={
           <ChatListSearchBar
             listStyles={listStyles}
