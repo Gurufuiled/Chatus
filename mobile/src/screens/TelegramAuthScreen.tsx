@@ -959,7 +959,7 @@ export function TelegramAuthScreen() {
         ) : (
           <Text style={[styles.subtitle, { color: ui.hint }]}>
             {status === "ready"
-              ? "Telegram подключён. Выход — только кнопкой «Сбросить сессию» внизу (это удалит локальный вход)."
+              ? "Telegram подключён. Выход — только кнопкой «Выйти из Telegram» внизу (удалит локальный вход на этом устройстве)."
               : "Аккаунт Telegram отдельный от Chatus."}
           </Text>
         )}
