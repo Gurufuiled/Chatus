@@ -15,8 +15,28 @@
  * Mediabunny is loaded lazily so the embed startup path stays light.
  */
 
-export async function convertRecordingToMp4(blob: Blob): Promise<Blob | null> {
+/** BufferTarget + in-memory fastStart keeps the whole file in RAM (~<100MB guidance). */
+const MAX_MP4_CONVERT_BYTES = 80 * 1024 * 1024;
+/** Soft product warn is 30 min; skip heavy convert beyond this to avoid tab OOM. */
+const MAX_MP4_CONVERT_DURATION_MS = 45 * 60 * 1000;
+
+export async function convertRecordingToMp4(
+  blob: Blob,
+  durationMs = 0,
+): Promise<Blob | null> {
   if (blob.size === 0) return null;
+  if (blob.size > MAX_MP4_CONVERT_BYTES) {
+    console.warn(
+      `[Recording] skip MP4 convert: blob ${blob.size} bytes exceeds ${MAX_MP4_CONVERT_BYTES}`,
+    );
+    return null;
+  }
+  if (durationMs > MAX_MP4_CONVERT_DURATION_MS) {
+    console.warn(
+      `[Recording] skip MP4 convert: duration ${durationMs}ms exceeds ${MAX_MP4_CONVERT_DURATION_MS}`,
+    );
+    return null;
+  }
 
   try {
     const {
@@ -31,6 +51,12 @@ export async function convertRecordingToMp4(blob: Blob): Promise<Blob | null> {
       canEncodeAudio,
     } = await import('mediabunny');
 
+    // Movies & TV needs H.264 in MP4 — VP8/VP9-in-MP4 is not a usable fallback.
+    if (!(await canEncodeVideo('avc'))) {
+      console.warn('[Recording] skip MP4 convert: AVC encoder unavailable');
+      return null;
+    }
+
     const input = new Input({
       source: new BlobSource(blob),
       formats: ALL_FORMATS,
@@ -43,13 +69,12 @@ export async function convertRecordingToMp4(blob: Blob): Promise<Blob | null> {
       target,
     });
 
-    const preferAvc = await canEncodeVideo('avc');
     const preferAac = await canEncodeAudio('aac');
 
     const conversion = await Conversion.init({
       input,
       output,
-      ...(preferAvc ? { video: { codec: 'avc' as const } } : {}),
+      video: { codec: 'avc' },
       ...(preferAac ? { audio: { codec: 'aac' as const } } : {}),
     });
 
@@ -58,6 +83,13 @@ export async function convertRecordingToMp4(blob: Blob): Promise<Blob | null> {
         '[Recording] MP4 conversion invalid',
         conversion.discardedTracks?.map((t) => t.reason),
       );
+      return null;
+    }
+
+    // Must actually produce an H.264 video track — otherwise Movies & TV will fail.
+    const hasVideo = conversion.utilizedTracks?.some((t) => t.isVideoTrack());
+    if (!hasVideo) {
+      console.warn('[Recording] MP4 conversion discarded video track');
       return null;
     }
 
