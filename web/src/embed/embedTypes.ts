@@ -4,6 +4,7 @@ export type LoginusProfilePayload = {
   firstName?: string;
   lastName?: string;
   avatarUrl?: string;
+  avatar_url?: string;
   avatar?: string;
   email?: string;
 };

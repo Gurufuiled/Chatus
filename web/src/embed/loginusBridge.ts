@@ -73,6 +73,7 @@ function pickLoginusProfile(raw: unknown): LoginusProfilePayload | undefined {
     'firstName',
     'lastName',
     'avatarUrl',
+    'avatar_url',
     'avatar',
   ] as const;
   const profile: LoginusProfilePayload = {};

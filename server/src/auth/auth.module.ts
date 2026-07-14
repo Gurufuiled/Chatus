@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { LoginusProfileClient } from './loginus-profile.client';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { UploadModule } from '../upload/upload.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         expiresIn: parseInt(process.env.JWT_EXPIRES_IN ?? '3600', 10),
       },
     }),
+    UploadModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, LoginusProfileClient, JwtStrategy, JwtAuthGuard],

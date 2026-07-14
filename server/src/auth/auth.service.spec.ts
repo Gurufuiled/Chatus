@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { User } from '@prisma/client';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadService } from '../upload/upload.service';
 
 function makeUser(overrides: Partial<User> = {}): User {
   return {
@@ -24,10 +25,17 @@ function makeUser(overrides: Partial<User> = {}): User {
   };
 }
 
+function makeUploadService(): UploadService {
+  return {
+    cacheRemoteAvatar: jest.fn().mockResolvedValue(null),
+  } as unknown as UploadService;
+}
+
 describe('AuthService.syncProfileFromInitData', () => {
   let service: AuthService;
   let jwtService: JwtService;
   let prisma: PrismaService;
+  let uploadService: UploadService;
   const now = Math.floor(Date.now() / 1000);
 
   const validPayload = {
@@ -41,6 +49,7 @@ describe('AuthService.syncProfileFromInitData', () => {
 
   beforeEach(() => {
     process.env.LOGINUS_EMBEDDED_SECRET = 'test-secret';
+    process.env.LOGINUS_BASE_URL = 'https://id.startapus.com';
     jwtService = {
       verify: jest.fn().mockReturnValue(validPayload),
     } as unknown as JwtService;
@@ -50,7 +59,8 @@ describe('AuthService.syncProfileFromInitData', () => {
         update: jest.fn(),
       },
     } as unknown as PrismaService;
-    service = new AuthService(prisma, jwtService);
+    uploadService = makeUploadService();
+    service = new AuthService(prisma, jwtService, uploadService);
   });
 
   it('rejects when initData sub does not match authenticated user', async () => {
@@ -137,6 +147,37 @@ describe('AuthService.syncProfileFromInitData', () => {
     expect(result.username).toBe('old@example.com');
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
+
+  it('caches Loginus-relative avatar into local uploads', async () => {
+    const user = makeUser();
+    (prisma.user.findUnique as jest.Mock).mockImplementation(
+      async (args: { where: { id?: string } }) => {
+        if (args.where.id === 'user-1') return user;
+        return null;
+      },
+    );
+    (uploadService.cacheRemoteAvatar as jest.Mock).mockResolvedValue(
+      '/uploads/avatar-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg',
+    );
+    (prisma.user.update as jest.Mock).mockResolvedValue(
+      makeUser({
+        avatarUrl: '/uploads/avatar-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg',
+      }),
+    );
+    (jwtService.verify as jest.Mock).mockReturnValue({
+      ...validPayload,
+      avatarUrl: '/uploads/avatars/photo.png',
+    });
+
+    const result = await service.syncProfileFromInitData('user-1', 'init-token');
+
+    expect(uploadService.cacheRemoteAvatar).toHaveBeenCalledWith(
+      'https://id.startapus.com/uploads/avatars/photo.png',
+    );
+    expect(result.avatar_url).toBe(
+      '/uploads/avatar-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg',
+    );
+  });
 });
 
 describe('AuthService.loginWithInitData', () => {
@@ -156,6 +197,7 @@ describe('AuthService.loginWithInitData', () => {
 
   beforeEach(() => {
     process.env.LOGINUS_EMBEDDED_SECRET = 'test-secret';
+    process.env.LOGINUS_BASE_URL = 'https://id.startapus.com';
     jwtService = {
       verify: jest.fn().mockReturnValue(validPayload),
       sign: jest.fn().mockReturnValue('access-token'),
@@ -170,7 +212,7 @@ describe('AuthService.loginWithInitData', () => {
         create: jest.fn().mockResolvedValue({}),
       },
     } as unknown as PrismaService;
-    service = new AuthService(prisma, jwtService);
+    service = new AuthService(prisma, jwtService, makeUploadService());
   });
 
   it('links existing user by email when loginusId is not set yet', async () => {

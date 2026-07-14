@@ -73,22 +73,151 @@ export function normalizeLoginusPhone(phone: string | null | undefined): string 
   return `+${raw}`;
 }
 
-export function isLocalUploadAvatarUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  return url.startsWith('/uploads/') || url.includes('/uploads/');
+/** ChatUs-owned: UUID upload or content-addressed Loginus cache `avatar-<sha256-32>.ext`. */
+const CHATUS_UPLOAD_PATH_RE =
+  /^\/uploads\/(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|avatar-[0-9a-f]{32})\.[a-z0-9]+$/i;
+
+export function getLoginusOrigin(): string {
+  return (
+    process.env.LOGINUS_BASE_URL?.trim() ||
+    process.env.LOGINUS_ORIGIN?.trim() ||
+    'https://id.startapus.com'
+  ).replace(/\/$/, '');
 }
 
+export function getAllowedAvatarDownloadHosts(): Set<string> {
+  const hosts = new Set<string>();
+  const addHost = (raw: string) => {
+    const part = raw.trim();
+    if (!part) return;
+    try {
+      const u = part.includes('://') ? new URL(part) : new URL(`https://${part}`);
+      if (u.hostname) hosts.add(u.hostname.toLowerCase());
+    } catch {
+      /* ignore */
+    }
+  };
+  addHost(process.env.LOGINUS_BASE_URL ?? '');
+  addHost(process.env.LOGINUS_ORIGIN ?? '');
+  for (const part of (process.env.LOGINUS_AVATAR_HOST_ALLOWLIST ?? '').split(',')) {
+    addHost(part);
+  }
+  if (hosts.size === 0) hosts.add('id.startapus.com');
+  return hosts;
+}
+
+/** Only Loginus (and explicit allowlist) hosts may be fetched server-side (SSRF guard). */
+export function isAllowedAvatarDownloadUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    if (u.username || u.password) return false;
+    const host = u.hostname.toLowerCase();
+    if (
+      host === 'localhost' ||
+      host.endsWith('.localhost') ||
+      host.endsWith('.local') ||
+      host === '::1'
+    ) {
+      return false;
+    }
+    if (
+      /^(127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0$|100\.64\.|172\.(1[6-9]|2\d|3[01])\.)/.test(
+        host,
+      )
+    ) {
+      return false;
+    }
+    return getAllowedAvatarDownloadHosts().has(host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Normalize to ChatUs `/uploads/<uuid|avatar-hash>.ext` when the URL points at our storage.
+ * Returns null for Loginus paths like `/uploads/avatars/...` or foreign CDNs.
+ */
+export function extractChatUsUploadPath(
+  url: string | null | undefined,
+): string | null {
+  if (!url?.trim()) return null;
+  const trimmed = url.trim();
+  let pathname = trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      pathname = new URL(trimmed).pathname;
+    } catch {
+      return null;
+    }
+  }
+  if (!pathname.startsWith('/')) return null;
+  return CHATUS_UPLOAD_PATH_RE.test(pathname) ? pathname : null;
+}
+
+export function isChatUsStoredAvatarUrl(
+  url: string | null | undefined,
+): boolean {
+  return extractChatUsUploadPath(url) != null;
+}
+
+/** @deprecated Prefer isChatUsStoredAvatarUrl — kept for outbound sync helpers. */
+export function isLocalUploadAvatarUrl(url: string | null | undefined): boolean {
+  return isChatUsStoredAvatarUrl(url);
+}
+
+/** Relative Loginus media paths that were incorrectly stored as ChatUs uploads. */
+export function isForeignUploadAvatarPath(
+  url: string | null | undefined,
+): boolean {
+  if (!url?.trim()) return false;
+  const trimmed = url.trim();
+  if (isChatUsStoredAvatarUrl(trimmed)) return false;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const pathname = new URL(trimmed).pathname;
+      return pathname.startsWith('/uploads/') && !CHATUS_UPLOAD_PATH_RE.test(pathname);
+    } catch {
+      return false;
+    }
+  }
+  return trimmed.startsWith('/uploads/');
+}
+
+/** Turn Loginus relative `/uploads/...` into an absolute Loginus URL for download. */
+export function absolutizeLoginusAvatarUrl(
+  url: string | null | undefined,
+): string | null {
+  if (!url?.trim()) return null;
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('/')) return `${getLoginusOrigin()}${trimmed}`;
+  return null;
+}
+
+/**
+ * Decide whether Loginus avatar should replace the stored one.
+ * Returns absolute http(s) URL or ChatUs `/uploads/<uuid>.ext`, or undefined to skip.
+ */
 export function resolveInboundAvatarUrl(
   currentAvatar: string | null | undefined,
   loginusAvatar: string | null | undefined,
-): string | null | undefined {
+): string | undefined {
   if (!loginusAvatar?.trim()) return undefined;
-  const trimmed = loginusAvatar.trim();
-  if (trimmed === (currentAvatar ?? null)) return undefined;
-  if (isLocalUploadAvatarUrl(currentAvatar)) {
-    if (!/^https?:\/\//i.test(trimmed)) return undefined;
+  const absolute = absolutizeLoginusAvatarUrl(loginusAvatar);
+  if (!absolute) return undefined;
+
+  const currentPath = extractChatUsUploadPath(currentAvatar);
+  const inboundPath = extractChatUsUploadPath(absolute);
+  if (currentPath && inboundPath && currentPath === inboundPath) {
+    return undefined;
   }
-  return trimmed;
+  if (inboundPath) {
+    return inboundPath;
+  }
+
+  if (absolute === (currentAvatar ?? '').trim()) return undefined;
+  return absolute;
 }
 
 export function getPublicOrigin(): string | null {

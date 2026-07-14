@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import './avatar.css';
 
 interface AvatarProps {
@@ -14,19 +15,22 @@ function getInitials(name: string): string {
 }
 
 export function Avatar({ name, imageUrl, size = 48 }: AvatarProps) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showImage = Boolean(imageUrl) && failedUrl !== imageUrl;
   const style = {
     width: size,
     height: size,
     fontSize: Math.max(12, Math.round(size * 0.34)),
   };
 
-  if (imageUrl) {
+  if (showImage && imageUrl) {
     return (
       <img
         className="avatar avatar--image"
         src={imageUrl}
         alt=""
         style={style}
+        onError={() => setFailedUrl(imageUrl)}
       />
     );
   }

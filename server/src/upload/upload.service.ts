@@ -4,14 +4,17 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import axios from 'axios';
 import { createHash, randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { MAX_FILE_SIZE } from './upload.constants';
+import { MAX_FILE_SIZE, MAX_REMOTE_AVATAR_BYTES } from './upload.constants';
 import { RustMediaWorkerService } from './rust-media-worker.service';
+import { isAllowedAvatarDownloadUrl } from '../auth/loginus-profile.util';
 
 const UPLOAD_DIR = 'uploads';
 const ALLOWED_MIME_REGEX = /^(image\/(?!svg)|audio\/|video\/|application\/pdf)/;
+const REMOTE_AVATAR_MIME_RE = /^image\/(jpeg|jpg|png|webp|gif|heic|heif)(;.*)?$/i;
 
 @Injectable()
 export class UploadService {
@@ -101,6 +104,104 @@ export class UploadService {
     if (mimetype.startsWith('audio/')) return 'voice';
     if (mimetype.startsWith('video/')) return 'video';
     return 'file';
+  }
+
+  /**
+   * Download a remote image (Loginus allowlisted hosts only) into local uploads.
+   * Filename is content-addressed by source URL so repeated syncs reuse the file.
+   * Returns `/uploads/avatar-<hash>.<ext>` or null on failure / disallowed host.
+   */
+  async cacheRemoteAvatar(sourceUrl: string): Promise<string | null> {
+    const trimmed = sourceUrl?.trim();
+    if (!trimmed || !/^https?:\/\//i.test(trimmed)) return null;
+    if (!isAllowedAvatarDownloadUrl(trimmed)) {
+      this.logger.warn(`Remote avatar host not allowlisted: ${trimmed}`);
+      return null;
+    }
+
+    const urlHash = createHash('sha256').update(trimmed).digest('hex').slice(0, 32);
+    const existing = this.findExistingCachedAvatar(urlHash);
+    if (existing) return existing;
+
+    try {
+      const response = await axios.get<ArrayBuffer>(trimmed, {
+        responseType: 'arraybuffer',
+        timeout: 15_000,
+        maxRedirects: 0,
+        maxContentLength: MAX_REMOTE_AVATAR_BYTES,
+        maxBodyLength: MAX_REMOTE_AVATAR_BYTES,
+        validateStatus: (status) => status >= 200 && status < 300,
+        headers: { Accept: 'image/*,*/*;q=0.8' },
+      });
+
+      const buf = Buffer.from(response.data);
+      if (buf.length === 0 || buf.length > MAX_REMOTE_AVATAR_BYTES) {
+        this.logger.warn(`Remote avatar rejected by size: ${trimmed} (${buf.length}b)`);
+        return null;
+      }
+
+      const contentTypeRaw = String(
+        response.headers['content-type'] ?? '',
+      ).split(';')[0]?.trim() || '';
+      let mime = contentTypeRaw.toLowerCase();
+      if (!REMOTE_AVATAR_MIME_RE.test(mime)) {
+        mime = this.guessImageMimeFromUrl(trimmed) ?? '';
+      }
+      if (!REMOTE_AVATAR_MIME_RE.test(mime)) {
+        this.logger.warn(`Remote avatar rejected by mime: ${trimmed} (${contentTypeRaw})`);
+        return null;
+      }
+
+      const ext = this.extForImageMime(mime);
+      const filename = `avatar-${urlHash}${ext}`;
+      const filepath = join(this.uploadPath, filename);
+      const fs = await import('fs/promises');
+      await fs.writeFile(filepath, buf);
+      return `/uploads/${filename}`;
+    } catch (err) {
+      this.logger.warn(
+        `Failed to cache remote avatar ${trimmed}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  private findExistingCachedAvatar(urlHash: string): string | null {
+    const exts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif'];
+    for (const ext of exts) {
+      const filename = `avatar-${urlHash}${ext}`;
+      if (existsSync(join(this.uploadPath, filename))) {
+        return `/uploads/${filename}`;
+      }
+    }
+    return null;
+  }
+
+  private guessImageMimeFromUrl(url: string): string | null {
+    try {
+      const pathname = new URL(url).pathname.toLowerCase();
+      if (pathname.endsWith('.png')) return 'image/png';
+      if (pathname.endsWith('.webp')) return 'image/webp';
+      if (pathname.endsWith('.gif')) return 'image/gif';
+      if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) return 'image/jpeg';
+      if (pathname.endsWith('.heic')) return 'image/heic';
+      if (pathname.endsWith('.heif')) return 'image/heif';
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  private extForImageMime(mime: string): string {
+    const base = mime.split(';')[0]?.trim().toLowerCase() ?? '';
+    if (base === 'image/png') return '.png';
+    if (base === 'image/webp') return '.webp';
+    if (base === 'image/gif') return '.gif';
+    if (base === 'image/heic') return '.heic';
+    if (base === 'image/heif') return '.heif';
+    return '.jpg';
   }
 
   /**

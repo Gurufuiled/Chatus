@@ -11,11 +11,15 @@ import { Prisma } from '@prisma/client';
 import axios from 'axios';
 import { randomUUID } from 'crypto';
 import type { LoginusProfileDto } from './dto/loginus-profile.dto';
+import { UploadService } from '../upload/upload.service';
 import {
   buildUserUpdateFromLoginusProfile,
+  extractChatUsUploadPath,
   extractLoginusId,
+  isForeignUploadAvatarPath,
   normalizeLoginusPhone,
   profileFieldsFromInitPayload,
+  resolveInboundAvatarUrl,
   type LoginusInitDataPayload,
   type LoginusProfileFields,
 } from './loginus-profile.util';
@@ -50,6 +54,7 @@ export interface LoginusUserInfo {
   firstName?: string;
   lastName?: string;
   phone?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface AuthResponse {
@@ -70,12 +75,22 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly uploadService: UploadService,
   ) {
     this.loginusBaseUrl = (
       process.env.LOGINUS_BASE_URL || 'https://id.startapus.com'
     ).replace(/\/$/, '');
     this.loginusClientId = process.env.LOGINUS_CLIENT_ID || '';
     this.loginusClientSecret = process.env.LOGINUS_CLIENT_SECRET || '';
+  }
+
+  private pickLoginusAvatar(
+    ...candidates: Array<string | null | undefined>
+  ): string | null {
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    }
+    return null;
   }
 
   getLoginUrl(
@@ -184,10 +199,39 @@ export class AuthService {
     const userinfoUrl = `${this.loginusBaseUrl}/api/v2/oauth/userinfo`;
 
     try {
-      const { data } = await axios.get<LoginusUserInfo>(userinfoUrl, {
+      const { data } = await axios.get<Record<string, unknown>>(userinfoUrl, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      return data;
+      const id =
+        (typeof data.id === 'string' && data.id) ||
+        (typeof data.sub === 'string' && data.sub) ||
+        '';
+      return {
+        id,
+        email:
+          typeof data.email === 'string'
+            ? data.email
+            : ((data.email as string | null | undefined) ?? null),
+        firstName:
+          (typeof data.firstName === 'string' && data.firstName) ||
+          (typeof data.first_name === 'string' && data.first_name) ||
+          undefined,
+        lastName:
+          (typeof data.lastName === 'string' && data.lastName) ||
+          (typeof data.last_name === 'string' && data.last_name) ||
+          undefined,
+        phone:
+          (typeof data.phone === 'string' && data.phone) ||
+          (typeof data.phone_number === 'string' && data.phone_number) ||
+          null,
+        avatarUrl: this.pickLoginusAvatar(
+          typeof data.avatarUrl === 'string' ? data.avatarUrl : null,
+          typeof data.avatar_url === 'string' ? data.avatar_url : null,
+          typeof data.avatar === 'string' ? data.avatar : null,
+          typeof data.picture === 'string' ? data.picture : null,
+          typeof data.photo === 'string' ? data.photo : null,
+        ),
+      };
     } catch (err: unknown) {
       const axiosErr = err as {
         response?: { status?: number; data?: unknown };
@@ -259,7 +303,8 @@ export class AuthService {
       email: profileDto.email ?? null,
       firstName: profileDto.firstName ?? null,
       lastName: profileDto.lastName ?? null,
-      avatarUrl: profileDto.avatarUrl ?? profileDto.avatar ?? null,
+      avatarUrl:
+        profileDto.avatarUrl ?? profileDto.avatar_url ?? profileDto.avatar ?? null,
     };
   }
 
@@ -353,6 +398,11 @@ export class AuthService {
         last_name?: string;
         phone?: string;
         phone_number?: string;
+        avatarUrl?: string;
+        avatar_url?: string;
+        avatar?: string;
+        picture?: string;
+        photo?: string;
       }>(idToken);
       if (payload?.sub) {
         userInfo = {
@@ -361,6 +411,13 @@ export class AuthService {
           firstName: payload.firstName ?? payload.first_name,
           lastName: payload.lastName ?? payload.last_name,
           phone: payload.phone ?? payload.phone_number ?? null,
+          avatarUrl: this.pickLoginusAvatar(
+            payload.avatarUrl,
+            payload.avatar_url,
+            payload.avatar,
+            payload.picture,
+            payload.photo,
+          ),
         };
       } else {
         userInfo = await this.getUserInfo(loginusAccessToken);
@@ -374,15 +431,35 @@ export class AuthService {
       throw new BadRequestException('Loginus userinfo missing id');
     }
 
+    // Prefer userinfo avatar when id_token lacked one.
+    if (!userInfo.avatarUrl) {
+      try {
+        const fresh = await this.getUserInfo(loginusAccessToken);
+        if (fresh.avatarUrl) userInfo.avatarUrl = fresh.avatarUrl;
+        if (!userInfo.firstName && fresh.firstName) userInfo.firstName = fresh.firstName;
+        if (!userInfo.lastName && fresh.lastName) userInfo.lastName = fresh.lastName;
+      } catch {
+        /* id_token path already succeeded; avatar is best-effort */
+      }
+    }
+
     const user = await this.findOrCreateUser({
       ...userInfo,
       id: loginusId,
+    });
+    const refreshedUser = await this.applyLoginusProfileToUser(user, {
+      loginusId,
+      email: userInfo.email ?? null,
+      firstName: userInfo.firstName ?? null,
+      lastName: userInfo.lastName ?? null,
+      avatarUrl: userInfo.avatarUrl ?? null,
+      phone: userInfo.phone ?? null,
     });
     const loginusRefresh =
       tokens.refresh_token ??
       (tokens as { refreshToken?: string }).refreshToken;
     const { access_token, expires_at, refresh_token } = await this.issueTokens(
-      user,
+      refreshedUser,
       loginusRefresh,
     );
 
@@ -390,7 +467,7 @@ export class AuthService {
       access_token,
       refresh_token,
       expires_at,
-      user: mapUser(user),
+      user: mapUser(refreshedUser),
       ...(idToken && { id_token: idToken }),
     };
   }
@@ -399,8 +476,44 @@ export class AuthService {
     user: User,
     fields: LoginusProfileFields,
   ): Promise<User> {
-    const { data, changed } = buildUserUpdateFromLoginusProfile(user, fields);
-    if (!changed) return user;
+    const { data } = buildUserUpdateFromLoginusProfile(user, fields);
+
+    // Cache Loginus avatars into ChatUs storage. Heal foreign `/uploads/avatars/...`
+    // even when the current Loginus payload omits avatar.
+    const avatarSource =
+      fields.avatarUrl?.trim() ||
+      (isForeignUploadAvatarPath(user.avatarUrl) ? user.avatarUrl : null);
+    const inboundAvatar = resolveInboundAvatarUrl(user.avatarUrl, avatarSource);
+    if (inboundAvatar !== undefined) {
+      const ownedPath = extractChatUsUploadPath(inboundAvatar);
+      if (ownedPath) {
+        if (ownedPath !== (user.avatarUrl ?? null)) {
+          data.avatarUrl = ownedPath;
+        } else {
+          delete data.avatarUrl;
+        }
+      } else {
+        const cached = await this.uploadService.cacheRemoteAvatar(inboundAvatar);
+        if (cached) {
+          if (cached !== (user.avatarUrl ?? null)) {
+            data.avatarUrl = cached;
+          } else {
+            delete data.avatarUrl;
+          }
+        } else if (isForeignUploadAvatarPath(user.avatarUrl)) {
+          data.avatarUrl = null;
+        } else if (/^https?:\/\//i.test(inboundAvatar)) {
+          // Non-allowlisted CDN (e.g. Yandex): keep absolute URL as hotlink fallback.
+          if (inboundAvatar !== (user.avatarUrl ?? null)) {
+            data.avatarUrl = inboundAvatar;
+          } else {
+            delete data.avatarUrl;
+          }
+        } else {
+          delete data.avatarUrl;
+        }
+      }
+    }
 
     let phoneUpdate = data.phone;
     if (phoneUpdate) {

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Pressable,
   Text,
@@ -105,6 +105,8 @@ export const ChatListRow = React.memo(
 
     const title = getChatListTitle(chat);
     const avatarUrl = resolveAvatarUrl(chat.avatar_url);
+    const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
+    const showAvatarImage = Boolean(avatarUrl) && failedAvatarUrl !== avatarUrl;
     const initial = (title.trim()[0] || "?").toUpperCase();
     const avatarColor = getAvatarColor(title);
     const isLastMessageMine = lastMessageSenderId === currentUserId;
@@ -125,8 +127,12 @@ export const ChatListRow = React.memo(
         onLongPress={(event) => onLongPress?.(chat.id, event)}
         delayLongPress={220}
       >
-        {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+        {showAvatarImage ? (
+          <Image
+            source={{ uri: avatarUrl! }}
+            style={styles.avatar}
+            onError={() => setFailedAvatarUrl(avatarUrl)}
+          />
         ) : chat.chat_type === "channel" ? (
           <View
             style={[styles.avatarPlaceholder, styles.channelAvatarPlaceholder]}

@@ -1,4 +1,4 @@
-import { Transform, plainToInstance } from 'class-transformer';
+import { plainToInstance } from 'class-transformer';
 import { IsOptional, IsString } from 'class-validator';
 
 const LOGINUS_PROFILE_KEYS = [
@@ -8,6 +8,7 @@ const LOGINUS_PROFILE_KEYS = [
   'firstName',
   'lastName',
   'avatarUrl',
+  'avatar_url',
   'avatar',
 ] as const;
 
@@ -54,6 +55,10 @@ export class LoginusProfileDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  avatar_url?: string;
 
   @IsOptional()
   @IsString()
