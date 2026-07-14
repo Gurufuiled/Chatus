@@ -80,7 +80,7 @@ function notifyTdlibSessionExpired(): void {
 /**
  * True when TDLib left session files under database_directory (not just JS SecureStore cache).
  */
-export async function hasTdlibDatabaseOnDisk(): Promise<boolean> {
+export async function hasTdlibDatabaseOnDisk(): Promise<boolean | null> {
   try {
     const { databaseDir } = await getTdlibDirectories();
     const baseUri = `file://${databaseDir}`.replace(/([^:]\/)\/+/g, '$1');
@@ -93,7 +93,8 @@ export async function hasTdlibDatabaseOnDisk(): Promise<boolean> {
     }
     return false;
   } catch {
-    return false;
+    // Unknown — do not treat as "no DB" (avoids false session expiry).
+    return null;
   }
 }
 
@@ -193,7 +194,7 @@ export async function recoverTdlibSession(): Promise<boolean> {
         });
         if (
           sticky &&
-          !dbOnDisk &&
+          dbOnDisk === false &&
           (live === 'authorizationStateWaitPhoneNumber' ||
             live === 'authorizationStateWaitTdlibParameters')
         ) {
@@ -408,11 +409,13 @@ export async function waitForTdlibAuthorizationReady(
   let lastState: string | null = null;
   let appliedParameters = false;
   let loginGateSeenAt: number | null = null;
+  let pollCount = 0;
   while (Date.now() < deadline) {
     const auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<string, unknown>;
     throwIfTdError(auth);
     const t = (auth['@type'] as string) ?? null;
     lastState = t;
+    pollCount += 1;
     if (t === 'authorizationStateReady') {
       return { ready: true, state: t };
     }
@@ -434,7 +437,7 @@ export async function waitForTdlibAuthorizationReady(
         if (loginGateSeenAt == null) loginGateSeenAt = Date.now();
         if (Date.now() - loginGateSeenAt < stickyGraceMs) {
           // Prefer getMe — Ready may lag behind an already-usable session.
-          if (await canCallAuthorizedApis()) {
+          if (pollCount % 4 === 0 && (await canCallAuthorizedApis())) {
             return { ready: true, state: 'authorizationStateReady' };
           }
           await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
@@ -568,7 +571,7 @@ export async function ensureTdlibAuthorizedForSend(options?: {
   if (sticky) {
     const dbOnDisk = await hasTdlibDatabaseOnDisk();
     if (
-      !dbOnDisk &&
+      dbOnDisk === false &&
       (live === 'authorizationStateWaitPhoneNumber' ||
         live === 'authorizationStateWaitRegistration' ||
         live === 'authorizationStateWaitTdlibParameters')
