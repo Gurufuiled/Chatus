@@ -41,9 +41,12 @@ final class Tdlib: RCTEventEmitter {
 
   private let stateLock = NSLock()
   private let sendLock = NSLock()
+  /// Serializes td_json_client_receive vs destroy/recreate (TDLib forbids concurrent use).
+  private let clientIoLock = NSLock()
   private var client: UnsafeMutableRawPointer?
   private var receiveThread: Thread?
   private var destroyed = false
+  private var receivePaused = false
   private var hasActiveListeners = false
   private var pending: [String: PendingTdlibRequest] = [:]
 
@@ -71,6 +74,51 @@ final class Tdlib: RCTEventEmitter {
     stateLock.lock()
     hasActiveListeners = false
     stateLock.unlock()
+  }
+
+  @objc(recreateClient:rejecter:)
+  func recreateClient(
+    _ resolve: RCTPromiseResolveBlock,
+    rejecter reject: RCTPromiseRejectBlock
+  ) {
+    rejectAllPending(code: "E_TD_RECREATE", message: "TDLib client is being recreated.")
+
+    // Pause receive loop, then take clientIoLock so we never destroy while
+    // td_json_client_receive is in flight (undefined behavior / native crash).
+    stateLock.lock()
+    receivePaused = true
+    stateLock.unlock()
+
+    sendLock.lock()
+    clientIoLock.lock()
+
+    stateLock.lock()
+    let oldClient = client
+    client = nil
+    stateLock.unlock()
+
+    if let oldClient {
+      td_json_client_destroy(oldClient)
+    }
+
+    let newClient = td_json_client_create()
+    stateLock.lock()
+    client = newClient
+    receivePaused = false
+    let created = client != nil
+    stateLock.unlock()
+
+    clientIoLock.unlock()
+    sendLock.unlock()
+
+    ensureReceiveThreadRunning()
+
+    if !created {
+      reject("E_TD_NATIVE", "Failed to recreate TDLib client.", nil)
+      return
+    }
+    NSLog("[Tdlib] client recreated — session can reload from database_directory")
+    resolve(true)
   }
 
   @objc(getUses24HourClock:rejecter:)
@@ -149,6 +197,9 @@ final class Tdlib: RCTEventEmitter {
 
   override func invalidate() {
     markDestroyed()
+    stateLock.lock()
+    receivePaused = true
+    stateLock.unlock()
     receiveThread?.cancel()
 
     let deadline = Date().addingTimeInterval(2)
@@ -158,10 +209,15 @@ final class Tdlib: RCTEventEmitter {
 
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module was unloaded.")
 
+    // Same lock order as recreateClient: never destroy while send/receive is in flight.
+    sendLock.lock()
+    clientIoLock.lock()
     if let client {
       td_json_client_destroy(client)
       self.client = nil
     }
+    clientIoLock.unlock()
+    sendLock.unlock()
 
     super.invalidate()
   }
@@ -178,18 +234,58 @@ final class Tdlib: RCTEventEmitter {
     receiveThread?.start()
   }
 
+  /** Restart receive loop after recreateClient if the previous thread exited. */
+  private func ensureReceiveThreadRunning() {
+    stateLock.lock()
+    let alive = receiveThread?.isExecuting == true
+    stateLock.unlock()
+    if alive {
+      return
+    }
+    startReceiveThread()
+  }
+
   private func receiveLoop() {
     while !isDestroyed(), !Thread.current.isCancelled {
-      guard let client = activeClient() else {
-        return
+      stateLock.lock()
+      let paused = receivePaused
+      stateLock.unlock()
+      if paused {
+        Thread.sleep(forTimeInterval: 0.02)
+        continue
       }
-      let timeout = pendingCount() > 0 ? 0.1 : 1.0
-      guard let raw = td_json_client_receive(client, timeout) else {
+
+      clientIoLock.lock()
+      let clientPtr: UnsafeMutableRawPointer?
+      if isReceivePausedUnlocked() {
+        clientIoLock.unlock()
+        Thread.sleep(forTimeInterval: 0.02)
+        continue
+      }
+      clientPtr = activeClient()
+      guard let client = clientPtr else {
+        clientIoLock.unlock()
+        // Client briefly nil during recreateClient — wait instead of exiting forever.
+        Thread.sleep(forTimeInterval: 0.05)
+        continue
+      }
+      // Short timeout so recreateClient can acquire clientIoLock promptly.
+      let timeout = pendingCount() > 0 ? 0.05 : 0.2
+      let raw = td_json_client_receive(client, timeout)
+      clientIoLock.unlock()
+
+      guard let raw else {
         continue
       }
       let json = String(cString: raw)
       handleIncoming(json)
     }
+  }
+
+  private func isReceivePausedUnlocked() -> Bool {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return receivePaused
   }
 
   private func handleIncoming(_ json: String) {
@@ -207,11 +303,17 @@ final class Tdlib: RCTEventEmitter {
         return
       }
 
-      if let single = takeSinglePendingFallback() {
-        DispatchQueue.main.async {
-          single.resolve(json)
-        }
-        // Continue below: Android emits the same payload if it is also a subscribed update.
+      let msgType = object["@type"] as? String ?? ""
+      if pendingCount() > 0 {
+        NSLog(
+          "[Tdlib] response @extra mismatch (got=%@, type=%@, pending=%d) — not pairing to avoid corrupting parallel requests",
+          extra,
+          msgType,
+          pendingCount()
+        )
+      }
+      if msgType != "updateAuthorizationState" && shouldEmitUpdateToJs(msgType) == false {
+        return
       }
     }
 
