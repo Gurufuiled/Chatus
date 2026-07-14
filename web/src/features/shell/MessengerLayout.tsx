@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useLocation, useParams } from '@tanstack/react-router';
 import { ChatListColumn } from '@/features/chat-list/ChatListColumn';
+import { ComposePanel } from '@/features/compose/ComposePanel';
+import { CreateGroupPanel } from '@/features/compose/CreateGroupPanel';
 import { ConversationPane } from '@/features/conversation/ConversationPane';
 import { ProfileEditPage } from '@/features/profile/ProfileEditPage';
 import { ProfileSettingsPage } from '@/features/profile/ProfileSettingsPage';
@@ -21,6 +23,20 @@ function LeftPanel({ activeChatId }: { activeChatId?: string }) {
   }
   if (pathname.endsWith('/settings/profile')) {
     return <ProfileSettingsPage />;
+  }
+  if (pathname === '/compose' || pathname.endsWith('/compose')) {
+    return <ComposePanel />;
+  }
+  if (pathname === '/create-group' || pathname.endsWith('/create-group')) {
+    return <CreateGroupPanel />;
+  }
+  if (pathname === '/create-channel' || pathname.endsWith('/create-channel')) {
+    return (
+      <EmptyState
+        title="Новый канал"
+        description="Создание канала доступно в мобильной веб-версии ChatUs (/app)."
+      />
+    );
   }
   return <ChatListColumn activeChatId={activeChatId} />;
 }

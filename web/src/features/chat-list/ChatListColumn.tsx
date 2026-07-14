@@ -162,7 +162,7 @@ export function ChatListColumn({ activeChatId }: ChatListColumnProps) {
         {showDefaultEmpty ? (
           <EmptyState
             title="Пока нет чатов"
-            description="Начните переписку в мобильном приложении ChatUs — здесь появятся ваши диалоги"
+            description="Нажмите значок карандаша сверху, чтобы написать сообщение или создать группу"
           />
         ) : null}
         {isSearchActive && filteredChats.length > 0 ? (

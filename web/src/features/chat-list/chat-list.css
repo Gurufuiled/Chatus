@@ -34,6 +34,11 @@
   outline: 2px solid var(--color-accent-soft);
 }
 
+.chat-list-header__compose {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
 .chat-list-item {
   display: flex;
   gap: 12px;

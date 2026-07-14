@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 interface SettingsSubpageLayoutProps {
   title: string;
   backTo?: string;
+  onBack?: () => void;
   headerRight?: ReactNode;
   children: ReactNode;
 }
@@ -11,6 +12,7 @@ interface SettingsSubpageLayoutProps {
 export function SettingsSubpageLayout({
   title,
   backTo = '/settings',
+  onBack,
   headerRight,
   children,
 }: SettingsSubpageLayoutProps) {
@@ -23,7 +25,13 @@ export function SettingsSubpageLayout({
           type="button"
           className="mobile-settings__back"
           aria-label="Назад"
-          onClick={() => navigate({ to: backTo })}
+          onClick={() => {
+            if (onBack) {
+              onBack();
+              return;
+            }
+            navigate({ to: backTo });
+          }}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" />
