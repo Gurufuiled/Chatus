@@ -1,12 +1,15 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { withTdlibRequestGate } from './tdlibRequestGate';
+import { logTdlibEvent } from '../clientRemoteLog';
 
 export type TdlibUpdate = Record<string, unknown>;
 
 type TdUpdateListener = (update: TdlibUpdate) => void;
 
 const NATIVE_NAME = 'Tdlib';
+
+const DANGEROUS_QUERY_TYPES = new Set(['logOut', 'close', 'destroy']);
 
 function getNativeModule(): {
   sendClientJson: (json: string) => Promise<string>;
@@ -23,6 +26,21 @@ function getNativeModule(): {
       }
     | undefined;
   return m ?? null;
+}
+
+function stackHint(): string {
+  try {
+    const stack = new Error().stack ?? '';
+    return stack
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.includes('TdlibClient'))
+      .slice(0, 6)
+      .join(' | ')
+      .slice(0, 500);
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -83,6 +101,17 @@ class TdlibClientImpl {
 
   async send(query: object): Promise<unknown> {
     return withTdlibRequestGate(async () => {
+      const type =
+        typeof (query as { '@type'?: unknown })['@type'] === 'string'
+          ? String((query as { '@type': string })['@type'])
+          : 'unknown';
+      if (DANGEROUS_QUERY_TYPES.has(type)) {
+        logTdlibEvent(`OUTBOUND ${type}`, {
+          level: 'warn',
+          data: { stack: stackHint() },
+          flushSoon: true,
+        });
+      }
       const payload = JSON.stringify(query);
       const mod = getNativeModule();
       if (mod?.sendClientJson) {
@@ -102,6 +131,11 @@ class TdlibClientImpl {
 
   /** Destroy native TDLib client and create a fresh one (reload session from on-disk database). */
   async recreateClient(): Promise<boolean> {
+    logTdlibEvent('OUTBOUND recreateClient', {
+      level: 'warn',
+      data: { stack: stackHint() },
+      flushSoon: true,
+    });
     const mod = getNativeModule();
     if (!mod?.recreateClient) return false;
     await mod.recreateClient();
