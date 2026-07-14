@@ -58,21 +58,10 @@ export function SettingsScreen() {
   );
 
   const openTelegram = useCallback(() => {
-    if (telegramAuthStatus !== 'ready') {
-      navigation.navigate('TelegramAuth');
-      return;
-    }
-    Alert.alert('Выйти из Telegram?', 'Диалоги Telegram исчезнут из общего списка чатов на этом устройстве.', [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Выйти',
-        style: 'destructive',
-        onPress: () => {
-          void telegramAccountStore.getState().resetTelegramSession();
-        },
-      },
-    ]);
-  }, [navigation, telegramAuthStatus]);
+    // Always open the Telegram screen. Logout is only via explicit "Сбросить сессию" there —
+    // never on a Settings row tap (that was wiping TDLib DB after a few minutes of use).
+    navigation.navigate('TelegramAuth');
+  }, [navigation]);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);

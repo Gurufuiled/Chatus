@@ -958,7 +958,9 @@ export function TelegramAuthScreen() {
           </>
         ) : (
           <Text style={[styles.subtitle, { color: ui.hint }]}>
-            Аккаунт Telegram отдельный от Chatus.
+            {status === "ready"
+              ? "Telegram подключён. Выход — только кнопкой «Сбросить сессию» внизу (это удалит локальный вход)."
+              : "Аккаунт Telegram отдельный от Chatus."}
           </Text>
         )}
 
@@ -1102,7 +1104,9 @@ export function TelegramAuthScreen() {
 
           <Pressable onPress={resetTg} style={styles.resetWrap} hitSlop={12}>
             <Text style={styles.resetText}>
-              Сбросить сессию Telegram на устройстве
+              {status === "ready"
+                ? "Выйти из Telegram на этом устройстве"
+                : "Сбросить сессию Telegram на устройстве"}
             </Text>
           </Pressable>
         </ScrollView>

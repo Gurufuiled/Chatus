@@ -50,15 +50,9 @@ const RECOVERY_COOLDOWN_MS = 45_000;
 
 /** Set from telegramAccountStore to avoid a circular import with bootstrap. */
 let stickySessionProbe: (() => boolean) | null = null;
-/** Called when TDLib honestly has no on-disk session (WaitPhone, empty DB). */
-let sessionExpiredHandler: (() => void) | null = null;
 
 export function setTdlibStickySessionProbe(probe: (() => boolean) | null): void {
   stickySessionProbe = probe;
-}
-
-export function setTdlibSessionExpiredHandler(handler: (() => void) | null): void {
-  sessionExpiredHandler = handler;
 }
 
 function hasStickyLocalTelegramSession(): boolean {
@@ -69,16 +63,9 @@ function hasStickyLocalTelegramSession(): boolean {
   }
 }
 
-function notifyTdlibSessionExpired(): void {
-  try {
-    sessionExpiredHandler?.();
-  } catch {
-    /* ignore */
-  }
-}
-
 /**
  * True when TDLib left session files under database_directory (not just JS SecureStore cache).
+ * Returns null if the probe failed (unknown — do not treat as missing).
  */
 export async function hasTdlibDatabaseOnDisk(): Promise<boolean | null> {
   try {
@@ -93,7 +80,6 @@ export async function hasTdlibDatabaseOnDisk(): Promise<boolean | null> {
     }
     return false;
   } catch {
-    // Unknown — do not treat as "no DB" (avoids false session expiry).
     return null;
   }
 }
@@ -192,15 +178,8 @@ export async function recoverTdlibSession(): Promise<boolean> {
           data: { didRecreate, ready, state: live, dbOnDisk },
           flushSoon: true,
         });
-        if (
-          sticky &&
-          dbOnDisk === false &&
-          (live === 'authorizationStateWaitPhoneNumber' ||
-            live === 'authorizationStateWaitTdlibParameters')
-        ) {
-          cancelBackgroundTdlibRecovery();
-          notifyTdlibSessionExpired();
-        }
+        // Do NOT wipe JS session / call logOut here. WaitPhone after recreate is often
+        // transient; aggressive expiry caused Ready → LoggingOut loops on iOS.
         return false;
       }
       logTdlibEvent('recoverTdlibSession ok', {
@@ -569,17 +548,8 @@ export async function ensureTdlibAuthorizedForSend(options?: {
   }
 
   if (sticky) {
-    const dbOnDisk = await hasTdlibDatabaseOnDisk();
-    if (
-      dbOnDisk === false &&
-      (live === 'authorizationStateWaitPhoneNumber' ||
-        live === 'authorizationStateWaitRegistration' ||
-        live === 'authorizationStateWaitTdlibParameters')
-    ) {
-      cancelBackgroundTdlibRecovery();
-      notifyTdlibSessionExpired();
-      throw new Error('Сессия Telegram истекла. Откройте Настройки → Telegram и войдите снова.');
-    }
+    // Sticky = we still believe a local session exists. Never tell the user it "expired"
+    // and never clear SecureStore/dialogs from a transient WaitPhone / failed recover.
     scheduleBackgroundTdlibRecovery();
     throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
   }
