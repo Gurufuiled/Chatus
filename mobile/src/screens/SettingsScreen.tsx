@@ -30,11 +30,6 @@ import { useTheme } from '../contexts/ThemeContext';
 import { createSettingsScreenStyles } from './settingsScreen.styles';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { getTelegramSettingsConnectionMeta } from './telegramAuth/telegramAuthPresentation';
-import {
-  flushClientLogs,
-  logClientEvent,
-  pendingClientLogCount,
-} from '../services/clientRemoteLog';
 
 export function SettingsScreen() {
   const { colors: themeColors } = useTheme();
@@ -78,32 +73,6 @@ export function SettingsScreen() {
       },
     ]);
   }, [navigation, telegramAuthStatus]);
-
-  const sendDiagnosticLogs = useCallback(() => {
-    logClientEvent('settings', 'manual flush requested', {
-      level: 'info',
-      data: { pending: pendingClientLogCount(), platform: Platform.OS },
-    });
-    void (async () => {
-      try {
-        const accepted = await flushClientLogs({ force: true });
-        if (accepted > 0) {
-          Alert.alert('Логи отправлены', `На сервер ушло ${accepted} записей.`);
-        } else if (!authStore.getState().accessToken) {
-          Alert.alert('Нужен вход', 'Войдите в Chatus, чтобы отправить логи.');
-        } else if (pendingClientLogCount() > 0) {
-          Alert.alert(
-            'Пока не удалось',
-            'Есть локальный буфер, но сервер не принял. Проверьте сеть и повторите через пару секунд.',
-          );
-        } else {
-          Alert.alert('Буфер пуст', 'Свежих ошибок Telegram пока нет. Они уходят сами при сбоях.');
-        }
-      } catch (e) {
-        Alert.alert('Ошибка', e instanceof Error ? e.message : String(e));
-      }
-    })();
-  }, []);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -441,25 +410,6 @@ export function SettingsScreen() {
             <View style={styles.servicesText}>
               <Text style={styles.servicesTitle}>Предложения</Text>
               <Text style={styles.servicesSubtitle}>Идеи по улучшению приложения</Text>
-            </View>
-            <Text style={styles.servicesChevron}>›</Text>
-          </Pressable>
-        </View>
-
-        <Text style={styles.sectionTitle}>Диагностика</Text>
-        <View style={styles.settingsCard}>
-          <Pressable
-            onPress={sendDiagnosticLogs}
-            style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
-          >
-            <View style={[styles.servicesIconBubble, { backgroundColor: '#607D8B' }]}>
-              <MaterialCommunityIcons name="file-send-outline" size={20} color="#FFF" />
-            </View>
-            <View style={styles.servicesText}>
-              <Text style={styles.servicesTitle}>Отправить логи на сервер</Text>
-              <Text style={styles.servicesSubtitle}>
-                Ошибки Telegram/TDLib с этого iPhone (без текста чатов)
-              </Text>
             </View>
             <Text style={styles.servicesChevron}>›</Text>
           </Pressable>
