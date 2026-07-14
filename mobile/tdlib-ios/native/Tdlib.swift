@@ -69,6 +69,8 @@ final class Tdlib: RCTEventEmitter {
     stateLock.lock()
     hasActiveListeners = true
     stateLock.unlock()
+    // Bridge reload: resume I/O paused by invalidate (client kept alive).
+    resumeIoIfNeeded()
   }
 
   override func stopObserving() {
@@ -106,6 +108,7 @@ final class Tdlib: RCTEventEmitter {
     stateLock.lock()
     client = newClient
     receivePaused = false
+    destroyed = false
     let created = client != nil
     stateLock.unlock()
 
@@ -479,6 +482,9 @@ final class Tdlib: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
+    // After bridge invalidate, client is kept alive but receive was paused.
+    resumeIoIfNeeded()
+
     guard let client = activeClient() else {
       reject("E_TD_JSON", "TDLib iOS framework is not loaded. Run npm run tdlib:fetch-ios and pod install.", nil)
       return
@@ -535,7 +541,10 @@ final class Tdlib: RCTEventEmitter {
   }
 
   override func invalidate() {
-    markDestroyed()
+    // Keep client alive across RN bridge reload; destroy only in deinit.
+    // Do NOT markDestroyed() — that would make activeClient() nil forever and
+    // block JS recovery (Closed path / recreateClient) after reload.
+    // Android parity: do NOT td_json_client_destroy here either.
     stateLock.lock()
     receivePaused = true
     stateLock.unlock()
@@ -548,7 +557,18 @@ final class Tdlib: RCTEventEmitter {
 
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module was unloaded.")
 
-    // Same lock order as recreateClient: never destroy while send/receive is in flight.
+    super.invalidate()
+  }
+
+  deinit {
+    markDestroyed()
+    stateLock.lock()
+    receivePaused = true
+    stateLock.unlock()
+    receiveThread?.cancel()
+    rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module deallocated.")
+
+    // Process teardown only — safe to destroy the native client.
     sendLock.lock()
     clientIoLock.lock()
     if let client {
@@ -557,12 +577,14 @@ final class Tdlib: RCTEventEmitter {
     }
     clientIoLock.unlock()
     sendLock.unlock()
-
-    super.invalidate()
   }
 
-  deinit {
-    invalidate()
+  /// Clear soft-stop from invalidate and restart receive if the thread exited.
+  private func resumeIoIfNeeded() {
+    stateLock.lock()
+    receivePaused = false
+    stateLock.unlock()
+    ensureReceiveThreadRunning()
   }
 
   private func startReceiveThread() {
