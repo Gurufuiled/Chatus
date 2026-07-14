@@ -4,7 +4,7 @@ import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { normalizePhoneForTdlib } from '../utils/telegramPhone';
 import { buildInputMessageVideoNoteContent } from '../screens/telegramChat/composer';
-import { probeLocalVideoDimensionsWithRetry } from '../utils/probeLocalVideoDimensions';
+import { ensureSquareVideoNoteFile } from '../utils/ensureSquareVideoNoteFile';
 
 type TdlibMessage = { '@type'?: string; [key: string]: unknown };
 
@@ -181,22 +181,13 @@ export function useTelegramChatBridge(contactPhoneNumber: string) {
       throw new Error('Telegram chat is not ready');
     }
 
-    const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
-    if (!probed) {
-      throw new Error(
-        'Не удалось определить размер видео. Запишите ещё раз через свайп вверх по микрофону.',
-      );
-    }
-    const lengthPx = Math.min(
-      640,
-      Math.max(240, Math.round(Math.min(probed.width, probed.height))),
-    );
+    const prepared = await ensureSquareVideoNoteFile(result.uri, result.durationMs);
 
     const inputMessageContent = buildInputMessageVideoNoteContent({
-      videoUri: result.uri,
+      videoUri: prepared.uri,
       thumbnailUri: result.thumbnailUri,
       durationMs: result.durationMs,
-      lengthPx,
+      lengthPx: prepared.lengthPx,
     });
 
     const response = await tdlibClient.send({

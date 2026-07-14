@@ -78,9 +78,7 @@ import {
   getChatDayKey,
   isValidChatTimestamp,
 } from '../utils/formatChatDayLabel';
-import {
-  probeLocalVideoDimensionsWithRetry,
-} from '../utils/probeLocalVideoDimensions';
+import { ensureSquareVideoNoteFile } from '../utils/ensureSquareVideoNoteFile';
 import { ChatBackgroundPattern } from './chatScreen.shared';
 import {
   CHAT_MSG_ROW_MARGIN_GROUPED,
@@ -109,6 +107,11 @@ import {
   upsertMessage,
 } from './telegramChat/messageRow';
 import { useTelegramChatHeaderSubtitle } from './telegramChat/useTelegramChatHeaderSubtitle';
+import {
+  clearTelegramDialogUnreadLocal,
+  markTelegramChatMessagesRead,
+  patchTelegramDialogOutgoingPreview,
+} from './telegramChat/telegramDialogLocalPatch';
 import {
   createTelegramChatStyles,
 } from './telegramChat/telegramChatStyles';
@@ -277,6 +280,38 @@ export function TelegramChatScreen() {
     }
     lastMessagesLengthRef.current = messages.length;
   }, [messages, scrollToBottom]);
+
+  const lastMarkedIncomingIdRef = useRef(0);
+  useEffect(() => {
+    lastMarkedIncomingIdRef.current = 0;
+  }, [chatId]);
+
+  const markOpenedChatRead = useCallback(
+    (messageIds?: number[]) => {
+      if (!Number.isFinite(chatId)) return;
+      clearTelegramDialogUnreadLocal(telegramChatId);
+      const ids =
+        messageIds && messageIds.length > 0
+          ? messageIds
+          : messagesRef.current
+              .filter((row) => !row.outgoing && row.messageId > 0)
+              .slice(0, 32)
+              .map((row) => row.messageId);
+      if (ids.length === 0) return;
+      void markTelegramChatMessagesRead(chatId, ids);
+    },
+    [chatId, telegramChatId],
+  );
+
+  useEffect(() => {
+    if (!isFocused || !Number.isFinite(chatId) || messages.length === 0) return;
+    // Channels: opening still marks read in Telegram; keep same behavior.
+    const latestIncoming = messages.find((row) => !row.outgoing && row.messageId > 0);
+    if (!latestIncoming || latestIncoming.messageId <= lastMarkedIncomingIdRef.current) return;
+    lastMarkedIncomingIdRef.current = latestIncoming.messageId;
+    markOpenedChatRead([latestIncoming.messageId]);
+  }, [chatId, isFocused, markOpenedChatRead, messages]);
+
   const handleMessagesListScroll = useCallback(
     (event: Parameters<typeof handleChatScroll>[0]) => {
       handleChatScroll(event);
@@ -509,6 +544,7 @@ export function TelegramChatScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
+      clearTelegramDialogUnreadLocal(telegramChatId);
       void (async () => {
         if (!Number.isFinite(chatId)) return;
         try {
@@ -527,7 +563,7 @@ export function TelegramChatScreen() {
         if (!Number.isFinite(chatId)) return;
         void tdlibClient.send({ '@type': 'closeChat', chat_id: chatId }).catch(() => {});
       };
-    }, [chatId, ensureReady]),
+    }, [chatId, ensureReady, telegramChatId]),
   );
 
   const handleOpenDiscussion = useCallback(
@@ -1484,6 +1520,7 @@ export function TelegramChatScreen() {
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      markOpenedChatRead();
       try {
         const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
@@ -1506,6 +1543,8 @@ export function TelegramChatScreen() {
               mapped,
             ),
           );
+          patchTelegramDialogOutgoingPreview(chatId, trimmed, mapped.dateMs);
+          markOpenedChatRead();
         } else {
           // Response without mappable row — still drop optimistic if an update already inserted the real message.
           setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
@@ -1516,7 +1555,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить', message);
       }
     },
-    [chatId, onComposerMessageSent, replyToMessageId, sendTdlibWithRecovery],
+    [chatId, markOpenedChatRead, onComposerMessageSent, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendVoice = useCallback(
@@ -1540,6 +1579,7 @@ export function TelegramChatScreen() {
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      markOpenedChatRead();
       try {
         const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
@@ -1566,6 +1606,8 @@ export function TelegramChatScreen() {
               },
             ),
           );
+          patchTelegramDialogOutgoingPreview(chatId, 'Голосовое', mapped.dateMs);
+          markOpenedChatRead();
         } else {
           setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
         }
@@ -1575,24 +1617,20 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить голосовое', message);
       }
     },
-    [chatId, replyToMessageId, sendTdlibWithRecovery],
+    [chatId, markOpenedChatRead, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendVideoNote = useCallback(
     async (result: VideoNoteRecordingResult) => {
       if (!Number.isFinite(chatId)) return;
-      const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
-      if (!probed) {
-        Alert.alert(
-          'Не удалось отправить видеосообщение',
-          'Не удалось определить размер видео. Запишите ещё раз через свайп вверх по микрофону.',
-        );
+      let prepared: { uri: string; lengthPx: number };
+      try {
+        prepared = await ensureSquareVideoNoteFile(result.uri, result.durationMs);
+      } catch (prepErr) {
+        const message = prepErr instanceof Error ? prepErr.message : String(prepErr);
+        Alert.alert('Не удалось отправить видеосообщение', message);
         return;
       }
-      const lengthPx = Math.min(
-        640,
-        Math.max(240, Math.round(Math.min(probed.width, probed.height))),
-      );
       const tempId = -Date.now();
       const activeReplyToMessageId = replyToMessageId;
       const optimistic: TelegramMessageRow = {
@@ -1604,20 +1642,21 @@ export function TelegramChatScreen() {
         dateMs: Date.now(),
         status: 'sending',
         replyToMessageId: activeReplyToMessageId,
-        mediaUri: result.uri,
+        mediaUri: prepared.uri,
         thumbnailUri: result.thumbnailUri,
         durationMs: result.durationMs,
-        width: lengthPx,
-        height: lengthPx,
+        width: prepared.lengthPx,
+        height: prepared.lengthPx,
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      markOpenedChatRead();
       try {
         const inputMessageContent = buildInputMessageVideoNoteContent({
-          videoUri: result.uri,
+          videoUri: prepared.uri,
           thumbnailUri: result.thumbnailUri,
           durationMs: result.durationMs,
-          lengthPx,
+          lengthPx: prepared.lengthPx,
         });
         const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
@@ -1625,11 +1664,10 @@ export function TelegramChatScreen() {
           reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_content: inputMessageContent,
         });
-        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
-        if (!mapped) {
-          throw new Error('Telegram не вернул отправленное сообщение.');
-        }
-        if (mapped.kind === 'video') {
+        const rawContent = getNestedRecord(response.content);
+        const rawContentType =
+          typeof rawContent?.['@type'] === 'string' ? rawContent['@type'] : null;
+        if (rawContentType !== 'messageVideoNote') {
           const sentId = typeof response.id === 'number' ? response.id : null;
           if (sentId != null) {
             await tdlibDeleteMessages(chatId, [sentId], true).catch(() => undefined);
@@ -1638,24 +1676,30 @@ export function TelegramChatScreen() {
             'Файл не подошёл для кружка (нужно квадратное видео). Запишите ещё раз: свайп вверх по кнопке микрофона → удержание → отпустите.',
           );
         }
+        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
+        if (!mapped) {
+          throw new Error('Telegram не вернул отправленное сообщение.');
+        }
         setMessages((prev) =>
           upsertMessage(
             prev.filter((item) => item.id !== optimistic.id && item.messageId !== optimistic.messageId),
             {
               ...mapped,
-              mediaUri: mapped.mediaUri ?? result.uri,
+              mediaUri: mapped.mediaUri ?? prepared.uri,
               thumbnailUri: mapped.thumbnailUri ?? result.thumbnailUri,
               durationMs: mapped.durationMs ?? result.durationMs,
             },
           ),
         );
+        patchTelegramDialogOutgoingPreview(chatId, 'Видеосообщение', mapped.dateMs);
+        markOpenedChatRead();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
         Alert.alert('Не удалось отправить видеосообщение', message);
       }
     },
-    [chatId, replyToMessageId, sendTdlibWithRecovery],
+    [chatId, markOpenedChatRead, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendInputMessageContent = useCallback(
@@ -1677,6 +1721,7 @@ export function TelegramChatScreen() {
       );
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      markOpenedChatRead();
       try {
         const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
@@ -1692,6 +1737,8 @@ export function TelegramChatScreen() {
               mapped,
             ),
           );
+          patchTelegramDialogOutgoingPreview(chatId, optimisticText, mapped.dateMs);
+          markOpenedChatRead();
         } else {
           setMessages((prev) => prev.filter((item) => item.id !== optimistic.id));
         }
@@ -1701,7 +1748,7 @@ export function TelegramChatScreen() {
         Alert.alert(failureTitle, message);
       }
     },
-    [chatId, replyToMessageId, sendTdlibWithRecovery],
+    [chatId, markOpenedChatRead, replyToMessageId, sendTdlibWithRecovery],
   );
 
   const sendMedia = useCallback(
@@ -1779,6 +1826,7 @@ export function TelegramChatScreen() {
       };
       setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, optimistic)));
       setReplyToMessageId(null);
+      markOpenedChatRead();
 
       const contents = items.map((item, index) => {
         const isLast = index === items.length - 1;
@@ -1826,6 +1874,10 @@ export function TelegramChatScreen() {
             mapped,
           ),
         );
+        const previewAt =
+          mapped.reduce((max, row) => Math.max(max, row.dateMs), 0) || Date.now();
+        patchTelegramDialogOutgoingPreview(chatId, caption || 'Альбом', previewAt);
+        markOpenedChatRead();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setMessages((prev) =>
@@ -1834,7 +1886,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить альбом', message);
       }
     },
-    [chatId, replyToMessageId, sendMedia, sendTdlibWithRecovery],
+    [chatId, markOpenedChatRead, replyToMessageId, sendMedia, sendTdlibWithRecovery],
   );
 
   const sendFile = useCallback(

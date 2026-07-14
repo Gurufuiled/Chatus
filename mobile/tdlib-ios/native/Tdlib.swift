@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import React
 
 private final class PendingTdlibRequest {
@@ -132,6 +133,344 @@ final class Tdlib: RCTEventEmitter {
       locale: Locale.autoupdatingCurrent
     ) ?? ""
     resolve(!format.contains("a"))
+  }
+
+  /// Center-crops a local video to a square H.264/AAC MP4 (even side ≤ maxSide) for Telegram video notes.
+  @objc(centerCropSquareVideo:maxSide:resolver:rejecter:)
+  func centerCropSquareVideo(
+    _ inputPath: String,
+    maxSide: NSNumber,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let trimmed = inputPath.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else {
+        reject("E_VIDEO_CROP", "Empty video path", nil)
+        return
+      }
+      let path =
+        trimmed.hasPrefix("file://")
+        ? String(trimmed.dropFirst("file://".count))
+        : trimmed
+      let inputURL = URL(fileURLWithPath: path.removingPercentEncoding ?? path)
+      let asset = AVURLAsset(url: inputURL)
+      guard let videoTrack = asset.tracks(withMediaType: .video).first else {
+        reject("E_VIDEO_CROP", "Video track not found", nil)
+        return
+      }
+
+      // Orient via preferredTransform, then normalize origin (portrait footgun), then center-crop.
+      let preferred = videoTrack.preferredTransform
+      let natural = videoTrack.naturalSize
+      let boundingRect = CGRect(origin: .zero, size: natural).applying(preferred)
+      let srcW = abs(boundingRect.width)
+      let srcH = abs(boundingRect.height)
+      guard srcW > 1, srcH > 1 else {
+        reject("E_VIDEO_CROP", "Invalid video dimensions", nil)
+        return
+      }
+
+      let cropSide = min(srcW, srcH)
+      let maxSidePx = max(240.0, min(640.0, maxSide.doubleValue))
+      let sideRaw = Int(min(cropSide, maxSidePx).rounded(.down))
+      let evenSide = max(240, sideRaw - (sideRaw % 2))
+      let scale = CGFloat(evenSide) / cropSide
+      let xOffset = (srcW - cropSide) / 2.0
+      let yOffset = (srcH - cropSide) / 2.0
+
+      let composition = AVMutableComposition()
+      guard
+        let compositionVideoTrack = composition.addMutableTrack(
+          withMediaType: .video,
+          preferredTrackID: kCMPersistentTrackID_Invalid
+        )
+      else {
+        reject("E_VIDEO_CROP", "Failed to create composition track", nil)
+        return
+      }
+
+      let duration = asset.duration
+      let timeRange = CMTimeRange(start: .zero, duration: duration)
+      do {
+        try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
+      } catch {
+        reject("E_VIDEO_CROP", error.localizedDescription, error)
+        return
+      }
+
+      if let audioTrack = asset.tracks(withMediaType: .audio).first,
+         let compositionAudioTrack = composition.addMutableTrack(
+           withMediaType: .audio,
+           preferredTrackID: kCMPersistentTrackID_Invalid
+         )
+      {
+        try? compositionAudioTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
+      }
+
+      var transform = preferred
+      transform.tx -= boundingRect.origin.x
+      transform.ty -= boundingRect.origin.y
+      transform = transform.concatenating(CGAffineTransform(translationX: -xOffset, y: -yOffset))
+      transform = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+
+      let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionVideoTrack)
+      layerInstruction.setTransform(transform, at: .zero)
+
+      let instruction = AVMutableVideoCompositionInstruction()
+      instruction.timeRange = timeRange
+      instruction.layerInstructions = [layerInstruction]
+
+      let videoComposition = AVMutableVideoComposition()
+      videoComposition.renderSize = CGSize(width: evenSide, height: evenSide)
+      videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
+      videoComposition.instructions = [instruction]
+
+      let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("video-note-square-\(Int(Date().timeIntervalSince1970 * 1000)).mp4")
+      try? FileManager.default.removeItem(at: outURL)
+
+      do {
+        try Self.exportSquareH264Mp4(
+          composition: composition,
+          videoComposition: videoComposition,
+          outputURL: outURL,
+          side: evenSide
+        )
+        resolve(outURL.path)
+      } catch {
+        try? FileManager.default.removeItem(at: outURL)
+        reject("E_VIDEO_CROP", error.localizedDescription, error)
+      }
+    }
+  }
+
+  /// Forced H.264/AAC MP4 (AVAssetExportSession HighestQuality often emits HEVC).
+  private static func exportSquareH264Mp4(
+    composition: AVMutableComposition,
+    videoComposition: AVMutableVideoComposition,
+    outputURL: URL,
+    side: Int
+  ) throws {
+    let reader = try AVAssetReader(asset: composition)
+    let videoTracks = composition.tracks(withMediaType: .video)
+    guard !videoTracks.isEmpty else {
+      throw NSError(
+        domain: "Tdlib",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "Composition has no video track"]
+      )
+    }
+
+    let readerVideoOutput = AVAssetReaderVideoCompositionOutput(
+      videoTracks: videoTracks,
+      videoSettings: [
+        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+      ]
+    )
+    readerVideoOutput.videoComposition = videoComposition
+    readerVideoOutput.alwaysCopiesSampleData = false
+    guard reader.canAdd(readerVideoOutput) else {
+      throw NSError(
+        domain: "Tdlib",
+        code: 2,
+        userInfo: [NSLocalizedDescriptionKey: "Cannot add video reader output"]
+      )
+    }
+    reader.add(readerVideoOutput)
+
+    var readerAudioOutput: AVAssetReaderTrackOutput?
+    if let audioTrack = composition.tracks(withMediaType: .audio).first {
+      let audioOutput = AVAssetReaderTrackOutput(
+        track: audioTrack,
+        outputSettings: [
+          AVFormatIDKey: kAudioFormatLinearPCM,
+          AVLinearPCMIsBigEndianKey: false,
+          AVLinearPCMIsFloatKey: false,
+          AVLinearPCMBitDepthKey: 16,
+        ]
+      )
+      audioOutput.alwaysCopiesSampleData = false
+      if reader.canAdd(audioOutput) {
+        reader.add(audioOutput)
+        readerAudioOutput = audioOutput
+      }
+    }
+
+    let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+    let bitrate = max(1_200_000, side * side * 4)
+    let writerVideoInput = AVAssetWriterInput(
+      mediaType: .video,
+      outputSettings: [
+        AVVideoCodecKey: AVVideoCodecType.h264,
+        AVVideoWidthKey: side,
+        AVVideoHeightKey: side,
+        AVVideoCompressionPropertiesKey: [
+          AVVideoAverageBitRateKey: bitrate,
+          AVVideoProfileLevelKey: AVVideoProfileLevelH264BaselineAutoLevel,
+          AVVideoMaxKeyFrameIntervalKey: 30,
+        ],
+      ]
+    )
+    writerVideoInput.expectsMediaDataInRealTime = false
+    guard writer.canAdd(writerVideoInput) else {
+      throw NSError(
+        domain: "Tdlib",
+        code: 3,
+        userInfo: [NSLocalizedDescriptionKey: "Cannot add H.264 writer input"]
+      )
+    }
+    writer.add(writerVideoInput)
+
+    var writerAudioInput: AVAssetWriterInput?
+    if readerAudioOutput != nil {
+      let audioInput = AVAssetWriterInput(
+        mediaType: .audio,
+        outputSettings: [
+          AVFormatIDKey: kAudioFormatMPEG4AAC,
+          AVNumberOfChannelsKey: 1,
+          AVSampleRateKey: 44100,
+          AVEncoderBitRateKey: 96_000,
+        ]
+      )
+      audioInput.expectsMediaDataInRealTime = false
+      if writer.canAdd(audioInput) {
+        writer.add(audioInput)
+        writerAudioInput = audioInput
+      }
+    }
+
+    guard reader.startReading() else {
+      throw reader.error
+        ?? NSError(
+          domain: "Tdlib",
+          code: 4,
+          userInfo: [NSLocalizedDescriptionKey: "Asset reader failed to start"]
+        )
+    }
+    guard writer.startWriting() else {
+      throw writer.error
+        ?? NSError(
+          domain: "Tdlib",
+          code: 5,
+          userInfo: [NSLocalizedDescriptionKey: "Asset writer failed to start"]
+        )
+    }
+    writer.startSession(atSourceTime: .zero)
+
+    let videoDone = DispatchSemaphore(value: 0)
+    var videoWriteError: Error?
+    writerVideoInput.requestMediaDataWhenReady(on: DispatchQueue(label: "tdlib.video.note.video")) {
+      while writerVideoInput.isReadyForMoreMediaData {
+        if reader.status == .failed {
+          videoWriteError = reader.error
+          writerVideoInput.markAsFinished()
+          videoDone.signal()
+          return
+        }
+        guard let sample = readerVideoOutput.copyNextSampleBuffer() else {
+          writerVideoInput.markAsFinished()
+          videoDone.signal()
+          return
+        }
+        if !writerVideoInput.append(sample) {
+          videoWriteError = writer.error
+          writerVideoInput.markAsFinished()
+          videoDone.signal()
+          return
+        }
+      }
+    }
+
+    let audioDone = DispatchSemaphore(value: 0)
+    var audioWriteError: Error?
+    if let readerAudioOutput, let writerAudioInput {
+      writerAudioInput.requestMediaDataWhenReady(on: DispatchQueue(label: "tdlib.video.note.audio")) {
+        while writerAudioInput.isReadyForMoreMediaData {
+          if reader.status == .failed {
+            audioWriteError = reader.error
+            writerAudioInput.markAsFinished()
+            audioDone.signal()
+            return
+          }
+          guard let sample = readerAudioOutput.copyNextSampleBuffer() else {
+            writerAudioInput.markAsFinished()
+            audioDone.signal()
+            return
+          }
+          if !writerAudioInput.append(sample) {
+            audioWriteError = writer.error
+            writerAudioInput.markAsFinished()
+            audioDone.signal()
+            return
+          }
+        }
+      }
+    } else {
+      audioDone.signal()
+    }
+
+    let timeout = DispatchTime.now() + 120
+    let videoWait = videoDone.wait(timeout: timeout)
+    let audioWait = audioDone.wait(timeout: timeout)
+    if videoWait == .timedOut || audioWait == .timedOut {
+      reader.cancelReading()
+      writer.cancelWriting()
+      throw NSError(
+        domain: "Tdlib",
+        code: 6,
+        userInfo: [NSLocalizedDescriptionKey: "Video crop export timed out"]
+      )
+    }
+    if let videoWriteError {
+      reader.cancelReading()
+      writer.cancelWriting()
+      throw videoWriteError
+    }
+    if let audioWriteError {
+      reader.cancelReading()
+      writer.cancelWriting()
+      throw audioWriteError
+    }
+    if reader.status == .failed {
+      writer.cancelWriting()
+      throw reader.error
+        ?? NSError(
+          domain: "Tdlib",
+          code: 7,
+          userInfo: [NSLocalizedDescriptionKey: "Asset reader failed"]
+        )
+    }
+
+    let finishDone = DispatchSemaphore(value: 0)
+    var finishError: Error?
+    writer.finishWriting {
+      finishError = writer.error
+      finishDone.signal()
+    }
+    if finishDone.wait(timeout: .now() + 30) == .timedOut {
+      writer.cancelWriting()
+      throw NSError(
+        domain: "Tdlib",
+        code: 8,
+        userInfo: [NSLocalizedDescriptionKey: "Video crop finish timed out"]
+      )
+    }
+    if writer.status != .completed {
+      throw finishError
+        ?? NSError(
+          domain: "Tdlib",
+          code: 9,
+          userInfo: [NSLocalizedDescriptionKey: "H.264 export did not complete"]
+        )
+    }
+    guard FileManager.default.fileExists(atPath: outputURL.path) else {
+      throw NSError(
+        domain: "Tdlib",
+        code: 10,
+        userInfo: [NSLocalizedDescriptionKey: "Export produced no file"]
+      )
+    }
   }
 
   @objc(sendClientJson:resolver:rejecter:)

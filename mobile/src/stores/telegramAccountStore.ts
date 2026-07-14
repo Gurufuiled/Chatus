@@ -13,7 +13,10 @@ import {
 } from '../services/tdlib/tdlibBootstrap';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
 import { logTdlibEvent } from '../services/clientRemoteLog';
-import { normalizeTelegramDialogRows } from '../screens/telegramChat/telegramDialogFallback';
+import {
+  normalizeTelegramDialogRow,
+  normalizeTelegramDialogRows,
+} from '../screens/telegramChat/telegramDialogFallback';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
 const DIALOGS_CACHE_KEY = 'telegram-dialogs.v1.json';
@@ -89,6 +92,8 @@ type TelegramAccountActions = {
   setLastError: (msg: string | null) => void;
   setDialogs: (rows: TelegramDialogRow[]) => void;
   setDialogsSyncing: (syncing: boolean) => void;
+  /** Patch one dialog row in memory (e.g. clear unread after open/send). */
+  patchDialog: (chatId: string, patch: Partial<TelegramDialogRow>) => void;
   /** True while a Telegram account is bound on this device (until Settings logout). */
   hasLocalSession: () => boolean;
   /**
@@ -213,6 +218,20 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
     void writeDialogsCache(normalized);
   },
   setDialogsSyncing: (dialogsSyncing) => set({ dialogsSyncing }),
+
+  patchDialog: (chatId, patch) => {
+    const key = String(chatId);
+    const dialogs = get().dialogs;
+    const index = dialogs.findIndex((row) => row.chatId === key || row.id === key);
+    if (index === -1) return;
+    const next = [...dialogs];
+    next[index] = normalizeTelegramDialogRow({ ...next[index]!, ...patch, chatId: key, id: key });
+    if (patch.lastMessageAt != null) {
+      next.sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0));
+    }
+    set({ dialogs: next });
+    void writeDialogsCache(next);
+  },
 
   hasLocalSession: () => {
     const s = get();
