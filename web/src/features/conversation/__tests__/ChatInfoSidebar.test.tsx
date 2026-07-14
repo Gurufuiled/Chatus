@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { ChatInfoSidebar } from '@/features/conversation/ChatInfoSidebar';
 import { makeChat, makeMedia, makeMessage } from '@/test/fixtures';
 
+const addMembersMutate = vi.fn();
+
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, ...props }: { children: React.ReactNode; to: string }) => (
     <a href={props.to}>{children}</a>
@@ -16,6 +18,15 @@ vi.mock('@/queries/auth.queries', () => ({
 
 vi.mock('@/queries/users.queries', () => ({
   useUserDetailQuery: () => ({ data: null }),
+  useUserSearchQuery: () => ({ data: [], isFetching: false }),
+}));
+
+vi.mock('@/queries/chats.queries', () => ({
+  useChatsQuery: () => ({ data: [] }),
+  useAddGroupMembersMutation: () => ({
+    mutate: addMembersMutate,
+    isPending: false,
+  }),
 }));
 
 const messages = [
@@ -50,11 +61,62 @@ vi.mock('@/queries/messages.queries', () => ({
   useMessagesQuery: () => ({ data: messages }),
 }));
 
+function makeGroupChat() {
+  return makeChat({
+    chat_type: 'group',
+    name: 'Команда',
+    peer_display_name: null,
+    members: [
+      {
+        chat_id: 'chat-1',
+        user_id: 'me-1',
+        role: 'owner',
+        access_status: 'active',
+        subscription_expires_at: null,
+        tag: null,
+        tag_color: null,
+        joined_at: Date.now(),
+        user: {
+          id: 'me-1',
+          username: 'artem',
+          handle: 'artem',
+          display_name: 'Артем',
+          avatar_url: null,
+          phone: null,
+          is_online: true,
+          last_seen: null,
+        },
+      },
+      {
+        chat_id: 'chat-1',
+        user_id: 'user-2',
+        role: 'member',
+        access_status: 'active',
+        subscription_expires_at: null,
+        tag: null,
+        tag_color: null,
+        joined_at: Date.now(),
+        user: {
+          id: 'user-2',
+          username: 'papuas',
+          handle: 'papuas',
+          display_name: 'papuas',
+          avatar_url: null,
+          phone: null,
+          is_online: false,
+          last_seen: null,
+        },
+      },
+    ],
+  });
+}
+
 describe('ChatInfoSidebar', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
     onClose.mockReset();
+    addMembersMutate.mockReset();
   });
 
   it('renders media tab by default with grid items', () => {
@@ -115,5 +177,45 @@ describe('ChatInfoSidebar', () => {
 
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('shows add-member control between settings and participants for group owners', () => {
+    render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
+
+    const addBtn = screen.getByRole('button', { name: 'Добавить участника' });
+    const favorites = screen.getByText('Избранное');
+    const participants = screen.getByText(/Участники \(2\)/i);
+
+    expect(
+      favorites.compareDocumentPosition(addBtn) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      addBtn.compareDocumentPosition(participants) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('opens add-member picker from group profile', async () => {
+    const user = userEvent.setup();
+    render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Добавить участника' }));
+
+    expect(screen.getByRole('dialog', { name: 'Добавить участника' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Поиск по имени или @username')).toBeInTheDocument();
+  });
+
+  it('does not show add-member control for private chats', () => {
+    render(<ChatInfoSidebar chat={makeChat()} onClose={onClose} />);
+    expect(screen.queryByRole('button', { name: 'Добавить участника' })).not.toBeInTheDocument();
+  });
+
+  it('does not show add-member control for non-owner group members', () => {
+    const chat = makeGroupChat();
+    chat.members = chat.members?.map((member) =>
+      member.user_id === 'me-1' ? { ...member, role: 'member' } : member,
+    );
+    render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
+    expect(screen.queryByRole('button', { name: 'Добавить участника' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Участники \(2\)/i)).toBeInTheDocument();
   });
 });

@@ -2,8 +2,10 @@ import { useState, useMemo, useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Avatar } from '@/components/avatar/Avatar';
 import { ImageLightbox } from './ImageLightbox';
+import { ChatInfoAddMembersModal } from './ChatInfoAddMembersModal';
 import { useUserDetailQuery } from '@/queries/users.queries';
 import { useMeQuery } from '@/queries/auth.queries';
+import { useAddGroupMembersMutation } from '@/queries/chats.queries';
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { resolveMediaUrl } from '@/services/mediaService';
@@ -32,15 +34,30 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
   const [activeTab, setActiveTab] = useState(0); // Default to 'Медиа'
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [showAddMembers, setShowAddMembers] = useState(false);
+  const [addMembersError, setAddMembersError] = useState<string | null>(null);
+  const addMembers = useAddGroupMembersMutation();
 
-  // Close on Escape (but not while lightbox is open)
+  const isGroupChat = chat.chat_type === 'group';
+  const members = chat.members ?? [];
+  const myMembership = useMemo(
+    () => members.find((m) => m.user_id === me?.id),
+    [members, me?.id],
+  );
+  const canManageMembers = isGroupChat && myMembership?.role === 'owner';
+  const excludedMemberIds = useMemo(
+    () => new Set(members.map((m) => m.user_id).filter(Boolean)),
+    [members],
+  );
+
+  // Close on Escape (but not while lightbox / add-members modal is open)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !lightboxSrc) onClose();
+      if (e.key === 'Escape' && !lightboxSrc && !showAddMembers) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, lightboxSrc]);
+  }, [onClose, lightboxSrc, showAddMembers]);
 
   // Extract info matching the user's Dobry screenshot or dynamic fields
   const isDobry = useMemo(() => {
@@ -275,12 +292,35 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
           </div>
         </div>
 
+        {canManageMembers ? (
+          <div className="chat-info-sidebar__add-member-box">
+            <button
+              type="button"
+              className="chat-info-sidebar__add-member-btn"
+              onClick={() => {
+                setAddMembersError(null);
+                setShowAddMembers(true);
+              }}
+            >
+              <span className="chat-info-sidebar__add-member-icon" aria-hidden>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="8.5" cy="7" r="4" />
+                  <line x1="20" y1="8" x2="20" y2="14" />
+                  <line x1="23" y1="11" x2="17" y2="11" />
+                </svg>
+              </span>
+              <span className="chat-info-sidebar__add-member-label">Добавить участника</span>
+            </button>
+          </div>
+        ) : null}
+
         {/* Group Members List (if group chat) */}
-        {chat.chat_type === 'group' && chat.members && chat.members.length > 0 && (
+        {isGroupChat && (
           <div className="chat-info-sidebar__members-box">
-            <h4 className="chat-info-sidebar__section-title">Участники ({chat.members.length})</h4>
+            <h4 className="chat-info-sidebar__section-title">Участники ({members.length})</h4>
             <div className="chat-info-sidebar__members-list">
-              {chat.members.map((member) => (
+              {members.map((member) => (
                 <div key={member.user_id} className="chat-info-sidebar__member-row">
                   <Avatar name={member.user?.display_name || 'Group Member'} imageUrl={member.user?.avatar_url} size={38} />
                   <div className="chat-info-sidebar__member-details">
@@ -490,6 +530,35 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
+
+      {showAddMembers ? (
+        <ChatInfoAddMembersModal
+          chatId={chat.id}
+          excludedUserIds={excludedMemberIds}
+          pending={addMembers.isPending}
+          error={addMembersError}
+          onClose={() => {
+            setShowAddMembers(false);
+            setAddMembersError(null);
+          }}
+          onAdd={(memberIds) => {
+            setAddMembersError(null);
+            addMembers.mutate(
+              { chatId: chat.id, memberIds },
+              {
+                onSuccess: () => {
+                  setShowAddMembers(false);
+                  setAddMembersError(null);
+                },
+                onError: (err) =>
+                  setAddMembersError(
+                    err instanceof Error ? err.message : 'Не удалось добавить участника',
+                  ),
+              },
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }
