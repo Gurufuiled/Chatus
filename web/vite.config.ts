@@ -1,20 +1,49 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { resolve } from 'node:path';
 
 export default defineConfig({
   base: '/embed/',
   define: {
     'import.meta.env.VITE_APP_MODE': JSON.stringify('embed'),
+    global: 'globalThis',
   },
   build: {
     outDir: resolve(__dirname, '../server/public/embed'),
     emptyOutDir: true,
+    commonjsOptions: {
+      // ts-ebml does `const { tools } = require("ebml")` — keep CJS interop intact.
+      transformMixedEsModules: true,
+      include: [/node_modules/],
+    },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Buffer/global for ts-ebml remux of MediaRecorder WebM (seekable recordings).
+    nodePolyfills({
+      include: ['buffer', 'process'],
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+    }),
+  ],
+  optimizeDeps: {
+    include: ['buffer', 'ebml', 'ts-ebml', 'ebml-block', 'int64-buffer', 'matroska-schema'],
+    esbuildOptions: {
+      define: {
+        global: 'globalThis',
+      },
+    },
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
+      // Force CJS main — ebml's "browser"/"module" fields break ts-ebml's tools import.
+      ebml: resolve(__dirname, 'node_modules/ebml/lib/ebml.js'),
+      buffer: 'buffer/',
     },
   },
   server: {
