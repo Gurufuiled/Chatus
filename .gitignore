@@ -46,6 +46,9 @@ target/
 firebase-service-account*.json
 google-services.json
 
+# Local API client-log sink (prod uses docker volume)
+server/logs/
+
 /steps/
 /Improvements/
 

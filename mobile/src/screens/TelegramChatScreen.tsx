@@ -64,6 +64,7 @@ import {
   waitUntilTdlibNotRecreating,
 } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
+import { logTdlibEvent } from '../services/clientRemoteLog';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
@@ -454,6 +455,17 @@ export function TelegramChatScreen() {
           lastError = error;
           const message = error instanceof Error ? error.message : String(error);
           const isRecoverable = isTransientTdlibRecoveryError(error);
+          logTdlibEvent('send attempt failed', {
+            level: isRecoverable && attempt < maxAttempts ? 'warn' : 'error',
+            data: {
+              attempt,
+              maxAttempts,
+              recoverable: isRecoverable,
+              queryType: typeof query['@type'] === 'string' ? query['@type'] : 'unknown',
+              message,
+            },
+            flushSoon: !isRecoverable || attempt >= maxAttempts,
+          });
           // Permanent reauth only when there is no local sticky session.
           const sticky = telegramAccountStore.getState().hasLocalSession();
           if (!sticky && (/истекла/i.test(message) || /войдите снова/i.test(message))) {

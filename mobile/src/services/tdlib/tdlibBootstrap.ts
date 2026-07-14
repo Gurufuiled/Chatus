@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from './TdlibClient';
 import { throwIfTdError } from './tdlibErrors';
+import { logTdlibEvent } from '../clientRemoteLog';
 
 function readAuthStateType(auth: unknown): string {
   return (auth as { '@type'?: string } | null)?.['@type'] ?? '';
@@ -126,6 +127,11 @@ export async function recoverTdlibSession(): Promise<boolean> {
       }
     } catch (e) {
       if (__DEV__) console.warn('[tdlib] recreateClient failed', e);
+      logTdlibEvent('recreateClient failed', {
+        level: 'error',
+        data: { error: e instanceof Error ? e.message : String(e) },
+        flushSoon: true,
+      });
       lastRecoveryFinishedMs = Date.now();
       return false;
     }
@@ -139,8 +145,19 @@ export async function recoverTdlibSession(): Promise<boolean> {
       if (didRecreate || ready) {
         lastRecoveryFinishedMs = Date.now();
       }
-      return ready || (await canCallAuthorizedApis());
-    } catch {
+      const ok = ready || (await canCallAuthorizedApis());
+      logTdlibEvent(ok ? 'recoverTdlibSession ok' : 'recoverTdlibSession not ready', {
+        level: ok ? 'info' : 'warn',
+        data: { didRecreate, ready },
+        flushSoon: !ok,
+      });
+      return ok;
+    } catch (e) {
+      logTdlibEvent('recoverTdlibSession apply/wait failed', {
+        level: 'error',
+        data: { error: e instanceof Error ? e.message : String(e), didRecreate },
+        flushSoon: true,
+      });
       if (didRecreate) {
         lastRecoveryFinishedMs = Date.now();
       }
@@ -405,11 +422,19 @@ export async function ensureTdlibAuthorizedForSend(options?: {
 
   if (isClosedAuthState(live)) {
     if (!allowSessionReload) {
+      logTdlibEvent('ensureAuthorized: Closed, reload not allowed', {
+        level: 'error',
+        flushSoon: true,
+      });
       throw new Error('TDLib client is closed');
     }
     const recovered = await recoverTdlibSession().catch(() => false);
     if (recovered || (await canCallAuthorizedApis())) return;
     scheduleBackgroundTdlibRecovery();
+    logTdlibEvent('ensureAuthorized: Closed, recovery pending', {
+      level: 'warn',
+      flushSoon: true,
+    });
     throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
   }
 
@@ -420,6 +445,11 @@ export async function ensureTdlibAuthorizedForSend(options?: {
       const recovered = await recoverTdlibSession().catch(() => false);
       if (recovered || (await canCallAuthorizedApis())) return;
       scheduleBackgroundTdlibRecovery();
+      logTdlibEvent('ensureAuthorized: apply hit Closed', {
+        level: 'warn',
+        data: { error: error instanceof Error ? error.message : String(error) },
+        flushSoon: true,
+      });
       throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
     }
     throw error;

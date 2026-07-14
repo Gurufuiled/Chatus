@@ -44,6 +44,23 @@ scp server/public/downloads/chatus-release.apk chatus-prod:/root/chatus/server/p
 Папка `server/public/downloads` смонтирована в контейнер — **пересборка Docker для APK не нужна**.  
 Манифест `client-update-manifest.json` — в образе API; после смены версии нужен `git pull` + `docker compose build api`.
 
+## Логи с iOS / Android (Telegram TDLib)
+
+Клиент шлёт диагностику на `POST /api/client-logs` (JWT). На VPS:
+
+```bash
+# поток Nest (warn/error видны сразу)
+ssh chatus-prod "cd /root/chatus/server && docker compose logs -f api | grep client/"
+
+# файл по дням внутри volume
+ssh chatus-prod "cd /root/chatus/server && docker compose exec api sh -c 'ls -la /app/logs/client && tail -n 50 /app/logs/client/client-$(date -u +%F).log'"
+```
+
+После выкладки кода с `ClientLogsModule` нужен `docker compose build api && up -d api` (volume `chatus_client_logs` создаётся сам).  
+Чтобы логи реально появлялись с телефона — нужна **пересборка iOS** с этой ветки.
+
+Подробнее: [mobile/RELEASE-APK.md](../mobile/RELEASE-APK.md)
+
 ## Проверка
 
 | URL | Ожидание |

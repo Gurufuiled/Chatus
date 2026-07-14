@@ -18,6 +18,7 @@ import { loadChatRow } from '../screens/telegramChat/telegramDialogsLoader';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
 import { syncChatusPhoneFromTelegramAuth } from '../services/telegramChatusPhoneSync';
+import { logTdlibEvent } from '../services/clientRemoteLog';
 
 /**
  * Глобально: входящие TDLib → превью в шторку (фон), регистрация FCM в Telegram после авторизации.
@@ -99,6 +100,25 @@ export function TelegramTdlibNotificationListener() {
           const stateType = authState?.['@type'] as string | undefined;
           if (__DEV__) {
             console.log('[tdlib-notify] updateAuthorizationState ->', stateType);
+          }
+          const isInteresting =
+            stateType === 'authorizationStateClosed' ||
+            stateType === 'authorizationStateClosing' ||
+            stateType === 'authorizationStateLoggingOut' ||
+            stateType === 'authorizationStateWaitTdlibParameters' ||
+            stateType === 'authorizationStateReady';
+          if (isInteresting || stateType?.startsWith('authorizationStateWait')) {
+            logTdlibEvent(`auth ${stateType ?? 'unknown'}`, {
+              level:
+                stateType === 'authorizationStateClosed' ||
+                stateType === 'authorizationStateClosing'
+                  ? 'warn'
+                  : 'info',
+              data: { prevStatus: telegramAccountStore.getState().authStatus },
+              flushSoon:
+                stateType === 'authorizationStateClosed' ||
+                stateType === 'authorizationStateClosing',
+            });
           }
           const store = telegramAccountStore.getState();
           switch (stateType) {
