@@ -466,7 +466,7 @@ export function TelegramChatScreen() {
             },
             flushSoon: !isRecoverable || attempt >= maxAttempts,
           });
-          // Permanent reauth only when there is no local sticky session.
+          // Permanent reauth: do not retry "сессия истекла" (empty TDLib DB).
           const sticky = telegramAccountStore.getState().hasLocalSession();
           if (!sticky && (/истекла/i.test(message) || /войдите снова/i.test(message))) {
             throw error;
@@ -489,8 +489,7 @@ export function TelegramChatScreen() {
             /authorization is closing/i.test(message) ||
             /unauthor/i.test(message) ||
             /not authorized/i.test(message) ||
-            /переподключается/i.test(message) ||
-            /истекла/i.test(message)
+            /переподключается/i.test(message)
           ) {
             // One hard auth gate (may reload DB once), then retry send.
             await ensureTdlibAuthorizedForSend({ allowSessionReload: true }).catch(() => undefined);

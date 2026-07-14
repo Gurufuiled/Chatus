@@ -3,8 +3,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import {
   applyTdlibParameters,
+  cancelBackgroundTdlibRecovery,
+  clearTdlibLoggingOutExpectation,
+  isExpectingEmptyTdlibDatabaseAfterLogout,
   isTdlibRecoveryInFlight,
+  markTdlibLoggingOut,
   scheduleBackgroundTdlibRecovery,
+  shouldClearStickyTelegramSession,
   waitForTdlibAuthorizationReady,
 } from '../services/tdlib/tdlibBootstrap';
 import { probeTdlibAuthStatus } from '../services/tdlib/tdlibAuthState';
@@ -124,6 +129,7 @@ export function TelegramTdlibNotificationListener() {
           const store = telegramAccountStore.getState();
           switch (stateType) {
             case 'authorizationStateReady':
+              clearTdlibLoggingOutExpectation();
               if (store.authStatus !== 'ready') {
                 store.setAuthStatus('ready');
                 scheduleAuthPersist();
@@ -150,9 +156,28 @@ export function TelegramTdlibNotificationListener() {
               // Never drop a Ready session back to phone entry — only Settings logout does.
               // Transient WaitPhone while DB opens after recreate must not stack recoveries.
               if (store.authStatus === 'ready' || store.telegramUserId != null) {
-                if (!isTdlibRecoveryInFlight()) {
-                  scheduleBackgroundTdlibRecovery();
-                }
+                void (async () => {
+                  const live = stateType ?? null;
+                  if (!(await shouldClearStickyTelegramSession(live))) {
+                    if (!isTdlibRecoveryInFlight()) {
+                      scheduleBackgroundTdlibRecovery();
+                    }
+                    return;
+                  }
+                  // Re-check after await — avoid wiping a session that recovered meanwhile.
+                  const now = telegramAccountStore.getState();
+                  if (!now.hasLocalSession()) {
+                    clearTdlibLoggingOutExpectation();
+                    return;
+                  }
+                  if (!(await shouldClearStickyTelegramSession(live))) return;
+                  logTdlibEvent('WaitPhone + empty/logout — clear sticky session', {
+                    level: 'warn',
+                    flushSoon: true,
+                  });
+                  await now.clearLocalTelegramSession();
+                  clearTdlibLoggingOutExpectation();
+                })();
                 break;
               }
               if (
@@ -164,14 +189,45 @@ export function TelegramTdlibNotificationListener() {
               }
               break;
             case 'authorizationStateClosing':
+              // Closing alone is not a DB wipe — cancel pending recover, but do not arm logout flag.
+              cancelBackgroundTdlibRecovery();
+              break;
             case 'authorizationStateLoggingOut':
-            case 'authorizationStateClosed':
-              // Never flip ready → error on transient close; recover quietly in background.
-              if (store.authStatus === 'ready') {
-                scheduleBackgroundTdlibRecovery();
-              } else {
-                void reconcileAuthStatus();
+              // LoggingOut wipes the TDLib DB — do NOT schedule recover (empty DB + sticky Ready
+              // loops forever on "переподключается").
+              markTdlibLoggingOut();
+              if (store.hasLocalSession()) {
+                logTdlibEvent('auth LoggingOut — will clear sticky after Closed', {
+                  level: 'warn',
+                  data: { prevStatus: store.authStatus },
+                  flushSoon: true,
+                });
               }
+              break;
+            case 'authorizationStateClosed':
+              void (async () => {
+                if (!store.hasLocalSession() && !isExpectingEmptyTdlibDatabaseAfterLogout()) {
+                  void reconcileAuthStatus();
+                  return;
+                }
+                if (await shouldClearStickyTelegramSession('authorizationStateClosed')) {
+                  const now = telegramAccountStore.getState();
+                  if (!now.hasLocalSession() && !isExpectingEmptyTdlibDatabaseAfterLogout()) {
+                    clearTdlibLoggingOutExpectation();
+                    return;
+                  }
+                  logTdlibEvent('auth Closed + empty/logout — clear sticky session', {
+                    level: 'warn',
+                    flushSoon: true,
+                  });
+                  await now.clearLocalTelegramSession();
+                  clearTdlibLoggingOutExpectation();
+                  return;
+                }
+                if (!isTdlibRecoveryInFlight()) {
+                  scheduleBackgroundTdlibRecovery();
+                }
+              })();
               break;
             default:
               break;

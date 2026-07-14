@@ -45,14 +45,22 @@ let recoveryInFlight: Promise<boolean> | null = null;
 let lastRecoveryFinishedMs = 0;
 let backgroundRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let lastNativeVerifyMs = 0;
+/** After LoggingOut, Closed/WaitPhone must clear sticky even if the DB probe races. */
+let expectEmptyDbAfterLogout = false;
 const NATIVE_VERIFY_MIN_INTERVAL_MS = 12_000;
 const RECOVERY_COOLDOWN_MS = 45_000;
 
 /** Set from telegramAccountStore to avoid a circular import with bootstrap. */
 let stickySessionProbe: (() => boolean) | null = null;
+/** Clears JS sticky session when TDLib DB is gone (no second `logOut`). */
+let emptyDatabaseHandler: (() => void) | null = null;
 
 export function setTdlibStickySessionProbe(probe: (() => boolean) | null): void {
   stickySessionProbe = probe;
+}
+
+export function setTdlibEmptyDatabaseHandler(handler: (() => void) | null): void {
+  emptyDatabaseHandler = handler;
 }
 
 function hasStickyLocalTelegramSession(): boolean {
@@ -61,6 +69,45 @@ function hasStickyLocalTelegramSession(): boolean {
   } catch {
     return false;
   }
+}
+
+function notifyEmptyTdlibDatabase(): void {
+  try {
+    emptyDatabaseHandler?.();
+  } catch {
+    /* store handler must not break send path */
+  }
+}
+
+function isEmptySessionLoginGate(state: string | null | undefined): boolean {
+  return (
+    state === 'authorizationStateWaitPhoneNumber' ||
+    state === 'authorizationStateWaitRegistration' ||
+    state === 'authorizationStateWaitEmailAddress' ||
+    state === 'authorizationStateClosed' ||
+    state === 'authorizationStateClosing' ||
+    state === 'authorizationStateWaitTdlibParameters'
+  );
+}
+
+/**
+ * When sticky JS session cannot be restored because the on-disk TDLib DB is gone,
+ * drop sticky state and tell the user to sign in again (do not keep saying "reconnect").
+ */
+async function failIfStickySessionDatabaseGone(live: string | null): Promise<never | void> {
+  if (!(await shouldClearStickyTelegramSession(live))) return;
+  const expectLogout = expectEmptyDbAfterLogout;
+  cancelBackgroundTdlibRecovery();
+  if (hasStickyLocalTelegramSession()) {
+    notifyEmptyTdlibDatabase();
+  }
+  clearTdlibLoggingOutExpectation();
+  logTdlibEvent('sticky session DB gone — require reauth', {
+    level: 'warn',
+    data: { live, expectLogout },
+    flushSoon: true,
+  });
+  throw new Error('Сессия Telegram истекла. Откройте Настройки → Telegram и войдите снова.');
 }
 
 /**
@@ -106,6 +153,29 @@ export function cancelBackgroundTdlibRecovery(): void {
   }
 }
 
+/** Mark that TDLib is wiping its DB (LoggingOut) — Closed must not schedule recover. */
+export function markTdlibLoggingOut(): void {
+  expectEmptyDbAfterLogout = true;
+  cancelBackgroundTdlibRecovery();
+}
+
+export function clearTdlibLoggingOutExpectation(): void {
+  expectEmptyDbAfterLogout = false;
+}
+
+export function isExpectingEmptyTdlibDatabaseAfterLogout(): boolean {
+  return expectEmptyDbAfterLogout;
+}
+
+/** True when sticky session should be treated as gone (logout in flight or empty DB). */
+export async function shouldClearStickyTelegramSession(
+  live: string | null | undefined,
+): Promise<boolean> {
+  if (expectEmptyDbAfterLogout) return true;
+  if (!isEmptySessionLoginGate(live ?? null)) return false;
+  return (await hasTdlibDatabaseOnDisk()) === false;
+}
+
 /**
  * Wait until native recreate finishes (or timeout). Does NOT start a new recreate.
  * Use this when sends fail with "client is being recreated".
@@ -127,8 +197,18 @@ export async function waitUntilTdlibNotRecreating(timeoutMs = 30_000): Promise<b
  * during send (that creates a recreate↔reject loop).
  */
 export async function recoverTdlibSession(): Promise<boolean> {
+  if (expectEmptyDbAfterLogout) {
+    notifyEmptyTdlibDatabase();
+    clearTdlibLoggingOutExpectation();
+    return false;
+  }
   if (recoveryInFlight) return recoveryInFlight;
   recoveryInFlight = (async () => {
+    if (expectEmptyDbAfterLogout) {
+      notifyEmptyTdlibDatabase();
+      clearTdlibLoggingOutExpectation();
+      return false;
+    }
     const sticky = hasStickyLocalTelegramSession();
     const sinceLast = Date.now() - lastRecoveryFinishedMs;
     if (sinceLast < RECOVERY_COOLDOWN_MS) {
@@ -178,8 +258,12 @@ export async function recoverTdlibSession(): Promise<boolean> {
           data: { didRecreate, ready, state: live, dbOnDisk },
           flushSoon: true,
         });
-        // Do NOT wipe JS session / call logOut here. WaitPhone after recreate is often
-        // transient; aggressive expiry caused Ready → LoggingOut loops on iOS.
+        // Empty DB + WaitPhone/Closed after recreate: session is gone — clear sticky JS
+        // so send stops looping on "переподключается" forever.
+        if (dbOnDisk === false && isEmptySessionLoginGate(live)) {
+          cancelBackgroundTdlibRecovery();
+          notifyEmptyTdlibDatabase();
+        }
         return false;
       }
       logTdlibEvent('recoverTdlibSession ok', {
@@ -209,12 +293,14 @@ export async function recoverTdlibSession(): Promise<boolean> {
  * Avoids hammering recreateClient while user navigates between Telegram chats.
  */
 export function scheduleBackgroundTdlibRecovery(): void {
+  if (expectEmptyDbAfterLogout) return;
   if (recoveryInFlight) return;
   const sinceLast = Date.now() - lastRecoveryFinishedMs;
   if (sinceLast < RECOVERY_COOLDOWN_MS) return;
   if (backgroundRecoveryTimer) return;
   backgroundRecoveryTimer = setTimeout(() => {
     backgroundRecoveryTimer = null;
+    if (expectEmptyDbAfterLogout) return;
     void recoverTdlibSession().then((ok) => {
       if (ok && __DEV__) {
         console.log('[tdlib] background session recovery succeeded');
@@ -477,6 +563,8 @@ export async function ensureTdlibAuthorizedForSend(options?: {
     }
     const recovered = await recoverTdlibSession().catch(() => false);
     if (recovered || (await canCallAuthorizedApis())) return;
+    live = await readLiveAuthState().catch(() => live);
+    await failIfStickySessionDatabaseGone(live);
     scheduleBackgroundTdlibRecovery();
     logTdlibEvent('ensureAuthorized: Closed, recovery pending', {
       level: 'warn',
@@ -491,6 +579,8 @@ export async function ensureTdlibAuthorizedForSend(options?: {
     if (allowSessionReload && isTdlibClientClosedError(error)) {
       const recovered = await recoverTdlibSession().catch(() => false);
       if (recovered || (await canCallAuthorizedApis())) return;
+      live = await readLiveAuthState().catch(() => 'authorizationStateClosed');
+      await failIfStickySessionDatabaseGone(live);
       scheduleBackgroundTdlibRecovery();
       logTdlibEvent('ensureAuthorized: apply hit Closed', {
         level: 'warn',
@@ -548,11 +638,15 @@ export async function ensureTdlibAuthorizedForSend(options?: {
   }
 
   if (sticky) {
-    // Sticky = we still believe a local session exists. Never tell the user it "expired"
-    // and never clear SecureStore/dialogs from a transient WaitPhone / failed recover.
+    await failIfStickySessionDatabaseGone(live);
+    // Sticky = we still believe a local session exists (DB present or unknown).
+    // Transient WaitPhone while DB opens — keep reconnect message, do not wipe yet.
     scheduleBackgroundTdlibRecovery();
     throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
   }
+
+  // Recover may have cleared sticky while we still held the old `sticky` flag.
+  await failIfStickySessionDatabaseGone(live);
 
   if (
     live === 'authorizationStateWaitPhoneNumber' ||

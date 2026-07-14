@@ -5,10 +5,14 @@ import { resetTelegramPushRegistrationFlag } from '../services/pushNotifications
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import {
   cancelBackgroundTdlibRecovery,
+  clearTdlibLoggingOutExpectation,
   ensureTdlibReadyForPhoneLogin,
+  markTdlibLoggingOut,
+  setTdlibEmptyDatabaseHandler,
   setTdlibStickySessionProbe,
 } from '../services/tdlib/tdlibBootstrap';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
+import { logTdlibEvent } from '../services/clientRemoteLog';
 import { normalizeTelegramDialogRows } from '../screens/telegramChat/telegramDialogFallback';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
@@ -87,6 +91,11 @@ type TelegramAccountActions = {
   setDialogsSyncing: (syncing: boolean) => void;
   /** True while a Telegram account is bound on this device (until Settings logout). */
   hasLocalSession: () => boolean;
+  /**
+   * Clear JS/SecureStore session without calling TDLib `logOut`
+   * (use when the on-disk DB is already gone after LoggingOut / failed recover).
+   */
+  clearLocalTelegramSession: () => Promise<void>;
   resetTelegramSession: () => Promise<void>;
 };
 
@@ -215,13 +224,9 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
     );
   },
 
-  resetTelegramSession: async () => {
+  clearLocalTelegramSession: async () => {
     cancelBackgroundTdlibRecovery();
-    try {
-      await tdlibClient.send({ '@type': 'logOut' });
-    } catch {
-      /* native TDLib may be unavailable in dev stub */
-    }
+    clearTdlibLoggingOutExpectation();
     resetTelegramPushRegistrationFlag();
     clearUserNameCache();
     set({
@@ -232,6 +237,25 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
     if (dialogsCachePath) {
       await FileSystem.deleteAsync(dialogsCachePath, { idempotent: true }).catch(() => undefined);
     }
+  },
+
+  resetTelegramSession: async () => {
+    logTdlibEvent('resetTelegramSession called', {
+      level: 'warn',
+      data: {
+        prevStatus: get().authStatus,
+        hasUserId: get().telegramUserId != null,
+        dialogs: get().dialogs.length,
+      },
+      flushSoon: true,
+    });
+    markTdlibLoggingOut();
+    try {
+      await tdlibClient.send({ '@type': 'logOut' });
+    } catch {
+      /* native TDLib may be unavailable in dev stub */
+    }
+    await get().clearLocalTelegramSession();
     // Recreate Closed → WaitPhone so Settings → Telegram can show the phone form immediately.
     try {
       await ensureTdlibReadyForPhoneLogin();
@@ -242,3 +266,13 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
 }));
 
 setTdlibStickySessionProbe(() => telegramAccountStore.getState().hasLocalSession());
+setTdlibEmptyDatabaseHandler(() => {
+  const store = telegramAccountStore.getState();
+  if (!store.hasLocalSession()) return;
+  logTdlibEvent('clearLocalTelegramSession (empty TDLib DB)', {
+    level: 'warn',
+    data: { prevStatus: store.authStatus },
+    flushSoon: true,
+  });
+  void store.clearLocalTelegramSession();
+});

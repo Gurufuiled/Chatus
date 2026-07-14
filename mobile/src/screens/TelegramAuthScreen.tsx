@@ -230,6 +230,23 @@ export function TelegramAuthScreen() {
       if (apiId == null || !apiHash) {
         return telegramAccountStore.getState().authStatus;
       }
+      const currentBefore = telegramAccountStore.getState().authStatus;
+      // Already authorized: do not call ensureTdlibReadyForPhoneLogin — it cancels
+      // background recovery and may recreate the client while the session is healthy.
+      if (currentBefore === 'ready') {
+        try {
+          await applyTdlibParameters();
+          const auth = (await tdlibClient.send({
+            "@type": "getAuthorizationState",
+          })) as { "@type"?: string };
+          throwIfTdError(auth);
+          if (auth["@type"] === "authorizationStateReady") {
+            return "ready";
+          }
+        } catch {
+          /* fall through to phone-login bootstrap */
+        }
+      }
       let t: string | undefined;
       try {
         t = await ensureTdlibReadyForPhoneLogin();
