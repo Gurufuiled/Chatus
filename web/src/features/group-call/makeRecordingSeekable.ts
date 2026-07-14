@@ -1,16 +1,16 @@
 /**
- * Post-process MediaRecorder output so players get a Duration and can seek.
+ * Post-process MediaRecorder WebM so players get Duration + Cues.
  *
- * Chrome's WebM from MediaRecorder omits Segment Info `Duration` and `Cues`.
- * Short clips sometimes scrub anyway (player scans clusters); longer recordings
- * (e.g. with screen share) do not — the progress bar sticks at 0 and seeking
- * fails until we rebuild SeekHead + Cues + Duration via `ts-ebml`.
+ * Chrome's WebM omits Segment Info `Duration` and `Cues`. We rebuild SeekHead +
+ * Cues + Duration via `ts-ebml` (loaded only through `loadTsEbml()` — a static
+ * import crashes the Vite embed at startup).
  *
- * `ts-ebml` is loaded only through `loadTsEbml()` (Buffer + CJS ebml shims).
- * A static import crashes the Vite embed bundle at startup.
+ * Prefer `finalizeRecordingBlob` for downloads: it converts to progressive MP4
+ * for Windows Movies & TV. This remux remains the WebM fallback path.
  *
- * MP4 (when MediaRecorder supports it) already has seek metadata and is
- * returned as-is.
+ * Duration units: WebM Duration is in TimestampScale ticks. Default scale is
+ * 1_000_000 ns, so ticks ≈ milliseconds. We never write wall-clock nanoseconds
+ * into Duration (that produces the absurd multi-hour trim times in Movies & TV).
  */
 
 import { loadTsEbml } from './loadTsEbml';
@@ -54,7 +54,8 @@ export async function makeRecordingSeekable(
     const decoder = new Decoder();
     const reader = new Reader();
     reader.logging = false;
-    reader.drop_default_duration = false;
+    // Chrome writes a bad DefaultDuration (crbug 606000); keep ts-ebml's default drop.
+    reader.drop_default_duration = true;
 
     const elements = decoder.decode(buffer);
     for (const element of elements) {
@@ -68,10 +69,11 @@ export async function makeRecordingSeekable(
     }
 
     const scale = reader.timestampScale > 0 ? reader.timestampScale : DEFAULT_TIMESTAMP_SCALE;
-    // Prefer duration derived from clusters; fall back to wall-clock when the
-    // recorder never wrote Segment Info Duration (typical Chrome MediaRecorder).
-    const durationTicks =
-      reader.duration > 0 ? reader.duration : (durationMs * 1_000_000) / scale;
+    // Duration must be TimestampScale ticks (≈ ms when scale is 1e6), never raw ns.
+    // Prefer measured wall-clock — cluster-derived duration can be inflated.
+    const fromWallClock = (durationMs * 1_000_000) / scale;
+    const fromClusters = reader.duration > 0 ? reader.duration : 0;
+    const durationTicks = fromWallClock > 0 ? fromWallClock : fromClusters;
 
     if (!(durationTicks > 0)) {
       console.warn('[Recording] WebM remux skipped: duration is zero');

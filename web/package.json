@@ -19,6 +19,7 @@
     "@tanstack/react-router": "^1.114.25",
     "buffer": "^6.0.3",
     "livekit-client": "^2.20.0",
+    "mediabunny": "^1.50.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "ts-ebml": "^3.0.2",

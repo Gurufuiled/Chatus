@@ -394,7 +394,7 @@ export function GroupCallOverlay() {
           <div className="group-call-save-sheet__card">
             <h3 className="group-call-save-sheet__title">Сохранить запись?</h3>
             <p className="group-call-save-sheet__subtitle">
-              {recording.pendingFilename ?? 'Запись звонка.webm'}
+              {recording.pendingFilename ?? 'Запись звонка.mp4'}
             </p>
             {recording.error ? (
               <p className="group-call-save-sheet__error">{recording.error}</p>

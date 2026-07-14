@@ -5,11 +5,15 @@
  * - idle → requesting → recording → stopping → save_prompt → idle
  * - Toolbar: «Записать»; while recording — red indicator + elapsed timer; click soft-stops
  * - Soft stop opens «Сохранить запись?» (Save / Discard) — no confirm() before stop
- * - Filename: `Запись звонка YYYY-MM-DD HH-mm.webm` (or .mp4 when MediaRecorder supports it)
- * - After stop: WebM duration fix so players can seek; brief «Обработка записи…» if >~300ms
+ * - Filename: `Запись звонка YYYY-MM-DD HH-mm.mp4` (progressive H.264/AAC when conversion
+ *   succeeds; `.webm` only as fallback)
+ * - After stop: WebM remux + convert to progressive MP4 for Movies & TV seek/trim;
+ *   brief «Обработка записи…» if >~300ms
  * - Errors: Russian in-call banners (never alert())
  *
  * Capture (client-only MediaRecorder → download):
+ * - Prefer WebM from MediaRecorder (canvas-stable). Native MediaRecorder MP4 is
+ *   often fragmented / wrong-timescale and breaks Movies & TV — we do not prefer it.
  * - Video: canvas composite of stage tiles + LiveKit camera/screen tracks (screen preferred;
  *   mid-call screen share is picked up dynamically)
  * - Audio: AudioContext mix of local mic + remote LiveKit microphone tracks present at start
@@ -29,10 +33,8 @@ import {
   type CanvasLayoutLock,
   type OffscreenVideoMap,
 } from './callRecordingCanvas';
-import {
-  makeRecordingSeekable,
-  recordingExtensionForMime,
-} from './makeRecordingSeekable';
+import { finalizeRecordingBlob } from './finalizeRecordingBlob';
+import { recordingExtensionForMime } from './makeRecordingSeekable';
 
 export type CallRecordingPhase =
   | 'idle'
@@ -57,14 +59,16 @@ const DRAW_FPS = 15;
 const LONG_RECORDING_WARN_MS = 30 * 60 * 1000;
 const PROCESSING_HINT_DELAY_MS = 300;
 
+// Prefer WebM for capture. Native MediaRecorder MP4 is listed last as a last-resort
+// capture mime only — downloads still go through finalizeRecordingBlob → progressive MP4.
 const MIME_CANDIDATES = [
-  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-  'video/mp4',
   'video/webm;codecs=vp9,opus',
   'video/webm;codecs=vp8,opus',
   'video/webm;codecs=vp9',
   'video/webm;codecs=vp8',
   'video/webm',
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4',
 ];
 
 function pad2(n: number): string {
@@ -557,8 +561,11 @@ export class CallRecordingService {
     }, PROCESSING_HINT_DELAY_MS);
 
     let blob = rawBlob;
+    let container: 'mp4' | 'webm' = recordingExtensionForMime(mimeType);
     try {
-      blob = await makeRecordingSeekable(rawBlob, durationMs);
+      const finalized = await finalizeRecordingBlob(rawBlob, durationMs);
+      blob = finalized.blob;
+      container = finalized.container;
     } finally {
       if (processingHintTimer != null) {
         window.clearTimeout(processingHintTimer);
@@ -567,9 +574,8 @@ export class CallRecordingService {
 
     if (session !== this.sessionId) return;
 
-    const ext = recordingExtensionForMime(blob.type || mimeType);
     this.pendingBlob = blob;
-    this.pendingFilename = buildCallRecordingFilename(new Date(), ext);
+    this.pendingFilename = buildCallRecordingFilename(new Date(), container);
     if (this.warning === 'Обработка записи…') {
       this.warning = null;
     }

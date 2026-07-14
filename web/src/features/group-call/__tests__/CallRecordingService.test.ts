@@ -4,6 +4,7 @@ import {
   isCallRecordingSupported,
   pickRecordingMimeType,
 } from '../CallRecordingService';
+import { finalizeRecordingBlob } from '../finalizeRecordingBlob';
 import {
   isWebmMime,
   makeRecordingSeekable,
@@ -23,7 +24,7 @@ vi.mock('../loadTsEbml', () => {
   }
   class FakeReader {
     logging = false;
-    drop_default_duration = false;
+    drop_default_duration = true;
     metadatas: unknown[] = [{ id: 0x1a45dfa3, name: 'EBML' }];
     metadataSize = 4;
     timestampScale = 1_000_000;
@@ -47,6 +48,10 @@ vi.mock('../loadTsEbml', () => {
     }),
   };
 });
+
+vi.mock('../convertRecordingToMp4', () => ({
+  convertRecordingToMp4: vi.fn(async () => null),
+}));
 
 describe('CallRecordingService helpers', () => {
   it('builds Telemost-style filename with webm extension by default', () => {
@@ -100,5 +105,37 @@ describe('makeRecordingSeekable', () => {
     const out = await makeRecordingSeekable(input, 0);
     expect(out).toBe(input);
     expect(makeMetadataSeekable).not.toHaveBeenCalled();
+  });
+
+  it('writes Duration in TimestampScale ticks (ms when scale is 1e6), not nanoseconds', async () => {
+    makeMetadataSeekable.mockClear();
+    const input = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'video/webm' });
+    await makeRecordingSeekable(input, 2500);
+    expect(makeMetadataSeekable).toHaveBeenCalled();
+    const durationTicks = makeMetadataSeekable.mock.calls[0]?.[1];
+    // 2500ms with scale 1e6 → 2500 ticks (NOT 2.5e12 ns)
+    expect(durationTicks).toBe(2500);
+  });
+});
+
+describe('finalizeRecordingBlob', () => {
+  it('falls back to seekable webm when MP4 conversion returns null', async () => {
+    makeMetadataSeekable.mockClear();
+    const input = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'video/webm;codecs=vp8,opus' });
+    const result = await finalizeRecordingBlob(input, 2500);
+    expect(result.container).toBe('webm');
+    expect(result.blob.type).toContain('webm');
+    expect(makeMetadataSeekable).toHaveBeenCalled();
+  });
+
+  it('returns mp4 when conversion succeeds', async () => {
+    const { convertRecordingToMp4 } = await import('../convertRecordingToMp4');
+    vi.mocked(convertRecordingToMp4).mockResolvedValueOnce(
+      new Blob([new Uint8Array([9, 9, 9])], { type: 'video/mp4' }),
+    );
+    const input = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'video/webm' });
+    const result = await finalizeRecordingBlob(input, 1000);
+    expect(result.container).toBe('mp4');
+    expect(result.blob.type).toBe('video/mp4');
   });
 });
