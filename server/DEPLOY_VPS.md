@@ -46,20 +46,18 @@ scp server/public/downloads/chatus-release.apk chatus-prod:/root/chatus/server/p
 
 ## Логи с iOS / Android (Telegram TDLib)
 
-Клиент шлёт диагностику на `POST /api/client-logs` (JWT). На VPS:
+Клиент шлёт диагностику на `POST /api/client-logs` (JWT) автоматически при warn/error TDLib.
+На VPS:
 
 ```bash
-# поток Nest (warn/error видны сразу)
+# поток Nest
 ssh chatus-prod "cd /root/chatus/server && docker compose logs -f api | grep client/"
 
-# файл по дням внутри volume
+# файл по дням (volume chatus_client_logs; entrypoint chown'ит в node)
 ssh chatus-prod "cd /root/chatus/server && docker compose exec api sh -c 'ls -la /app/logs/client && tail -n 50 /app/logs/client/client-$(date -u +%F).log'"
 ```
 
-После выкладки кода с `ClientLogsModule` нужен `docker compose build api && up -d api` (volume `chatus_client_logs` создаётся сам).  
-Чтобы логи реально появлялись с телефона — нужна **пересборка iOS** с этой ветки.
-
-Подробнее: [mobile/RELEASE-APK.md](../mobile/RELEASE-APK.md)
+После правок `Dockerfile` / `docker-entrypoint.sh` (права на volume): `docker compose build api && up -d api`.
 
 ## Проверка
 

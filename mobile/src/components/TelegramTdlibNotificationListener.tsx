@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import {
   applyTdlibParameters,
+  isTdlibRecoveryInFlight,
   scheduleBackgroundTdlibRecovery,
   waitForTdlibAuthorizationReady,
 } from '../services/tdlib/tdlibBootstrap';
@@ -147,8 +148,11 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateWaitEmailAddress':
             case 'authorizationStateWaitRegistration':
               // Never drop a Ready session back to phone entry — only Settings logout does.
+              // Transient WaitPhone while DB opens after recreate must not stack recoveries.
               if (store.authStatus === 'ready' || store.telegramUserId != null) {
-                scheduleBackgroundTdlibRecovery();
+                if (!isTdlibRecoveryInFlight()) {
+                  scheduleBackgroundTdlibRecovery();
+                }
                 break;
               }
               if (

@@ -34,8 +34,8 @@ ENV PORT=4000
 
 EXPOSE 4000 4001 4002
 
-USER node
+# Start as root so entrypoint can chown mounted volumes (uploads, client logs), then gosu node.
+USER root
 
-# Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

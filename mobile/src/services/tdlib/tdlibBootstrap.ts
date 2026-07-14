@@ -50,14 +50,48 @@ const RECOVERY_COOLDOWN_MS = 45_000;
 
 /** Set from telegramAccountStore to avoid a circular import with bootstrap. */
 let stickySessionProbe: (() => boolean) | null = null;
+/** Called when TDLib honestly has no on-disk session (WaitPhone, empty DB). */
+let sessionExpiredHandler: (() => void) | null = null;
 
 export function setTdlibStickySessionProbe(probe: (() => boolean) | null): void {
   stickySessionProbe = probe;
 }
 
+export function setTdlibSessionExpiredHandler(handler: (() => void) | null): void {
+  sessionExpiredHandler = handler;
+}
+
 function hasStickyLocalTelegramSession(): boolean {
   try {
     return stickySessionProbe?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+function notifyTdlibSessionExpired(): void {
+  try {
+    sessionExpiredHandler?.();
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * True when TDLib left session files under database_directory (not just JS SecureStore cache).
+ */
+export async function hasTdlibDatabaseOnDisk(): Promise<boolean> {
+  try {
+    const { databaseDir } = await getTdlibDirectories();
+    const baseUri = `file://${databaseDir}`.replace(/([^:]\/)\/+/g, '$1');
+    const dirInfo = await FileSystem.getInfoAsync(baseUri);
+    if (!dirInfo.exists || !dirInfo.isDirectory) return false;
+    const candidates = ['td.binlog', 'db.sqlite', 'db.sqlite-wal'];
+    for (const name of candidates) {
+      const info = await FileSystem.getInfoAsync(`${baseUri}/${name}`);
+      if (info.exists) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -108,11 +142,13 @@ export async function waitUntilTdlibNotRecreating(timeoutMs = 30_000): Promise<b
 export async function recoverTdlibSession(): Promise<boolean> {
   if (recoveryInFlight) return recoveryInFlight;
   recoveryInFlight = (async () => {
+    const sticky = hasStickyLocalTelegramSession();
     const sinceLast = Date.now() - lastRecoveryFinishedMs;
     if (sinceLast < RECOVERY_COOLDOWN_MS) {
-      // Previous recreate already ran recently — wait briefly for Ready, do not destroy again.
-      const { ready } = await waitForTdlibAuthorizationReady(8_000, {
-        stickySession: hasStickyLocalTelegramSession(),
+      // Previous recreate already ran recently — wait longer for Ready, do not destroy again.
+      const { ready } = await waitForTdlibAuthorizationReady(20_000, {
+        stickySession: sticky,
+        stickyGraceMs: RECOVERY_STICKY_GRACE_MS,
       });
       return ready || (await canCallAuthorizedApis());
     }
@@ -138,20 +174,39 @@ export async function recoverTdlibSession(): Promise<boolean> {
     try {
       // force:true clears the lock only after the new native client exists.
       await applyTdlibParameters({ force: true });
-      // Short wait: sticky grace on WaitPhone is ~2.5s inside waitForTdlibAuthorizationReady.
-      const { ready } = await waitForTdlibAuthorizationReady(12_000, {
-        stickySession: hasStickyLocalTelegramSession(),
+      // After recreate, iOS often flashes WaitPhone while opening SQLite — allow ~18s, not 2.5s.
+      const { ready, state } = await waitForTdlibAuthorizationReady(20_000, {
+        stickySession: sticky,
+        stickyGraceMs: RECOVERY_STICKY_GRACE_MS,
       });
       if (didRecreate || ready) {
         lastRecoveryFinishedMs = Date.now();
       }
       const ok = ready || (await canCallAuthorizedApis());
-      logTdlibEvent(ok ? 'recoverTdlibSession ok' : 'recoverTdlibSession not ready', {
-        level: ok ? 'info' : 'warn',
+      if (!ok) {
+        const dbOnDisk = await hasTdlibDatabaseOnDisk();
+        const live = state ?? (await readLiveAuthState().catch(() => null));
+        logTdlibEvent('recoverTdlibSession not ready', {
+          level: 'warn',
+          data: { didRecreate, ready, state: live, dbOnDisk },
+          flushSoon: true,
+        });
+        if (
+          sticky &&
+          !dbOnDisk &&
+          (live === 'authorizationStateWaitPhoneNumber' ||
+            live === 'authorizationStateWaitTdlibParameters')
+        ) {
+          cancelBackgroundTdlibRecovery();
+          notifyTdlibSessionExpired();
+        }
+        return false;
+      }
+      logTdlibEvent('recoverTdlibSession ok', {
+        level: 'info',
         data: { didRecreate, ready },
-        flushSoon: !ok,
       });
-      return ok;
+      return true;
     } catch (e) {
       logTdlibEvent('recoverTdlibSession apply/wait failed', {
         level: 'error',
@@ -323,8 +378,10 @@ async function doApplyTdlibParameters(): Promise<void> {
 
 const AUTH_READY_POLL_MS = 120;
 const AUTH_READY_TIMEOUT_MS = 25_000;
-/** After recreate, WaitPhone can flash briefly while DB opens — only this short grace. */
+/** After recreate, WaitPhone can flash briefly while DB opens — send path stays short. */
 const STICKY_WAIT_PHONE_GRACE_MS = 2_500;
+/** Recovery after recreateClient: iOS SQLite open often needs >2.5s before Ready. */
+const RECOVERY_STICKY_GRACE_MS = 18_000;
 
 const LOGIN_GATE_STATES = new Set([
   'authorizationStateWaitPhoneNumber',
@@ -338,14 +395,15 @@ const LOGIN_GATE_STATES = new Set([
 
 /**
  * После `setTdlibParameters` TDLib поднимает сессию из БД асинхронно.
- * stickySession: WaitPhone/WaitCode briefly tolerated (~2.5s) while DB loads after recreate.
- * Never poll WaitPhone for the full timeout — that blocked sends and login for 45s+.
+ * stickySession: WaitPhone/WaitCode briefly tolerated while DB loads after recreate.
+ * stickyGraceMs: override for recovery (long) vs send path (short).
  */
 export async function waitForTdlibAuthorizationReady(
   timeoutMs = AUTH_READY_TIMEOUT_MS,
-  options?: { stickySession?: boolean },
+  options?: { stickySession?: boolean; stickyGraceMs?: number },
 ): Promise<{ ready: boolean; state: string | null }> {
   const sticky = options?.stickySession === true;
+  const stickyGraceMs = options?.stickyGraceMs ?? STICKY_WAIT_PHONE_GRACE_MS;
   const deadline = Date.now() + timeoutMs;
   let lastState: string | null = null;
   let appliedParameters = false;
@@ -374,7 +432,11 @@ export async function waitForTdlibAuthorizationReady(
       }
       if (sticky) {
         if (loginGateSeenAt == null) loginGateSeenAt = Date.now();
-        if (Date.now() - loginGateSeenAt < STICKY_WAIT_PHONE_GRACE_MS) {
+        if (Date.now() - loginGateSeenAt < stickyGraceMs) {
+          // Prefer getMe — Ready may lag behind an already-usable session.
+          if (await canCallAuthorizedApis()) {
+            return { ready: true, state: 'authorizationStateReady' };
+          }
           await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
           continue;
         }
@@ -383,6 +445,9 @@ export async function waitForTdlibAuthorizationReady(
     }
     loginGateSeenAt = null;
     await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
+  }
+  if (await canCallAuthorizedApis()) {
+    return { ready: true, state: lastState ?? 'authorizationStateReady' };
   }
   return { ready: false, state: lastState };
 }
@@ -501,6 +566,17 @@ export async function ensureTdlibAuthorizedForSend(options?: {
   }
 
   if (sticky) {
+    const dbOnDisk = await hasTdlibDatabaseOnDisk();
+    if (
+      !dbOnDisk &&
+      (live === 'authorizationStateWaitPhoneNumber' ||
+        live === 'authorizationStateWaitRegistration' ||
+        live === 'authorizationStateWaitTdlibParameters')
+    ) {
+      cancelBackgroundTdlibRecovery();
+      notifyTdlibSessionExpired();
+      throw new Error('Сессия Telegram истекла. Откройте Настройки → Telegram и войдите снова.');
+    }
     scheduleBackgroundTdlibRecovery();
     throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
   }

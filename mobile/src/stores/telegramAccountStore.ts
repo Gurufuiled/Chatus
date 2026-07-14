@@ -6,6 +6,7 @@ import { tdlibClient } from '../services/tdlib/TdlibClient';
 import {
   cancelBackgroundTdlibRecovery,
   ensureTdlibReadyForPhoneLogin,
+  setTdlibSessionExpiredHandler,
   setTdlibStickySessionProbe,
 } from '../services/tdlib/tdlibBootstrap';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
@@ -242,3 +243,12 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
 }));
 
 setTdlibStickySessionProbe(() => telegramAccountStore.getState().hasLocalSession());
+setTdlibSessionExpiredHandler(() => {
+  cancelBackgroundTdlibRecovery();
+  telegramAccountStore.setState({
+    authStatus: 'waiting_phone',
+    telegramUserId: null,
+    lastError: 'Сессия Telegram истекла. Войдите снова.',
+  });
+  void telegramAccountStore.getState().persistSnapshot().catch(() => undefined);
+});
