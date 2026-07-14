@@ -209,12 +209,15 @@ final class Tdlib: RCTEventEmitter {
 
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module was unloaded.")
 
+    // Same lock order as recreateClient: never destroy while send/receive is in flight.
+    sendLock.lock()
     clientIoLock.lock()
     if let client {
       td_json_client_destroy(client)
       self.client = nil
     }
     clientIoLock.unlock()
+    sendLock.unlock()
 
     super.invalidate()
   }

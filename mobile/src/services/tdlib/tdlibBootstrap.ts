@@ -115,7 +115,8 @@ export async function recoverTdlibSession(): Promise<boolean> {
       });
       return ready || (await canCallAuthorizedApis());
     }
-    resetTdlibParametersLock();
+    // Do not clear the parameters lock before recreate — concurrent sends would hit
+    // a Closed client and throw "TDLib client is closed" during the destroy window.
     let didRecreate = false;
     try {
       const recreated = await tdlibClient.recreateClient();
@@ -129,6 +130,7 @@ export async function recoverTdlibSession(): Promise<boolean> {
       return false;
     }
     try {
+      // force:true clears the lock only after the new native client exists.
       await applyTdlibParameters({ force: true });
       // Short wait: sticky grace on WaitPhone is ~2.5s inside waitForTdlibAuthorizationReady.
       const { ready } = await waitForTdlibAuthorizationReady(12_000, {
@@ -217,11 +219,28 @@ async function verifyTdlibNativeStillInitialized(): Promise<void> {
       probeType === 'authorizationStateClosed' ||
       probeType === 'authorizationStateClosing'
     ) {
+      tdlibParametersAppliedThisProcess = false;
       scheduleBackgroundTdlibRecovery();
     }
   } catch {
     /* native unavailable */
   }
+}
+
+function isClosedAuthState(probeType: string | null | undefined): boolean {
+  return (
+    probeType === 'authorizationStateClosed' ||
+    probeType === 'authorizationStateClosing'
+  );
+}
+
+function isTdlibClientClosedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /client is closed/i.test(message) ||
+    /authorization is closing/i.test(message) ||
+    /authorizationstateclosed/i.test(message)
+  );
 }
 
 async function doApplyTdlibParameters(): Promise<void> {
@@ -238,14 +257,15 @@ async function doApplyTdlibParameters(): Promise<void> {
   if (!probeType) {
     throw new Error('TDLib: пустой ответ getAuthorizationState');
   }
-  if (
-    probeType === 'authorizationStateClosed' ||
-    probeType === 'authorizationStateClosing' ||
-    probeType === 'authorizationStateLoggingOut'
-  ) {
+  if (isClosedAuthState(probeType)) {
     // Closed client cannot accept setTdlibParameters — must recreate first.
+    // Do NOT await recoveryInFlight here: recoverTdlibSession itself calls apply({force})
+    // and would deadlock. Callers (ensureTdlibAuthorizedForSend) recover before apply.
     tdlibParametersAppliedThisProcess = false;
     throw new Error('TDLib client is closed');
+  }
+  if (probeType === 'authorizationStateLoggingOut') {
+    throw new Error('Telegram выходит из аккаунта');
   }
   if (probeType !== 'authorizationStateWaitTdlibParameters') {
     tdlibParametersAppliedThisProcess = true;
@@ -375,19 +395,51 @@ export async function ensureTdlibAuthorizedForSend(options?: {
   const allowSessionReload = options?.allowSessionReload !== false;
   const sticky = hasStickyLocalTelegramSession();
   await waitUntilTdlibNotRecreating(8_000);
-  await applyTdlibParameters();
 
-  let live = await readLiveAuthState().catch(() => null);
+  // Probe Closed BEFORE applyTdlibParameters — otherwise doApply throws
+  // "TDLib client is closed" and never reaches recoverTdlibSession below.
+  let live = await readLiveAuthState().catch((error) => {
+    if (isTdlibClientClosedError(error)) return 'authorizationStateClosed';
+    return null;
+  });
+
+  if (isClosedAuthState(live)) {
+    if (!allowSessionReload) {
+      throw new Error('TDLib client is closed');
+    }
+    const recovered = await recoverTdlibSession().catch(() => false);
+    if (recovered || (await canCallAuthorizedApis())) return;
+    scheduleBackgroundTdlibRecovery();
+    throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
+  }
+
+  try {
+    await applyTdlibParameters();
+  } catch (error) {
+    if (allowSessionReload && isTdlibClientClosedError(error)) {
+      const recovered = await recoverTdlibSession().catch(() => false);
+      if (recovered || (await canCallAuthorizedApis())) return;
+      scheduleBackgroundTdlibRecovery();
+      throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
+    }
+    throw error;
+  }
+
+  live = await readLiveAuthState().catch((error) => {
+    if (isTdlibClientClosedError(error)) return 'authorizationStateClosed';
+    return null;
+  });
   if (live === 'authorizationStateReady' || (await canCallAuthorizedApis())) return;
 
   if (live === 'authorizationStateWaitPassword') {
     throw new Error('Нужен облачный пароль 2FA Telegram. Откройте Настройки → Telegram.');
   }
 
-  const isClosed =
-    live === 'authorizationStateClosed' ||
-    live === 'authorizationStateClosing' ||
-    live === 'authorizationStateLoggingOut';
+  if (live === 'authorizationStateLoggingOut') {
+    throw new Error('Telegram выходит из аккаунта. Подождите и попробуйте снова.');
+  }
+
+  const isClosed = isClosedAuthState(live);
   const needsParams = live === 'authorizationStateWaitTdlibParameters' || live == null;
 
   if (needsParams || isClosed) {

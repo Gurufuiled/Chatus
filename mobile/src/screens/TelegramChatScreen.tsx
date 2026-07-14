@@ -429,9 +429,10 @@ export function TelegramChatScreen() {
   const isTransientTdlibRecoveryError = useCallback((error: unknown): boolean => {
     const message = error instanceof Error ? error.message : String(error);
     return (
+      /client is closed/i.test(message) ||
       /client is being recreated/i.test(message) ||
       /temporarily unavailable/i.test(message) ||
-      /authorization/i.test(message) ||
+      /authorization is closing/i.test(message) ||
       /unauthor/i.test(message) ||
       /переподключается/i.test(message) ||
       /timeout/i.test(message)
@@ -472,6 +473,8 @@ export function TelegramChatScreen() {
           }
 
           if (
+            /client is closed/i.test(message) ||
+            /authorization is closing/i.test(message) ||
             /unauthor/i.test(message) ||
             /not authorized/i.test(message) ||
             /переподключается/i.test(message) ||
