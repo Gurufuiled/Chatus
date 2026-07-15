@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from './TdlibClient';
 import { throwIfTdError } from './tdlibErrors';
+import { shouldForceApplyParametersOnWaitTdlibParameters } from './tdlibSessionPolicy';
 import { logTdlibEvent } from '../clientRemoteLog';
 
 /** Shown in Telegram → Devices; keep in sync with setTdlibParameters. */
@@ -493,6 +494,14 @@ async function verifyTdlibNativeStillInitialized(): Promise<void> {
     throwIfTdError(auth);
     const probeType = readAuthStateType(auth);
     if (probeType === 'authorizationStateWaitTdlibParameters') {
+      if (!shouldForceApplyParametersOnWaitTdlibParameters(hasStickyLocalTelegramSession())) {
+        logTdlibEvent('verifyTdlibNativeStillInitialized wait parameters with sticky session', {
+          level: 'warn',
+          data: { state: probeType },
+          flushSoon: true,
+        });
+        return;
+      }
       tdlibParametersAppliedThisProcess = false;
       await applyTdlibParameters({ force: true });
       return;

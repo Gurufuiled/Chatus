@@ -485,11 +485,6 @@ final class Tdlib: RCTEventEmitter {
     // After bridge invalidate, client is kept alive but receive was paused.
     resumeIoIfNeeded()
 
-    guard let client = activeClient() else {
-      reject("E_TD_JSON", "TDLib iOS framework is not loaded. Run npm run tdlib:fetch-ios and pod install.", nil)
-      return
-    }
-
     var payloadObject: [String: Any]
     do {
       guard let data = queryJson.data(using: .utf8),
@@ -532,6 +527,15 @@ final class Tdlib: RCTEventEmitter {
 
     if isDestroyed() {
       removePending(extra: extra)?.reject("E_TD_NATIVE", "TDLib I/O is stopped.", nil)
+      return
+    }
+
+    guard let client = activeClient() else {
+      removePending(extra: extra)?.reject(
+        "E_TD_JSON",
+        "TDLib iOS framework is not loaded. Run npm run tdlib:fetch-ios and pod install.",
+        nil
+      )
       return
     }
 

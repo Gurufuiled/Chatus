@@ -36,6 +36,7 @@ import { applyTdlibParameters, ensureTdlibReadyForPhoneLogin } from "../services
 import { probeTdlibAuthStatus } from "../services/tdlib/tdlibAuthState";
 import { throwIfTdError } from "../services/tdlib/tdlibErrors";
 import { runTdlibAuthorizationQuery } from "../services/tdlib/tdlibAuthQueue";
+import { shouldBootstrapPhoneLoginFromLocalStatus } from "../services/tdlib/tdlibSessionPolicy";
 import {
   telegramAccountStore,
   type TelegramAuthStatus,
@@ -233,19 +234,13 @@ export function TelegramAuthScreen() {
       const currentBefore = telegramAccountStore.getState().authStatus;
       // Already authorized: do not call ensureTdlibReadyForPhoneLogin — it cancels
       // background recovery and may recreate the client while the session is healthy.
-      if (currentBefore === 'ready') {
+      if (!shouldBootstrapPhoneLoginFromLocalStatus(currentBefore)) {
         try {
-          await applyTdlibParameters();
-          const auth = (await tdlibClient.send({
-            "@type": "getAuthorizationState",
-          })) as { "@type"?: string };
-          throwIfTdError(auth);
-          if (auth["@type"] === "authorizationStateReady") {
-            return "ready";
-          }
+          await probeTdlibAuthStatus("ready");
         } catch {
-          /* fall through to phone-login bootstrap */
+          /* Keep sticky ready; global TDLib listener owns real logout/closed transitions. */
         }
+        return "ready";
       }
       let t: string | undefined;
       try {
