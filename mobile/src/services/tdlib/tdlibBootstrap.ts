@@ -1,8 +1,28 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from './TdlibClient';
 import { throwIfTdError } from './tdlibErrors';
 import { logTdlibEvent } from '../clientRemoteLog';
+
+/** Shown in Telegram → Devices; keep in sync with setTdlibParameters. */
+export const TDLIB_DEVICE_MODEL = 'Chatus';
+
+/** Safe identity for remote logs (never includes api_hash). */
+export function getTdlibClientIdentity(): {
+  apiId: number | null;
+  deviceModel: string;
+  applicationVersion: string;
+  platform: string;
+} {
+  const { apiId } = getTelegramBuildCredentials();
+  return {
+    apiId,
+    deviceModel: TDLIB_DEVICE_MODEL,
+    applicationVersion: String(Constants.expoConfig?.version ?? '1.0.0'),
+    platform: Platform.OS,
+  };
+}
 
 function readAuthStateType(auth: unknown): string {
   return (auth as { '@type'?: string } | null)?.['@type'] ?? '';
@@ -550,6 +570,7 @@ async function doApplyTdlibParameters(): Promise<void> {
     }
   }
 
+  const applicationVersion = String(Constants.expoConfig?.version ?? '1.0.0');
   const setRes = await tdlibClient.send({
     '@type': 'setTdlibParameters',
     use_test_dc: false,
@@ -559,11 +580,16 @@ async function doApplyTdlibParameters(): Promise<void> {
     api_id: apiId,
     api_hash: apiHash,
     system_language_code: 'ru',
-    device_model: 'Chatus',
-    application_version: String(Constants.expoConfig?.version ?? '1.0.0'),
+    device_model: TDLIB_DEVICE_MODEL,
+    application_version: applicationVersion,
   });
   throwIfTdError(setRes);
   tdlibParametersAppliedThisProcess = true;
+  logTdlibEvent('setTdlibParameters ok', {
+    level: 'info',
+    data: getTdlibClientIdentity(),
+    flushSoon: true,
+  });
 }
 
 const AUTH_READY_POLL_MS = 120;

@@ -5,6 +5,7 @@ import {
   applyTdlibParameters,
   cancelBackgroundTdlibRecovery,
   clearTdlibLoggingOutExpectation,
+  getTdlibClientIdentity,
   isExpectingEmptyTdlibDatabaseAfterLogout,
   isTdlibRecoveryInFlight,
   markTdlibLoggingOut,
@@ -130,6 +131,14 @@ export function TelegramTdlibNotificationListener() {
           switch (stateType) {
             case 'authorizationStateReady':
               clearTdlibLoggingOutExpectation();
+              logTdlibEvent('auth Ready identity', {
+                level: 'info',
+                data: {
+                  ...getTdlibClientIdentity(),
+                  prevStatus: store.authStatus,
+                },
+                flushSoon: true,
+              });
               if (store.authStatus !== 'ready') {
                 store.setAuthStatus('ready');
                 scheduleAuthPersist();
