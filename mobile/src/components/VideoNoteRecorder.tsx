@@ -175,17 +175,17 @@ export function VideoNoteRecorder({
           return;
         }
 
-        try {
-          await onComplete(result);
-        } catch (sendErr) {
+        // Drop preparing spinner as soon as recording is saved; parent dismisses UI
+        // and runs crop/upload/send asynchronously (must not block this modal).
+        // Keep finishingRef until finally so cancel/send cannot re-enter before dismiss.
+        setIsPreparing(false);
+        void Promise.resolve(onComplete(result)).catch((sendErr) => {
+          // Parent (InputBar) owns user-facing Alert when wired; log here for other callers.
           if (__DEV__) {
             console.warn('[VideoNoteRecorder] send video note error:', sendErr);
           }
-          Alert.alert(
-            'Ошибка',
-            'Видеокружок записан, но не удалось отправить. Проверь интернет и попробуй ещё раз.',
-          );
-        }
+        });
+        return;
       } catch (err) {
         stopTimer();
         setIsRecording(false);

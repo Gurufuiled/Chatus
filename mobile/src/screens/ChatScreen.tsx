@@ -588,28 +588,21 @@ export function ChatScreen() {
   );
 
   const trySendTelegramVideoNote = useCallback(
-    (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
+    async (result: { uri: string; durationMs: number; thumbnailUri?: string }) => {
       if (!sendTelegramVideoNote) return;
       if (!hasPeerPhone) {
-        Alert.alert(
-          'Telegram',
+        throw new Error(
           'Не удалось определить номер контакта в Chatus. Попросите собеседника указать телефон в профиле или добавьте его номер в телефонную книгу и синхронизируйте контакты.',
         );
-        return;
       }
       if (!telegramSendReady) {
-        Alert.alert(
-          'Telegram',
+        throw new Error(
           telegramBridgeResolving
             ? 'Подключаем чат в Telegram… Подождите секунду и отправьте снова.'
             : 'Не удалось открыть чат в Telegram по этому номеру. Убедитесь, что номер совпадает с Telegram и у контакта разрешён поиск по номеру.',
         );
-        return;
       }
-      void sendTelegramVideoNote(result).catch((err) => {
-        const message = err instanceof Error ? err.message : String(err);
-        Alert.alert('Не удалось отправить видеосообщение в Telegram', message);
-      });
+      await sendTelegramVideoNote(result);
     },
     [sendTelegramVideoNote, hasPeerPhone, telegramSendReady, telegramBridgeResolving],
   );
@@ -1461,11 +1454,7 @@ export function ChatScreen() {
           ? { width: VIDEO_NOTE_CAMERA_SIDE_PX, height: VIDEO_NOTE_CAMERA_SIDE_PX }
           : await probeLocalVideoDimensionsWithRetry(result.uri);
       if (!probed) {
-        Alert.alert(
-          'Не удалось отправить видеосообщение',
-          'Не удалось определить размер видео. Запишите ещё раз.',
-        );
-        return;
+        throw new Error('Не удалось определить размер видео. Запишите ещё раз.');
       }
       const tempId = makeOptimisticTempMessageId();
       const activeReplyId = replyToMessageId;
@@ -3195,10 +3184,9 @@ export function ChatScreen() {
             }}
             onSendVideoNote={(res) => {
               if (sendChannel === 'telegram') {
-                trySendTelegramVideoNote(res);
-              } else {
-                handleSendVideoNote(res);
+                return trySendTelegramVideoNote(res);
               }
+              return handleSendVideoNote(res);
             }}
             onSendMedia={(res) => {
               if (sendChannel === 'telegram') {

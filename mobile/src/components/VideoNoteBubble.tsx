@@ -337,8 +337,31 @@ function arePropsEqual(prev: VideoNoteBubbleProps, next: VideoNoteBubbleProps) {
   );
 }
 
-export const VideoNoteBubble = React.memo(function VideoNoteBubble({
-  messageId,
+function noteMatchesPlaybackSnapshot(noteId: string, uri: string): boolean {
+  const snapshot = getVideoNotePlaybackSnapshot();
+  if (snapshot.messageId == null || !uri) {
+    return false;
+  }
+  return (
+    snapshot.messageId === noteId ||
+    (snapshot.uri === uri && getActiveVideoNoteId() === snapshot.messageId)
+  );
+}
+
+type VideoNoteBubblePlayerSessionProps = VideoNoteBubbleProps & {
+  noteId: string;
+  onReleasePlayerSession: () => void;
+  autoExpandOnMount: boolean;
+};
+
+/**
+ * Owns expo-video `useVideoPlayer` (native AVPlayer). Mount only while this note is
+ * expanded / restoring playback — never for every bubble in the chat list.
+ */
+const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSession({
+  noteId,
+  onReleasePlayerSession,
+  autoExpandOnMount,
   uri,
   thumbnailUri,
   durationMs,
@@ -360,9 +383,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   viewportOutgoingGradient = false,
   scrollTick = 0,
   source,
-}: VideoNoteBubbleProps) {
-  const generatedNoteId = React.useId();
-  const noteId = messageId ?? generatedNoteId;
+}: VideoNoteBubblePlayerSessionProps) {
   const useOutgoingGradientRing = Boolean(isMe && viewportOutgoingGradient);
   const gradientRingActiveSV = useSharedValue(useOutgoingGradientRing ? 1 : 0);
   React.useEffect(() => {
@@ -374,14 +395,14 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     if (!normalizedUri) return '';
     return generatedThumbnailCache.get(normalizedUri) ?? '';
   });
-  const [isExpanded, setIsExpanded] = React.useState(false);
-  const [isPlayerMounted, setIsPlayerMounted] = React.useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(!autoExpandOnMount);
+  const [isPlayerMounted, setIsPlayerMounted] = React.useState(true);
   const [hasRenderedFrame, setHasRenderedFrame] = React.useState(false);
   const [showPausedPlayOverlay, setShowPausedPlayOverlay] = React.useState(false);
   const [scrubProgress, setScrubProgress] = React.useState<number | null>(null);
   const [isThumbScrubbing, setIsThumbScrubbing] = React.useState(false);
   const [isThumbScrubPending, setIsThumbScrubPending] = React.useState(false);
-  const progress = useSharedValue(0);
+  const progress = useSharedValue(autoExpandOnMount ? 0 : 1);
   const playbackProgress = useSharedValue(0);
   const badgeOpacity = useSharedValue(0);
   const replyTranslateX = useSharedValue(0);
@@ -521,14 +542,9 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
 
   const finishCollapse = React.useCallback(() => {
     if (!isMountedRef.current) return;
-    setIsExpanded(false);
-    setIsPlayerMounted(false);
-    setHasRenderedFrame(false);
-    setShowPausedPlayOverlay(false);
-    setIsThumbScrubbing(false);
-    setIsThumbScrubPending(false);
-    setScrubProgressValue(null);
-  }, [setScrubProgressValue]);
+    // Unmount the AVPlayer session; idle poster replaces this tree.
+    onReleasePlayerSession();
+  }, [onReleasePlayerSession]);
 
   const animateProgress = React.useCallback(
     (target: number, onFinished?: () => void) => {
@@ -697,6 +713,15 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   }, [collapseInline, isExpanded, isPlayerMounted, noteId]);
 
   React.useEffect(() => {
+    if (!autoExpandOnMount) {
+      return;
+    }
+    expandInline();
+    // Mount-only: open + play when user activated this session from the idle poster.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoExpandOnMount]);
+
+  React.useEffect(() => {
     if (normalizedUri) {
       return;
     }
@@ -714,15 +739,18 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     if (getActiveVideoNoteId() === noteId) {
       setActiveVideoNoteId(null);
     }
+    onReleasePlayerSession();
   }, [
     badgeOpacity,
     clearCollapseTimer,
     noteId,
     normalizedUri,
+    onReleasePlayerSession,
     progress,
     setScrubProgressValue,
   ]);
 
+  // Thumbnail only while the player session is alive (avoid chat-open stampede).
   React.useEffect(() => {
     if (!normalizedUri) {
       setGeneratedThumbnailUri('');
@@ -890,9 +918,8 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     setActiveVideoNoteController(controller);
 
     return () => {
-      if (getVideoNotePlaybackSnapshot().messageId === noteId) {
-        clearVideoNotePlaybackSnapshot(noteId);
-      }
+      // Do not clear the playback snapshot here — this effect re-runs on UI ticks.
+      // Snapshot is cleared in releasePlaybackOwnership / collapse / unmount.
       clearActiveVideoNoteController(controller);
       if (playbackControllerRef.current === controller) {
         playbackControllerRef.current = null;
@@ -1516,6 +1543,391 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         ) : null}
       </View>
     </View>
+  );
+});
+
+type VideoNoteBubbleIdleProps = VideoNoteBubbleProps & {
+  noteId: string;
+  onActivatePlayerSession: () => void;
+};
+
+/** Collapsed poster-only bubble — no AVPlayer / no thumbnail stampede on iOS chat open. */
+function VideoNoteBubbleIdle({
+  noteId: _noteId,
+  onActivatePlayerSession,
+  uri,
+  thumbnailUri,
+  durationMs,
+  isMe,
+  time,
+  status = 'sent',
+  embedded = false,
+  header,
+  enableReplySwipe = false,
+  onReplySwipe,
+  inlineReactions,
+  allowMessageReactions,
+  onToggleInlineReaction,
+  reactionAccentColor,
+  viewportOutgoingGradient = false,
+  scrollTick = 0,
+  source,
+}: VideoNoteBubbleIdleProps) {
+  const useOutgoingGradientRing = Boolean(isMe && viewportOutgoingGradient);
+  const normalizedUri = uri.trim();
+  const normalizedThumbnailUri = thumbnailUri?.trim() ?? '';
+  const [generatedThumbnailUri, setGeneratedThumbnailUri] = React.useState(() => {
+    if (!normalizedUri) return '';
+    return generatedThumbnailCache.get(normalizedUri) ?? '';
+  });
+  const replyTranslateX = useSharedValue(0);
+  const replyHasTriggered = useSharedValue(false);
+  const replyTriggerPop = useSharedValue(0);
+
+  // Avoid chat-open freeze: never auto-generate thumbnails for idle notes on iOS.
+  // Android still fills missing posters from cache or a single deferred generate.
+  React.useEffect(() => {
+    if (!normalizedUri) {
+      setGeneratedThumbnailUri('');
+      return;
+    }
+    if (normalizedThumbnailUri) {
+      setGeneratedThumbnailUri('');
+      return;
+    }
+    const cached = generatedThumbnailCache.get(normalizedUri);
+    if (cached) {
+      setGeneratedThumbnailUri(cached);
+      return;
+    }
+    if (Platform.OS === 'ios') {
+      setGeneratedThumbnailUri('');
+      return;
+    }
+
+    let cancelled = false;
+    void getThumbnailAsync(normalizedUri, { time: GENERATED_THUMBNAIL_TIME_MS })
+      .then((result) => {
+        const nextUri = result?.uri?.trim();
+        if (!nextUri || cancelled) return;
+        generatedThumbnailCache.set(normalizedUri, nextUri);
+        setGeneratedThumbnailUri(nextUri);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGeneratedThumbnailUri('');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedThumbnailUri, normalizedUri]);
+
+  const handleActivate = React.useCallback(() => {
+    if (!normalizedUri) return;
+    onActivatePlayerSession();
+  }, [normalizedUri, onActivatePlayerSession]);
+
+  const replySwipeEnabled =
+    enableReplySwipe && typeof onReplySwipe === 'function';
+
+  const replyGesture = React.useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(replySwipeEnabled)
+        .activeOffsetX([-10, 10])
+        .failOffsetY([-10, 10])
+        .onBegin(() => {
+          replyHasTriggered.value = false;
+        })
+        .onUpdate((event) => {
+          if (event.translationX > 0) {
+            replyTranslateX.value = 0;
+            return;
+          }
+
+          const nextX = clampReplySwipe(event.translationX);
+          replyTranslateX.value = nextX;
+
+          if (!replyHasTriggered.value && nextX <= -REPLY_SWIPE_TRIGGER && onReplySwipe) {
+            replyHasTriggered.value = true;
+            replyTriggerPop.value = withSequence(
+              withTiming(1, { duration: 70 }),
+              withTiming(0, { duration: 120 })
+            );
+            runOnJS(onReplySwipe)();
+          }
+        })
+        .onFinalize(() => {
+          replyTranslateX.value = withTiming(0, { duration: 140 });
+          replyHasTriggered.value = false;
+        }),
+    [onReplySwipe, replyHasTriggered, replySwipeEnabled, replyTranslateX, replyTriggerPop]
+  );
+
+  const replyContentStyle = useAnimatedStyle(() => {
+    const scale = interpolate(replyTriggerPop.value, [0, 1], [1, 0.985]);
+    return {
+      transform: [{ translateX: replyTranslateX.value }, { scale }] as const,
+    };
+  });
+
+  const replyIconStyle = useAnimatedStyle(() => {
+    const progressValue = Math.abs(replyTranslateX.value) / REPLY_SWIPE_TRIGGER;
+    const opacity = interpolate(progressValue, [0, 0.3, 1], [0, 0.45, 1]);
+    const baseScale = interpolate(progressValue, [0, 1], [0.84, 1]);
+    const scaleBoost = interpolate(replyTriggerPop.value, [0, 1], [0, 0.18]);
+
+    return {
+      opacity,
+      transform: [{ scale: baseScale + scaleBoost }],
+    };
+  });
+
+  const playbackTapGesture = React.useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(Boolean(normalizedUri))
+        .maxDistance(PLAYBACK_TAP_MAX_DISTANCE)
+        .onEnd((_event, success) => {
+          if (success) {
+            runOnJS(handleActivate)();
+          }
+        }),
+    [handleActivate, normalizedUri]
+  );
+
+  const composedGesture = React.useMemo(() => {
+    if (replySwipeEnabled) {
+      return Gesture.Exclusive(replyGesture, playbackTapGesture);
+    }
+    return playbackTapGesture;
+  }, [playbackTapGesture, replyGesture, replySwipeEnabled]);
+
+  const posterUri = normalizedThumbnailUri || generatedThumbnailUri;
+  const circleSize = COLLAPSED_SIZE;
+  const footprint = useOutgoingGradientRing
+    ? circleSize + OUTGOING_SCREEN_GRADIENT_RING_PX * 2
+    : circleSize;
+
+  const circleInner = (
+    <>
+      {posterUri ? (
+        <Image source={{ uri: posterUri }} style={posterImageStyle} contentFit="cover" cachePolicy="disk" />
+      ) : (
+        <View style={styles.posterFallback} />
+      )}
+      {Platform.OS === 'android' ? (
+        <View pointerEvents="none" style={styles.videoTouchShield} />
+      ) : null}
+    </>
+  );
+
+  const circleAndroidRipple =
+    Platform.OS === 'android'
+      ? useOutgoingGradientRing
+        ? { color: 'rgba(255,255,255,0.16)', borderless: true }
+        : { color: 'rgba(255,255,255,0.12)' }
+      : undefined;
+
+  const pressableContent = (
+    <View style={styles.tapColumn}>
+      <ReanimatedPressable
+        accessibilityRole="button"
+        accessibilityLabel="Open video note"
+        accessibilityActions={[{ name: 'activate' }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'activate') {
+            handleActivate();
+          }
+        }}
+        onPress={undefined}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        android_ripple={circleAndroidRipple}
+        style={styles.pressableCircleHost}
+      >
+        {useOutgoingGradientRing ? (
+          <View
+            style={{
+              width: footprint,
+              height: footprint,
+              borderRadius: footprint / 2,
+              overflow: 'hidden',
+            }}
+          >
+            <OutgoingBubbleGradientShell scrollTick={scrollTick} style={StyleSheet.absoluteFillObject}>
+              {null}
+            </OutgoingBubbleGradientShell>
+            <View
+              style={{
+                position: 'absolute',
+                top: OUTGOING_SCREEN_GRADIENT_RING_PX,
+                left: OUTGOING_SCREEN_GRADIENT_RING_PX,
+                width: circleSize,
+                height: circleSize,
+                borderRadius: circleSize / 2,
+                overflow: 'hidden',
+                backgroundColor: '#0B1020',
+              }}
+            >
+              {circleInner}
+            </View>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.circle,
+              {
+                width: circleSize,
+                height: circleSize,
+                borderRadius: circleSize / 2,
+                borderWidth: 2.25,
+              },
+            ]}
+          >
+            {circleInner}
+          </View>
+        )}
+      </ReanimatedPressable>
+
+      <View
+        pointerEvents="none"
+        style={[
+          styles.footerMeta,
+          {
+            width: circleSize,
+            marginTop: 4,
+            paddingHorizontal: 6,
+          },
+        ]}
+      >
+        <View style={styles.metaPill}>
+          <Text style={styles.durationText}>{formatMediaDuration(durationMs)}</Text>
+        </View>
+
+        {time ? (
+          <View style={styles.timeStatusWrap}>
+            <View style={styles.metaPill}>
+              <MessageTimeStatus
+                time={time}
+                status={status}
+                isMe={isMe}
+                compact
+                timeColor="#FFFFFF"
+                iconColor="#FFFFFF"
+                source={source}
+              />
+            </View>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={[styles.container, embedded && styles.containerEmbedded]}>
+      {header}
+
+      <View style={[styles.noteSlotShell, isMe ? styles.slotMe : styles.slotOther]}>
+        <View
+          style={[
+            styles.slot,
+            {
+              width: footprint,
+              height: circleSize + META_ROW_HEIGHT + META_ROW_GAP,
+            },
+          ]}
+        >
+          <GestureDetector gesture={composedGesture}>
+            {enableReplySwipe && onReplySwipe ? (
+              <View style={styles.replyGestureContainer}>
+                <Reanimated.View style={[styles.replySwipeAction, replyIconStyle]}>
+                  <View style={styles.replySwipeIconWrap}>
+                    <Feather name="corner-left-up" size={18} color={colors.accent} />
+                  </View>
+                </Reanimated.View>
+                <Reanimated.View style={[styles.replyGestureContent, replyContentStyle]}>
+                  {pressableContent}
+                </Reanimated.View>
+              </View>
+            ) : (
+              pressableContent
+            )}
+          </GestureDetector>
+        </View>
+
+        {inlineReactions?.length ? (
+          <View style={styles.noteReactionOverlay} pointerEvents="box-none">
+            <MessageReactionInline
+              reactions={inlineReactions}
+              isMe={isMe}
+              allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+              onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+              variant="floatingTail"
+              accentColor={reactionAccentColor}
+            />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+export const VideoNoteBubble = React.memo(function VideoNoteBubble(props: VideoNoteBubbleProps) {
+  const generatedNoteId = React.useId();
+  const noteId = props.messageId ?? generatedNoteId;
+  const normalizedUri = props.uri.trim();
+  const registerPlaybackState = props.registerPlaybackState ?? true;
+
+  /** Latch expand mode once when opening a session — never re-derive from live snapshot. */
+  const [playerSession, setPlayerSession] = React.useState<null | { autoExpandOnMount: boolean }>(
+    () => {
+      if (!registerPlaybackState || !normalizedUri) {
+        return null;
+      }
+      if (!noteMatchesPlaybackSnapshot(noteId, normalizedUri)) {
+        return null;
+      }
+      return { autoExpandOnMount: false };
+    },
+  );
+
+  React.useEffect(() => {
+    if (!registerPlaybackState || !normalizedUri) {
+      return;
+    }
+    if (!noteMatchesPlaybackSnapshot(noteId, normalizedUri)) {
+      return;
+    }
+    setPlayerSession((prev) => prev ?? { autoExpandOnMount: false });
+  }, [noteId, normalizedUri, registerPlaybackState]);
+
+  const releasePlayerSession = React.useCallback(() => {
+    setPlayerSession(null);
+  }, []);
+
+  const activatePlayerSession = React.useCallback(() => {
+    setPlayerSession({ autoExpandOnMount: true });
+  }, []);
+
+  if (playerSession) {
+    return (
+      <VideoNoteBubblePlayerSession
+        {...props}
+        noteId={noteId}
+        onReleasePlayerSession={releasePlayerSession}
+        autoExpandOnMount={playerSession.autoExpandOnMount}
+      />
+    );
+  }
+
+  return (
+    <VideoNoteBubbleIdle
+      {...props}
+      noteId={noteId}
+      onActivatePlayerSession={activatePlayerSession}
+    />
   );
 }, arePropsEqual);
 

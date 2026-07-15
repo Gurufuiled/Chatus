@@ -10,6 +10,8 @@ import {
 const MAX_SIDE_PX = 640;
 const MIN_SIDE_PX = 240;
 const MAX_DURATION_MS = 60_000;
+/** Native center-crop can hang on some iOS assets; fail clearly instead of freezing send UX. */
+const NATIVE_CROP_TIMEOUT_MS = 45_000;
 
 type TdlibVideoCropNative = {
   centerCropSquareVideo?: (path: string, maxSide: number) => Promise<string>;
@@ -37,7 +39,27 @@ async function centerCropViaNative(uri: string): Promise<string> {
       'Запись не квадратная — Telegram принимает только кружки. Запишите ещё раз через свайп вверх по микрофону.',
     );
   }
-  const outPath = await mod.centerCropSquareVideo(fileUriToAbsolutePath(uri), MAX_SIDE_PX);
+  const cropPromise = mod.centerCropSquareVideo(fileUriToAbsolutePath(uri), MAX_SIDE_PX);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let outPath: string;
+  try {
+    outPath = await Promise.race([
+      cropPromise.finally(() => {
+        if (timer) clearTimeout(timer);
+      }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(
+              'Не удалось обрезать видеокружок (таймаут). Запишите ещё раз через свайп вверх по микрофону.',
+            ),
+          );
+        }, NATIVE_CROP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (typeof outPath !== 'string' || !outPath.trim()) {
     throw new Error(
       'Не удалось сделать квадратное видео. Запишите кружок ещё раз через свайп вверх по микрофону.',

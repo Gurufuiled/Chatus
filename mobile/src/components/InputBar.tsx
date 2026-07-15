@@ -19,6 +19,11 @@ import { Image } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Feather from '@expo/vector-icons/Feather';
+import Reanimated, {
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+} from 'react-native-reanimated';
 import { composerPresentation } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
@@ -59,6 +64,11 @@ import type { StickerPanelTopTab } from '../stickers/stickerPanelPreferences';
 
 /** Ниже — кнопка стикеров уезжает к скрепке (фаза 3.2 журнала), чтобы не сжимать поле и микрофон. */
 const COMPOSER_NARROW_BREAKPOINT = 380;
+
+/** Reply strip enter/exit + composer dock height — match MessageReactionInline spring. */
+const REPLY_STRIP_ENTERING = FadeInDown.springify().damping(18).stiffness(235).mass(0.9);
+const REPLY_STRIP_EXITING = FadeOutUp.springify().damping(18).stiffness(235).mass(0.9);
+const COMPOSER_DOCK_LAYOUT = LinearTransition.springify().damping(18).stiffness(235);
 
 export interface MediaPickResult {
   kind: 'image' | 'video';
@@ -521,16 +531,21 @@ export function InputBar({
   }, []);
 
   const handleVideoNoteComplete = useCallback(
-    async (result: VideoNoteRecordingResult) => {
+    (result: VideoNoteRecordingResult) => {
       videoSwipeTriggeredRef.current = false;
       entryModeTapEligibleRef.current = false;
       voiceGestureActiveRef.current = false;
       setVoiceTouchTracking(false);
-      try {
-        await onSendVideoNote?.(result);
-      } finally {
-        setShowVideoNoteRecorder(false);
-      }
+      // Dismiss recorder immediately; crop/upload/send must not keep the preparing spinner up.
+      setShowVideoNoteRecorder(false);
+      void Promise.resolve(onSendVideoNote?.(result)).catch((err) => {
+        if (__DEV__) console.warn('[InputBar] send video note error:', err);
+        const message =
+          err instanceof Error && err.message.trim()
+            ? err.message.trim()
+            : 'Не удалось отправить видеокружок. Попробуй ещё раз.';
+        Alert.alert('Ошибка', message);
+      });
     },
     [onSendVideoNote]
   );
@@ -1576,7 +1591,8 @@ export function InputBar({
           </View>
         ) : null}
 
-        <View
+        <Reanimated.View
+          layout={COMPOSER_DOCK_LAYOUT}
           style={[
             styles.composerDock,
             replyToMessage && styles.composerDockReply,
@@ -1584,7 +1600,13 @@ export function InputBar({
           ]}
         >
           {replyToMessage ? (
-              <View style={styles.replyComposerWrap}>
+              <Reanimated.View
+                key="reply-strip"
+                entering={REPLY_STRIP_ENTERING}
+                exiting={REPLY_STRIP_EXITING}
+                layout={COMPOSER_DOCK_LAYOUT}
+                style={styles.replyComposerWrap}
+              >
                 <View style={styles.replyComposerInline}>
                   <View style={styles.replyComposerAccent} />
                   {resolvedReplyThumbnailUri.trim() ? (
@@ -1613,7 +1635,7 @@ export function InputBar({
                     <Feather name="x" size={18} color={themeColors.iconMuted} />
                   </Pressable>
                 </View>
-              </View>
+              </Reanimated.View>
             ) : null}
 
             {isVoiceRecording ? (
@@ -1782,7 +1804,7 @@ export function InputBar({
               )}
             </View>
             )}
-          </View>
+          </Reanimated.View>
 
         {!canSend && !isChannelAdmin ? (
           voiceRestriction ? (
