@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { apiPost } from './apiClient';
 import { authStore } from '../stores/authStore';
+import { sanitizeClientLogText } from './clientRemoteLogSanitize';
 
 export type ClientLogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -28,15 +29,6 @@ const buffer: ClientLogLine[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let flushInFlight: Promise<number> | null = null;
 let lastFlushMs = 0;
-
-function sanitize(text: string): string {
-  return text
-    .replace(/\+?\d[\d\s\-()]{8,}\d/g, '[phone]')
-    .replace(/\b\d{4,8}\b/g, '[code]')
-    .replace(/api[_-]?hash["'\s:=]+[a-f0-9]{8,}/gi, 'api_hash=[redacted]')
-    .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, 'Bearer [redacted]')
-    .slice(0, 2000);
-}
 
 function platformLabel(): 'ios' | 'android' | 'web' | 'unknown' {
   if (Platform.OS === 'ios') return 'ios';
@@ -73,7 +65,7 @@ export function logClientEvent(
   let data: string | undefined;
   if (options?.data !== undefined) {
     try {
-      data = sanitize(
+      data = sanitizeClientLogText(
         typeof options.data === 'string' ? options.data : JSON.stringify(options.data),
       ).slice(0, 4000);
     } catch {
@@ -84,7 +76,7 @@ export function logClientEvent(
     ts: Date.now(),
     level,
     tag: tag.slice(0, 64),
-    message: sanitize(message),
+    message: sanitizeClientLogText(message),
     data,
   });
   while (buffer.length > MAX_BUFFER) buffer.shift();
