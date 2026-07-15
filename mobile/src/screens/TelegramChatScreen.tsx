@@ -2967,6 +2967,15 @@ export function TelegramChatScreen() {
                 { paddingTop: CHAT_MSG_VERTICAL_PADDING + inputBarHeight },
               ]}
               keyboardShouldPersistTaps="handled"
+              // ⚡ Bolt: Adding virtualization props to FlatList limits concurrent rendering
+              // and reduces memory consumption per batch. Setting windowSize to 5/8 (down from 21)
+              // drops memory footprint significantly on heavy lists, while maxToRenderPerBatch
+              // protects the main thread from stalling. removeClippedSubviews clears memory for off-screen items.
+              removeClippedSubviews={Platform.OS === 'android' ? true : !isSearchMode}
+              initialNumToRender={12}
+              maxToRenderPerBatch={Platform.OS === 'android' ? 5 : 8}
+              updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : 45}
+              windowSize={Platform.OS === 'android' ? 5 : 8}
               refreshing={loading}
               onRefresh={() => void loadHistory(false)}
               onEndReached={() => void loadHistory(true)}
