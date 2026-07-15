@@ -135,6 +135,7 @@ export type VideoNotePlaybackSnapshot = {
 type ActiveVideoNoteController = {
   togglePlayback: () => void;
   stopPlayback: () => void;
+  hardStopPlayback: () => void;
 } | null;
 
 let activeVideoNoteId: string | null = null;
@@ -266,6 +267,29 @@ function getVideoNotePlaybackSnapshot() {
 
 export function stopActiveVideoNotePlayback() {
   activeVideoNoteController?.stopPlayback();
+}
+
+/** Safe for screen blur / pop — clears ownership without delayed player.pause after release. */
+export function hardStopActiveVideoNotePlayback() {
+  cancelPendingVideoNoteOwnershipRelease();
+  const controller = activeVideoNoteController;
+  activeVideoNoteController = null;
+  if (controller?.hardStopPlayback) {
+    controller.hardStopPlayback();
+    return;
+  }
+  if (activeVideoNoteId != null) {
+    setActiveVideoNoteId(null);
+  }
+  setVideoNotePlaybackSnapshot({
+    messageId: null,
+    uri: null,
+    isPlaying: false,
+    positionMs: 0,
+    durationMs: 0,
+    progress: 0,
+  });
+  controller?.stopPlayback();
 }
 
 export function toggleActiveVideoNotePlayback() {
@@ -515,7 +539,16 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
   }, []);
 
   const releasePlaybackOwnership = React.useCallback((pausePlayer: boolean) => {
-    const release = () => {
+    // Pause while the native player is still owned by this mounted session.
+    if (pausePlayer) {
+      try {
+        player.pause();
+      } catch {
+        // Ignore.
+      }
+    }
+
+    const releaseMeta = () => {
       if (getActiveVideoNoteId() === noteId) {
         setActiveVideoNoteId(null);
       }
@@ -523,28 +556,69 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
         clearVideoNotePlaybackSnapshot(noteId);
       }
       clearActiveVideoNoteController(playbackControllerRef.current);
-      if (pausePlayer) {
-        try {
-          player.pause();
-        } catch {
-          // Ignore.
-        }
-      }
     };
 
+    // Delayed path is JS ownership only — never call player.* after unmount.
     if (registerPlaybackState && getVideoNotePlaybackSnapshot().messageId === noteId) {
-      schedulePendingVideoNoteOwnershipRelease(noteId, normalizedUri, release);
+      schedulePendingVideoNoteOwnershipRelease(noteId, normalizedUri, releaseMeta);
       return;
     }
 
-    release();
+    releaseMeta();
   }, [normalizedUri, noteId, player, registerPlaybackState]);
 
   const finishCollapse = React.useCallback(() => {
-    if (!isMountedRef.current) return;
-    // Unmount the AVPlayer session; idle poster replaces this tree.
-    onReleasePlayerSession();
-  }, [onReleasePlayerSession]);
+    if (!isMountedRef.current) {
+      onReleasePlayerSession();
+      return;
+    }
+    try {
+      player.pause();
+    } catch {
+      // Ignore.
+    }
+    // Detach VideoView before releasing the useVideoPlayer session (iOS teardown order).
+    setIsPlayerMounted(false);
+    setIsExpanded(false);
+    setHasRenderedFrame(false);
+    setShowPausedPlayOverlay(false);
+    setIsThumbScrubbing(false);
+    setIsThumbScrubPending(false);
+    setScrubProgressValue(null);
+    requestAnimationFrame(() => {
+      onReleasePlayerSession();
+    });
+  }, [onReleasePlayerSession, player, setScrubProgressValue]);
+
+  const hardStopPlayback = React.useCallback(() => {
+    clearCollapseTimer();
+    cancelPendingVideoNoteOwnershipRelease(noteId, normalizedUri);
+    try {
+      player.pause();
+    } catch {
+      // Ignore.
+    }
+    if (getActiveVideoNoteId() === noteId) {
+      setActiveVideoNoteId(null);
+    }
+    if (getVideoNotePlaybackSnapshot().messageId === noteId) {
+      clearVideoNotePlaybackSnapshot(noteId);
+    }
+    clearActiveVideoNoteController(playbackControllerRef.current);
+    playbackControllerRef.current = null;
+    // Same detach-then-release order as finishCollapse (VideoView before useVideoPlayer).
+    setIsPlayerMounted(false);
+    setIsExpanded(false);
+    setHasRenderedFrame(false);
+    setShowPausedPlayOverlay(false);
+    setIsThumbScrubbing(false);
+    setIsThumbScrubPending(false);
+    setScrubProgressValue(null);
+    requestAnimationFrame(() => {
+      isMountedRef.current = false;
+      onReleasePlayerSession();
+    });
+  }, [clearCollapseTimer, normalizedUri, noteId, onReleasePlayerSession, player, setScrubProgressValue]);
 
   const animateProgress = React.useCallback(
     (target: number, onFinished?: () => void) => {
@@ -700,6 +774,7 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
     return () => {
       isMountedRef.current = false;
       clearCollapseTimer();
+      // Sync pause + ownership clear; delayed path must never touch player after release.
       releasePlaybackOwnership(true);
     };
   }, [clearCollapseTimer, normalizedUri, noteId, releasePlaybackOwnership]);
@@ -904,6 +979,7 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
     const controller: ActiveVideoNoteController = {
       togglePlayback: handlePress,
       stopPlayback: collapseInline,
+      hardStopPlayback,
     };
     playbackControllerRef.current = controller;
 
@@ -929,6 +1005,7 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
     collapseInline,
     durationMs,
     handlePress,
+    hardStopPlayback,
     isExpanded,
     isPlaying,
     normalizedUri,

@@ -69,6 +69,7 @@ import {
   type SendChannelAnchorRect,
 } from '../components/SendChannelSelector';
 import {
+  hardStopActiveVideoNotePlayback,
   stopActiveVideoNotePlayback,
   useVideoNotePlayer,
 } from '../components/VideoNoteBubble';
@@ -896,6 +897,7 @@ export function ChatScreen() {
       });
 
       return () => {
+        hardStopActiveVideoNotePlayback();
         if (chatStore.getState().selectedChatId === chatId) {
           chatStore.getState().setSelectedChat(null);
         }

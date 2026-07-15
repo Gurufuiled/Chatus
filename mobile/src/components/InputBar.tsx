@@ -20,6 +20,7 @@ import * as MediaLibrary from 'expo-media-library';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Feather from '@expo/vector-icons/Feather';
 import Reanimated, {
+  Easing as ReaEasing,
   FadeInDown,
   FadeOutUp,
   LinearTransition,
@@ -65,10 +66,15 @@ import type { StickerPanelTopTab } from '../stickers/stickerPanelPreferences';
 /** Ниже — кнопка стикеров уезжает к скрепке (фаза 3.2 журнала), чтобы не сжимать поле и микрофон. */
 const COMPOSER_NARROW_BREAKPOINT = 380;
 
-/** Reply strip enter/exit + composer dock height — match MessageReactionInline spring. */
-const REPLY_STRIP_ENTERING = FadeInDown.springify().damping(18).stiffness(235).mass(0.9);
-const REPLY_STRIP_EXITING = FadeOutUp.springify().damping(18).stiffness(235).mass(0.9);
-const COMPOSER_DOCK_LAYOUT = LinearTransition.springify().damping(18).stiffness(235);
+/** Smooth height rise only — no spring bounce on the composer dock. */
+const REPLY_LAYOUT_MS = 180;
+const REPLY_STRIP_ENTERING = FadeInDown.duration(REPLY_LAYOUT_MS).easing(
+  ReaEasing.out(ReaEasing.cubic),
+);
+const REPLY_STRIP_EXITING = FadeOutUp.duration(140).easing(ReaEasing.in(ReaEasing.cubic));
+const COMPOSER_DOCK_LAYOUT = LinearTransition.duration(REPLY_LAYOUT_MS).easing(
+  ReaEasing.out(ReaEasing.cubic),
+);
 
 export interface MediaPickResult {
   kind: 'image' | 'video';
@@ -1604,7 +1610,6 @@ export function InputBar({
                 key="reply-strip"
                 entering={REPLY_STRIP_ENTERING}
                 exiting={REPLY_STRIP_EXITING}
-                layout={COMPOSER_DOCK_LAYOUT}
                 style={styles.replyComposerWrap}
               >
                 <View style={styles.replyComposerInline}>

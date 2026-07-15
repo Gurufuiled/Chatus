@@ -25,7 +25,7 @@ import {
 import Feather from '@expo/vector-icons/Feather';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { BlurTargetView } from 'expo-blur';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import { useIsFocused } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -44,6 +44,7 @@ import {
   PeerFirstVideoNoteBubble,
   PeerFirstVoiceBubble,
 } from '../components/peerFirstMedia';
+import { hardStopActiveVideoNotePlayback } from '../components/VideoNoteBubble';
 import type { FilePickResult, MediaAlbumPickResult, MediaPickResult } from '../components/InputBar';
 import type { ChatsStackParamList } from '../navigation/types';
 import {
@@ -860,6 +861,13 @@ export function ChannelFeedScreen() {
   const isFocused = useIsFocused();
   const route = useRoute<Route>();
   const blurTargetRef = React.useRef<View | null>(null);
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => {
+        hardStopActiveVideoNotePlayback();
+      };
+    }, []),
+  );
   const postContentRefs = React.useRef<Record<string, View | null>>({});
   const menuAnim = React.useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();

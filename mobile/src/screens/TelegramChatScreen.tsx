@@ -50,7 +50,7 @@ import { ReplyPreview } from '../components/ReplyPreview';
 import { WebPagePreviewBubble } from '../components/WebPagePreviewBubble';
 import { TelegramChannelCommentsBar } from '../components/TelegramChannelCommentsBar';
 import { VideoBubble } from '../components/VideoBubble';
-import { VideoNoteBubble, stopActiveVideoNotePlayback } from '../components/VideoNoteBubble';
+import { VideoNoteBubble, hardStopActiveVideoNotePlayback, stopActiveVideoNotePlayback } from '../components/VideoNoteBubble';
 import { VoiceBubble } from '../components/VoiceBubble';
 import { PendingVideoBubble, PendingVideoNoteBubble } from '../components/TelegramPendingMediaBubble';
 import {
@@ -560,6 +560,7 @@ export function TelegramChatScreen() {
       })();
       return () => {
         cancelled = true;
+        hardStopActiveVideoNotePlayback();
         if (!Number.isFinite(chatId)) return;
         void tdlibClient.send({ '@type': 'closeChat', chat_id: chatId }).catch(() => {});
       };

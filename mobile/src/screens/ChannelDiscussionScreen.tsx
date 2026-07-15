@@ -27,7 +27,7 @@ import Reanimated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
-import { useRoute, useNavigation, type RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useChatComposerDockPaddingBottom,
@@ -69,6 +69,7 @@ import {
   PeerFirstVideoNoteBubble,
   PeerFirstVoiceBubble,
 } from '../components/peerFirstMedia';
+import { hardStopActiveVideoNotePlayback } from '../components/VideoNoteBubble';
 import type { FilePickResult, MediaPickResult } from '../components/InputBar';
 import {
   ChatBackgroundPattern,
@@ -740,6 +741,13 @@ export function ChannelDiscussionScreen() {
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
     useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
   const blurTargetRef = React.useRef<View | null>(null);
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => {
+        hardStopActiveVideoNotePlayback();
+      };
+    }, []),
+  );
   const listRef = React.useRef<FlatList<Message> | null>(null);
   const contentRefs = React.useRef<Record<string, View | null>>({});
   const menuAnim = React.useRef(new Animated.Value(0)).current;

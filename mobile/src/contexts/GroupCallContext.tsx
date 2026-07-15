@@ -142,15 +142,55 @@ async function prepareLiveKitAudioSession(isSpeakerOn: boolean): Promise<void> {
       audioTypeOptions: AndroidAudioTypePresets.communication,
     },
     ios: {
+      // Prefer speaker via WebRTC config; avoid force_speaker before Connected (iOS crash).
       defaultOutput: isSpeakerOn ? 'speaker' : 'earpiece',
     },
   });
   await AudioSession.startAudioSession();
-  if (Platform.OS === 'ios') {
-    await AudioSession.selectAudioOutput(isSpeakerOn ? 'force_speaker' : 'default');
-  } else if (Platform.OS === 'android') {
+  if (Platform.OS === 'android') {
     await AudioSession.selectAudioOutput(isSpeakerOn ? 'speaker' : 'earpiece');
   }
+}
+
+async function waitForRoomConnected(room: Room, timeoutMs = 15_000): Promise<void> {
+  if (room.state === ConnectionState.Connected) {
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      room.off(RoomEvent.ConnectionStateChanged, onState);
+      reject(new Error('Таймаут подключения к комнате звонка'));
+    }, timeoutMs);
+    const onState = (connectionState: ConnectionState) => {
+      if (connectionState === ConnectionState.Connected) {
+        clearTimeout(timer);
+        room.off(RoomEvent.ConnectionStateChanged, onState);
+        resolve();
+        return;
+      }
+      if (
+        connectionState === ConnectionState.Disconnected ||
+        connectionState === ConnectionState.Reconnecting
+      ) {
+        // Reconnecting is transient; only fail hard on Disconnected after connect attempt.
+        if (connectionState === ConnectionState.Disconnected) {
+          clearTimeout(timer);
+          room.off(RoomEvent.ConnectionStateChanged, onState);
+          reject(new Error('Соединение со звонком разорвано'));
+        }
+      }
+    };
+    room.on(RoomEvent.ConnectionStateChanged, onState);
+    if (room.state === ConnectionState.Connected) {
+      clearTimeout(timer);
+      room.off(RoomEvent.ConnectionStateChanged, onState);
+      resolve();
+    } else if (room.state === ConnectionState.Disconnected) {
+      clearTimeout(timer);
+      room.off(RoomEvent.ConnectionStateChanged, onState);
+      reject(new Error('Соединение со звонком разорвано'));
+    }
+  });
 }
 
 export function GroupCallProvider({ children }: { children: React.ReactNode }) {
@@ -227,8 +267,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
 
       await VoicePlayerService.stop().catch(() => undefined);
       VoicePlayerService.invalidateAudioMode();
-      // Reset expo-av mode only — do not call LiveKit AudioSession.stop here (can crash on iOS).
-      await releaseMediaAudioSession();
+      // Do not call releaseMediaAudioSession() here — expo-av allowsRecordingIOS:false
+      // fights LiveKit AVAudioSession and can hard-crash iOS on mic publish.
       await detachRoom();
       await prepareLiveKitAudioSession(true);
 
@@ -281,6 +321,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         await room.connect(params.livekitUrl, params.token, {
           autoSubscribe: true,
         });
+        await waitForRoomConnected(room);
       } catch (connectErr) {
         await detachRoom();
         throw connectErr instanceof Error
@@ -293,6 +334,13 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           throw new Error('Local participant unavailable');
         }
         await room.localParticipant.setMicrophoneEnabled(true);
+        if (Platform.OS === 'ios') {
+          try {
+            await AudioSession.selectAudioOutput('force_speaker');
+          } catch {
+            // Speaker override is best-effort after Connected + mic.
+          }
+        }
       } catch (micErr) {
         await detachRoom();
         throw micErr instanceof Error ? micErr : new Error(String(micErr));
