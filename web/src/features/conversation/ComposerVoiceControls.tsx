@@ -34,6 +34,7 @@ export function ComposerVoiceControls({
       >
         <IconButton
           label="Отменить запись"
+          title="Отменить запись"
           className="voice-recording-bar__cancel"
           disabled={isProcessing}
           onClick={onCancelRecording}
@@ -79,6 +80,7 @@ export function ComposerVoiceControls({
           type="button"
           className="message-composer__send message-composer__send--recording"
           aria-label="Отправить голосовое"
+          title="Отправить голосовое"
           disabled={isProcessing}
           onClick={() => onFinishRecording(true)}
         >
@@ -96,6 +98,7 @@ export function ComposerVoiceControls({
         type="button"
         className="message-composer__send"
         aria-label="Отправить сообщение"
+        title="Отправить сообщение"
         disabled={isBusy}
         onClick={onSendText}
       >
@@ -111,6 +114,7 @@ export function ComposerVoiceControls({
       type="button"
       className="message-composer__voice"
       aria-label="Голосовое сообщение"
+      title="Голосовое сообщение"
       disabled={isBusy}
       onClick={() => void onStartRecording()}
     >
