@@ -5,9 +5,15 @@ interface ImageLightboxProps {
   src: string;
   alt?: string;
   onClose: () => void;
+  allowDownload?: boolean;
 }
 
-export function ImageLightbox({ src, alt = 'Photo', onClose }: ImageLightboxProps) {
+export function ImageLightbox({
+  src,
+  alt = 'Photo',
+  onClose,
+  allowDownload = true,
+}: ImageLightboxProps) {
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -37,7 +43,17 @@ export function ImageLightbox({ src, alt = 'Photo', onClose }: ImageLightboxProp
       >
         ×
       </button>
-      <img src={src} alt={alt} className="image-lightbox__img" onClick={(e) => e.stopPropagation()} />
+      <img
+        src={src}
+        alt={alt}
+        className="image-lightbox__img"
+        onClick={(e) => e.stopPropagation()}
+        onContextMenu={allowDownload ? undefined : (e) => e.preventDefault()}
+        draggable={allowDownload}
+      />
+      {!allowDownload ? (
+        <p className="image-lightbox__restricted">Сохранение запрещено в этой группе</p>
+      ) : null}
     </div>,
     document.body,
   );

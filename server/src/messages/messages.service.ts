@@ -32,6 +32,11 @@ import {
   type MailboxChatType,
 } from '../config';
 import { LineSyncCacheService } from '../linesync/linesync-cache.service';
+import {
+  canSendMessageType,
+  getEffectiveGroupPermissions,
+  resolveGroupPermissionContext,
+} from '../chats/group-permissions';
 
 const MSG_TYPE_TO_MEDIA_TYPE: Record<string, MediaType> = {
   voice: MediaType.voice,
@@ -245,11 +250,43 @@ export class MessagesService {
   ): Promise<MappedMessage> {
     await this.ensureChatMember(chatId, senderId);
 
+    const chatMeta = await this.prisma.chat.findUnique({
+      where: { id: chatId },
+      select: {
+        chatType: true,
+        memberPermissions: true,
+        members: {
+          where: { userId: senderId },
+          select: { role: true, adminPermissions: true },
+        },
+      },
+    });
+
+    if (chatMeta?.chatType === ChatType.group && chatMeta.members[0]) {
+      const effective = getEffectiveGroupPermissions(
+        resolveGroupPermissionContext(
+          chatMeta.members[0],
+          chatMeta.memberPermissions,
+        ),
+      );
+      if (!canSendMessageType(effective, msgType)) {
+        throw new ForbiddenException(
+          msgType === 'text' || msgType === 'system'
+            ? 'No permission to send messages'
+            : 'No permission to send media',
+        );
+      }
+    }
+
+    if (forwardedFrom?.forwarded_from_chat_id) {
+      await this.assertCanForwardFromChat(
+        forwardedFrom.forwarded_from_chat_id,
+        senderId,
+      );
+    }
+
     const chatTypeStr: MailboxChatType = options?.chatType
-      ?? ((await this.prisma.chat.findUnique({
-          where: { id: chatId },
-          select: { chatType: true },
-        }).then((r) => r?.chatType ?? 'private')) as MailboxChatType);
+      ?? ((chatMeta?.chatType ?? 'private') as MailboxChatType);
 
     const prismaMsgType = this.toMessageType(msgType);
     const mediaItems = this.normalizeMediaItems(media);
@@ -429,7 +466,27 @@ export class MessagesService {
       throw new ForbiddenException('Message not found');
     }
     if (existing.senderId !== userId) {
-      throw new ForbiddenException('Cannot delete another user message');
+      const chatMeta = await this.prisma.chat.findUnique({
+        where: { id: chatId },
+        select: {
+          chatType: true,
+          memberPermissions: true,
+          members: {
+            where: { userId },
+            select: { role: true, adminPermissions: true },
+          },
+        },
+      });
+      const member = chatMeta?.members[0];
+      const canModerate =
+        chatMeta?.chatType === ChatType.group &&
+        member &&
+        getEffectiveGroupPermissions(
+          resolveGroupPermissionContext(member, chatMeta.memberPermissions),
+        ).can_delete_messages;
+      if (!canModerate) {
+        throw new ForbiddenException('Cannot delete another user message');
+      }
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -648,6 +705,40 @@ export class MessagesService {
     return MessageType.text;
   }
 
+  private async assertCanForwardFromChat(
+    sourceChatId: string,
+    userId: string,
+  ): Promise<void> {
+    const source = await this.prisma.chat.findUnique({
+      where: { id: sourceChatId },
+      select: {
+        chatType: true,
+        restrictSavingContent: true,
+        memberPermissions: true,
+        members: {
+          where: { userId },
+          select: { role: true, adminPermissions: true },
+        },
+      },
+    });
+    if (!source || source.chatType !== ChatType.group) {
+      return;
+    }
+    if (!source.restrictSavingContent) {
+      return;
+    }
+    const member = source.members[0];
+    if (!member) {
+      throw new ForbiddenException('Forwarding is restricted in this group');
+    }
+    const effective = getEffectiveGroupPermissions(
+      resolveGroupPermissionContext(member, source.memberPermissions),
+    );
+    if (!effective.can_restrict_saving_bypass) {
+      throw new ForbiddenException('Forwarding is restricted in this group');
+    }
+  }
+
   private normalizeMediaItems(media?: CreateMessageMediaInput): CreateMessageMedia[] {
     if (!media) return [];
     return (Array.isArray(media) ? media : [media]).slice(0, 10);
@@ -686,6 +777,7 @@ export class MessagesService {
         ? media[0]?.file_name ?? 'File'
         : media?.file_name ?? 'File',
       [MessageType.system]: '',
+      [MessageType.poll]: content ? `📊 ${content}` : 'Poll',
     };
     return placeholders[msgType] ?? 'Message';
   }

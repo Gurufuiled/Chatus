@@ -5,12 +5,16 @@ interface MessageSelectionToolbarProps {
   chatId: string;
   onForward: (messageIds: string[]) => void;
   onDelete: (messageIds: string[]) => void;
+  forwardDisabled?: boolean;
+  forwardDisabledReason?: string;
 }
 
 export function MessageSelectionToolbar({
   chatId,
   onForward,
   onDelete,
+  forwardDisabled = false,
+  forwardDisabledReason,
 }: MessageSelectionToolbarProps) {
   const isActive = useSelectionStore((s) => s.isActive && s.chatId === chatId);
   const selectedIds = useSelectionStore((s) => s.selectedIds);
@@ -27,6 +31,8 @@ export function MessageSelectionToolbar({
         <button
           type="button"
           className="message-selection-toolbar__btn"
+          disabled={forwardDisabled}
+          title={forwardDisabled ? forwardDisabledReason : undefined}
           onClick={() => onForward(selectedIds)}
         >
           Переслать

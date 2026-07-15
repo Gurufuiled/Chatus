@@ -38,6 +38,7 @@ enum MessageType {
   video
   file
   system
+  poll
 }
 
 enum MediaType {
@@ -115,6 +116,7 @@ model User {
   addressBookLinks    AddressBookContact[] @relation("AddressBookLinkedUser")
   phoneChangeSessions PhoneChangeSession[]
   startedGroupCalls   GroupCallRoom[] @relation("GroupCallStarter")
+  pollVotes           PollVote[]
 
   @@map("users")
 }
@@ -268,6 +270,14 @@ model Chat {
   isPinned            Boolean   @default(false) @map("is_pinned")
   isArchived          Boolean   @default(false) @map("is_archived")
   draft               String?
+  /** Group: non-admins cannot see the full member list. */
+  hideMembers           Boolean  @default(false) @map("hide_members")
+  /** Group: block forward/download for non-privileged users (Telegram "restrict saving content"). */
+  restrictSavingContent Boolean  @default(false) @map("restrict_saving_content")
+  /** Group default permissions for regular members (JSON). Null = Telegram-like defaults. */
+  memberPermissions     Json?    @map("member_permissions")
+  /** Whether the last pin should notify members (Telegram silent pin when false). */
+  pinnedNotify          Boolean  @default(true) @map("pinned_notify")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -306,6 +316,8 @@ model ChatMember {
   subscriptionExpiresAt DateTime? @map("subscription_expires_at")
   tag      String?
   tagColor String?       @map("tag_color")
+  /** Group admin rights (JSON). Null = DEFAULT_GROUP_ADMIN_PERMISSIONS (can_add_admins false). */
+  adminPermissions Json? @map("admin_permissions")
   joinedAt DateTime      @default(now()) @map("joined_at")
   /** Per-user unread badge; cleared when the member opens the chat (client POST /chats/:id/read). */
   unreadCount Int        @default(0) @map("unread_count")
@@ -350,6 +362,7 @@ model Message {
   media      Media[]
   chatsAsLastMessage Chat[] @relation("ChatLastMessage")
   chatsAsPinnedMessage Chat[] @relation("ChatPinnedMessage")
+  poll               Poll?
 
   @@index([chatId])
   @@index([senderId])
@@ -361,6 +374,54 @@ model Message {
   @@index([createdAt])
   @@index([mailboxExpiresAt])
   @@map("messages")
+}
+
+model Poll {
+  id             String   @id @default(uuid())
+  messageId      String   @unique @map("message_id")
+  question       String
+  isAnonymous    Boolean  @default(true) @map("is_anonymous")
+  allowsMultiple Boolean  @default(false) @map("allows_multiple")
+  isClosed       Boolean  @default(false) @map("is_closed")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  message Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  options PollOption[]
+  votes   PollVote[]
+
+  @@map("polls")
+}
+
+model PollOption {
+  id     String @id @default(uuid())
+  pollId String @map("poll_id")
+  text   String
+  index  Int
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+
+  @@unique([pollId, index])
+  @@index([pollId])
+  @@map("poll_options")
+}
+
+model PollVote {
+  id        String   @id @default(uuid())
+  pollId    String   @map("poll_id")
+  optionId  String   @map("option_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId, optionId])
+  @@index([pollId])
+  @@index([optionId])
+  @@index([userId])
+  @@map("poll_votes")
 }
 
 model SystemConfig {

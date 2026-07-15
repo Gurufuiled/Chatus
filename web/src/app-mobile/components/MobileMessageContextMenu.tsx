@@ -14,7 +14,13 @@ import { useMeQuery } from '@/queries/auth.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 import { canForwardMessage } from '@/utils/forwardPayload';
+import {
+  canPinMessages,
+  canSaveOrForwardContent,
+  restrictSavingReason,
+} from '@/utils/chatPermissions';
 import { isTempMessageId } from '@/features/conversation/messageFormatters';
+import { PinConfirmDialog } from '@/features/conversation/PinConfirmDialog';
 import { MobileMessageBubble } from './MobileMessageBubble';
 import type { MappedMessage } from '@/types/message';
 
@@ -35,6 +41,7 @@ interface MobileMessageContextMenuProps {
 function getCopyableText(message: MappedMessage | undefined): string {
   if (!message || message.msg_type !== 'text' || !message.content) return '';
   if (isChatusStickerMessage(message.content)) return '';
+  if (message.content.startsWith('chatus:poll:')) return '';
   return message.content.trim();
 }
 
@@ -139,6 +146,7 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
   const pinMutation = usePinMessageMutation();
   const deleteMutation = useDeleteMessageMutation();
   const toggleReaction = useToggleReactionMutation();
+  const [pinConfirmMessageId, setPinConfirmMessageId] = useState<string | null>(null);
 
   const open = menuChatId === chatId && !!messageId && !!position;
   const message = messages?.find((m) => m.id === messageId);
@@ -148,7 +156,10 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
   const isOwnMessage = !!me?.id && message?.sender_id === me.id;
   const isOutgoing = position?.isOutgoing ?? isOwnMessage;
   const copyableText = getCopyableText(message);
-  const canForward = message ? canForwardMessage(message) : false;
+  const allowSaveOrForward = canSaveOrForwardContent(chat, me);
+  const canForward = !!message && canForwardMessage(message) && allowSaveOrForward;
+  const forwardBlockedReason = !allowSaveOrForward ? restrictSavingReason() : undefined;
+  const canPin = canPinMessages(chat, me);
   const canReact = message
     ? message.status !== 'sending' &&
       message.status !== 'error' &&
@@ -200,7 +211,26 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, closeMessageMenu]);
 
-  if (!open || !position || !message) return null;
+  const handlePinConfirm = (notify: boolean) => {
+    if (!pinConfirmMessageId) return;
+    pinMutation.mutate(
+      { chatId, messageId: pinConfirmMessageId, notify },
+      { onSettled: () => setPinConfirmMessageId(null) },
+    );
+  };
+
+  const pinDialog = (
+    <PinConfirmDialog
+      open={!!pinConfirmMessageId}
+      pending={pinMutation.isPending}
+      onClose={() => setPinConfirmMessageId(null)}
+      onConfirm={handlePinConfirm}
+    />
+  );
+
+  if (!open || !position || !message) {
+    return pinDialog;
+  }
 
   const handleReply = () => {
     setReply(chatId, message.id);
@@ -219,14 +249,18 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
   };
 
   const handlePin = () => {
-    pinMutation.mutate({
-      chatId,
-      messageId: isPinned ? null : message.id,
-    });
+    if (!canPin) return;
+    if (isPinned) {
+      pinMutation.mutate({ chatId, messageId: null });
+      closeMessageMenu();
+      return;
+    }
+    setPinConfirmMessageId(message.id);
     closeMessageMenu();
   };
 
   const handleForward = () => {
+    if (!canForward) return;
     onForward([message.id]);
     closeMessageMenu();
   };
@@ -264,7 +298,7 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
 
   const actionItems = [
     { id: 'reply', label: 'Ответить', icon: <ReplyIcon />, onClick: handleReply },
-    ...(copyableText
+    ...(copyableText && allowSaveOrForward
       ? [{ id: 'copy', label: 'Копировать', icon: <CopyIcon />, onClick: () => void handleCopy() }]
       : []),
     {
@@ -272,6 +306,8 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
       label: isPinned ? 'Открепить' : 'Закрепить',
       icon: <PinIcon />,
       onClick: handlePin,
+      disabled: !canPin,
+      title: !canPin ? 'Недостаточно прав для закрепления' : undefined,
     },
     {
       id: 'forward',
@@ -279,6 +315,7 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
       icon: <ForwardIcon />,
       onClick: handleForward,
       disabled: !canForward,
+      title: forwardBlockedReason,
     },
     { id: 'select', label: 'Выбрать', icon: <SelectIcon />, onClick: handleSelect },
     ...(isOwnMessage
@@ -330,7 +367,7 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
         aria-hidden
       >
         <div className="mobile-message-menu__preview-inner">
-          <MobileMessageBubble message={message} isOutgoing={isOutgoing} />
+          <MobileMessageBubble chatId={chatId} message={message} isOutgoing={isOutgoing} />
         </div>
       </div>
       {/* Layer 3: solid menu panel above preview */}
@@ -366,6 +403,7 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
                   role="menuitem"
                   className={`mobile-message-menu__item${item.danger ? ' mobile-message-menu__item--danger' : ''}`}
                   disabled={item.disabled}
+                  title={item.title}
                   onClick={item.onClick}
                 >
                   <span className="mobile-message-menu__item-label">{item.label}</span>
@@ -400,5 +438,10 @@ export function MobileMessageContextMenu({ chatId, onForward }: MobileMessageCon
     </div>
   );
 
-  return createPortal(overlay, getMobileAppPortalRoot());
+  return (
+    <>
+      {createPortal(overlay, getMobileAppPortalRoot())}
+      {pinDialog}
+    </>
+  );
 }

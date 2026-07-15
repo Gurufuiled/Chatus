@@ -30,6 +30,23 @@ export function IconVideo({ size = 26, className }: IconProps) {
   );
 }
 
+/** Material-style crossed video — camera off. */
+export function IconVideoOff({ size = 26, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M21 6.5l-4 4V7c0-.55-.45-1-1-1H9.83L21 17.17V6.5zM3.27 2L2 3.27 4.73 6H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.21 0 .39-.08.54-.18L19.73 21 21 19.73 3.27 2z" />
+    </svg>
+  );
+}
+
+export function IconChevronDown({ size = 14, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+    </svg>
+  );
+}
+
 /** Telegram-style handset — sharp at 24×24 (no CSS transform). */
 export function IconHangup({ size = 26, className }: IconProps) {
   return (

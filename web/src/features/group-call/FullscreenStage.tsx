@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { GroupCallParticipant } from '@/contexts/GroupCallContext';
 import { ParticipantTile } from './ParticipantTile';
-import { IconFullscreenExit } from './callIcons';
+import { IconFullscreenExit, IconScreenShare } from './callIcons';
 
 const THUMB_WIDTH = 116;
 
@@ -16,6 +16,9 @@ type FullscreenStageProps = {
  * Zoom/Meet-style "presentation" layout: the shared screen fills the main
  * area, other participants (and a small preview of the sharer) sit in a
  * horizontally scrollable strip below.
+ *
+ * Local presenters never see their own live screen-share video — that creates
+ * a recursive "hall of mirrors" when the ChatUs window is on the shared display.
  */
 export function FullscreenStage({
   participants,
@@ -26,16 +29,26 @@ export function FullscreenStage({
   const mainParticipant = participants.find((p) => p.userId === fullscreenUserId);
   if (!mainParticipant) return null;
   const displayName = mainParticipant.isLocal ? 'Вы' : mainParticipant.displayName;
-  const mainVideo = renderVideoSlot(mainParticipant);
+  const mainVideo = mainParticipant.isLocal ? null : renderVideoSlot(mainParticipant);
 
   return (
     <div className="group-call-fullscreen">
       <div className="group-call-fullscreen__main">
         <div className="group-call-fullscreen__main-inner">
-          {mainVideo ?? (
-            <div className="group-call-fullscreen__placeholder">
-              Демонстрация экрана завершена
+          {mainParticipant.isLocal ? (
+            <div className="group-call-fullscreen__self-share">
+              <IconScreenShare />
+              <p className="group-call-fullscreen__self-share-title">Вы демонстрируете экран</p>
+              <p className="group-call-fullscreen__self-share-hint">
+                Участники видят ваш экран. Превью отключено, чтобы не было зеркала.
+              </p>
             </div>
+          ) : (
+            mainVideo ?? (
+              <div className="group-call-fullscreen__placeholder">
+                Демонстрация экрана завершена
+              </div>
+            )
           )}
         </div>
         <button

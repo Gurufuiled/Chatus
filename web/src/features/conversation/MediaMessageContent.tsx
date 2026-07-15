@@ -16,6 +16,7 @@ interface FileMessageContentProps {
   fileSize: number | null;
   mimeType: string | null;
   url: string;
+  allowDownload?: boolean;
 }
 
 function fileIconLabel(mimeType: string | null, fileName: string | null): string {
@@ -32,10 +33,34 @@ function fileIconLabel(mimeType: string | null, fileName: string | null): string
   return 'FILE';
 }
 
-export function FileMessageContent({ fileName, fileSize, mimeType, url }: FileMessageContentProps) {
+export function FileMessageContent({
+  fileName,
+  fileSize,
+  mimeType,
+  url,
+  allowDownload = true,
+}: FileMessageContentProps) {
   const label = fileName?.trim() || 'File';
   const sizeLabel = formatFileSize(fileSize);
   const href = resolveMediaUrl(url);
+
+  if (!allowDownload) {
+    return (
+      <div
+        className="file-message file-message--restricted"
+        title="В этой группе запрещено сохранять контент"
+      >
+        <span className="file-message__icon" aria-hidden>
+          {fileIconLabel(mimeType, fileName)}
+        </span>
+        <span className="file-message__info">
+          <span className="file-message__name">{label}</span>
+          {sizeLabel ? <span className="file-message__size">{sizeLabel}</span> : null}
+          <span className="file-message__restricted">Скачивание запрещено</span>
+        </span>
+      </div>
+    );
+  }
 
   return (
     <a
@@ -61,9 +86,15 @@ interface ImageMessageContentProps {
   url: string;
   alt?: string;
   onImageLoad?: (img: HTMLImageElement) => void;
+  allowDownload?: boolean;
 }
 
-export function ImageMessageContent({ url, alt = 'Photo', onImageLoad }: ImageMessageContentProps) {
+export function ImageMessageContent({
+  url,
+  alt = 'Photo',
+  onImageLoad,
+  allowDownload = true,
+}: ImageMessageContentProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const src = resolveMediaUrl(url);
 
@@ -95,6 +126,8 @@ export function ImageMessageContent({ url, alt = 'Photo', onImageLoad }: ImageMe
           className="image-message__img"
           loading="lazy"
           onLoad={(e) => onImageLoad?.(e.currentTarget)}
+          onContextMenu={allowDownload ? undefined : (e) => e.preventDefault()}
+          draggable={allowDownload}
         />
       </button>
       {lightboxOpen ? (
@@ -113,7 +146,16 @@ export function ImageMessageContent({ url, alt = 'Photo', onImageLoad }: ImageMe
           >
             ×
           </button>
-          <img src={src} alt={alt} className="image-lightbox__img" />
+          <img
+            src={src}
+            alt={alt}
+            className="image-lightbox__img"
+            onContextMenu={allowDownload ? undefined : (e) => e.preventDefault()}
+            draggable={allowDownload}
+          />
+          {!allowDownload ? (
+            <p className="image-lightbox__restricted">Сохранение запрещено в этой группе</p>
+          ) : null}
         </div>
       ) : null}
     </>
@@ -128,6 +170,8 @@ interface VideoMessageContentProps {
   authorLabel?: string | null;
   durationMs?: number;
   registerPlayback?: boolean;
+  /** When false, hide native download control where supported. */
+  controlsDownload?: boolean;
 }
 
 export function VideoMessageContent({
@@ -138,6 +182,7 @@ export function VideoMessageContent({
   authorLabel = null,
   durationMs = 0,
   registerPlayback = true,
+  controlsDownload = true,
 }: VideoMessageContentProps) {
   const src = resolveMediaUrl(url);
   const posterSrc = poster ? resolveMediaUrl(poster) : undefined;
@@ -318,8 +363,10 @@ export function VideoMessageContent({
         src={src}
         poster={posterSrc}
         controls={!round}
+        controlsList={controlsDownload ? undefined : 'nodownload'}
         preload="metadata"
         playsInline={round}
+        onContextMenu={controlsDownload ? undefined : (e) => e.preventDefault()}
         onPlay={() => round && setIsPlaying(true)}
         onPause={() => round && setIsPlaying(false)}
       />

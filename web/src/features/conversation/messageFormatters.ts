@@ -38,6 +38,7 @@ export function getOutgoingMessagePreview(
   if (message.msg_type === 'image') return 'Photo';
   if (message.msg_type === 'voice') return 'Voice message';
   if (message.msg_type === 'video' || message.msg_type === 'video_note') return 'Video';
+  if (message.msg_type === 'poll') return 'Опрос';
   if (message.msg_type === 'file') {
     return message.content?.trim() || 'File';
   }

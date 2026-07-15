@@ -1,5 +1,11 @@
 import { apiRequest } from './apiClient';
 import type { ChatSummary } from '@/types/chat';
+import type {
+  GroupChatSettings,
+  GroupChatSettingsPatch,
+  GroupInviteLinkResult,
+  UpdateGroupAdminPayload,
+} from '@/types/groupSettings';
 import { getPreviewChats, isUiPreviewMode } from '@/dev/uiPreview';
 
 export async function listChats(): Promise<ChatSummary[]> {
@@ -86,4 +92,84 @@ export async function leaveGroup(chatId: string): Promise<void> {
     method: 'POST',
     body: JSON.stringify({}),
   });
+}
+
+/** POST /chats/:id/pin — { message_id, notify? } */
+export async function pinChatMessage(
+  chatId: string,
+  messageId: string,
+  notify = true,
+): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>(`/chats/${encodeURIComponent(chatId)}/pin`, {
+    method: 'POST',
+    body: JSON.stringify({ message_id: messageId, notify }),
+  });
+}
+
+/** DELETE /chats/:id/pin */
+export async function unpinChatMessage(chatId: string): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>(`/chats/${encodeURIComponent(chatId)}/pin`, {
+    method: 'DELETE',
+  });
+}
+
+/** GET /chats/:id/settings — group member permissions + invite metadata. */
+export async function getGroupSettings(chatId: string): Promise<GroupChatSettings> {
+  return apiRequest<GroupChatSettings>(`/chats/${encodeURIComponent(chatId)}/settings`);
+}
+
+/** PATCH /chats/:id/settings */
+export async function updateGroupSettings(
+  chatId: string,
+  patch: GroupChatSettingsPatch,
+): Promise<GroupChatSettings> {
+  return apiRequest<GroupChatSettings>(`/chats/${encodeURIComponent(chatId)}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+/** GET /chats/:id/invite-link */
+export async function getGroupInviteLink(chatId: string): Promise<GroupInviteLinkResult> {
+  return apiRequest<GroupInviteLinkResult>(
+    `/chats/${encodeURIComponent(chatId)}/invite-link`,
+  );
+}
+
+/** POST /chats/:id/invite-link/recreate */
+export async function regenerateGroupInviteLink(
+  chatId: string,
+): Promise<GroupInviteLinkResult> {
+  return apiRequest<GroupInviteLinkResult>(
+    `/chats/${encodeURIComponent(chatId)}/invite-link/recreate`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+/** POST /chats/:id/invite-link/revoke */
+export async function revokeGroupInviteLink(
+  chatId: string,
+): Promise<GroupInviteLinkResult> {
+  return apiRequest<GroupInviteLinkResult>(
+    `/chats/${encodeURIComponent(chatId)}/invite-link/revoke`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+/**
+ * PATCH /chats/:id/members/:memberId/admin
+ * Promote (`role: 'admin'`), demote (`role: 'member'`), or edit admin flags.
+ */
+export async function updateGroupAdmin(
+  chatId: string,
+  memberId: string,
+  payload: UpdateGroupAdminPayload,
+): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>(
+    `/chats/${encodeURIComponent(chatId)}/members/${encodeURIComponent(memberId)}/admin`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+  );
 }

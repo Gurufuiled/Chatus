@@ -110,6 +110,8 @@ export type MappedChatMember = {
   tag: string | null;
   tag_color: string | null;
   joined_at: number;
+  /** Present for group admins when stored; owner implied full rights. */
+  admin_permissions?: Record<string, boolean> | null;
   user?: {
     id: string;
     username: string | null;
@@ -122,6 +124,25 @@ export type MappedChatMember = {
   };
 };
 
+import {
+  DEFAULT_GROUP_ADMIN_PERMISSIONS,
+  FULL_GROUP_ADMIN_PERMISSIONS,
+  parseGroupAdminPermissions,
+} from '../chats/group-permissions';
+
+function parseAdminPermissionsJson(
+  member: ChatMember,
+): Record<string, boolean> | null {
+  if (member.role === 'owner') {
+    return { ...FULL_GROUP_ADMIN_PERMISSIONS };
+  }
+  if (member.role !== 'admin') {
+    return null;
+  }
+  // Align API with server defaults when JSON is null (legacy rows).
+  return parseGroupAdminPermissions(member.adminPermissions);
+}
+
 export function mapChatMember(member: ChatMember & { user?: User | null }): MappedChatMember {
   return {
     chat_id: member.chatId,
@@ -132,6 +153,7 @@ export function mapChatMember(member: ChatMember & { user?: User | null }): Mapp
     tag: member.tag ?? null,
     tag_color: member.tagColor ?? null,
     joined_at: dateToUnixMs(member.joinedAt) ?? 0,
+    admin_permissions: parseAdminPermissionsJson(member),
     user:
       'user' in member && member.user
         ? {
@@ -192,6 +214,14 @@ export type MappedChat = {
   updated_at: number;
   members?: MappedChatMember[];
   last_message?: MappedMessage;
+  /** Group settings (additive; omitted for non-groups). */
+  hide_members?: boolean;
+  restrict_saving_content?: boolean;
+  pinned_notify?: boolean;
+  member_permissions?: Record<string, boolean>;
+  my_permissions?: Record<string, boolean>;
+  /** True when member list was filtered due to hide_members. */
+  members_hidden?: boolean;
 };
 
 type ChatMemberWithUser = import('@prisma/client').ChatMember & { user?: User };
@@ -259,6 +289,11 @@ export function mapChat(
     created_at: dateToUnixMs(chat.createdAt) ?? 0,
     updated_at: dateToUnixMs(chat.updatedAt) ?? 0,
   };
+  if (chat.chatType === 'group') {
+    base.hide_members = chat.hideMembers;
+    base.restrict_saving_content = chat.restrictSavingContent;
+    base.pinned_notify = chat.pinnedNotify;
+  }
   if (
     chat.chatType === 'private' &&
     opts?.currentUserId &&

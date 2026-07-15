@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useMessageContextStore } from '@/stores/messageContextStore';
 import { useComposerStore } from '@/stores/composerStore';
@@ -9,8 +9,14 @@ import { useMeQuery } from '@/queries/auth.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 import { canForwardMessage } from '@/utils/forwardPayload';
+import {
+  canPinMessages,
+  canSaveOrForwardContent,
+  restrictSavingReason,
+} from '@/utils/chatPermissions';
 import { isTempMessageId } from '@/features/conversation/messageFormatters';
 import { useFloatingMenuPosition } from '@/hooks/useFloatingMenuPosition';
+import { PinConfirmDialog } from './PinConfirmDialog';
 import type { MappedMessage } from '@/types/message';
 import './message-context-menu.css';
 
@@ -25,6 +31,7 @@ interface MessageContextMenuProps {
 function getCopyableText(message: MappedMessage | undefined): string {
   if (!message || message.msg_type !== 'text' || !message.content) return '';
   if (isChatusStickerMessage(message.content)) return '';
+  if (message.content.startsWith('chatus:poll:')) return '';
   return message.content.trim();
 }
 
@@ -125,6 +132,7 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
   const pinMutation = usePinMessageMutation();
   const deleteMutation = useDeleteMessageMutation();
   const toggleReaction = useToggleReactionMutation();
+  const [pinConfirmMessageId, setPinConfirmMessageId] = useState<string | null>(null);
 
   const open = menuChatId === chatId && !!messageId && !!position;
   const message = messages?.find((m) => m.id === messageId);
@@ -133,7 +141,11 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
   const isGroup = chat?.chat_type !== 'private';
   const isOwnMessage = !!me?.id && message?.sender_id === me.id;
   const copyableText = getCopyableText(message);
-  const canForward = message ? canForwardMessage(message) : false;
+  const allowSaveOrForward = canSaveOrForwardContent(chat, me);
+  const canForward =
+    !!message && canForwardMessage(message) && allowSaveOrForward;
+  const forwardBlockedReason = !allowSaveOrForward ? restrictSavingReason() : undefined;
+  const canPin = canPinMessages(chat, me);
   const canReact = message
     ? message.status !== 'sending' &&
       message.status !== 'error' &&
@@ -160,7 +172,26 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
     return () => window.removeEventListener('mousedown', onPointerDown);
   }, [open, closeMessageMenu]);
 
-  if (!open || !position || !message) return null;
+  const handlePinConfirm = (notify: boolean) => {
+    if (!pinConfirmMessageId) return;
+    pinMutation.mutate(
+      { chatId, messageId: pinConfirmMessageId, notify },
+      { onSettled: () => setPinConfirmMessageId(null) },
+    );
+  };
+
+  const pinDialog = (
+    <PinConfirmDialog
+      open={!!pinConfirmMessageId}
+      pending={pinMutation.isPending}
+      onClose={() => setPinConfirmMessageId(null)}
+      onConfirm={handlePinConfirm}
+    />
+  );
+
+  if (!open || !position || !message) {
+    return pinDialog;
+  }
 
   const handleReply = () => {
     setReply(chatId, message.id);
@@ -179,14 +210,18 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
   };
 
   const handlePin = () => {
-    pinMutation.mutate({
-      chatId,
-      messageId: isPinned ? null : message.id,
-    });
+    if (!canPin) return;
+    if (isPinned) {
+      pinMutation.mutate({ chatId, messageId: null });
+      closeMessageMenu();
+      return;
+    }
+    setPinConfirmMessageId(message.id);
     closeMessageMenu();
   };
 
   const handleForward = () => {
+    if (!canForward) return;
     onForward([message.id]);
     closeMessageMenu();
   };
@@ -229,7 +264,7 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
       icon: <ReplyIcon />,
       onClick: handleReply,
     },
-    ...(copyableText
+    ...(copyableText && allowSaveOrForward
       ? [
           {
             id: 'copy',
@@ -244,6 +279,8 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
       label: isPinned ? 'Открепить' : 'Закрепить',
       icon: <PinIcon />,
       onClick: handlePin,
+      disabled: !canPin,
+      title: !canPin ? 'Недостаточно прав для закрепления' : undefined,
     },
     {
       id: 'forward',
@@ -251,6 +288,7 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
       icon: <ForwardIcon />,
       onClick: handleForward,
       disabled: !canForward,
+      title: forwardBlockedReason ?? (!canForwardMessage(message) ? 'Это сообщение нельзя переслать' : undefined),
     },
     {
       id: 'select',
@@ -328,6 +366,7 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
                 role="menuitem"
                 className={`message-context-menu__item${item.danger ? ' message-context-menu__item--danger' : ''}`}
                 disabled={item.disabled}
+                title={item.title}
                 onClick={item.onClick}
               >
                 <span className="message-context-menu__icon">{item.icon}</span>
@@ -361,5 +400,10 @@ export function MessageContextMenu({ chatId, boundsRef, onForward }: MessageCont
     </div>
   );
 
-  return createPortal(menu, document.body);
+  return (
+    <>
+      {createPortal(menu, document.body)}
+      {pinDialog}
+    </>
+  );
 }

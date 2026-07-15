@@ -6,12 +6,14 @@ import {
   useForwardMessagesMutation,
   useMarkChatReadMutation,
   useMessagesQuery,
+  usePinMessageMutation,
 } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { useSelectionStore } from '@/stores/selectionStore';
 import { useGroupCall } from '@/contexts/GroupCallContext';
 import { formatGroupCallParticipantNames } from '@/utils/groupCallSystemMessage';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
+import { canPinMessages, canSaveOrForwardContent, restrictSavingReason } from '@/utils/chatPermissions';
 import { GroupCallBanner } from '@/features/group-call/GroupCallBanner';
 import '@/features/group-call/group-call.css';
 import { ConversationHeader } from './ConversationHeader';
@@ -21,9 +23,11 @@ import { ConversationDropZone } from './ConversationDropZone';
 import { MessageContextMenu } from './MessageContextMenu';
 import { ForwardDialog } from './ForwardDialog';
 import { MessageSelectionToolbar } from './MessageSelectionToolbar';
+import { PinnedMessageBar } from './PinnedMessageBar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useGlobalEscape } from '@/hooks/useGlobalEscape';
 import { ChatInfoSidebar } from './ChatInfoSidebar';
+import { getOutgoingMessagePreview } from './messageFormatters';
 import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import './conversation.css';
 
@@ -38,6 +42,7 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
   const markRead = useMarkChatReadMutation();
   const forwardMutation = useForwardMessagesMutation();
   const deleteMutation = useDeleteMessageMutation();
+  const pinMutation = usePinMessageMutation();
   const exitSelection = useSelectionStore((s) => s.exitSelection);
   const markedRef = useRef<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -92,6 +97,17 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const closeForward = useCallback(() => setForwardMessageIds([]), []);
 
+  const pinnedMessageId = chat?.pinned_message_id ?? null;
+  const pinnedMessage = useMemo(
+    () =>
+      pinnedMessageId
+        ? (messages ?? []).find((m) => m.id === pinnedMessageId) ?? null
+        : null,
+    [messages, pinnedMessageId],
+  );
+  const canUnpin = canPinMessages(chat, me);
+  const allowForward = canSaveOrForwardContent(chat, me);
+
   useGlobalEscape({
     forwardOpen: forwardMessageIds.length > 0,
     onCloseForward: closeForward,
@@ -111,18 +127,23 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
     markRead.mutate(chatId);
   }, [chatId, chat?.unread_count, markRead, chat]);
 
-  const handleForwardRequest = useCallback((messageIds: string[]) => {
-    setForwardMessageIds(messageIds);
-  }, []);
+  const handleForwardRequest = useCallback(
+    (messageIds: string[]) => {
+      if (!allowForward) return;
+      setForwardMessageIds(messageIds);
+    },
+    [allowForward],
+  );
 
-  const handleForwardToChat = useCallback(
-    (targetChatId: string) => {
+  const handleForwardToChats = useCallback(
+    (targetChatIds: string[], caption?: string) => {
       if (forwardMessageIds.length === 0) return;
       forwardMutation.mutate(
         {
           sourceChatId: chatId,
-          targetChatId,
+          targetChatIds,
           messageIds: forwardMessageIds,
+          caption,
         },
         {
           onSuccess: () => {
@@ -148,6 +169,17 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
     },
     [chatId, deleteMutation, exitSelection, me?.id, messages],
   );
+
+  const scrollToPinned = useCallback(() => {
+    if (!pinnedMessageId) return;
+    const el = document.getElementById(`msg-${pinnedMessageId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [pinnedMessageId]);
+
+  const handleUnpin = useCallback(() => {
+    if (!canUnpin) return;
+    pinMutation.mutate({ chatId, messageId: null });
+  }, [canUnpin, chatId, pinMutation]);
 
   if (!chat) {
     return (
@@ -181,6 +213,18 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
             onOpen={() => {}}
           />
         ) : null}
+        {pinnedMessageId ? (
+          <PinnedMessageBar
+            preview={
+              pinnedMessage
+                ? getOutgoingMessagePreview(pinnedMessage) || 'Сообщение'
+                : 'Закреплённое сообщение'
+            }
+            canUnpin={canUnpin}
+            onPress={scrollToPinned}
+            onUnpin={handleUnpin}
+          />
+        ) : null}
         <ConversationDropZone chatId={chatId} disabled={messagesLoading}>
           <div
             ref={bodyRef}
@@ -192,6 +236,8 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
               chatId={chatId}
               onForward={handleForwardRequest}
               onDelete={handleBatchDelete}
+              forwardDisabled={!allowForward}
+              forwardDisabledReason={restrictSavingReason()}
             />
             <MessageComposer chatId={chatId} disabled={messagesLoading} />
           </div>
@@ -206,7 +252,7 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
           sourceChatId={chatId}
           pending={forwardMutation.isPending}
           onClose={closeForward}
-          onSelectChat={handleForwardToChat}
+          onForward={handleForwardToChats}
         />
       </div>
       {isSidebarOpen ? (

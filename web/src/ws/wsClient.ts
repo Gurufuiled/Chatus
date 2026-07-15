@@ -9,6 +9,7 @@ type WsHandlers = {
   onNewMessage?: WsEventHandler;
   onMessageAck?: WsEventHandler;
   onMessageReactionsUpdated?: WsEventHandler;
+  onPollUpdated?: WsEventHandler;
   onGroupCallStarted?: WsEventHandler;
   onGroupCallEnded?: WsEventHandler;
   onGroupCallParticipants?: WsEventHandler;
@@ -103,10 +104,15 @@ class WsClient {
     });
   }
 
-  pinMessage(chatId: string, messageId: string | null) {
+  pinMessage(
+    chatId: string,
+    messageId: string | null,
+    options?: { notify?: boolean },
+  ) {
     return this.sendEvent('pin_message', {
       chat_id: chatId,
       message_id: messageId,
+      notify: options?.notify ?? true,
     });
   }
 
@@ -258,6 +264,9 @@ class WsClient {
         this.handlers.onMessageReactionsUpdated?.(msg);
         break;
       }
+      case 'poll_updated':
+        this.handlers.onPollUpdated?.(msg);
+        break;
       case 'group_call_started':
         this.handlers.onGroupCallStarted?.(msg);
         break;

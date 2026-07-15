@@ -57,25 +57,56 @@ import {
  *   simulcast on — sharp enough for a talking-head tile while still letting
  *   LiveKit's dynacast/adaptiveStream drop unused higher layers for viewers
  *   on small tiles or a poor connection.
- * - Screen share: 1080p but capped at 15fps (LiveKit's `h1080fps15` preset,
- *   ~2.5 Mbps). Screen shares are usually static/text-heavy — trading frame
- *   rate for resolution keeps text legible without spending bandwidth on
- *   motion smoothness nobody needs. Simulcast is left off for screen share
- *   since a second lower-res layer would just blur text further; dynacast
- *   still stops sending entirely when nobody is subscribed.
+ * - Screen share: selectable quality (720p15 / 1080p15 / 1080p30). Simulcast
+ *   is off so text stays sharp; quality changes use constraints + RTP params
+ *   (never restartTrack / getUserMedia on a live display track).
  */
 const CAMERA_CAPTURE_DEFAULTS = { resolution: VideoPresets.h720.resolution };
 const CAMERA_PUBLISH_DEFAULTS = {
   videoEncoding: VideoPresets.h720.encoding,
   simulcast: true,
 };
-const SCREEN_SHARE_CAPTURE_OPTIONS = {
-  resolution: ScreenSharePresets.h1080fps15.resolution,
+
+export type ScreenShareQuality = 'low' | 'medium' | 'high';
+
+const SCREEN_SHARE_QUALITY_PRESETS: Record<
+  ScreenShareQuality,
+  { label: string; hint: string; preset: (typeof ScreenSharePresets)[keyof typeof ScreenSharePresets] }
+> = {
+  low: {
+    label: 'Низкое',
+    hint: '720p · 15 к/с',
+    preset: ScreenSharePresets.h720fps15,
+  },
+  medium: {
+    label: 'Среднее',
+    hint: '1080p · 15 к/с',
+    preset: ScreenSharePresets.h1080fps15,
+  },
+  high: {
+    label: 'Высокое',
+    hint: '1080p · 30 к/с',
+    preset: ScreenSharePresets.h1080fps30,
+  },
 };
-const SCREEN_SHARE_PUBLISH_OPTIONS = {
-  videoEncoding: ScreenSharePresets.h1080fps15.encoding,
-  simulcast: false,
-};
+
+export const SCREEN_SHARE_QUALITY_OPTIONS: Array<{
+  id: ScreenShareQuality;
+  label: string;
+  hint: string;
+}> = (
+  Object.entries(SCREEN_SHARE_QUALITY_PRESETS) as Array<
+    [ScreenShareQuality, (typeof SCREEN_SHARE_QUALITY_PRESETS)[ScreenShareQuality]]
+  >
+).map(([id, value]) => ({ id, label: value.label, hint: value.hint }));
+
+function screenShareOptionsForQuality(quality: ScreenShareQuality) {
+  const { preset } = SCREEN_SHARE_QUALITY_PRESETS[quality];
+  return {
+    capture: { resolution: preset.resolution, audio: false as const },
+    publish: { videoEncoding: preset.encoding, simulcast: false as const },
+  };
+}
 
 export type GroupCallPhase = 'idle' | 'creating' | 'joining' | 'active';
 
@@ -125,6 +156,8 @@ type GroupCallContextType = {
   toggleMute: () => Promise<void>;
   toggleVideo: () => Promise<void>;
   toggleScreenShare: () => Promise<void>;
+  screenShareQuality: ScreenShareQuality;
+  setScreenShareQuality: (quality: ScreenShareQuality) => Promise<void>;
   setParticipantVolume: (userId: string, volume: number) => void;
   getParticipantVolume: (userId: string) => number;
   unlockAudioPlayback: () => Promise<void>;
@@ -266,6 +299,110 @@ function readRemoteVideoTracks(room: Room): Record<string, VideoTrack> {
 }
 
 const DEFAULT_PARTICIPANT_VOLUME = 1;
+
+/** Kept alive so we don't await AudioContext.close() and lose user activation. */
+let sharedUnlockAudioContext: AudioContext | null = null;
+
+/**
+ * Unlock browser audio output during a user gesture (required in iframes /
+ * autoplay-restricted environments).
+ */
+async function unlockBrowserAudioOutput(): Promise<void> {
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    if (!sharedUnlockAudioContext || sharedUnlockAudioContext.state === 'closed') {
+      sharedUnlockAudioContext = new AudioCtx();
+    }
+    const ctx = sharedUnlockAudioContext;
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  } catch {
+    // room.startAudio() / element.play() will surface the blocked state
+  }
+}
+
+/**
+ * Attach (if needed) and play remote mic elements without changing per-user volumes.
+ * Returns false if any element.play() was rejected (caller should show unlock CTA).
+ * Returns true when there are no remote audio tracks yet (vacuous success).
+ */
+async function forcePlayRemoteAudioTracks(room: Room): Promise<boolean> {
+  let allPlayOk = true;
+  for (const participant of room.remoteParticipants.values()) {
+    for (const publication of participant.audioTrackPublications.values()) {
+      const track = publication.track;
+      if (!track || track.kind !== Track.Kind.Audio) continue;
+      const audioTrack = track as RemoteAudioTrack;
+      const elements =
+        audioTrack.attachedElements.length > 0
+          ? [...audioTrack.attachedElements]
+          : [audioTrack.attach()];
+      for (const el of elements) {
+        if (!el.isConnected) {
+          el.setAttribute('playsinline', 'true');
+          el.autoplay = true;
+          el.style.position = 'fixed';
+          el.style.width = '0';
+          el.style.height = '0';
+          el.style.opacity = '0';
+          el.style.pointerEvents = 'none';
+          document.body.appendChild(el);
+        }
+        el.muted = false;
+        try {
+          await el.play();
+        } catch {
+          allPlayOk = false;
+        }
+      }
+    }
+  }
+  return allPlayOk;
+}
+
+/** Detach remote audio elements and remove them from the DOM (LiveKit detach does not remove). */
+function detachAndRemoveRemoteAudioElements(room: Room | null | undefined): void {
+  if (!room) return;
+  for (const participant of room.remoteParticipants.values()) {
+    for (const publication of participant.audioTrackPublications.values()) {
+      const track = publication.track;
+      if (!track || track.kind !== Track.Kind.Audio) continue;
+      const audioTrack = track as RemoteAudioTrack;
+      const elements = [...audioTrack.attachedElements];
+      for (const el of elements) {
+        try {
+          audioTrack.detach(el);
+        } catch {
+          // ignore
+        }
+        el.remove();
+      }
+    }
+  }
+}
+
+function detachAndRemoveAudioTrackElements(track: RemoteTrack): void {
+  if (track.kind !== Track.Kind.Audio) return;
+  const audioTrack = track as RemoteAudioTrack;
+  const elements = [...audioTrack.attachedElements];
+  for (const el of elements) {
+    try {
+      audioTrack.detach(el);
+    } catch {
+      // ignore
+    }
+    el.remove();
+  }
+}
 
 function clampParticipantVolume(volume: number): number {
   return Math.min(1, Math.max(0, volume));
@@ -421,6 +558,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const [recording, setRecording] = useState<CallRecordingSnapshot>(initialRecordingSnapshot);
   const [remoteRecording, setRemoteRecording] = useState(initialRemoteRecording);
   const [mediaErrorBanner, setMediaErrorBanner] = useState<string | null>(null);
+  const [screenShareQuality, setScreenShareQualityState] =
+    useState<ScreenShareQuality>('medium');
   const roomRef = useRef<Room | null>(null);
   const stateRef = useRef(state);
   const activeRoomByChatIdRef = useRef(activeRoomByChatId);
@@ -428,7 +567,15 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const leavingIntentionallyRef = useRef(false);
   const videoToggleInFlightRef = useRef(false);
   const screenShareToggleInFlightRef = useRef(false);
+  /** Separate from toggle so quality applyConstraints cannot block Stop share. */
+  const screenShareQualityInFlightRef = useRef(false);
+  const screenShareQualityRef = useRef<ScreenShareQuality>('medium');
+  screenShareQualityRef.current = screenShareQuality;
   const remoteVolumesRef = useRef<Record<string, number>>({});
+  /** True when remote element.play() failed - must not be cleared by canPlaybackAudio alone. */
+  const remoteAudioPlayBlockedRef = useRef(false);
+  /** Bumps so overlapping ensureRoomAudioPlayback calls ignore stale results. */
+  const ensureAudioGenerationRef = useRef(0);
   const localRecordingActiveRef = useRef(false);
   const remoteRecordingByUserIdRef = useRef<string | null>(null);
   const recordingServiceRef = useRef<CallRecordingService | null>(null);
@@ -449,6 +596,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     roomRef.current = null;
     if (!room) return;
     room.removeAllListeners();
+    detachAndRemoveRemoteAudioElements(room);
     try {
       await room.disconnect();
     } catch {
@@ -474,6 +622,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     remoteRecordingByUserIdRef.current = null;
     setRemoteRecording(initialRemoteRecording);
     leavingIntentionallyRef.current = false;
+    remoteAudioPlayBlockedRef.current = false;
     remoteVolumesRef.current = {};
     setLocalCameraTrack(undefined);
     setRemoteVideoTracks({});
@@ -489,17 +638,24 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const syncAudioPlaybackState = useCallback((room: Room) => {
     setState((prev) => ({
       ...prev,
-      audioPlaybackBlocked: !room.canPlaybackAudio,
+      audioPlaybackBlocked: !room.canPlaybackAudio || remoteAudioPlayBlockedRef.current,
     }));
   }, []);
 
   const ensureRoomAudioPlayback = useCallback(
     async (room: Room) => {
+      const gen = ++ensureAudioGenerationRef.current;
+      await unlockBrowserAudioOutput();
+      // Attach/play early so elements exist before startAudio races.
+      await forcePlayRemoteAudioTracks(room);
       try {
         await room.startAudio();
       } catch {
         // Browser may require an explicit tap — unlockAudioPlayback handles that.
       }
+      const playOk = await forcePlayRemoteAudioTracks(room);
+      if (gen !== ensureAudioGenerationRef.current) return;
+      remoteAudioPlayBlockedRef.current = !playOk;
       syncAudioPlaybackState(room);
     },
     [syncAudioPlaybackState],
@@ -528,12 +684,12 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
             avatarUrl: prior.avatarUrl ?? p.avatarUrl,
           };
         });
-        const localParticipant = participants.find((p) => p.isLocal);
         const localLive = room.localParticipant;
         return {
           ...prev,
           participants,
-          isVideoEnabled: localParticipant?.isVideoEnabled ?? prev.isVideoEnabled,
+          // Camera button state must ignore screen-share (hall-of-mirrors / off visuals).
+          isVideoEnabled: localLive ? isCameraTrackEnabled(localLive) : prev.isVideoEnabled,
           isScreenShareEnabled: localLive ? isScreenShareTrackEnabled(localLive) : prev.isScreenShareEnabled,
         };
       });
@@ -599,10 +755,18 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         syncParticipantsFromRoom(room);
       });
       room.on(RoomEvent.AudioPlaybackStatusChanged, () => {
+        if (room.canPlaybackAudio) {
+          // LiveKit unlocked — re-try element.play() so sticky CTA clears.
+          void ensureRoomAudioPlayback(room);
+          return;
+        }
         syncAudioPlaybackState(room);
       });
       room.on(RoomEvent.TrackUnpublished, () => syncParticipantsFromRoom(room));
-      room.on(RoomEvent.TrackUnsubscribed, () => syncParticipantsFromRoom(room));
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        detachAndRemoveAudioTrackElements(track);
+        syncParticipantsFromRoom(room);
+      });
       room.on(RoomEvent.DataReceived, (payload, participant) => {
         const msg = parseGroupCallRecordingMessage(payload);
         if (!msg || !participant) return;
@@ -672,6 +836,14 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           await resetCallState();
         })();
       });
+
+      // Pre-warm playback before connect (LiveKit docs: startAudio under user gesture).
+      await unlockBrowserAudioOutput();
+      try {
+        await room.startAudio();
+      } catch {
+        // Unlock button / pointerdown will retry.
+      }
 
       await room.connect(params.livekitUrl, params.token, {
         autoSubscribe: true,
@@ -793,6 +965,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         chatTitle,
       }));
       try {
+        await unlockBrowserAudioOutput();
         await ensureMicrophonePermission();
         const response = await createGroupCall(chatId);
         setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: response.room }));
@@ -837,6 +1010,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         startedAt: cachedStartedAt ?? prev.startedAt,
       }));
       try {
+        await unlockBrowserAudioOutput();
         await ensureMicrophonePermission();
         const response = await joinGroupCall(roomId);
         setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: response.room }));
@@ -1028,6 +1202,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   const unlockAudioPlayback = useCallback(async () => {
     const room = roomRef.current;
     if (!room) return;
+    await unlockBrowserAudioOutput();
     await ensureRoomAudioPlayback(room);
   }, [ensureRoomAudioPlayback]);
 
@@ -1041,18 +1216,15 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const nextEnabled = !stateRef.current.isScreenShareEnabled;
+    const { capture, publish } = screenShareOptionsForQuality(screenShareQualityRef.current);
     screenShareToggleInFlightRef.current = true;
     try {
-      await room.localParticipant.setScreenShareEnabled(
-        nextEnabled,
-        { ...SCREEN_SHARE_CAPTURE_OPTIONS, audio: false },
-        SCREEN_SHARE_PUBLISH_OPTIONS,
-      );
+      await room.localParticipant.setScreenShareEnabled(nextEnabled, capture, publish);
       if (!roomRef.current || stateRef.current.phase === 'idle') return;
       syncVideoTracksFromRoom(room);
       setState((prev) => ({
         ...prev,
-        isScreenShareEnabled: nextEnabled,
+        isScreenShareEnabled: isScreenShareTrackEnabled(room.localParticipant),
         participants: prev.participants.map((p) =>
           p.isLocal ? { ...p, isVideoEnabled: isVideoTrackEnabled(room.localParticipant) } : p,
         ),
@@ -1068,6 +1240,76 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       screenShareToggleInFlightRef.current = false;
     }
   }, [syncVideoTracksFromRoom]);
+
+  const setScreenShareQuality = useCallback(async (quality: ScreenShareQuality) => {
+    const previous = screenShareQualityRef.current;
+    const room = roomRef.current;
+    const isSharing =
+      Boolean(room) &&
+      room!.state === ConnectionState.Connected &&
+      stateRef.current.isScreenShareEnabled;
+
+    setScreenShareQualityState(quality);
+    screenShareQualityRef.current = quality;
+    // Preference update only — applies on the next share start.
+    if (!isSharing) return;
+    if (screenShareToggleInFlightRef.current || screenShareQualityInFlightRef.current) {
+      setScreenShareQualityState(previous);
+      screenShareQualityRef.current = previous;
+      return;
+    }
+
+    const { capture, publish } = screenShareOptionsForQuality(quality);
+    const publication = room!.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+    const track = publication?.track;
+    if (!track || track.kind !== Track.Kind.Video) {
+      setScreenShareQualityState(previous);
+      screenShareQualityRef.current = previous;
+      setMediaErrorBanner('Не удалось сменить качество: демонстрация не активна.');
+      return;
+    }
+
+    screenShareQualityInFlightRef.current = true;
+    try {
+      const localTrack = track as LocalVideoTrack;
+      const mediaTrack = localTrack.mediaStreamTrack;
+      const resolution = capture.resolution;
+      if (mediaTrack && resolution) {
+        try {
+          await mediaTrack.applyConstraints({
+            width: { ideal: resolution.width },
+            height: { ideal: resolution.height },
+            frameRate: { ideal: resolution.frameRate },
+          });
+        } catch {
+          // Display tracks often ignore resolution constraints.
+        }
+      }
+      const sender = localTrack.sender;
+      const encoding = publish.videoEncoding;
+      if (!sender || !encoding) {
+        throw new Error('Не удалось сменить качество демонстрации.');
+      }
+      const params = sender.getParameters();
+      if (!params.encodings[0]) {
+        throw new Error('Не удалось сменить качество демонстрации.');
+      }
+      const enc = params.encodings[0];
+      enc.maxBitrate = encoding.maxBitrate;
+      enc.maxFramerate = encoding.maxFramerate;
+      enc.scaleResolutionDownBy = quality === 'low' ? 1.5 : 1;
+      await sender.setParameters(params);
+    } catch (err) {
+      setScreenShareQualityState(previous);
+      screenShareQualityRef.current = previous;
+      if (!roomRef.current || stateRef.current.phase === 'idle') return;
+      setMediaErrorBanner(
+        err instanceof Error ? err.message : 'Не удалось сменить качество демонстрации.',
+      );
+    } finally {
+      screenShareQualityInFlightRef.current = false;
+    }
+  }, []);
 
   const startRecording = useCallback(async () => {
     const room = roomRef.current;
@@ -1217,6 +1459,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       toggleMute,
       toggleVideo,
       toggleScreenShare,
+      screenShareQuality,
+      setScreenShareQuality,
       setParticipantVolume,
       getParticipantVolume,
       unlockAudioPlayback,
@@ -1247,6 +1491,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       toggleMute,
       toggleVideo,
       toggleScreenShare,
+      screenShareQuality,
+      setScreenShareQuality,
       setParticipantVolume,
       getParticipantVolume,
       unlockAudioPlayback,

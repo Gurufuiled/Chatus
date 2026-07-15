@@ -156,12 +156,14 @@ export function MobileMessageList({ chatId, keyboardLift = 0, isGroupChat = fals
             onReply={() => handleSwipeReply(message.id)}
           >
             <div
+              id={`msg-${message.id}`}
               className={`mobile-bubble-row-wrap${
                 pressedMessageId === message.id ? ' mobile-bubble-row-wrap--pressed' : ''
               }${menuMessageId === message.id ? ' mobile-bubble-row-wrap--menu-hidden' : ''}`}
               onPointerDown={(e) => handlePointerDown(message.id, isOutgoing, e)}
             >
               <MobileMessageBubble
+                chatId={chatId}
                 message={message}
                 isOutgoing={isOutgoing}
                 showSenderName={isGroupChat && !isOutgoing}

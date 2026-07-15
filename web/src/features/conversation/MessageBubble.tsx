@@ -16,8 +16,12 @@ import {
 import { AlbumMessageContent } from './AlbumMessageContent';
 import { MessageQuickReaction } from './MessageQuickReaction';
 import { MessageReactionsBar } from './MessageReactionsBar';
+import { PollMessageContent } from './PollMessageContent';
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
+import { isPollMessage } from '@/utils/pollPayload';
+import { canSaveOrForwardContent } from '@/utils/chatPermissions';
+import { useChatsQuery } from '@/queries/chats.queries';
 import type { MappedMessage } from '@/types/message';
 
 function summarizeReply(content: string | null, msgType: string): string {
@@ -26,6 +30,7 @@ function summarizeReply(content: string | null, msgType: string): string {
   if (msgType === 'video') return 'Видео';
   if (msgType === 'video_note') return 'Видеосообщение';
   if (msgType === 'file') return 'Файл';
+  if (msgType === 'poll') return 'Опрос';
   if (content && isChatusStickerMessage(content)) return 'Стикер';
   const text = content?.trim();
   if (!text) return 'Сообщение';
@@ -75,6 +80,9 @@ export function MessageBubble({
 
   const { data: messages } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
+  const { data: chats } = useChatsQuery();
+  const chat = chats?.find((c) => c.id === chatId);
+  const allowSave = canSaveOrForwardContent(chat, me);
 
   const groupCallPayload =
     message.msg_type === 'system' ? parseGroupCallSystemContent(message.content) : null;
@@ -153,6 +161,14 @@ export function MessageBubble({
     </div>
   ) : null;
 
+  const forwardName = message.forwarded_from_name?.trim();
+  const forwardNode = forwardName ? (
+    <div className="message-forward-header">
+      <span className="message-forward-header__label">Переслано от</span>{' '}
+      <span className="message-forward-header__name">{forwardName}</span>
+    </div>
+  ) : null;
+
   const showChecks = isOutgoing && message.status !== 'error';
   const time = formatMessageTime(message.created_at);
   const stickerRef =
@@ -204,7 +220,11 @@ export function MessageBubble({
   } else if (isAlbum) {
     body = (
       <>
-        <AlbumMessageContent media={mediaList} msgType={message.msg_type} />
+        <AlbumMessageContent
+          media={mediaList}
+          msgType={message.msg_type}
+          allowDownload={allowSave}
+        />
         {albumCaption ? (
           <p className="message-bubble__text message-bubble__caption">{albumCaption}</p>
         ) : null}
@@ -214,7 +234,7 @@ export function MessageBubble({
     const imageCaption = isAlbumCaption(message.content) ? message.content?.trim() : null;
     body = (
       <>
-        <ImageMessageContent url={mediaUrl} />
+        <ImageMessageContent url={mediaUrl} allowDownload={allowSave} />
         {imageCaption ? (
           <p className="message-bubble__text message-bubble__caption">{imageCaption}</p>
         ) : null}
@@ -237,6 +257,7 @@ export function MessageBubble({
         fileName={media?.file_name ?? null}
         fileSize={media?.file_size ?? null}
         mimeType={media?.mime_type ?? null}
+        allowDownload={allowSave}
       />
     );
   } else if ((message.msg_type === 'video' || message.msg_type === 'video_note') && mediaUrl) {
@@ -250,12 +271,15 @@ export function MessageBubble({
           authorLabel={message.sender_name}
           durationMs={media?.duration_ms ?? 0}
           registerPlayback={message.msg_type === 'video_note' || Boolean(media?.is_round)}
+          controlsDownload={allowSave}
         />
         {videoCaption ? (
           <p className="message-bubble__text message-bubble__caption">{videoCaption}</p>
         ) : null}
       </>
     );
+  } else if (isPollMessage(message)) {
+    body = <PollMessageContent chatId={chatId} message={message} disabled={selectionActive} />;
   } else if (message.msg_type === 'text') {
     body = isChatusStickerMessage(message.content) ? (
       <p className="message-bubble__text message-bubble__text--placeholder">Sticker</p>
@@ -284,6 +308,7 @@ export function MessageBubble({
         <div className="message-bubble__content">
           {hasReactions ? (
             <>
+              {forwardNode}
               {replyNode}
               <div className="message-bubble__body">{body}</div>
               <div className="message-bubble__footer">
@@ -299,6 +324,7 @@ export function MessageBubble({
             </>
           ) : (
             <>
+              {forwardNode}
               {replyNode}
               {body}
               {meta}

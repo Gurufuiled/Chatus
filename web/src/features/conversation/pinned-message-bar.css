@@ -1,0 +1,62 @@
+.pinned-message-bar {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  min-height: 44px;
+}
+
+.pinned-message-bar__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.pinned-message-bar__main:hover {
+  background: rgba(72, 127, 232, 0.06);
+}
+
+.pinned-message-bar__icon {
+  color: #487fe8;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.pinned-message-bar__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.pinned-message-bar__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #487fe8;
+}
+
+.pinned-message-bar__preview {
+  font-size: 13px;
+  color: var(--color-text, #17202a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pinned-message-bar__close {
+  width: 40px;
+  flex-shrink: 0;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+.pinned-message-bar__close:hover {
+  color: var(--color-text, #17202a);
+  background: rgba(0, 0, 0, 0.04);
+}

@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { MessagesService } from '../messages/messages.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { ChatsService } from '../chats/chats.service';
 import {
   buildGroupCallSystemContent,
   type GroupCallSystemPayload,
@@ -51,6 +52,7 @@ export class GroupCallsService {
     private readonly prisma: PrismaService,
     private readonly messagesService: MessagesService,
     private readonly realtime: RealtimeService,
+    private readonly chatsService: ChatsService,
   ) {}
 
   private getLivekitApiKey(): string {
@@ -285,6 +287,7 @@ export class GroupCallsService {
   async createRoom(chatId: string, userId: string) {
     const member = await this.assertGroupMember(chatId, userId);
     this.assertNotInAnotherCall(userId);
+    await this.chatsService.assertCanStartGroupCall(chatId, userId);
 
     const existing = await this.getActiveRoomForChat(chatId);
     if (existing) {
@@ -421,9 +424,11 @@ export class GroupCallsService {
 
   async endRoom(roomId: string, userId: string) {
     const room = await this.getRoomOrThrow(roomId);
-    if (room.startedByUserId !== userId) {
-      throw new ForbiddenException('Only the call creator can end the room for everyone');
-    }
+    await this.chatsService.assertCanEndGroupCall(
+      room.chatId,
+      userId,
+      room.startedByUserId,
+    );
     await this.finalizeRoom(room, userId);
     return { ok: true };
   }

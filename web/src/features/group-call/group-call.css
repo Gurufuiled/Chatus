@@ -152,6 +152,20 @@
 .group-call-overlay__header {
   text-align: center;
   padding: 8px 12px 16px;
+  flex-shrink: 0;
+}
+
+.group-call-overlay--presenting {
+  padding: 8px 8px 16px;
+}
+
+.group-call-overlay--presenting .group-call-overlay__header {
+  padding: 2px 8px 6px;
+}
+
+.group-call-overlay--presenting .group-call-overlay__subtitle {
+  margin: 0;
+  font-size: 13px;
 }
 
 .group-call-overlay__title {
@@ -180,6 +194,26 @@
 
 .group-call-overlay__audio-unlock:hover {
   opacity: 0.92;
+}
+
+.group-call-overlay--audio-blocked .group-call-overlay__audio-unlock {
+  animation: group-call-audio-unlock-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes group-call-audio-unlock-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(91, 141, 239, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(91, 141, 239, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-call-overlay--audio-blocked .group-call-overlay__audio-unlock {
+    animation: none;
+  }
 }
 
 .group-call-stage {
@@ -400,15 +434,15 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 16px 4px;
+  gap: 8px;
+  padding: 0 0 2px;
 }
 
 .group-call-fullscreen__main {
   position: relative;
   flex: 1;
   min-height: 0;
-  border-radius: 16px;
+  border-radius: 12px;
   overflow: hidden;
   background: #0a0d12;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -420,6 +454,13 @@
   height: 100%;
 }
 
+/* Presentation mode: fill the stage edge-to-edge (no letterboxing). */
+.group-call-fullscreen__main-inner .group-call-tile__video,
+.group-call-fullscreen__main-inner .group-call-tile__video--contain {
+  object-fit: cover;
+  background: #0a0d12;
+}
+
 .group-call-fullscreen__placeholder {
   position: absolute;
   inset: 0;
@@ -428,6 +469,42 @@
   justify-content: center;
   color: rgba(255, 255, 255, 0.55);
   font-size: 14px;
+}
+
+.group-call-fullscreen__self-share {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.78);
+  background:
+    radial-gradient(ellipse at center, rgba(91, 141, 239, 0.12), transparent 60%),
+    #0a0d12;
+}
+
+.group-call-fullscreen__self-share svg {
+  width: 40px;
+  height: 40px;
+  opacity: 0.85;
+}
+
+.group-call-fullscreen__self-share-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.group-call-fullscreen__self-share-hint {
+  margin: 0;
+  max-width: 360px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .group-call-fullscreen__exit {
@@ -472,7 +549,7 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 2px 2px 6px;
+  padding: 0 4px 4px;
 }
 
 .group-call-fullscreen__strip .group-call-tile {
@@ -481,17 +558,45 @@
 
 .group-call-overlay__controls {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
   padding-top: 12px;
   position: relative;
 }
 
+.group-call-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.group-call-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(26, 31, 38, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.group-call-capsule__sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+}
+
 .group-call-action {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: none;
   display: inline-flex;
@@ -499,35 +604,162 @@
   justify-content: center;
   color: #fff;
   cursor: pointer;
+  background: transparent;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.group-call-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .group-call-action--neutral {
-  background: rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: #fff;
 }
 
 .group-call-action--accent {
-  background: color-mix(in srgb, var(--color-accent) 92%, #000);
+  background: color-mix(in srgb, var(--color-accent, #5b8def) 88%, #000);
+  color: #fff;
 }
 
-.group-call-action--danger {
+.group-call-action--accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent, #5b8def) 96%, #000);
+}
+
+.group-call-action--off {
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.group-call-action--off:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.58);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.group-call-action--danger,
+.group-call-action--hangup {
+  width: 56px;
+  height: 56px;
   background: #e53935;
+  box-shadow: 0 4px 16px rgba(229, 57, 53, 0.35);
+}
+
+.group-call-action--danger:hover:not(:disabled),
+.group-call-action--hangup:hover:not(:disabled) {
+  background: #ef5350;
 }
 
 .group-call-action--disabled {
-  background: rgba(255, 255, 255, 0.08);
-  opacity: 0.55;
+  background: transparent;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.group-call-overlay__end-all {
+.group-call-action--screen-main {
+  width: 44px;
+  border-radius: 50% 0 0 50%;
+}
+
+.group-call-screen-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.group-call-screen-cluster {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.group-call-screen-quality-btn {
+  width: 22px;
+  height: 48px;
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  border-radius: 0 50% 50% 0;
+}
+
+.group-call-screen-quality-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.group-call-screen-quality-btn--disabled,
+.group-call-screen-quality-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.group-call-quality-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 180px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(26, 31, 38, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  z-index: 6;
+}
+
+.group-call-quality-menu__item {
   width: 100%;
-  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.group-call-quality-menu__item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.group-call-quality-menu__item--active {
+  background: color-mix(in srgb, var(--color-accent, #5b8def) 28%, transparent);
+}
+
+.group-call-quality-menu__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.group-call-quality-menu__hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.group-call-overlay__end-all {
+  width: auto;
+  margin-top: 0;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.72);
   font-size: 13px;
   text-decoration: underline;
   cursor: pointer;
+  padding: 2px 8px;
+}
+
+.group-call-overlay__end-all:hover {
+  color: #fff;
 }
 
 .conversation-header__call-btn {
@@ -618,14 +850,13 @@
 }
 
 /*
- * Fixed-size box matching .group-call-action (56×56) so the record button
- * stays vertically aligned with the other controls. The label/timer is
- * absolutely positioned below it, so it never affects the row's box height.
+ * Fixed-size box matching capsule action (48×48) so the record timer
+ * sits below without shifting the control row height.
  */
 .group-call-record-wrap {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
 }
 
 .group-call-record-label,
@@ -649,7 +880,7 @@
 
 /* Idle state: neutral, matching the other controls — red is reserved for active recording. */
 .group-call-action--record {
-  background: rgba(255, 255, 255, 0.14);
+  background: transparent;
   color: #fff;
 }
 
@@ -658,6 +889,20 @@
   color: #fff;
   position: relative;
   animation: group-call-rec-blink 1.15s ease-in-out infinite;
+}
+
+.group-call-tile__self-share-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  background: #0a0d12;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 @keyframes group-call-rec-blink {

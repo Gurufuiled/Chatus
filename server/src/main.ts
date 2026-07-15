@@ -16,8 +16,12 @@ const EMBED_FRAME_ANCESTORS_CSP = 'frame-ancestors https://id.startapus.com';
 
 function setEmbedSecurityHeaders(res: Response) {
   res.setHeader('Content-Security-Policy', EMBED_FRAME_ANCESTORS_CSP);
-  // Parent iframe must also set allow="microphone"; this enables getUserMedia in /embed.
-  res.setHeader('Permissions-Policy', 'microphone=(self)');
+  // Parent iframe (Loginus) must allow these via Permissions-Policy / iframe allow=.
+  // autoplay is required to hear remote LiveKit audio inside the embed.
+  res.setHeader(
+    'Permissions-Policy',
+    'microphone=(self), camera=(self), autoplay=(self), display-capture=(self)',
+  );
 }
 
 /** Публичный JSON для мобильного клиента (обновления APK). Обходит 404 на raw GitHub для приватных репозиториев. */
@@ -171,7 +175,10 @@ async function bootstrap() {
   const standaloneAppIndexPath = join(standaloneAppDir, 'app.html');
 
   function setStandaloneAppHeaders(res: Response) {
-    res.setHeader('Permissions-Policy', 'microphone=(self)');
+    res.setHeader(
+      'Permissions-Policy',
+      'microphone=(self), camera=(self), autoplay=(self), display-capture=(self)',
+    );
   }
 
   expressApp.use('/app', (_req, res, next) => {

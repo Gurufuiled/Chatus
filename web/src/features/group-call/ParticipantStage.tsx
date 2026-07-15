@@ -5,7 +5,8 @@ import { ParticipantTile, TILE_ASPECT_RATIO } from './ParticipantTile';
 const STAGE_PADDING_H = 16;
 const STAGE_PADDING_V = 12;
 const TILE_GAP = 10;
-const SINGLE_TILE_MAX_WIDTH = 320;
+const SINGLE_TILE_MAX_WIDTH = 560;
+const SINGLE_TILE_WIDTH_RATIO = 0.7;
 
 type ParticipantStageProps = {
   participants: GroupCallParticipant[];
@@ -34,7 +35,7 @@ function computeLayout(
   const innerHeight = Math.max(0, containerHeight - STAGE_PADDING_V * 2);
 
   if (count <= 0) {
-    const tileWidth = Math.min(innerWidth * 0.55, SINGLE_TILE_MAX_WIDTH);
+    const tileWidth = Math.min(innerWidth * SINGLE_TILE_WIDTH_RATIO, SINGLE_TILE_MAX_WIDTH);
     return {
       columns: 1,
       tileWidth,
@@ -87,7 +88,11 @@ function computeLayout(
   }
 
   if (count === 1) {
-    layout.tileWidth = Math.min(layout.tileWidth, SINGLE_TILE_MAX_WIDTH);
+    layout.tileWidth = Math.min(
+      layout.tileWidth,
+      innerWidth * SINGLE_TILE_WIDTH_RATIO,
+      SINGLE_TILE_MAX_WIDTH,
+    );
     layout.tileHeight = layout.tileWidth / TILE_ASPECT_RATIO;
     if (layout.tileHeight > innerHeight) {
       layout.tileHeight = innerHeight;

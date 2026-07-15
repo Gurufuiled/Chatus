@@ -9,6 +9,7 @@ import {
   type SendStickerMessageInput,
   type SendTextMessageInput,
 } from '@/services/messageService';
+import { pinChatMessage, unpinChatMessage } from '@/services/chatService';
 import type { MappedMessage } from '@/types/message';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { chatsQueryKey } from '@/queries/chats.queries';
@@ -314,13 +315,17 @@ export function usePinMessageMutation() {
     mutationFn: async ({
       chatId,
       messageId,
+      notify = true,
     }: {
       chatId: string;
       messageId: string | null;
+      /** When pinning: true = notify members (Telegram default). */
+      notify?: boolean;
     }) => {
-      const sent = wsClient.pinMessage(chatId, messageId);
-      if (!sent) {
-        throw new Error('WebSocket is not connected (pin requires WS)');
+      if (messageId) {
+        await pinChatMessage(chatId, messageId, notify);
+      } else {
+        await unpinChatMessage(chatId);
       }
       return { chatId, messageId };
     },
@@ -401,13 +406,30 @@ export function useForwardMessagesMutation() {
   return useMutation({
     mutationFn: async ({
       sourceChatId,
+      targetChatIds,
       targetChatId,
       messageIds,
+      caption,
     }: {
       sourceChatId: string;
-      targetChatId: string;
+      /** Preferred: forward into one or many chats. */
+      targetChatIds?: string[];
+      /** @deprecated use targetChatIds */
+      targetChatId?: string;
       messageIds: string[];
+      caption?: string;
     }) => {
+      const targets = [
+        ...new Set(
+          (targetChatIds?.length ? targetChatIds : targetChatId ? [targetChatId] : []).filter(
+            Boolean,
+          ),
+        ),
+      ];
+      if (targets.length === 0) {
+        throw new Error('No target chats selected');
+      }
+
       const sourceMessages =
         queryClient.getQueryData<MappedMessage[]>(messagesQueryKey(sourceChatId)) ?? [];
       const toForward = messageIds
@@ -419,25 +441,43 @@ export function useForwardMessagesMutation() {
       }
 
       let sentCount = 0;
-      for (const message of toForward) {
-        const payload = buildForwardPayload(message);
-        if (!payload) continue;
+      for (const chatId of targets) {
+        let forwardedInChat = 0;
+        for (const message of toForward) {
+          const payload = buildForwardPayload(message);
+          if (!payload) continue;
 
-        const sent = wsClient.forwardMessage(targetChatId, {
-          ...payload,
-          client_temp_id: crypto.randomUUID(),
-        });
-        if (!sent) {
-          throw new Error('WebSocket is not connected (forward requires WS)');
+          const sent = wsClient.forwardMessage(chatId, {
+            ...payload,
+            client_temp_id: crypto.randomUUID(),
+          });
+          if (!sent) {
+            throw new Error('WebSocket is not connected (forward requires WS)');
+          }
+          sentCount += 1;
+          forwardedInChat += 1;
         }
-        sentCount += 1;
+
+        const trimmedCaption = caption?.trim();
+        if (trimmedCaption && forwardedInChat > 0) {
+          const captionSent = wsClient.sendEvent('send_message', {
+            chat_id: chatId,
+            content: trimmedCaption,
+            msg_type: 'text',
+            client_temp_id: crypto.randomUUID(),
+            relay_mailbox: true,
+          });
+          if (!captionSent) {
+            throw new Error('WebSocket is not connected (forward requires WS)');
+          }
+        }
       }
 
       if (sentCount === 0) {
         throw new Error('These messages cannot be forwarded');
       }
 
-      return { targetChatId, count: sentCount };
+      return { targetChatIds: targets, count: sentCount };
     },
     onError: (err, { sourceChatId }) => {
       setError(

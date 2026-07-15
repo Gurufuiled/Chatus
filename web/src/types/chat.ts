@@ -1,4 +1,9 @@
 import type { MappedMessage } from './message';
+import type {
+  EffectiveGroupPermissions,
+  GroupAdminPermissions,
+  GroupMemberPermissions,
+} from './groupSettings';
 
 export type ChatType = 'private' | 'group' | 'channel' | string;
 
@@ -11,6 +16,8 @@ export interface MappedChatMember {
   tag: string | null;
   tag_color: string | null;
   joined_at: number;
+  /** Present for group admins when server maps adminPermissions JSON. */
+  admin_permissions?: Partial<GroupAdminPermissions> | null;
   user?: {
     id: string;
     username: string | null;
@@ -34,6 +41,16 @@ export interface ChannelPermissions {
   can_add_admins: boolean;
   can_remove_admins: boolean;
   can_edit_admin_permissions: boolean;
+}
+
+/** Member/default permissions for groups (from group settings API). */
+export interface GroupPermissions {
+  can_pin_messages?: boolean;
+  can_create_polls?: boolean;
+  can_send_messages?: boolean;
+  can_send_media?: boolean;
+  can_add_users?: boolean;
+  can_change_info?: boolean;
 }
 
 export interface ChatSummary {
@@ -68,6 +85,21 @@ export interface ChatSummary {
   can_react?: boolean;
   linked_discussion_chat_id?: string | null;
   channel_permissions?: Partial<ChannelPermissions>;
+  /**
+   * When true, non-admins cannot forward or download/save media
+   * (Telegram-like "restrict saving content").
+   */
+  restrict_saving_content?: boolean;
+  hide_members?: boolean;
+  members_hidden?: boolean;
+  /** Server: default rights for regular members. */
+  member_permissions?: Partial<GroupMemberPermissions>;
+  /** Server: effective rights for the current user. */
+  my_permissions?: Partial<EffectiveGroupPermissions>;
+  /** @deprecated Prefer my_permissions — kept for older client shapes/tests. */
+  group_permissions?: Partial<GroupPermissions>;
+  /** @deprecated Prefer member_permissions. */
+  default_permissions?: Partial<GroupPermissions>;
   last_message_id: string | null;
   pinned_message_id?: string | null;
   last_message_at: number | null;

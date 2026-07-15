@@ -4,8 +4,10 @@ import { useAuthUiStore } from '@/stores/authUiStore';
 import { useWsUiStore } from '@/stores/wsUiStore';
 import { chatsQueryKey } from '@/queries/chats.queries';
 import { messagesQueryKey } from '@/queries/messages.queries';
+import { pollQueryKey } from '@/services/pollService';
 import type { ChatSummary } from '@/types/chat';
 import type { MappedMessage } from '@/types/message';
+import type { MappedPoll } from '@/utils/pollPayload';
 import {
   getMessageStatusRank,
   getOutgoingMessagePreview,
@@ -228,6 +230,55 @@ export function useWsLifecycle(activeChatId?: string) {
               : message,
           ),
         );
+      },
+      onPollUpdated: (payload) => {
+        const chatId = payload.chat_id;
+        const messageId = payload.message_id;
+        const poll = payload.poll as MappedPoll | undefined;
+        if (typeof chatId !== 'string' || typeof messageId !== 'string' || !poll?.id) {
+          return;
+        }
+
+        const fromQuery = queryClient.getQueryData<MappedPoll>(pollQueryKey(chatId, messageId));
+        const fromMessage = queryClient
+          .getQueryData<MappedMessage[]>(messagesQueryKey(chatId))
+          ?.find((m) => m.id === messageId)?.poll;
+        const priorMine =
+          (fromQuery?.my_option_ids?.length ? fromQuery.my_option_ids : null) ??
+          (fromMessage?.my_option_ids?.length ? fromMessage.my_option_ids : null) ??
+          [];
+
+        const merged: MappedPoll =
+          priorMine.length > 0 && (!poll.my_option_ids || poll.my_option_ids.length === 0)
+            ? {
+                ...poll,
+                my_option_ids: priorMine,
+                options: poll.options.map((opt) => ({
+                  ...opt,
+                  voted_by_me: priorMine.includes(opt.id),
+                })),
+              }
+            : poll;
+
+        // Only write pollQuery when we have viewer state or already had a personalized cache;
+        // otherwise just invalidate so GET loads my_option_ids without seeding [].
+        if (priorMine.length > 0 || (fromQuery?.my_option_ids?.length ?? 0) > 0) {
+          queryClient.setQueryData(pollQueryKey(chatId, messageId), merged);
+        }
+
+        queryClient.setQueryData<MappedMessage[]>(messagesQueryKey(chatId), (old) =>
+          old?.map((message) => {
+            if (message.id !== messageId) return message;
+            if (!message.poll && priorMine.length === 0) {
+              return message;
+            }
+            return { ...message, poll: merged };
+          }),
+        );
+
+        if (priorMine.length === 0 && (!poll.my_option_ids || poll.my_option_ids.length === 0)) {
+          void queryClient.invalidateQueries({ queryKey: pollQueryKey(chatId, messageId) });
+        }
       },
     });
 

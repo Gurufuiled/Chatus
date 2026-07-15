@@ -1,0 +1,39 @@
+.attachment-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 52px;
+  z-index: 40;
+  min-width: 200px;
+  background: var(--color-surface, #fff);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.attachment-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 14px;
+}
+
+.attachment-menu__item:hover:not(:disabled) {
+  background: rgba(72, 127, 232, 0.08);
+}
+
+.attachment-menu__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.attachment-menu__hint {
+  font-size: 11px;
+  color: var(--color-text-secondary, #6b7280);
+  font-weight: 500;
+}

@@ -9,6 +9,7 @@ export type MessageType =
   | 'file'
   | 'sticker'
   | 'system'
+  | 'poll'
   | string;
 
 export interface MappedMessageReaction {
@@ -56,6 +57,8 @@ export interface MappedMessage {
   updated_at: number;
   media?: MappedMedia[];
   reactions?: MappedMessageReaction[];
+  /** Present when server attaches poll data (create/WS) or after client fetch. */
+  poll?: import('@/utils/pollPayload').MappedPoll | null;
   forwarded_from_message_id?: string | null;
   forwarded_from_name?: string | null;
   forwarded_from_chat_id?: string | null;

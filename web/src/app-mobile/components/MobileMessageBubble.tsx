@@ -5,17 +5,34 @@ import {
   ImageMessageContent,
   VideoMessageContent,
 } from '@/features/conversation/MediaMessageContent';
+import { PollMessageContent } from '@/features/conversation/PollMessageContent';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { parseGroupCallSystemContent } from '@/utils/groupCallSystemMessage';
 import { isChatusStickerMessage, tryDecodeStickerPayload } from '@/utils/stickerPayload';
 import { getStickerImageUrl } from '@/data/stickerCatalog';
 import { isAlbumCaption } from '@/utils/albumCaption';
+import { isPollMessage } from '@/utils/pollPayload';
+import { canSaveOrForwardContent } from '@/utils/chatPermissions';
+import { useChatsQuery } from '@/queries/chats.queries';
+import { useMeQuery } from '@/queries/auth.queries';
 import type { MappedMessage } from '@/types/message';
 
 interface MobileMessageBubbleProps {
   message: MappedMessage;
   isOutgoing: boolean;
   showSenderName?: boolean;
+  chatId?: string;
+}
+
+function ForwardLabel({ message }: { message: MappedMessage }) {
+  const name = message.forwarded_from_name?.trim();
+  if (!name) return null;
+  return (
+    <div className="message-forward-header">
+      <span className="message-forward-header__label">Переслано от</span>{' '}
+      <span className="message-forward-header__name">{name}</span>
+    </div>
+  );
 }
 
 function BubbleMeta({
@@ -81,7 +98,17 @@ function SenderName({
   return <span className="mobile-bubble__sender">{message.sender_name}</span>;
 }
 
-export function MobileMessageBubble({ message, isOutgoing, showSenderName = false }: MobileMessageBubbleProps) {
+export function MobileMessageBubble({
+  message,
+  isOutgoing,
+  showSenderName = false,
+  chatId,
+}: MobileMessageBubbleProps) {
+  const { data: chats } = useChatsQuery();
+  const { data: me } = useMeQuery();
+  const chat = chatId ? chats?.find((c) => c.id === chatId) : undefined;
+  const allowSave = canSaveOrForwardContent(chat, me);
+
   if (message.is_deleted) {
     return null;
   }
@@ -124,7 +151,21 @@ export function MobileMessageBubble({ message, isOutgoing, showSenderName = fals
     return (
       <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
         <div className={`${bubbleClass} mobile-bubble--sticker`}>
+          <ForwardLabel message={message} />
           <img className="mobile-bubble__sticker" src={stickerUrl} alt="Стикер" />
+          <BubbleMeta message={message} isOutgoing={isOutgoing} />
+        </div>
+      </div>
+    );
+  }
+
+  if (isPollMessage(message) && chatId) {
+    return (
+      <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
+        <SenderName message={message} show={showSenderName} />
+        <div className={bubbleClass}>
+          <ForwardLabel message={message} />
+          <PollMessageContent chatId={chatId} message={message} />
           <BubbleMeta message={message} isOutgoing={isOutgoing} />
         </div>
       </div>
@@ -136,7 +177,7 @@ export function MobileMessageBubble({ message, isOutgoing, showSenderName = fals
       <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
         <div className={`${bubbleClass} mobile-bubble--media`}>
           <div className="mobile-bubble__media">
-            <ImageMessageContent url={firstMedia!.remote_url!} />
+            <ImageMessageContent url={firstMedia!.remote_url!} allowDownload={allowSave} />
             {!caption ? (
               <div className="mobile-bubble__media-overlay">
                 <BubbleMeta message={message} isOutgoing={isOutgoing} overlay />
@@ -169,6 +210,7 @@ export function MobileMessageBubble({ message, isOutgoing, showSenderName = fals
               authorLabel={message.sender_name}
               durationMs={firstMedia?.duration_ms ?? 0}
               registerPlayback={isRoundVideo}
+              controlsDownload={allowSave}
             />
             {!caption ? (
               <div className="mobile-bubble__media-overlay">
@@ -213,6 +255,7 @@ export function MobileMessageBubble({ message, isOutgoing, showSenderName = fals
     <div className={`mobile-bubble-row mobile-bubble-row--${isOutgoing ? 'out' : 'in'}`}>
       <SenderName message={message} show={showSenderName} />
       <div className={bubbleClass}>
+        <ForwardLabel message={message} />
         {text ? (
           <div className="mobile-bubble__text-row">
             <p className="mobile-bubble__text">{text}</p>

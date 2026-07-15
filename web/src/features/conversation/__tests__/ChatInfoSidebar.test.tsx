@@ -3,8 +3,10 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatInfoSidebar } from '@/features/conversation/ChatInfoSidebar';
 import { makeChat, makeMedia, makeMessage } from '@/test/fixtures';
+import { defaultGroupSettings } from '@/types/groupSettings';
 
 const addMembersMutate = vi.fn();
+const updateGroupMutate = vi.fn();
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, ...props }: { children: React.ReactNode; to: string }) => (
@@ -27,6 +29,30 @@ vi.mock('@/queries/chats.queries', () => ({
     mutate: addMembersMutate,
     isPending: false,
   }),
+  useUpdateGroupChatMutation: () => ({
+    mutate: updateGroupMutate,
+    isPending: false,
+  }),
+  isMissingEndpoint: () => false,
+  useGroupSettingsQuery: (chatId: string) => ({
+    data: defaultGroupSettings(chatId || 'chat-1'),
+    error: null,
+    isError: false,
+    isLoading: false,
+  }),
+  useGroupInviteLinkQuery: () => ({
+    data: { invite_token: 'demo-token', invite_link: 'chatus://join/demo-token' },
+    error: null,
+    isError: false,
+    isLoading: false,
+  }),
+  useUpdateGroupSettingsMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateGroupAdminMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useRegenerateGroupInviteMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useRevokeGroupInviteMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useRemoveGroupMemberMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useLeaveGroupMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteChatMutation: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 const messages = [
@@ -117,6 +143,7 @@ describe('ChatInfoSidebar', () => {
   beforeEach(() => {
     onClose.mockReset();
     addMembersMutate.mockReset();
+    updateGroupMutate.mockReset();
   });
 
   it('renders media tab by default with grid items', () => {
@@ -179,19 +206,131 @@ describe('ChatInfoSidebar', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('shows add-member control between settings and participants for group owners', () => {
+  it('shows settings and add-member for group owners; no Favorites', () => {
     render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
 
+    const settingsBtn = screen.getByRole('button', { name: 'Настройки группы' });
     const addBtn = screen.getByRole('button', { name: 'Добавить участника' });
-    const favorites = screen.getByText('Избранное');
+    const notifications = screen.getByText('Уведомления');
     const participants = screen.getByText(/Участники \(2\)/i);
 
+    expect(screen.queryByText('Избранное')).not.toBeInTheDocument();
     expect(
-      favorites.compareDocumentPosition(addBtn) & Node.DOCUMENT_POSITION_FOLLOWING,
+      notifications.compareDocumentPosition(settingsBtn) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      settingsBtn.compareDocumentPosition(addBtn) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       addBtn.compareDocumentPosition(participants) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it('opens group settings panel for owners', async () => {
+    const user = userEvent.setup();
+    render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Настройки группы' }));
+
+    expect(screen.getByRole('heading', { name: 'Настройки группы' })).toBeInTheDocument();
+    expect(screen.getByText('Права участников')).toBeInTheDocument();
+    expect(screen.getByText('Администраторы')).toBeInTheDocument();
+    expect(screen.queryByText('Создавать опросы')).not.toBeInTheDocument();
+  });
+
+  it('opens member permissions with poll toggle', async () => {
+    const user = userEvent.setup();
+    render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Настройки группы' }));
+    await user.click(screen.getByRole('button', { name: /Права участников/i }));
+
+    expect(screen.getByText('Создавать опросы')).toBeInTheDocument();
+    expect(screen.queryByText('Запретить сохранение контента')).not.toBeInTheDocument();
+  });
+
+  it('shows group settings for admins but not add-member', () => {
+    const chat = makeGroupChat();
+    chat.members = chat.members?.map((member) =>
+      member.user_id === 'me-1' ? { ...member, role: 'admin' } : member,
+    );
+    render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
+
+    expect(screen.getByRole('button', { name: 'Настройки группы' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Добавить участника' })).not.toBeInTheDocument();
+  });
+
+  it('opens group edit mode from pencil instead of profile settings', async () => {
+    const user = userEvent.setup();
+    render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Редактировать группу' }));
+
+    expect(screen.getByText('Редактирование')).toBeInTheDocument();
+    expect(screen.getByLabelText('Название группы')).toHaveValue('Команда');
+    expect(screen.queryByRole('link', { name: 'Редактировать' })).not.toBeInTheDocument();
+  });
+
+  it('saves group name and description from edit mode', async () => {
+    const user = userEvent.setup();
+    const chat = makeGroupChat();
+    chat.description = 'Старое описание';
+    render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
+
+    expect(screen.getByText('Старое описание')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Редактировать группу' }));
+    await user.clear(screen.getByLabelText('Название группы'));
+    await user.type(screen.getByLabelText('Название группы'), 'Новая команда');
+    await user.clear(screen.getByLabelText('Описание группы'));
+    await user.type(screen.getByLabelText('Описание группы'), 'Новое описание');
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    expect(updateGroupMutate).toHaveBeenCalledWith(
+      {
+        chatId: 'chat-1',
+        name: 'Новая команда',
+        description: 'Новое описание',
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+  });
+
+  it('shows validation error when saving empty group name', async () => {
+    const user = userEvent.setup();
+    render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Редактировать группу' }));
+    await user.clear(screen.getByLabelText('Название группы'));
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Введите название группы');
+    expect(updateGroupMutate).not.toHaveBeenCalled();
+  });
+
+  it('cancels group edit on Escape without closing sidebar', async () => {
+    const user = userEvent.setup();
+    render(<ChatInfoSidebar chat={makeGroupChat()} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'Редактировать группу' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByText('Информация')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('hides group edit pencil for private chats', () => {
+    render(<ChatInfoSidebar chat={makeChat()} onClose={onClose} />);
+    expect(screen.queryByRole('button', { name: 'Редактировать группу' })).not.toBeInTheDocument();
+  });
+
+  it('hides group edit pencil for non-owner members', () => {
+    const chat = makeGroupChat();
+    chat.members = chat.members?.map((member) =>
+      member.user_id === 'me-1' ? { ...member, role: 'member' } : member,
+    );
+    render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
+    expect(screen.queryByRole('button', { name: 'Редактировать группу' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Настройки группы' })).not.toBeInTheDocument();
   });
 
   it('opens add-member picker from group profile', async () => {

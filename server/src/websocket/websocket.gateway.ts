@@ -380,10 +380,14 @@ export class WebsocketGateway
   @SubscribeMessage('pin_message')
   async handlePinMessage(
     client: AuthenticatedSocket,
-    payload: { chat_id?: string; message_id?: string | null },
+    payload: {
+      chat_id?: string;
+      message_id?: string | null;
+      notify?: boolean;
+    },
   ) {
     if (!client.userId) return;
-    const { chat_id: chatId, message_id: messageId } = payload;
+    const { chat_id: chatId, message_id: messageId, notify } = payload;
     if (!chatId) return;
 
     const wsOpId = randomUUID();
@@ -392,11 +396,13 @@ export class WebsocketGateway
         chatId,
         client.userId,
         messageId ?? null,
+        notify !== false,
       );
       await this.realtimeService.broadcastToChatMembers(chatId, {
         type: 'chat_pinned_message_updated',
         chat_id: chat.id,
         pinned_message_id: chat.pinned_message_id,
+        pinned_notify: chat.pinned_notify ?? true,
       });
       this.log.log(
         `pin_message ok ${JSON.stringify({
@@ -404,6 +410,7 @@ export class WebsocketGateway
           chatId,
           userId: client.userId,
           pinnedMessageId: messageId ?? null,
+          notify: notify !== false,
         })}`,
       );
     } catch (err) {

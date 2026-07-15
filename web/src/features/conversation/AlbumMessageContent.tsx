@@ -10,6 +10,7 @@ interface AlbumMessageContentProps {
   media: MappedMedia[];
   msgType: string;
   onOpenAt?: (index: number) => void;
+  allowDownload?: boolean;
 }
 
 function getVisualKind(msgType: string, item: MappedMedia): 'image' | 'video' {
@@ -19,7 +20,12 @@ function getVisualKind(msgType: string, item: MappedMedia): 'image' | 'video' {
   return msgType === 'video' ? 'video' : 'image';
 }
 
-export function AlbumMessageContent({ media, msgType, onOpenAt }: AlbumMessageContentProps) {
+export function AlbumMessageContent({
+  media,
+  msgType,
+  onOpenAt,
+  allowDownload = true,
+}: AlbumMessageContentProps) {
   const [lightbox, setLightbox] = useState<{ src: string; index: number } | null>(null);
   const items = media.filter((m) => m.remote_url?.trim()).slice(0, 10);
   const visible = items.slice(0, 9);
@@ -55,7 +61,16 @@ export function AlbumMessageContent({ media, msgType, onOpenAt }: AlbumMessageCo
         aria-label="Открыть медиа"
         onClick={() => openAt(showExtra ? visible.length : index)}
       >
-        {src ? <img src={src} alt="" className="album-message__img" loading="lazy" /> : null}
+        {src ? (
+          <img
+            src={src}
+            alt=""
+            className="album-message__img"
+            loading="lazy"
+            draggable={allowDownload}
+            onContextMenu={allowDownload ? undefined : (e) => e.preventDefault()}
+          />
+        ) : null}
         {kind === 'video' ? (
           <span className="album-message__video-badge" aria-hidden>
             ▶
@@ -131,7 +146,11 @@ export function AlbumMessageContent({ media, msgType, onOpenAt }: AlbumMessageCo
         {grid}
       </div>
       {lightbox ? (
-        <ImageLightbox src={lightbox.src} onClose={() => setLightbox(null)} />
+        <ImageLightbox
+          src={lightbox.src}
+          onClose={() => setLightbox(null)}
+          allowDownload={allowDownload}
+        />
       ) : null}
     </>
   );

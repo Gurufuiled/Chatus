@@ -27,6 +27,10 @@ vi.mock('@/queries/auth.queries', () => ({
   useMeQuery: () => ({ data: { id: 'me-1' } }),
 }));
 
+vi.mock('@/queries/chats.queries', () => ({
+  useChatsQuery: () => ({ data: [{ id: 'chat-1', chat_type: 'private', members: [] }] }),
+}));
+
 vi.mock('@/features/conversation/VoiceMessagePlayer', () => ({
   VoiceMessagePlayer: ({ src }: { src: string }) => <div data-testid="voice-player">{src}</div>,
 }));
@@ -41,6 +45,10 @@ vi.mock('@/features/conversation/MediaMessageContent', () => ({
   FileMessageContent: ({ fileName }: { fileName: string | null }) => (
     <span>{fileName ?? 'File'}</span>
   ),
+}));
+
+vi.mock('@/features/conversation/PollMessageContent', () => ({
+  PollMessageContent: () => <div data-testid="poll-content">Poll</div>,
 }));
 
 import type { UseQueryResult } from '@tanstack/react-query';

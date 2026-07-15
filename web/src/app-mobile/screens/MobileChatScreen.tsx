@@ -5,10 +5,15 @@ import {
   useForwardMessagesMutation,
   useMarkChatReadMutation,
   useMessagesQuery,
+  usePinMessageMutation,
 } from '@/queries/messages.queries';
+import { useMeQuery } from '@/queries/auth.queries';
 import { resolveMediaUrl } from '@/services/mediaService';
 import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import { ForwardDialog } from '@/features/conversation/ForwardDialog';
+import { PinnedMessageBar } from '@/features/conversation/PinnedMessageBar';
+import { getOutgoingMessagePreview } from '@/features/conversation/messageFormatters';
+import { canPinMessages } from '@/utils/chatPermissions';
 import { MobileChatHeader } from '../components/MobileChatHeader';
 import { MobileMessageList } from '../components/MobileMessageList';
 import { MobileMessageComposer } from '../components/MobileMessageComposer';
@@ -26,10 +31,22 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
   const navigate = useNavigate();
   const { data: chats, isLoading: chatsLoading } = useChatsQuery();
   const { data: messages, isLoading: messagesLoading } = useMessagesQuery(chatId);
+  const { data: me } = useMeQuery();
   const { mutate: markChatRead } = useMarkChatReadMutation();
   const forwardMutation = useForwardMessagesMutation();
+  const pinMutation = usePinMessageMutation();
   const markedRef = useRef<string | null>(null);
   const chat = chats?.find((c) => c.id === chatId);
+
+  const pinnedMessageId = chat?.pinned_message_id ?? null;
+  const pinnedMessage = useMemo(
+    () =>
+      pinnedMessageId
+        ? (messages ?? []).find((m) => m.id === pinnedMessageId) ?? null
+        : null,
+    [messages, pinnedMessageId],
+  );
+  const canUnpin = canPinMessages(chat, me);
 
   useEffect(() => {
     if (!chat || chat.chat_type !== 'channel') return;
@@ -40,13 +57,14 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
   const closeForward = useCallback(() => setForwardMessageIds([]), []);
 
   const handleForwardToChat = useCallback(
-    (targetChatId: string) => {
+    (targetChatIds: string[], caption?: string) => {
       if (forwardMessageIds.length === 0) return;
       forwardMutation.mutate(
         {
           sourceChatId: chatId,
-          targetChatId,
+          targetChatIds,
           messageIds: forwardMessageIds,
+          caption,
         },
         { onSuccess: closeForward },
       );
@@ -155,6 +173,25 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
     >
       <MobileChatHeader chat={chat} />
       {banner}
+      {pinnedMessageId ? (
+        <PinnedMessageBar
+          preview={
+            pinnedMessage
+              ? getOutgoingMessagePreview(pinnedMessage) || 'Сообщение'
+              : 'Закреплённое сообщение'
+          }
+          canUnpin={canUnpin}
+          onPress={() => {
+            document
+              .getElementById(`msg-${pinnedMessageId}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }}
+          onUnpin={() => {
+            if (!canUnpin) return;
+            pinMutation.mutate({ chatId, messageId: null });
+          }}
+        />
+      ) : null}
       <MobileMessageList chatId={chatId} keyboardLift={keyboardLift} isGroupChat={chat.chat_type === 'group'} />
       <MobileMessageComposer
         chatId={chatId}
@@ -172,7 +209,7 @@ export function MobileChatScreen({ chatId }: MobileChatScreenProps) {
         sourceChatId={chatId}
         pending={forwardMutation.isPending}
         onClose={closeForward}
-        onSelectChat={handleForwardToChat}
+        onForward={handleForwardToChat}
       />
     </div>
   );
