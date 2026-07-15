@@ -162,7 +162,7 @@ export function MobileMiniAppScreen({ appId, title }: MobileMiniAppScreenProps) 
         themeParams: bridgeContext.themeParams,
         colorScheme: bridgeContext.colorScheme,
       }),
-      session?.base_url ? new URL(session.base_url).origin : '*',
+      '*',
     );
   }, [bridgeContext]);
 
