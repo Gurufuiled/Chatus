@@ -239,8 +239,10 @@ async function publishGroupCallRecordingState(room: Room, active: boolean): Prom
   if (!currentUserId) return;
   const { displayName } = localParticipantProfile(currentUserId);
   try {
+    // Typecast to any/Uint8Array to bypass newer typescript strictness over SharedArrayBuffer
+    const payload = buildGroupCallRecordingPayload(active, currentUserId, displayName || 'Участник') as any;
     await room.localParticipant.publishData(
-      buildGroupCallRecordingPayload(active, currentUserId, displayName || 'Участник'),
+      payload,
       { reliable: true },
     );
   } catch (err) {

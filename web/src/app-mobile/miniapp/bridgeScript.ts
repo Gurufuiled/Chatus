@@ -77,7 +77,7 @@ export function buildBridgeScript(context: BridgeInitContext): string {
       window.ReactNativeWebView.postMessage(raw);
     }
     if (window.parent && window.parent !== window) {
-      try { window.parent.postMessage(raw, '*'); } catch (e) {}
+      try { window.parent.postMessage(raw, window.location.origin); } catch (e) {}
     }
   }
 
@@ -187,5 +187,20 @@ export function injectBridgeIntoFrame(
   } catch {
     /* cross-origin */
   }
-  iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), '*');
+
+  // NOTE: In a real-world scenario, you might want to specify the actual target origin
+  // instead of '*' if you know the exact URL of the mini-app being hosted to prevent
+  // information leakage. For now, since the miniapps can be arbitrary URLs, we attempt
+  // to restrict it to window.location.origin or the iframe's src.
+  let targetOrigin = '*';
+  try {
+    if (iframe.src) {
+      const url = new URL(iframe.src);
+      targetOrigin = url.origin;
+    }
+  } catch (e) {
+    // Ignore invalid URL
+  }
+
+  iframe.contentWindow?.postMessage(JSON.stringify({ type: 'chatus-init', ...initMessage }), targetOrigin);
 }
