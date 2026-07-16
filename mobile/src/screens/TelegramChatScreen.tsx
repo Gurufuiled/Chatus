@@ -2967,6 +2967,13 @@ export function TelegramChatScreen() {
                 { paddingTop: CHAT_MSG_VERTICAL_PADDING + inputBarHeight },
               ]}
               keyboardShouldPersistTaps="handled"
+              // ⚡ Bolt: Adding list virtualization tuning for large chat performance.
+              // Conditionally disable removeClippedSubviews on iOS when search is active to prevent rendering glitches.
+              removeClippedSubviews={Platform.OS === 'android' ? true : !isSearchMode}
+              initialNumToRender={12}
+              maxToRenderPerBatch={Platform.OS === 'android' ? 5 : 8}
+              updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : 45}
+              windowSize={Platform.OS === 'android' ? 5 : 8}
               refreshing={loading}
               onRefresh={() => void loadHistory(false)}
               onEndReached={() => void loadHistory(true)}
