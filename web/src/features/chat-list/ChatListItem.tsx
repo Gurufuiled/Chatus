@@ -9,6 +9,11 @@ import {
 } from './chatListFormatters';
 import type { ChatSummary } from '@/types/chat';
 import { useMeQuery } from '@/queries/auth.queries';
+import { usePeerContactsMap } from '@/queries/peerContacts.queries';
+import {
+  formatPeerLocalDisplayName,
+  getPrivateChatPeerUserId,
+} from '@/features/contacts/peerContactDisplay';
 import { useMenuStore } from '@/stores/menuStore';
 
 interface ChatListItemProps {
@@ -18,7 +23,10 @@ interface ChatListItemProps {
 
 export function ChatListItem({ chat, active = false }: ChatListItemProps) {
   const { data: me } = useMeQuery();
-  const displayName = getChatDisplayName(chat);
+  const peerContacts = usePeerContactsMap();
+  const peerId = getPrivateChatPeerUserId(chat, me?.id);
+  const localName = peerId ? formatPeerLocalDisplayName(peerContacts.get(peerId)) : null;
+  const displayName = getChatDisplayName(chat, localName);
   const preview = formatMessagePreview(chat.last_message_preview, chat.last_message);
   const time = formatChatTime(chat.last_message_at);
   const isOutgoingLast =

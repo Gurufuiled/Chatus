@@ -190,8 +190,15 @@ export function activateDevPublicAuthBypass(): void {
     return;
   }
 
-  const token = import.meta.env.VITE_DEV_ACCESS_TOKEN as string | undefined;
-  if (!token?.trim()) {
+  let override: string | null = null;
+  try {
+    override = sessionStorage.getItem('chatus_dev_access_token');
+  } catch {
+    // ignore
+  }
+  const token = (override?.trim() ||
+    (import.meta.env.VITE_DEV_ACCESS_TOKEN as string | undefined))?.trim();
+  if (!token) {
     useAuthUiStore.getState().setEmbedStatus('error');
     useAuthUiStore
       .getState()
@@ -199,8 +206,8 @@ export function activateDevPublicAuthBypass(): void {
     return;
   }
 
-  setAccessToken(token.trim());
-  useAuthUiStore.getState().setAccessToken(token.trim());
+  setAccessToken(token);
+  useAuthUiStore.getState().setAccessToken(token);
   useAuthUiStore.getState().setEmbedStatus('ready');
 }
 

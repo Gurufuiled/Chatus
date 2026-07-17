@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthUiStore } from '@/stores/authUiStore';
+import { useTypingStore } from '@/stores/typingStore';
 import { useWsUiStore } from '@/stores/wsUiStore';
 import { chatsQueryKey } from '@/queries/chats.queries';
 import { messagesQueryKey } from '@/queries/messages.queries';
@@ -194,6 +195,10 @@ export function useWsLifecycle(activeChatId?: string) {
         const meId = currentUserIdRef.current;
         const openChatId = activeChatIdRef.current;
 
+        if (message.sender_id) {
+          useTypingStore.getState().clearUserTyping(message.chat_id, message.sender_id);
+        }
+
         queryClient.setQueryData<MappedMessage[]>(messagesQueryKey(message.chat_id), (old) =>
           mergeIncomingMessage(old ?? [], message, meId),
         );
@@ -214,6 +219,16 @@ export function useWsLifecycle(activeChatId?: string) {
           );
           return bumpUnreadForIncoming(withLast, message.chat_id, message, meId, openChatId);
         });
+      },
+      onTyping: (payload) => {
+        const chatId = payload.chat_id;
+        const userId = payload.user_id;
+        const meId = currentUserIdRef.current;
+        if (typeof chatId !== 'string' || typeof userId !== 'string') return;
+        if (meId && userId === meId) return;
+
+        const isTyping = payload.is_typing !== false;
+        useTypingStore.getState().setTypingUser(chatId, userId, isTyping);
       },
       onMessageReactionsUpdated: (payload) => {
         const chatId = payload.chat_id;
@@ -288,6 +303,7 @@ export function useWsLifecycle(activeChatId?: string) {
     return () => {
       wsClient.disconnect();
       useWsUiStore.getState().reset();
+      useTypingStore.setState({ typingUsersByChatId: {} });
     };
   }, [ready, queryClient]);
 
@@ -307,4 +323,19 @@ export function useWsLifecycle(activeChatId?: string) {
 
     return unsub;
   }, [ready]);
+
+  useEffect(() => {
+    if (!ready || isUiPreviewMode()) return;
+    const timer = setInterval(() => {
+      useTypingStore.getState().clearStaleTyping();
+    }, 2_000);
+    return () => clearInterval(timer);
+  }, [ready]);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    return () => {
+      useTypingStore.getState().clearChatTyping(activeChatId);
+    };
+  }, [activeChatId]);
 }

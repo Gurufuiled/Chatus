@@ -7,6 +7,7 @@ import { defaultGroupSettings } from '@/types/groupSettings';
 
 const addMembersMutate = vi.fn();
 const updateGroupMutate = vi.fn();
+const upsertPeerContactMutate = vi.fn();
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, ...props }: { children: React.ReactNode; to: string }) => (
@@ -21,6 +22,15 @@ vi.mock('@/queries/auth.queries', () => ({
 vi.mock('@/queries/users.queries', () => ({
   useUserDetailQuery: () => ({ data: null }),
   useUserSearchQuery: () => ({ data: [], isFetching: false }),
+}));
+
+vi.mock('@/queries/peerContacts.queries', () => ({
+  usePeerContactsMap: () => new Map(),
+  useUpsertPeerContactMutation: () => ({
+    mutate: upsertPeerContactMutate,
+    isPending: false,
+  }),
+  usePeerContactsQuery: () => ({ data: [] }),
 }));
 
 vi.mock('@/queries/chats.queries', () => ({
@@ -144,6 +154,7 @@ describe('ChatInfoSidebar', () => {
     onClose.mockReset();
     addMembersMutate.mockReset();
     updateGroupMutate.mockReset();
+    upsertPeerContactMutate.mockReset();
   });
 
   it('renders media tab by default with grid items', () => {
@@ -155,6 +166,75 @@ describe('ChatInfoSidebar', () => {
     const grid = document.querySelector('.chat-info-sidebar__media-grid');
     expect(grid).toBeTruthy();
     expect(within(grid as HTMLElement).getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('shows personal note field and edit name for private chats with peer', async () => {
+    const user = userEvent.setup();
+    const chat = makeChat({
+      peer_display_name: 'Анна',
+      members: [
+        {
+          chat_id: 'chat-1',
+          user_id: 'me-1',
+          role: 'member',
+          access_status: 'active',
+          subscription_expires_at: null,
+          tag: null,
+          tag_color: null,
+          joined_at: Date.now(),
+        },
+        {
+          chat_id: 'chat-1',
+          user_id: 'peer-1',
+          role: 'member',
+          access_status: 'active',
+          subscription_expires_at: null,
+          tag: null,
+          tag_color: null,
+          joined_at: Date.now(),
+          user: {
+            id: 'peer-1',
+            username: 'anna',
+            handle: 'anna',
+            display_name: 'Анна',
+            avatar_url: null,
+            phone: null,
+            is_online: false,
+            last_seen: null,
+          },
+        },
+      ],
+    });
+    render(<ChatInfoSidebar chat={chat} onClose={onClose} />);
+
+    const note = screen.getByLabelText('Заметка');
+    expect(note).toBeInTheDocument();
+    await user.type(note, 'коллега');
+    await user.tab();
+    expect(upsertPeerContactMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        peerUserId: 'peer-1',
+        payload: { note: 'коллега' },
+      }),
+      expect.anything(),
+    );
+
+    upsertPeerContactMutate.mockClear();
+    await user.click(screen.getByRole('button', { name: 'Изменить имя' }));
+    const firstName = screen.getByLabelText('Имя');
+    const lastName = screen.getByLabelText('Фамилия');
+    await user.clear(firstName);
+    await user.type(firstName, 'Мария');
+    await user.clear(lastName);
+    await user.type(lastName, 'П');
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(upsertPeerContactMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        peerUserId: 'peer-1',
+        payload: { first_name: 'Мария', last_name: 'П' },
+      }),
+      expect.anything(),
+    );
   });
 
   it('opens lightbox when image thumbnail is clicked', async () => {

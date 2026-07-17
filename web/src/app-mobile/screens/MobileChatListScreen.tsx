@@ -3,6 +3,12 @@ import { useNavigate } from '@tanstack/react-router';
 import { useChatsQuery } from '@/queries/chats.queries';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useMobileUiStore } from '@/stores/mobileUiStore';
+import { useMeQuery } from '@/queries/auth.queries';
+import { usePeerContactsMap } from '@/queries/peerContacts.queries';
+import {
+  formatPeerLocalDisplayName,
+  getPrivateChatPeerUserId,
+} from '@/features/contacts/peerContactDisplay';
 import { MobileChatListRow } from '../components/MobileChatListRow';
 import type { ChatSummary } from '@/types/chat';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
@@ -19,6 +25,8 @@ function sortChats(chats: ChatSummary[]): ChatSummary[] {
 export function MobileChatListScreen() {
   const navigate = useNavigate();
   const { data: chats, isLoading, isError, error } = useChatsQuery();
+  const { data: me } = useMeQuery();
+  const peerContacts = usePeerContactsMap();
   const chatListFilter = useMobileUiStore((s) => s.chatListFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedQuery = useDebouncedValue(searchQuery.trim(), SEARCH_DEBOUNCE_MS);
@@ -29,8 +37,14 @@ export function MobileChatListScreen() {
     const sorted = sortChats(chats.filter((c) => !c.is_archived));
     if (!debouncedQuery) return sorted;
     const q = debouncedQuery.toLowerCase();
-    return sorted.filter((chat) => getChatDisplayName(chat).toLowerCase().includes(q));
-  }, [chats, debouncedQuery, chatListFilter]);
+    return sorted.filter((chat) => {
+      const peerId = getPrivateChatPeerUserId(chat, me?.id);
+      const localName = peerId
+        ? formatPeerLocalDisplayName(peerContacts.get(peerId))
+        : null;
+      return getChatDisplayName(chat, localName).toLowerCase().includes(q);
+    });
+  }, [chats, debouncedQuery, chatListFilter, me?.id, peerContacts]);
 
   return (
     <div className="mobile-chat-list">

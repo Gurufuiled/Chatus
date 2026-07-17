@@ -9,6 +9,7 @@ interface ConversationDropZoneProps {
   chatId: string;
   disabled?: boolean;
   children: React.ReactNode;
+  style?: React.CSSProperties;
 }
 
 type DropMode = 'file' | 'quick';
@@ -21,6 +22,7 @@ export function ConversationDropZone({
   chatId,
   disabled = false,
   children,
+  style,
 }: ConversationDropZoneProps) {
   const dragDepth = useComposerStore((s) => s.dragDepth);
   const incrementDragDepth = useComposerStore((s) => s.incrementDragDepth);
@@ -101,6 +103,7 @@ export function ConversationDropZone({
   return (
     <div
       className="conversation-drop-zone"
+      style={style}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}

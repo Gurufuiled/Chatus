@@ -10,6 +10,7 @@ type WsHandlers = {
   onMessageAck?: WsEventHandler;
   onMessageReactionsUpdated?: WsEventHandler;
   onPollUpdated?: WsEventHandler;
+  onTyping?: WsEventHandler;
   onGroupCallStarted?: WsEventHandler;
   onGroupCallEnded?: WsEventHandler;
   onGroupCallParticipants?: WsEventHandler;
@@ -120,6 +121,13 @@ class WsClient {
     return this.sendEvent('delete_message', {
       chat_id: chatId,
       message_id: messageId,
+    });
+  }
+
+  sendTyping(chatId: string, isTyping: boolean) {
+    return this.sendEvent('typing', {
+      chat_id: chatId,
+      is_typing: isTyping,
     });
   }
 
@@ -266,6 +274,9 @@ class WsClient {
       }
       case 'poll_updated':
         this.handlers.onPollUpdated?.(msg);
+        break;
+      case 'typing':
+        this.handlers.onTyping?.(msg);
         break;
       case 'group_call_started':
         this.handlers.onGroupCallStarted?.(msg);

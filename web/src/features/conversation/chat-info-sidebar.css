@@ -91,6 +91,19 @@
   text-align: center;
 }
 
+.chat-info-sidebar__edit-input--secondary {
+  font-weight: 500;
+  font-size: 15px;
+}
+
+.chat-info-sidebar__edit-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
 .chat-info-sidebar__edit-textarea {
   font-size: 14px;
   resize: vertical;
@@ -116,6 +129,51 @@
   color: var(--color-text-secondary);
   max-width: 100%;
   word-break: break-word;
+}
+
+.chat-info-sidebar__note-box {
+  padding: 4px 20px 14px;
+  border-top: 8px solid var(--color-bg-secondary);
+  background: var(--color-surface);
+}
+
+.chat-info-sidebar__note-box + .chat-info-sidebar__details-box {
+  border-top: none;
+}
+
+.chat-info-sidebar__note-label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 6px;
+}
+
+.chat-info-sidebar__note-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 0;
+  resize: vertical;
+  min-height: 40px;
+}
+
+.chat-info-sidebar__note-input::placeholder {
+  color: var(--color-text-tertiary, #9aa0a6);
+}
+
+.chat-info-sidebar__note-input:focus {
+  outline: none;
+  color: var(--color-text);
+}
+
+.chat-info-sidebar__note-box .chat-info-sidebar__edit-error {
+  margin-top: 6px;
 }
 
 .chat-info-sidebar__title {

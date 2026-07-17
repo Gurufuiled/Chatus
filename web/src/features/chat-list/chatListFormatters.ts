@@ -3,8 +3,13 @@ import type { MappedMessage } from '@/types/message';
 import { groupCallSystemPreviewText } from '@/utils/groupCallSystemMessage';
 import { isChatusStickerMessage } from '@/utils/stickerPayload';
 
-export function getChatDisplayName(chat: ChatSummary): string {
+export function getChatDisplayName(
+  chat: ChatSummary,
+  localOverride?: string | null,
+): string {
   if (chat.chat_type === 'private') {
+    const local = localOverride?.trim();
+    if (local) return local;
     return chat.peer_display_name ?? chat.name ?? 'Unknown';
   }
   return chat.name ?? 'Group';

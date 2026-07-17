@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Avatar } from '@/components/avatar/Avatar';
 import { ImageLightbox } from './ImageLightbox';
 import { ChatInfoAddMembersModal } from './ChatInfoAddMembersModal';
@@ -9,8 +9,17 @@ import {
   useAddGroupMembersMutation,
   useUpdateGroupChatMutation,
 } from '@/queries/chats.queries';
+import {
+  usePeerContactsMap,
+  useUpsertPeerContactMutation,
+} from '@/queries/peerContacts.queries';
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
+import {
+  formatPeerLocalDisplayName,
+  getPrivateChatPeerUserId,
+  splitContactDisplayName,
+} from '@/features/contacts/peerContactDisplay';
 import { resolveMediaUrl } from '@/services/mediaService';
 import { formatFileSize } from '@/utils/formatFileSize';
 import { canSaveOrForwardContent, restrictSavingReason } from '@/utils/chatPermissions';
@@ -25,12 +34,23 @@ interface ChatInfoSidebarProps {
 export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
   const { data: me } = useMeQuery();
   const { data: messages } = useMessagesQuery(chat.id);
-  const displayName = getChatDisplayName(chat);
+  const peerContacts = usePeerContactsMap();
+  const upsertPeerContact = useUpsertPeerContactMutation();
 
   const peer = useMemo(() => {
     if (chat.chat_type !== 'private') return null;
     return chat.members?.find((m) => m.user_id !== me?.id) ?? null;
   }, [chat, me]);
+
+  const peerUserId = getPrivateChatPeerUserId(chat, me?.id);
+  const peerContact = peerUserId ? peerContacts.get(peerUserId) : undefined;
+  const localDisplayName = formatPeerLocalDisplayName(peerContact);
+  const displayName = getChatDisplayName(chat, localDisplayName);
+  const originalPeerName =
+    chat.peer_display_name?.trim() ||
+    peer?.user?.display_name?.trim() ||
+    chat.name?.trim() ||
+    'Unknown';
 
   const { data: peerDetail } = useUserDetailQuery(peer?.user_id ?? undefined);
 
@@ -40,14 +60,25 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [addMembersError, setAddMembersError] = useState<string | null>(null);
   const [isEditingGroup, setIsEditingGroup] = useState(false);
+  const [isEditingContact, setIsEditingContact] = useState(false);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [descriptionDraft, setDescriptionDraft] = useState('');
+  const [firstNameDraft, setFirstNameDraft] = useState('');
+  const [lastNameDraft, setLastNameDraft] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
   const [groupEditError, setGroupEditError] = useState<string | null>(null);
+  const [contactEditError, setContactEditError] = useState<string | null>(null);
+  const [noteSaveError, setNoteSaveError] = useState<string | null>(null);
+  const noteDirtyRef = useRef(false);
+  const noteDraftRef = useRef('');
+  const peerContactNoteRef = useRef<string | null>(null);
+  const peerUserIdRef = useRef<string | null>(null);
   const addMembers = useAddGroupMembersMutation();
   const updateGroup = useUpdateGroupChatMutation();
 
   const isGroupChat = chat.chat_type === 'group';
+  const isPrivateChat = chat.chat_type === 'private';
   const members = chat.members ?? [];
   const myMembership = useMemo(
     () => members.find((m) => m.user_id === me?.id),
@@ -57,18 +88,65 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
   const isAdmin = myMembership?.role === 'admin';
   const canManageMembers = isGroupChat && isOwner;
   const canEditGroup = canManageMembers;
+  const canEditContact = isPrivateChat && !!peerUserId;
+  const canEditHeader = canEditGroup || canEditContact;
   const canOpenGroupSettings = isGroupChat && (isOwner || isAdmin);
+  const isEditing = isEditingGroup || isEditingContact;
   const allowSaveContent = canSaveOrForwardContent(chat, me);
   const excludedMemberIds = useMemo(
     () => new Set(members.map((m) => m.user_id).filter(Boolean)),
     [members],
   );
 
+  noteDraftRef.current = noteDraft;
+  peerContactNoteRef.current = peerContact?.note ?? null;
+  peerUserIdRef.current = peerUserId;
+
+  const flushNoteIfDirty = () => {
+    if (!noteDirtyRef.current) return;
+    const uid = peerUserIdRef.current;
+    if (!uid) return;
+    const trimmed = noteDraftRef.current.trim();
+    const current = peerContactNoteRef.current?.trim() ?? '';
+    if (trimmed === current) {
+      noteDirtyRef.current = false;
+      return;
+    }
+    setNoteSaveError(null);
+    upsertPeerContact.mutate(
+      {
+        peerUserId: uid,
+        payload: { note: trimmed || null },
+      },
+      {
+        onSuccess: () => {
+          noteDirtyRef.current = false;
+        },
+        onError: (err) => {
+          noteDirtyRef.current = true;
+          setNoteSaveError(
+            err instanceof Error ? err.message : 'Не удалось сохранить заметку',
+          );
+        },
+      },
+    );
+  };
+
   useEffect(() => {
+    flushNoteIfDirty();
     setIsEditingGroup(false);
+    setIsEditingContact(false);
     setShowGroupSettings(false);
     setGroupEditError(null);
+    setContactEditError(null);
+    setNoteSaveError(null);
+    noteDirtyRef.current = false;
   }, [chat.id]);
+
+  useEffect(() => {
+    if (noteDirtyRef.current) return;
+    setNoteDraft(peerContact?.note ?? '');
+  }, [peerContact?.note, peerUserId]);
 
   const enterGroupEdit = () => {
     setNameDraft(chat.name ?? displayName);
@@ -80,6 +158,19 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
   const cancelGroupEdit = () => {
     setIsEditingGroup(false);
     setGroupEditError(null);
+  };
+
+  const enterContactEdit = () => {
+    const parts = splitContactDisplayName(localDisplayName || originalPeerName);
+    setFirstNameDraft(parts.firstName);
+    setLastNameDraft(parts.lastName);
+    setContactEditError(null);
+    setIsEditingContact(true);
+  };
+
+  const cancelContactEdit = () => {
+    setIsEditingContact(false);
+    setContactEditError(null);
   };
 
   const saveGroupEdit = () => {
@@ -105,6 +196,60 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
     );
   };
 
+  const saveContactEdit = () => {
+    if (!peerUserId) return;
+    setContactEditError(null);
+    upsertPeerContact.mutate(
+      {
+        peerUserId,
+        payload: {
+          first_name: firstNameDraft.trim() || null,
+          last_name: lastNameDraft.trim() || null,
+        },
+      },
+      {
+        onSuccess: () => setIsEditingContact(false),
+        onError: (err) =>
+          setContactEditError(
+            err instanceof Error ? err.message : 'Не удалось сохранить имя',
+          ),
+      },
+    );
+  };
+
+  const saveNote = (nextNote: string) => {
+    if (!peerUserId) return;
+    const trimmed = nextNote.trim();
+    const current = peerContact?.note?.trim() ?? '';
+    if (trimmed === current) {
+      noteDirtyRef.current = false;
+      return;
+    }
+    setNoteSaveError(null);
+    upsertPeerContact.mutate(
+      {
+        peerUserId,
+        payload: { note: trimmed || null },
+      },
+      {
+        onSuccess: () => {
+          noteDirtyRef.current = false;
+        },
+        onError: (err) => {
+          noteDirtyRef.current = true;
+          setNoteSaveError(
+            err instanceof Error ? err.message : 'Не удалось сохранить заметку',
+          );
+        },
+      },
+    );
+  };
+
+  const requestClose = () => {
+    flushNoteIfDirty();
+    onClose();
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || lightboxSrc || showAddMembers) return;
@@ -116,11 +261,15 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
         cancelGroupEdit();
         return;
       }
-      onClose();
+      if (isEditingContact) {
+        cancelContactEdit();
+        return;
+      }
+      requestClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, lightboxSrc, showAddMembers, isEditingGroup, showGroupSettings]);
+  }, [onClose, lightboxSrc, showAddMembers, isEditingGroup, isEditingContact, showGroupSettings]);
 
   const isDobry = useMemo(() => {
     return displayName.toLowerCase().includes('добры') || (peer?.user_id && peer.user_id.includes('dmitry'));
@@ -228,13 +377,17 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
         <button
           type="button"
           className="chat-info-sidebar__close-btn"
-          aria-label={isEditingGroup ? 'Отмена' : 'Закрыть'}
+          aria-label={isEditing ? 'Отмена' : 'Закрыть'}
           onClick={() => {
             if (isEditingGroup) {
               cancelGroupEdit();
               return;
             }
-            onClose();
+            if (isEditingContact) {
+              cancelContactEdit();
+              return;
+            }
+            requestClose();
           }}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -243,23 +396,37 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
           </svg>
         </button>
         <h2 className="chat-info-sidebar__title">
-          {isEditingGroup ? 'Редактирование' : 'Информация'}
+          {isEditingGroup ? 'Редактирование' : isEditingContact ? 'Имя' : 'Информация'}
         </h2>
-        {canEditGroup ? (
+        {canEditHeader ? (
           <button
             type="button"
             className="chat-info-sidebar__edit-btn"
-            aria-label={isEditingGroup ? 'Сохранить' : 'Редактировать группу'}
-            disabled={updateGroup.isPending}
+            aria-label={
+              isEditing
+                ? 'Сохранить'
+                : canEditGroup
+                  ? 'Редактировать группу'
+                  : 'Изменить имя'
+            }
+            disabled={updateGroup.isPending || upsertPeerContact.isPending}
             onClick={() => {
               if (isEditingGroup) {
                 saveGroupEdit();
                 return;
               }
-              enterGroupEdit();
+              if (isEditingContact) {
+                saveContactEdit();
+                return;
+              }
+              if (canEditGroup) {
+                enterGroupEdit();
+                return;
+              }
+              enterContactEdit();
             }}
           >
-            {isEditingGroup ? (
+            {isEditing ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
@@ -278,11 +445,18 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
       <div className="chat-info-sidebar__scroll-content">
         <div className="chat-info-sidebar__profile-card">
           <div
-            className={`chat-info-sidebar__avatar-wrap${chat.avatar_url && !isEditingGroup ? ' chat-info-sidebar__avatar-wrap--clickable' : ''}`}
-            onClick={isEditingGroup ? undefined : handleAvatarClick}
+            className={`chat-info-sidebar__avatar-wrap${chat.avatar_url && !isEditing ? ' chat-info-sidebar__avatar-wrap--clickable' : ''}`}
+            onClick={isEditing ? undefined : handleAvatarClick}
           >
             <Avatar
-              name={isEditingGroup ? nameDraft.trim() || displayName : displayName}
+              name={
+                isEditingGroup
+                  ? nameDraft.trim() || displayName
+                  : isEditingContact
+                    ? [firstNameDraft.trim(), lastNameDraft.trim()].filter(Boolean).join(' ') ||
+                      displayName
+                    : displayName
+              }
               imageUrl={chat.avatar_url}
               size={112}
             />
@@ -315,6 +489,37 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
                 </p>
               ) : null}
             </div>
+          ) : isEditingContact ? (
+            <div className="chat-info-sidebar__edit-fields">
+              <input
+                type="text"
+                className="chat-info-sidebar__edit-input"
+                value={firstNameDraft}
+                onChange={(e) => setFirstNameDraft(e.target.value)}
+                placeholder="Имя"
+                maxLength={120}
+                aria-label="Имя"
+                disabled={upsertPeerContact.isPending}
+              />
+              <input
+                type="text"
+                className="chat-info-sidebar__edit-input chat-info-sidebar__edit-input--secondary"
+                value={lastNameDraft}
+                onChange={(e) => setLastNameDraft(e.target.value)}
+                placeholder="Фамилия"
+                maxLength={120}
+                aria-label="Фамилия"
+                disabled={upsertPeerContact.isPending}
+              />
+              <p className="chat-info-sidebar__edit-hint">
+                Имя видно только вам. Оставьте пустым, чтобы вернуть «{originalPeerName}».
+              </p>
+              {contactEditError ? (
+                <p className="chat-info-sidebar__edit-error" role="alert">
+                  {contactEditError}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <>
               <h3 className="chat-info-sidebar__name">{displayName}</h3>
@@ -327,6 +532,33 @@ export function ChatInfoSidebar({ chat, onClose }: ChatInfoSidebarProps) {
             </>
           )}
         </div>
+
+        {isPrivateChat && !isEditingContact ? (
+          <div className="chat-info-sidebar__note-box">
+            <label className="chat-info-sidebar__note-label" htmlFor="peer-contact-note">
+              Заметка
+            </label>
+            <textarea
+              id="peer-contact-note"
+              className="chat-info-sidebar__note-input"
+              value={noteDraft}
+              rows={2}
+              maxLength={2000}
+              placeholder="Добавить заметку…"
+              disabled={!peerUserId || upsertPeerContact.isPending}
+              onChange={(e) => {
+                noteDirtyRef.current = true;
+                setNoteDraft(e.target.value);
+              }}
+              onBlur={() => saveNote(noteDraft)}
+            />
+            {noteSaveError ? (
+              <p className="chat-info-sidebar__edit-error" role="alert">
+                {noteSaveError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="chat-info-sidebar__details-box">
           {chat.chat_type === 'private' && (

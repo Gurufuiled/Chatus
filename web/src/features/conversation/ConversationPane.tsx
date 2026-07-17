@@ -225,13 +225,15 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
             onUnpin={handleUnpin}
           />
         ) : null}
-        <ConversationDropZone chatId={chatId} disabled={messagesLoading}>
-          <div
-            ref={bodyRef}
-            className="conversation-pane__body"
-            style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
-          >
+        <ConversationDropZone
+          chatId={chatId}
+          disabled={messagesLoading}
+          style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
+        >
+          <div ref={bodyRef} className="conversation-pane__body">
             <MessageList chatId={chatId} />
+          </div>
+          <div className="conversation-pane__footer">
             <MessageSelectionToolbar
               chatId={chatId}
               onForward={handleForwardRequest}

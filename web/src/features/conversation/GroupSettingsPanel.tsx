@@ -24,6 +24,17 @@ import {
   DEFAULT_MEMBER_PERMISSIONS,
   defaultGroupSettings,
 } from '@/types/groupSettings';
+import {
+  IconAdmins,
+  IconDeleteGroup,
+  IconGroupType,
+  IconHideMembers,
+  IconInviteLink,
+  IconLeaveGroup,
+  IconMemberPermissions,
+  IconMembers,
+  IconRestrictSaving,
+} from './groupSettingsIcons';
 import './group-settings.css';
 
 type SettingsView =
@@ -453,10 +464,20 @@ export function GroupSettingsPanel({
         {view.kind === 'root' ? (
           <>
             <section className="group-settings__section">
-              <h3 className="group-settings__section-label">Тип группы</h3>
+              <h3 className="group-settings__section-label">
+                <span className="group-settings__section-icon" aria-hidden>
+                  <IconGroupType size={16} />
+                </span>
+                Тип группы
+              </h3>
               <div className="group-settings__card">
                 <div className="group-settings__invite-block">
-                  <span className="group-settings__invite-label">Пригласительная ссылка</span>
+                  <span className="group-settings__invite-label">
+                    <span className="group-settings__invite-label-icon" aria-hidden>
+                      <IconInviteLink size={20} />
+                    </span>
+                    Пригласительная ссылка
+                  </span>
                   <p className="group-settings__invite-value">
                     {inviteDisplay || 'Ссылка не создана'}
                   </p>
@@ -495,17 +516,20 @@ export function GroupSettingsPanel({
                 <SettingsNavRow
                   title="Права участников"
                   subtitle="Что могут делать обычные участники"
+                  icon={<IconMemberPermissions />}
                   onClick={() => setView({ kind: 'permissions' })}
                 />
                 <SettingsNavRow
                   title="Администраторы"
                   subtitle="Список и права администраторов"
+                  icon={<IconAdmins />}
                   value={String(adminList.length)}
                   onClick={() => setView({ kind: 'admins' })}
                 />
                 <SettingsNavRow
                   title="Участники"
                   subtitle="Исключить участников из группы"
+                  icon={<IconMembers />}
                   value={String(members.length)}
                   onClick={() => setView({ kind: 'members' })}
                 />
@@ -519,6 +543,7 @@ export function GroupSettingsPanel({
                   id="hide-members"
                   title="Скрывать участников"
                   subtitle="Список участников виден только администраторам"
+                  icon={<IconHideMembers />}
                   checked={settings.hide_members === true}
                   disabled={togglesDisabled}
                   onChange={(next) => patchSettings({ hide_members: next })}
@@ -527,6 +552,7 @@ export function GroupSettingsPanel({
                   id="restrict-saving"
                   title="Запретить сохранение контента"
                   subtitle="Нельзя пересылать и скачивать"
+                  icon={<IconRestrictSaving />}
                   checked={settings.restrict_saving_content === true}
                   disabled={togglesDisabled}
                   onChange={(next) => patchSettings({ restrict_saving_content: next })}
@@ -538,11 +564,17 @@ export function GroupSettingsPanel({
               <h3 className="group-settings__section-label">Опасная зона</h3>
               <div className="group-settings__card">
                 {!isOwner ? (
-                  <SettingsNavRow title="Покинуть группу" danger onClick={handleLeave} />
+                  <SettingsNavRow
+                    title="Покинуть группу"
+                    icon={<IconLeaveGroup />}
+                    danger
+                    onClick={handleLeave}
+                  />
                 ) : (
                   <SettingsNavRow
                     title="Удалить группу"
                     subtitle="Группа будет удалена для всех"
+                    icon={<IconDeleteGroup />}
                     danger
                     onClick={handleDelete}
                   />

@@ -8,7 +8,9 @@ import {
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { useUserDetailQuery } from '@/queries/users.queries';
+import { usePeerContactsMap } from '@/queries/peerContacts.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
+import { formatPeerLocalDisplayName } from '@/features/contacts/peerContactDisplay';
 import { ImageLightbox } from '@/features/conversation/ImageLightbox';
 import { resolveMediaUrl } from '@/services/mediaService';
 import type { AuthUser } from '@/types/auth';
@@ -172,6 +174,7 @@ export function MobileChatProfileScreen({ chatId }: MobileChatProfileScreenProps
   const { data: chats, isLoading } = useChatsQuery();
   const { data: messages } = useMessagesQuery(chatId);
   const { data: me } = useMeQuery();
+  const peerContacts = usePeerContactsMap();
   const muteChat = useMuteChatMutation();
   const deleteChat = useDeleteChatMutation();
   const moreButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -198,7 +201,14 @@ export function MobileChatProfileScreen({ chatId }: MobileChatProfileScreenProps
     error: peerQueryError,
   } = useUserDetailQuery(peerUserId);
 
-  const displayName = chat ? getChatDisplayName(chat) : 'Профиль';
+  const displayName = chat
+    ? getChatDisplayName(
+        chat,
+        peerUserId
+          ? formatPeerLocalDisplayName(peerContacts.get(peerUserId))
+          : null,
+      )
+    : 'Профиль';
   const avatarSrc = resolveAvatarSrc(peerDetail?.avatar_url ?? chat?.avatar_url);
   const initial = (displayName.trim()[0] || '?').toUpperCase();
   const handleLabel = peerDetail?.handle?.trim()

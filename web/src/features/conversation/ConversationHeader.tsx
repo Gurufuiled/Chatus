@@ -2,7 +2,14 @@ import { Avatar } from '@/components/avatar/Avatar';
 import type { ChatSummary } from '@/types/chat';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { useMeQuery } from '@/queries/auth.queries';
+import { usePeerContactsMap } from '@/queries/peerContacts.queries';
+import {
+  formatPeerLocalDisplayName,
+  getPrivateChatPeerUserId,
+} from '@/features/contacts/peerContactDisplay';
+import { TYPING_TTL_MS, useTypingStore } from '@/stores/typingStore';
 import { useMemo } from 'react';
+import { TypingStatus } from './TypingStatus';
 
 interface ConversationHeaderProps {
   chat: ChatSummary;
@@ -17,8 +24,19 @@ export function ConversationHeader({
   onGroupCallPress,
   isUserInGroupCall = false,
 }: ConversationHeaderProps) {
-  const title = getChatDisplayName(chat);
   const { data: me } = useMeQuery();
+  const peerContacts = usePeerContactsMap();
+  const peerId = getPrivateChatPeerUserId(chat, me?.id);
+  const localName = peerId ? formatPeerLocalDisplayName(peerContacts.get(peerId)) : null;
+  const title = getChatDisplayName(chat, localName);
+  const typingEntries = useTypingStore((s) => s.typingUsersByChatId[chat.id]);
+
+  const typingUserIds = useMemo(() => {
+    const now = Date.now();
+    return (typingEntries ?? [])
+      .filter((e) => now - e.at < TYPING_TTL_MS)
+      .map((e) => e.userId);
+  }, [typingEntries]);
 
   const peer = useMemo(() => {
     if (chat.chat_type !== 'private') return null;
@@ -54,12 +72,18 @@ export function ConversationHeader({
     return `был(а) ${date.toLocaleDateString([], { day: 'numeric', month: 'short' })} в ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   }, [chat, peer, title]);
 
+  const showTyping = typingUserIds.length > 0;
+
   return (
     <header className="conversation-header" onClick={onClick} style={{ cursor: onClick ? 'pointer' : undefined }}>
       <Avatar name={title} imageUrl={chat.avatar_url} size={40} />
       <div className="conversation-header__info">
         <h1 className="conversation-header__title">{title}</h1>
-        <span className="conversation-header__status">{userStatus}</span>
+        {showTyping ? (
+          <TypingStatus chat={chat} userIds={typingUserIds} />
+        ) : (
+          <span className="conversation-header__status">{userStatus}</span>
+        )}
       </div>
       {onGroupCallPress ? (
         <button
@@ -79,4 +103,3 @@ export function ConversationHeader({
     </header>
   );
 }
-

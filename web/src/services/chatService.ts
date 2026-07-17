@@ -173,3 +173,25 @@ export async function updateGroupAdmin(
     },
   );
 }
+
+export type GroupInvitePreview = {
+  chat_id: string;
+  name: string | null;
+  avatar_url: string | null;
+  member_count: number;
+};
+
+/** GET /chats/invite/:token — preview before join. */
+export async function resolveGroupInvite(token: string): Promise<GroupInvitePreview> {
+  return apiRequest<GroupInvitePreview>(
+    `/chats/invite/${encodeURIComponent(token.trim())}`,
+  );
+}
+
+/** POST /chats/join — { invite_token }. Returns the joined (or already-member) chat. */
+export async function joinGroupByInvite(inviteToken: string): Promise<ChatSummary> {
+  return apiRequest<ChatSummary>('/chats/join', {
+    method: 'POST',
+    body: JSON.stringify({ invite_token: inviteToken.trim() }),
+  });
+}

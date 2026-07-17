@@ -6,10 +6,27 @@ import { makeMedia, makeMessage } from '@/test/fixtures';
 import { encodeStickerPayload } from '@/utils/stickerPayload';
 
 const toggleMutate = vi.fn();
+const joinMutate = vi.fn();
+const joinMutateAsync = vi.fn();
+const navigateMock = vi.fn();
+const resolveInviteMock = vi.fn();
+const confirmMock = vi.fn(() => true);
 
 vi.mock('@/data/stickerCatalog', () => ({
   getStickerImageUrl: () => '/stickers/mock.webp',
 }));
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigateMock,
+}));
+
+vi.mock('@/services/chatService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/chatService')>();
+  return {
+    ...actual,
+    resolveGroupInvite: (...args: unknown[]) => resolveInviteMock(...args),
+  };
+});
 
 vi.mock('@/queries/messages.queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/queries/messages.queries')>();
@@ -29,6 +46,15 @@ vi.mock('@/queries/auth.queries', () => ({
 
 vi.mock('@/queries/chats.queries', () => ({
   useChatsQuery: () => ({ data: [{ id: 'chat-1', chat_type: 'private', members: [] }] }),
+  useJoinGroupByInviteMutation: () => ({
+    mutate: joinMutate,
+    mutateAsync: joinMutateAsync,
+    isPending: false,
+  }),
+  useResolveGroupInviteQuery: () => ({
+    data: undefined,
+    isLoading: false,
+  }),
 }));
 
 vi.mock('@/features/conversation/VoiceMessagePlayer', () => ({
@@ -62,6 +88,20 @@ function mockMessagesQuery(messages: MappedMessage[]) {
 describe('MessageBubble', () => {
   beforeEach(() => {
     toggleMutate.mockReset();
+    joinMutate.mockReset();
+    joinMutateAsync.mockReset();
+    navigateMock.mockReset();
+    resolveInviteMock.mockReset();
+    confirmMock.mockReset();
+    confirmMock.mockReturnValue(true);
+    vi.stubGlobal('confirm', confirmMock);
+    resolveInviteMock.mockResolvedValue({
+      chat_id: 'group-joined',
+      name: 'Тестовая',
+      avatar_url: null,
+      member_count: 3,
+    });
+    joinMutateAsync.mockResolvedValue({ id: 'group-joined' });
     vi.mocked(useMessagesQuery).mockReturnValue(mockMessagesQuery([]));
   });
 
@@ -190,5 +230,52 @@ describe('MessageBubble', () => {
       <MessageBubble chatId="chat-1" message={message} isOutgoing={false} selectionActive={false} />,
     );
     expect(screen.getByRole('img', { name: 'Sticker' })).toBeInTheDocument();
+  });
+
+  it('renders invite-only message as join card and joins on click', async () => {
+    const user = userEvent.setup();
+    const message = makeMessage({
+      msg_type: 'text',
+      content: 'chatus://join/group-ab76be66',
+    });
+    render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing={false} selectionActive={false} />,
+    );
+    expect(screen.getByText('Приглашение в группу')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Присоединиться к группе/i }));
+    expect(resolveInviteMock).toHaveBeenCalledWith('group-ab76be66');
+    expect(confirmMock).toHaveBeenCalled();
+    expect(joinMutateAsync).toHaveBeenCalledWith('group-ab76be66');
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: '/chat/$chatId',
+      params: { chatId: 'group-joined' },
+    });
+  });
+
+  it('does not join when confirm is cancelled', async () => {
+    const user = userEvent.setup();
+    confirmMock.mockReturnValue(false);
+    const message = makeMessage({
+      msg_type: 'text',
+      content: 'chatus://join/group-ab76be66',
+    });
+    render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing={false} selectionActive={false} />,
+    );
+    await user.click(screen.getByRole('button', { name: /Присоединиться к группе/i }));
+    expect(confirmMock).toHaveBeenCalled();
+    expect(joinMutateAsync).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('renders inline invite link inside mixed text', () => {
+    const message = makeMessage({
+      msg_type: 'text',
+      content: 'Заходи chatus://join/demo-token сюда',
+    });
+    render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing={false} selectionActive={false} />,
+    );
+    expect(screen.getByRole('button', { name: 'chatus://join/demo-token' })).toBeInTheDocument();
   });
 });

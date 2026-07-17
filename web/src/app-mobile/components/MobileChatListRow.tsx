@@ -3,6 +3,11 @@ import { formatChatTime, getChatDisplayName } from '@/features/chat-list/chatLis
 import { ChatStatusChecks } from '@/features/chat-list/ChatStatusChecks';
 import type { ChatSummary } from '@/types/chat';
 import { useMeQuery } from '@/queries/auth.queries';
+import { usePeerContactsMap } from '@/queries/peerContacts.queries';
+import {
+  formatPeerLocalDisplayName,
+  getPrivateChatPeerUserId,
+} from '@/features/contacts/peerContactDisplay';
 import { getAvatarColor, resolveAvatarSrc } from '../utils/avatar';
 import { buildDialogPreviewForChat } from '../utils/dialogPreview';
 import { getChatOpenPath } from '../utils/chatNavigation';
@@ -13,7 +18,10 @@ interface MobileChatListRowProps {
 
 export function MobileChatListRow({ chat }: MobileChatListRowProps) {
   const { data: me } = useMeQuery();
-  const displayName = getChatDisplayName(chat);
+  const peerContacts = usePeerContactsMap();
+  const peerId = getPrivateChatPeerUserId(chat, me?.id);
+  const localName = peerId ? formatPeerLocalDisplayName(peerContacts.get(peerId)) : null;
+  const displayName = getChatDisplayName(chat, localName);
   const preview = buildDialogPreviewForChat(chat);
   const time = formatChatTime(chat.last_message_at);
   const avatarSrc = resolveAvatarSrc(chat.avatar_url);

@@ -11,6 +11,12 @@ import {
 } from '@/queries/chats.queries';
 import { useUserSearchQuery } from '@/queries/users.queries';
 import { useMeQuery } from '@/queries/auth.queries';
+import { usePeerContactsMap } from '@/queries/peerContacts.queries';
+import {
+  formatPeerLocalDisplayName,
+  getPrivateChatPeerUserId,
+} from '@/features/contacts/peerContactDisplay';
+import { getChatDisplayName } from './chatListFormatters';
 import { useMenuStore } from '@/stores/menuStore';
 import { useChatUiStore } from '@/stores/chatUiStore';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -34,6 +40,7 @@ export function ChatListColumn({ activeChatId }: ChatListColumnProps) {
   const navigate = useNavigate();
   const { data: chats, isLoading, isError, error } = useChatsQuery();
   const { data: me } = useMeQuery();
+  const peerContacts = usePeerContactsMap();
   const searchQuery = useChatUiStore((s) => s.searchQuery);
   const trimmedSearchQuery = searchQuery.trim();
   const debouncedSearchQuery = useDebouncedValue(trimmedSearchQuery, SEARCH_DEBOUNCE_MS);
@@ -70,13 +77,14 @@ export function ChatListColumn({ activeChatId }: ChatListColumnProps) {
     const q = debouncedSearchQuery.toLowerCase();
     if (!q) return chats;
     return chats.filter((chat) => {
-      const name =
-        chat.chat_type === 'private'
-          ? (chat.peer_display_name ?? chat.name ?? '')
-          : (chat.name ?? '');
+      const peerId = getPrivateChatPeerUserId(chat, me?.id);
+      const localName = peerId
+        ? formatPeerLocalDisplayName(peerContacts.get(peerId))
+        : null;
+      const name = getChatDisplayName(chat, localName);
       return name.toLowerCase().includes(q);
     });
-  }, [chats, debouncedSearchQuery, isSearchActive]);
+  }, [chats, debouncedSearchQuery, isSearchActive, me?.id, peerContacts]);
 
   const filteredUsers = useMemo(() => {
     if (!isSearchActive || isSearchPending || !userResults) return [];

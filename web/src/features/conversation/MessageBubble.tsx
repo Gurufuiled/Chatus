@@ -17,6 +17,8 @@ import { AlbumMessageContent } from './AlbumMessageContent';
 import { MessageQuickReaction } from './MessageQuickReaction';
 import { MessageReactionsBar } from './MessageReactionsBar';
 import { PollMessageContent } from './PollMessageContent';
+import { InviteMessageContent } from './InviteMessageContent';
+import { findInviteMatches } from './inviteLinkUtils';
 import { useMessagesQuery } from '@/queries/messages.queries';
 import { useMeQuery } from '@/queries/auth.queries';
 import { isPollMessage } from '@/utils/pollPayload';
@@ -283,6 +285,8 @@ export function MessageBubble({
   } else if (message.msg_type === 'text') {
     body = isChatusStickerMessage(message.content) ? (
       <p className="message-bubble__text message-bubble__text--placeholder">Sticker</p>
+    ) : message.content && findInviteMatches(message.content).length > 0 ? (
+      <InviteMessageContent content={message.content} selectionActive={selectionActive} />
     ) : (
       <p className="message-bubble__text">{message.content}</p>
     );

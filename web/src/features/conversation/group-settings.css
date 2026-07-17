@@ -30,6 +30,28 @@
   font-weight: 600;
   color: var(--color-text-secondary);
   text-transform: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.group-settings__section-icon {
+  display: inline-flex;
+  color: var(--color-text-secondary);
+  opacity: 0.9;
+}
+
+.group-settings__row-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  color: #2481cc;
+}
+
+.group-settings__nav-row--danger .group-settings__row-icon {
+  color: #e53935;
 }
 
 .group-settings__card {
@@ -153,11 +175,19 @@
 }
 
 .group-settings__invite-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 15px;
   font-weight: 500;
   color: var(--color-text);
   margin-bottom: 6px;
+}
+
+.group-settings__invite-label-icon {
+  display: inline-flex;
+  color: #2481cc;
+  flex-shrink: 0;
 }
 
 .group-settings__invite-value {

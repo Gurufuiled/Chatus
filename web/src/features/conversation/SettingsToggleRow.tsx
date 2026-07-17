@@ -1,9 +1,11 @@
+import type { ReactNode } from 'react';
 import './group-settings.css';
 
 interface SettingsToggleRowProps {
   id: string;
   title: string;
   subtitle?: string;
+  icon?: ReactNode;
   checked: boolean;
   disabled?: boolean;
   onChange: (next: boolean) => void;
@@ -14,12 +16,18 @@ export function SettingsToggleRow({
   id,
   title,
   subtitle,
+  icon,
   checked,
   disabled,
   onChange,
 }: SettingsToggleRowProps) {
   return (
     <div className={`group-settings__toggle-row${disabled ? ' group-settings__toggle-row--disabled' : ''}`}>
+      {icon ? (
+        <span className="group-settings__row-icon" aria-hidden>
+          {icon}
+        </span>
+      ) : null}
       <div className="group-settings__toggle-text">
         <span id={id} className="group-settings__toggle-title">
           {title}
@@ -45,6 +53,7 @@ interface SettingsNavRowProps {
   title: string;
   subtitle?: string;
   value?: string;
+  icon?: ReactNode;
   danger?: boolean;
   disabled?: boolean;
   onClick?: () => void;
@@ -54,6 +63,7 @@ export function SettingsNavRow({
   title,
   subtitle,
   value,
+  icon,
   danger,
   disabled,
   onClick,
@@ -66,28 +76,33 @@ export function SettingsNavRow({
     .filter(Boolean)
     .join(' ');
 
-  if (onClick && !disabled) {
-    return (
-      <button type="button" className={className} onClick={onClick}>
-        <span className="group-settings__nav-text">
-          <span className="group-settings__nav-title">{title}</span>
-          {subtitle ? <span className="group-settings__nav-subtitle">{subtitle}</span> : null}
+  const body = (
+    <>
+      {icon ? (
+        <span className="group-settings__row-icon" aria-hidden>
+          {icon}
         </span>
-        {value ? <span className="group-settings__nav-value">{value}</span> : null}
-        <span className="group-settings__nav-chevron" aria-hidden>
-          ›
-        </span>
-      </button>
-    );
-  }
-
-  return (
-    <div className={className}>
+      ) : null}
       <span className="group-settings__nav-text">
         <span className="group-settings__nav-title">{title}</span>
         {subtitle ? <span className="group-settings__nav-subtitle">{subtitle}</span> : null}
       </span>
       {value ? <span className="group-settings__nav-value">{value}</span> : null}
-    </div>
+      {onClick && !disabled ? (
+        <span className="group-settings__nav-chevron" aria-hidden>
+          ›
+        </span>
+      ) : null}
+    </>
   );
+
+  if (onClick && !disabled) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        {body}
+      </button>
+    );
+  }
+
+  return <div className={className}>{body}</div>;
 }

@@ -1,5 +1,11 @@
 import { useNavigate } from '@tanstack/react-router';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
+import {
+  formatPeerLocalDisplayName,
+  getPrivateChatPeerUserId,
+} from '@/features/contacts/peerContactDisplay';
+import { useMeQuery } from '@/queries/auth.queries';
+import { usePeerContactsMap } from '@/queries/peerContacts.queries';
 import type { ChatSummary } from '@/types/chat';
 import { MobilePillHeaderTitle } from './MobilePillHeaderTitle';
 
@@ -9,7 +15,11 @@ interface MobileChatHeaderProps {
 
 export function MobileChatHeader({ chat }: MobileChatHeaderProps) {
   const navigate = useNavigate();
-  const title = getChatDisplayName(chat);
+  const { data: me } = useMeQuery();
+  const peerContacts = usePeerContactsMap();
+  const peerId = getPrivateChatPeerUserId(chat, me?.id);
+  const localName = peerId ? formatPeerLocalDisplayName(peerContacts.get(peerId)) : null;
+  const title = getChatDisplayName(chat, localName);
   const subtitle =
     chat.chat_type === 'group'
       ? `${chat.members?.length ?? 0} участников`

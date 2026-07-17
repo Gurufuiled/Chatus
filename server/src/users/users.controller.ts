@@ -6,16 +6,19 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { AddressBookService } from './address-book.service';
+import { PeerContactService } from './peer-contact.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../common';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { SearchUsersQueryDto } from './dto/search-users-query.dto';
 import { CreateAddressBookContactDto } from './dto/create-address-book-contact.dto';
+import { UpsertPeerContactDto } from './dto/upsert-peer-contact.dto';
 import { RegisterPushTokenDto } from './dto/register-push-token.dto';
 import { RequestPhoneChangeDto } from './dto/request-phone-change.dto';
 import { VerifyPhoneChangeDto } from './dto/verify-phone-change.dto';
@@ -29,6 +32,7 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly addressBookService: AddressBookService,
+    private readonly peerContactService: PeerContactService,
     private readonly phoneChangeService: PhoneChangeService,
   ) {}
 
@@ -68,6 +72,48 @@ export class UsersController {
     @Param('contactId') contactId: string,
   ) {
     await this.addressBookService.delete(user.id, contactId);
+    return { ok: true };
+  }
+
+  /** Local peer name/note overrides (visible only to the current user). */
+  @Get('me/peer-contacts')
+  async listMyPeerContacts(@CurrentUser() user: User) {
+    return this.peerContactService.list(user.id);
+  }
+
+  @Get('me/peer-contacts/:peerUserId')
+  async getMyPeerContact(
+    @CurrentUser() user: User,
+    @Param('peerUserId') peerUserId: string,
+  ) {
+    const row = await this.peerContactService.getOne(user.id, peerUserId);
+    return row ?? { peer_user_id: peerUserId, first_name: null, last_name: null, note: null, updated_at: 0 };
+  }
+
+  @Put('me/peer-contacts/:peerUserId')
+  async upsertMyPeerContact(
+    @CurrentUser() user: User,
+    @Param('peerUserId') peerUserId: string,
+    @Body() dto: UpsertPeerContactDto,
+  ) {
+    const row = await this.peerContactService.upsert(user.id, peerUserId, dto);
+    return (
+      row ?? {
+        peer_user_id: peerUserId,
+        first_name: null,
+        last_name: null,
+        note: null,
+        updated_at: 0,
+      }
+    );
+  }
+
+  @Delete('me/peer-contacts/:peerUserId')
+  async deleteMyPeerContact(
+    @CurrentUser() user: User,
+    @Param('peerUserId') peerUserId: string,
+  ) {
+    await this.peerContactService.delete(user.id, peerUserId);
     return { ok: true };
   }
 

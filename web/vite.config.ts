@@ -31,7 +31,22 @@ export default defineConfig({
     }),
   ],
   optimizeDeps: {
-    include: ['buffer', 'ebml', 'ts-ebml', 'ebml-block', 'int64-buffer', 'matroska-schema'],
+    // Pin React into a single optimized chunk so QueryClientProvider / hooks
+    // never bind against a second copy after vite cache churn (Invalid hook call).
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      '@tanstack/react-query',
+      'buffer',
+      'ebml',
+      'ts-ebml',
+      'ebml-block',
+      'int64-buffer',
+      'matroska-schema',
+    ],
     esbuildOptions: {
       define: {
         global: 'globalThis',
@@ -39,6 +54,7 @@ export default defineConfig({
     },
   },
   resolve: {
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@': resolve(__dirname, './src'),
       // Force CJS main — ebml's "browser"/"module" fields break ts-ebml's tools import.

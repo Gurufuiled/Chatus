@@ -117,20 +117,6 @@ export function ComposePanel() {
           <span className="compose-panel__quick-label">Новая группа</span>
         </button>
 
-        <button
-          type="button"
-          className="compose-panel__quick"
-          onClick={() => void navigate({ to: '/create-channel' })}
-        >
-          <span className="compose-panel__quick-icon" aria-hidden>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M3 11v2a1 1 0 001 1h1l4 9V4L5 10H4a1 1 0 00-1 1z" />
-              <path d="M13 8.5a5 5 0 010 7M17 5.5a9 9 0 010 13" />
-            </svg>
-          </span>
-          <span className="compose-panel__quick-label">Новый канал</span>
-        </button>
-
         <label className="compose-panel__search">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <circle cx="11" cy="11" r="7" />

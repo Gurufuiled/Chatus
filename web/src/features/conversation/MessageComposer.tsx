@@ -11,6 +11,7 @@ import { ComposerReplyPreview } from './ComposerReplyPreview';
 import { ComposerErrorBanner } from './ComposerErrorBanner';
 import { ComposerAttachmentPreview } from './ComposerAttachmentPreview';
 import { useVoiceRecorder } from './useVoiceRecorder';
+import { useComposerTyping } from './useComposerTyping';
 
 interface MessageComposerProps {
   chatId: string;
@@ -36,9 +37,11 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   const sendMutation = useSendMessageMutation();
   const sendPendingMutation = useSendPendingAttachmentsMutation();
   const { data: me } = useMeQuery();
-
   const voiceDisabled = disabled || !me?.id;
   const voice = useVoiceRecorder(chatId, voiceDisabled);
+  const isRecording = voice.isRecording || voice.isProcessing;
+  const typingEnabled = !disabled && Boolean(me?.id) && !isRecording;
+  const { onDraftChange, onMessageSent } = useComposerTyping(chatId, typingEnabled, draft);
 
   const resetTextareaHeight = () => {
     const el = textareaRef.current;
@@ -73,6 +76,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
         },
         {
           onSuccess: () => {
+            onMessageSent();
             clearDraft(chatId);
             clearReply();
             resetTextareaHeight();
@@ -95,6 +99,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
       },
       {
         onSuccess: () => {
+          onMessageSent();
           clearDraft(chatId);
           clearReply();
           resetTextareaHeight();
@@ -110,6 +115,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
     disabled,
     draft,
     me?.id,
+    onMessageSent,
     replyToMessageId,
     requestComposerFocus,
     sendMutation,
@@ -124,13 +130,14 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setDraft(chatId, e.target.value);
+    const value = e.target.value;
+    setDraft(chatId, value);
+    onDraftChange(value);
     const el = e.target;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   };
 
-  const isRecording = voice.isRecording || voice.isProcessing;
   const isSending = sendMutation.isPending || sendPendingMutation.isPending;
   const isDisabled = disabled || !me?.id || isRecording || isSending;
   const hasText = draft.trim().length > 0;

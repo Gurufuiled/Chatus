@@ -49,16 +49,6 @@ export function HamburgerMenu({ anchorRect, onClose }: HamburgerMenuProps) {
 
   const items: MenuItemDef[] = [
     {
-      id: 'add-account',
-      label: 'Добавить аккаунт',
-      disabled: true,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
       id: 'profile',
       label: 'Мой профиль',
       icon: (
@@ -68,39 +58,6 @@ export function HamburgerMenu({ anchorRect, onClose }: HamburgerMenuProps) {
         </svg>
       ),
       onSelect: openProfile,
-    },
-    {
-      id: 'saved',
-      label: 'Избранное',
-      disabled: true,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path d="M5 4h10v12l-5-3.5L5 16V4z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-        </svg>
-      ),
-    },
-    {
-      id: 'contacts',
-      label: 'Контакты',
-      disabled: true,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <circle cx="7" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.4" />
-          <circle cx="13" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.4" />
-          <path d="M3 16c0-2.2 1.8-4 4-4M13 12c2.2 0 4 1.8 4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
-      id: 'wallet',
-      label: 'Wallet',
-      disabled: true,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.4" />
-          <path d="M3 8h14" stroke="currentColor" strokeWidth="1.4" />
-        </svg>
-      ),
     },
     {
       id: 'settings',
@@ -117,19 +74,6 @@ export function HamburgerMenu({ anchorRect, onClose }: HamburgerMenuProps) {
         </svg>
       ),
       onSelect: openProfile,
-    },
-    {
-      id: 'more',
-      label: 'Ещё',
-      disabled: true,
-      showChevron: true,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <circle cx="5" cy="10" r="1.2" fill="currentColor" />
-          <circle cx="10" cy="10" r="1.2" fill="currentColor" />
-          <circle cx="15" cy="10" r="1.2" fill="currentColor" />
-        </svg>
-      ),
     },
   ];
 

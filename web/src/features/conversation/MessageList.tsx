@@ -24,12 +24,11 @@ export function MessageList({ chatId }: MessageListProps) {
   const selectionActive = useSelectionStore((s) => s.isActive && s.chatId === chatId);
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const toggleMessage = useSelectionStore((s) => s.toggleMessage);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
 
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastChatIdRef = useRef(chatId);
 
   const triggerHighlight = (id: string) => {
     setHighlightedId(id);
@@ -38,15 +37,24 @@ export function MessageList({ chatId }: MessageListProps) {
   };
 
   useEffect(() => {
-    const behavior = lastChatIdRef.current === chatId ? 'smooth' : 'auto';
-    lastChatIdRef.current = chatId;
-    bottomRef.current?.scrollIntoView({ behavior });
+    stickToBottomRef.current = true;
+  }, [chatId]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !stickToBottomRef.current) return;
+    container.scrollTop = container.scrollHeight;
   }, [chatId, messages?.length]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const onScroll = () => closeMessageMenu();
+    const onScroll = () => {
+      closeMessageMenu();
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      stickToBottomRef.current = distanceFromBottom < 80;
+    };
     container.addEventListener('scroll', onScroll, { passive: true });
     return () => container.removeEventListener('scroll', onScroll);
   }, [closeMessageMenu]);
@@ -137,7 +145,6 @@ export function MessageList({ chatId }: MessageListProps) {
             </div>
           );
         })}
-        <div ref={bottomRef} className="message-list__anchor" aria-hidden />
       </div>
     </div>
   );

@@ -16,6 +16,8 @@ import {
   regenerateGroupInviteLink,
   revokeGroupInviteLink,
   getGroupInviteLink,
+  joinGroupByInvite,
+  resolveGroupInvite,
 } from '@/services/chatService';
 import { createChannel } from '@/services/channelService';
 import type { ChatSummary } from '@/types/chat';
@@ -400,5 +402,23 @@ export function useRevokeGroupInviteMutation(chatId: string) {
       );
       void queryClient.invalidateQueries({ queryKey: chatsQueryKey });
     },
+  });
+}
+
+export function useResolveGroupInviteQuery(token: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['chats', 'invite', token ?? ''] as const,
+    queryFn: () => resolveGroupInvite(token!),
+    enabled: Boolean(token?.trim()) && enabled,
+    retry: false,
+  });
+}
+
+export function useJoinGroupByInviteMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (inviteToken: string) => joinGroupByInvite(inviteToken),
+    onSuccess: (chat) => upsertChatInCache(queryClient, chat),
   });
 }

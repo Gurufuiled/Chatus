@@ -191,8 +191,17 @@ export function activateDevAuthBypass(): void {
     return;
   }
 
-  const token = import.meta.env.VITE_DEV_ACCESS_TOKEN as string | undefined;
-  if (!token?.trim()) {
+  // Per-tab override for multi-user local testing (Playwright / second window).
+  // sessionStorage is isolated per browser context, so Artem's tab stays on env token.
+  let override: string | null = null;
+  try {
+    override = sessionStorage.getItem('chatus_dev_access_token');
+  } catch {
+    // ignore
+  }
+  const token = (override?.trim() ||
+    (import.meta.env.VITE_DEV_ACCESS_TOKEN as string | undefined))?.trim();
+  if (!token) {
     useAuthUiStore.getState().setEmbedStatus('error');
     useAuthUiStore
       .getState()
@@ -200,7 +209,7 @@ export function activateDevAuthBypass(): void {
     return;
   }
 
-  setAccessToken(token.trim());
-  useAuthUiStore.getState().setAccessToken(token.trim());
+  setAccessToken(token);
+  useAuthUiStore.getState().setAccessToken(token);
   useAuthUiStore.getState().setEmbedStatus('ready');
 }
