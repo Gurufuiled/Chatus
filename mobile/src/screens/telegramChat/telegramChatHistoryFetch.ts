@@ -1,6 +1,7 @@
 import { tdlibClient } from '../../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../../services/tdlib/tdlibErrors';
+import { telegramAccountStore } from '../../stores/telegramAccountStore';
 import {
   loadLastReadOutboxMessageId,
   mapTdMessages,
@@ -29,7 +30,10 @@ export type FetchTelegramHistoryParams = {
 
 export async function ensureTelegramTdlibReady(): Promise<boolean> {
   await applyTdlibParameters();
-  const { ready } = await waitForTdlibAuthorizationReady();
+  const sticky = telegramAccountStore.getState().hasLocalSession();
+  const { ready } = await waitForTdlibAuthorizationReady(undefined, {
+    stickySession: sticky,
+  });
   return ready;
 }
 

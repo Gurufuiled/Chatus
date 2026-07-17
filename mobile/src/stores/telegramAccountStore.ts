@@ -17,6 +17,7 @@ import {
   normalizeTelegramDialogRow,
   normalizeTelegramDialogRows,
 } from '../screens/telegramChat/telegramDialogFallback';
+import { isValidTelegramUserId } from '../services/tdlib/tdlibSessionPolicy';
 
 const STORAGE_KEY = 'chatus.telegram.account.v1';
 const DIALOGS_CACHE_KEY = 'telegram-dialogs.v1.json';
@@ -182,7 +183,9 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
       set({
         authStatus,
         telegramUserId:
-          typeof parsed.telegramUserId === 'number' ? parsed.telegramUserId : null,
+          typeof parsed.telegramUserId === 'number' && isValidTelegramUserId(parsed.telegramUserId)
+            ? parsed.telegramUserId
+            : null,
         phoneNumberHint:
           typeof parsed.phoneNumberHint === 'string' ? parsed.phoneNumberHint : null,
         lastError: null,
@@ -238,7 +241,7 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
     return (
       s.authStatus === 'ready' ||
       s.authStatus === 'error' ||
-      s.telegramUserId != null ||
+      isValidTelegramUserId(s.telegramUserId) ||
       s.dialogs.length > 0
     );
   },
@@ -263,7 +266,7 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
       level: 'warn',
       data: {
         prevStatus: get().authStatus,
-        hasUserId: get().telegramUserId != null,
+        hasUserId: isValidTelegramUserId(get().telegramUserId),
         dialogs: get().dialogs.length,
       },
       flushSoon: true,

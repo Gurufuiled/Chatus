@@ -3,7 +3,13 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from './TdlibClient';
 import { throwIfTdError } from './tdlibErrors';
-import { shouldForceApplyParametersOnWaitTdlibParameters } from './tdlibSessionPolicy';
+import {
+  isClosedOrClosingAuthState,
+  isTrulyClosedAuthState,
+  shouldAllowHardRecreateOnClosed,
+  shouldForceApplyParametersInSoftOrWaitLoop,
+  shouldForceApplyParametersOnWaitTdlibParameters,
+} from './tdlibSessionPolicy';
 import { logTdlibEvent } from '../clientRemoteLog';
 
 /** Shown in Telegram → Devices; keep in sync with setTdlibParameters. */
@@ -68,8 +74,13 @@ let backgroundRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 let lastNativeVerifyMs = 0;
 /** After LoggingOut, Closed/WaitPhone must clear sticky even if the DB probe races. */
 let expectEmptyDbAfterLogout = false;
+/** First time we saw true Closed this recovery attempt (debounce before hard recreate). */
+let closedSeenAtMs = 0;
+let hardRecreateCountThisProcess = 0;
 const NATIVE_VERIFY_MIN_INTERVAL_MS = 12_000;
 const RECOVERY_COOLDOWN_MS = 45_000;
+const CLOSED_HARD_RECREATE_DEBOUNCE_MS = 1_200;
+const MAX_HARD_RECREATES_PER_PROCESS = 3;
 
 /** Set from telegramAccountStore to avoid a circular import with bootstrap. */
 let stickySessionProbe: (() => boolean) | null = null;
@@ -120,9 +131,13 @@ async function failIfStickySessionDatabaseGone(live: string | null): Promise<nev
   const expectLogout = expectEmptyDbAfterLogout;
   cancelBackgroundTdlibRecovery();
   if (hasStickyLocalTelegramSession()) {
+    // Handler clears sticky + expectEmptyDbAfterLogout after persist wipe.
     notifyEmptyTdlibDatabase();
+  } else if (expectLogout) {
+    // Sticky already gone — still hold the flag until Closed/empty DB path finishes.
+  } else {
+    clearTdlibLoggingOutExpectation();
   }
-  clearTdlibLoggingOutExpectation();
   logTdlibEvent('sticky session DB gone — require reauth', {
     level: 'warn',
     data: { live, expectLogout },
@@ -174,10 +189,27 @@ export function cancelBackgroundTdlibRecovery(): void {
   }
 }
 
-/** Mark that TDLib is wiping its DB (LoggingOut) — Closed must not schedule recover. */
+/**
+ * Mark that TDLib is wiping its DB (LoggingOut) — Closed must not schedule recover,
+ * and in-flight soft/hard recovery must short-circuit (never recreateClient while set).
+ */
 export function markTdlibLoggingOut(): void {
   expectEmptyDbAfterLogout = true;
   cancelBackgroundTdlibRecovery();
+}
+
+function abortRecoveryIfLoggingOut(live: string | null | undefined): boolean {
+  if (!expectEmptyDbAfterLogout) return false;
+  logTdlibEvent('recover aborted (LoggingOut)', {
+    level: 'warn',
+    data: { live },
+    flushSoon: true,
+  });
+  if (hasStickyLocalTelegramSession()) {
+    notifyEmptyTdlibDatabase();
+  }
+  // Do not clear expectEmptyDbAfterLogout here — Closed/empty-DB handler needs it.
+  return true;
 }
 
 export function clearTdlibLoggingOutExpectation(): void {
@@ -215,30 +247,52 @@ export async function waitUntilTdlibNotRecreating(timeoutMs = 30_000): Promise<b
 /**
  * Soft recover: wait Ready / getMe / re-applyTdlibParameters without destroying the client.
  * Prefer this for send/background — recreateClient kills the live iOS session.
+ * Sticky WaitTdlibParameters: never force-apply (policy); wait / getMe only.
  */
 async function softRecoverTdlibSession(sticky: boolean): Promise<{
   ok: boolean;
   state: string | null;
 }> {
+  if (abortRecoveryIfLoggingOut(null)) {
+    return { ok: false, state: 'authorizationStateLoggingOut' };
+  }
+
   let live = await readLiveAuthState().catch((error) => {
     if (isTdlibClientClosedError(error)) return 'authorizationStateClosed';
     return null;
   });
 
-  if (isClosedAuthState(live)) {
+  if (abortRecoveryIfLoggingOut(live)) {
+    return { ok: false, state: live };
+  }
+
+  if (isClosedOrClosingAuthState(live) || live === 'authorizationStateLoggingOut') {
     return { ok: false, state: live };
   }
 
   try {
     if (live === 'authorizationStateWaitTdlibParameters') {
-      await applyTdlibParameters({ force: true });
+      if (shouldForceApplyParametersInSoftOrWaitLoop(sticky)) {
+        await applyTdlibParameters({ force: true });
+      } else if (await canCallAuthorizedApis()) {
+        return { ok: true, state: 'authorizationStateReady' };
+      } else {
+        // Sticky: safe non-force apply only (never force:true) before wait loop.
+        await applyTdlibParameters().catch(() => undefined);
+      }
     } else {
       await applyTdlibParameters().catch(() => undefined);
+    }
+    if (abortRecoveryIfLoggingOut(live)) {
+      return { ok: false, state: live };
     }
     const { ready, state } = await waitForTdlibAuthorizationReady(20_000, {
       stickySession: sticky,
       stickyGraceMs: RECOVERY_STICKY_GRACE_MS,
     });
+    if (abortRecoveryIfLoggingOut(state)) {
+      return { ok: false, state };
+    }
     live = state;
     if (ready || (await canCallAuthorizedApis())) {
       return { ok: true, state: live };
@@ -257,7 +311,7 @@ async function softRecoverTdlibSession(sticky: boolean): Promise<{
 
 /**
  * Recover TDLib session. Soft-first (no destroy); hard recreateClient only when
- * allowRecreate and live state is Closed/Closing after soft failed.
+ * allowRecreate and live state is true Closed (not Closing) after soft failed.
  * Phone-login after logout uses `ensureTdlibReadyForPhoneLogin` (direct recreate),
  * not this helper. Default allowRecreate:false for send/background.
  */
@@ -266,26 +320,25 @@ export async function recoverTdlibSession(options?: {
 }): Promise<boolean> {
   const allowRecreate = options?.allowRecreate === true;
   if (expectEmptyDbAfterLogout) {
-    notifyEmptyTdlibDatabase();
-    clearTdlibLoggingOutExpectation();
+    // Notify sticky clear, but keep expectEmptyDbAfterLogout until Closed/empty DB completes.
+    if (hasStickyLocalTelegramSession()) {
+      notifyEmptyTdlibDatabase();
+    }
     return false;
   }
   if (recoveryInFlight) return recoveryInFlight;
   recoveryInFlight = (async () => {
-    if (expectEmptyDbAfterLogout) {
-      notifyEmptyTdlibDatabase();
-      clearTdlibLoggingOutExpectation();
-      return false;
-    }
+    if (abortRecoveryIfLoggingOut(null)) return false;
     const sticky = hasStickyLocalTelegramSession();
     const sinceLast = Date.now() - lastRecoveryFinishedMs;
     if (sinceLast < RECOVERY_COOLDOWN_MS) {
-      // Soft wait only — unless Closed + allowRecreate (hard path still needed).
+      // Soft wait only — unless true Closed + allowRecreate (hard path still needed).
       const cooldownLive = await readLiveAuthState().catch((error) => {
         if (isTdlibClientClosedError(error)) return 'authorizationStateClosed';
         return null;
       });
-      if (!(allowRecreate && isClosedAuthState(cooldownLive))) {
+      if (abortRecoveryIfLoggingOut(cooldownLive)) return false;
+      if (!(allowRecreate && isTrulyClosedAuthState(cooldownLive))) {
         logTdlibEvent('recoverTdlibSession soft (cooldown)', {
           level: 'info',
           data: { allowRecreate, sticky, state: cooldownLive },
@@ -294,13 +347,14 @@ export async function recoverTdlibSession(options?: {
           stickySession: sticky,
           stickyGraceMs: RECOVERY_STICKY_GRACE_MS,
         });
+        lastRecoveryFinishedMs = Date.now();
         return ready || (await canCallAuthorizedApis());
       }
       logTdlibEvent('recoverTdlibSession cooldown skip (Closed)', {
         level: 'info',
         data: { allowRecreate, sticky, state: cooldownLive },
       });
-      // Fall through to soft then hard recreate for Closed.
+      // Fall through to soft then hard recreate for true Closed.
     }
 
     logTdlibEvent('recoverTdlibSession soft', {
@@ -308,11 +362,10 @@ export async function recoverTdlibSession(options?: {
       data: { allowRecreate, sticky },
     });
     const soft = await softRecoverTdlibSession(sticky);
+    // Always stamp cooldown after any soft attempt (success or failure) to stop re-init loops.
+    lastRecoveryFinishedMs = Date.now();
+    if (abortRecoveryIfLoggingOut(soft.state)) return false;
     if (soft.ok) {
-      // Soft cannot heal Closed; do not start cooldown if still Closed.
-      if (!isClosedAuthState(soft.state)) {
-        lastRecoveryFinishedMs = Date.now();
-      }
       logTdlibEvent('recoverTdlibSession ok', {
         level: 'info',
         data: { mode: 'soft', state: soft.state },
@@ -321,8 +374,10 @@ export async function recoverTdlibSession(options?: {
     }
 
     let live = soft.state ?? (await readLiveAuthState().catch(() => null));
-    const needsHardRecreate = allowRecreate && isClosedAuthState(live);
-    if (!needsHardRecreate) {
+    if (abortRecoveryIfLoggingOut(live)) return false;
+
+    const hardAllowed = await canProceedWithHardRecreate(live, allowRecreate);
+    if (!hardAllowed) {
       const dbOnDisk = await hasTdlibDatabaseOnDisk();
       logTdlibEvent('recoverTdlibSession not ready', {
         level: 'warn',
@@ -331,6 +386,8 @@ export async function recoverTdlibSession(options?: {
           allowRecreate,
           state: live,
           dbOnDisk,
+          expectLogout: expectEmptyDbAfterLogout,
+          hardRecreateCount: hardRecreateCountThisProcess,
         },
         flushSoon: true,
       });
@@ -341,16 +398,19 @@ export async function recoverTdlibSession(options?: {
       return false;
     }
 
-    // Hard path: Closed/Closing after soft failed — destroy+recreate (true Closed).
+    // Hard path: true Closed after soft failed — destroy+recreate.
+    if (abortRecoveryIfLoggingOut(live)) return false;
     logTdlibEvent('recoverTdlibSession hard recreate', {
       level: 'info',
-      data: { state: live, sticky },
+      data: { state: live, sticky, hardRecreateCount: hardRecreateCountThisProcess },
       flushSoon: true,
     });
     let didRecreate = false;
     try {
+      hardRecreateCountThisProcess += 1;
       const recreated = await tdlibClient.recreateClient();
       didRecreate = recreated;
+      closedSeenAtMs = 0;
       if (!recreated && __DEV__) {
         console.warn('[tdlib] recreateClient not available on this platform build');
       }
@@ -364,17 +424,17 @@ export async function recoverTdlibSession(options?: {
       lastRecoveryFinishedMs = Date.now();
       return false;
     }
+    if (abortRecoveryIfLoggingOut(live)) return false;
     try {
-      // force:true clears the lock only after the new native client exists.
+      // force:true clears the lock only after the new native client exists (intentional recreate).
       await applyTdlibParameters({ force: true });
       // After recreate, iOS often flashes WaitPhone while opening SQLite — allow ~18s, not 2.5s.
       const { ready, state } = await waitForTdlibAuthorizationReady(20_000, {
         stickySession: sticky,
         stickyGraceMs: RECOVERY_STICKY_GRACE_MS,
       });
-      if (didRecreate || ready) {
-        lastRecoveryFinishedMs = Date.now();
-      }
+      lastRecoveryFinishedMs = Date.now();
+      if (abortRecoveryIfLoggingOut(state)) return false;
       const ok = ready || (await canCallAuthorizedApis());
       if (!ok) {
         const dbOnDisk = await hasTdlibDatabaseOnDisk();
@@ -407,15 +467,67 @@ export async function recoverTdlibSession(options?: {
         },
         flushSoon: true,
       });
-      if (didRecreate) {
-        lastRecoveryFinishedMs = Date.now();
-      }
+      lastRecoveryFinishedMs = Date.now();
       return false;
     }
   })().finally(() => {
     recoveryInFlight = null;
   });
   return recoveryInFlight;
+}
+
+/**
+ * True Closed debounce + logout/budget/DB gates before destroy+recreate.
+ */
+async function canProceedWithHardRecreate(
+  live: string | null,
+  allowRecreate: boolean,
+): Promise<boolean> {
+  if (!allowRecreate) return false;
+  if (
+    !shouldAllowHardRecreateOnClosed({
+      authState: live,
+      expectEmptyDbAfterLogout,
+      hardRecreateCountThisProcess,
+      maxHardRecreatesPerProcess: MAX_HARD_RECREATES_PER_PROCESS,
+    })
+  ) {
+    return false;
+  }
+
+  const now = Date.now();
+  if (closedSeenAtMs === 0) {
+    closedSeenAtMs = now;
+  }
+  const waited = now - closedSeenAtMs;
+  if (waited < CLOSED_HARD_RECREATE_DEBOUNCE_MS) {
+    await new Promise((r) => setTimeout(r, CLOSED_HARD_RECREATE_DEBOUNCE_MS - waited));
+  }
+  if (abortRecoveryIfLoggingOut(live)) return false;
+
+  const still = await readLiveAuthState().catch((error) => {
+    if (isTdlibClientClosedError(error)) return 'authorizationStateClosed';
+    return null;
+  });
+  if (!isTrulyClosedAuthState(still)) {
+    closedSeenAtMs = 0;
+    return false;
+  }
+  if (
+    !shouldAllowHardRecreateOnClosed({
+      authState: still,
+      expectEmptyDbAfterLogout,
+      hardRecreateCountThisProcess,
+      maxHardRecreatesPerProcess: MAX_HARD_RECREATES_PER_PROCESS,
+    })
+  ) {
+    return false;
+  }
+
+  const dbOnDisk = await hasTdlibDatabaseOnDisk();
+  // Empty DB: do not recreate — sticky clear path handles reauth.
+  if (dbOnDisk === false) return false;
+  return true;
 }
 
 /**
@@ -438,9 +550,11 @@ export function scheduleBackgroundTdlibRecovery(): void {
         if (isTdlibClientClosedError(error)) return 'authorizationStateClosed';
         return null;
       });
-      // Soft path exits immediately on Closed — rely on next send for hard recreate.
-      if (isClosedAuthState(live)) {
-        logTdlibEvent('background soft recovery skipped (Closed)', {
+      // Soft path exits immediately on Closed/Closing — rely on next send for hard recreate.
+      // Do not soft-recover Closed here (send-path hard recreate after sticky/DB checks).
+      if (isClosedOrClosingAuthState(live) || live === 'authorizationStateLoggingOut') {
+        lastRecoveryFinishedMs = Date.now();
+        logTdlibEvent('background soft recovery skipped (Closed/Closing)', {
           level: 'info',
           data: { state: live },
         });
@@ -512,17 +626,13 @@ async function verifyTdlibNativeStillInitialized(): Promise<void> {
     ) {
       // Closed needs hard recreate on next send — soft background cannot heal it.
       tdlibParametersAppliedThisProcess = false;
+      if (probeType === 'authorizationStateClosed' && closedSeenAtMs === 0) {
+        closedSeenAtMs = Date.now();
+      }
     }
   } catch {
     /* native unavailable */
   }
-}
-
-function isClosedAuthState(probeType: string | null | undefined): boolean {
-  return (
-    probeType === 'authorizationStateClosed' ||
-    probeType === 'authorizationStateClosing'
-  );
 }
 
 function isTdlibClientClosedError(error: unknown): boolean {
@@ -548,8 +658,8 @@ async function doApplyTdlibParameters(): Promise<void> {
   if (!probeType) {
     throw new Error('TDLib: пустой ответ getAuthorizationState');
   }
-  if (isClosedAuthState(probeType)) {
-    // Closed client cannot accept setTdlibParameters — must recreate first.
+  if (isClosedOrClosingAuthState(probeType)) {
+    // Closed/Closing client cannot accept setTdlibParameters — must recreate first (true Closed only).
     // Do NOT await recoveryInFlight here: recoverTdlibSession itself calls apply({force})
     // and would deadlock. Callers (ensureTdlibAuthorizedForSend) recover before apply.
     tdlibParametersAppliedThisProcess = false;
@@ -622,6 +732,7 @@ const LOGIN_GATE_STATES = new Set([
  * После `setTdlibParameters` TDLib поднимает сессию из БД асинхронно.
  * stickySession: WaitPhone/WaitCode briefly tolerated while DB loads after recreate.
  * stickyGraceMs: override for recovery (long) vs send path (short).
+ * Sticky WaitTdlibParameters: never force-apply — wait / getMe only.
  */
 export async function waitForTdlibAuthorizationReady(
   timeoutMs = AUTH_READY_TIMEOUT_MS,
@@ -635,26 +746,44 @@ export async function waitForTdlibAuthorizationReady(
   let loginGateSeenAt: number | null = null;
   let pollCount = 0;
   while (Date.now() < deadline) {
+    if (expectEmptyDbAfterLogout) {
+      return { ready: false, state: lastState ?? 'authorizationStateLoggingOut' };
+    }
     const auth = (await tdlibClient.send({ '@type': 'getAuthorizationState' })) as Record<string, unknown>;
     throwIfTdError(auth);
     const t = (auth['@type'] as string) ?? null;
     lastState = t;
     pollCount += 1;
     if (t === 'authorizationStateReady') {
+      closedSeenAtMs = 0;
       return { ready: true, state: t };
+    }
+    if (t === 'authorizationStateLoggingOut') {
+      return { ready: false, state: t };
     }
     if (t === 'authorizationStateWaitTdlibParameters') {
       loginGateSeenAt = null;
       if (!appliedParameters) {
         appliedParameters = true;
-        tdlibParametersAppliedThisProcess = false;
-        await applyTdlibParameters({ force: true }).catch(() => undefined);
+        if (shouldForceApplyParametersInSoftOrWaitLoop(sticky)) {
+          tdlibParametersAppliedThisProcess = false;
+          await applyTdlibParameters({ force: true }).catch(() => undefined);
+        } else if (await canCallAuthorizedApis()) {
+          closedSeenAtMs = 0;
+          return { ready: true, state: 'authorizationStateReady' };
+        } else {
+          // Sticky: safe non-force apply only (never force:true), then keep polling.
+          await applyTdlibParameters().catch(() => undefined);
+        }
+      } else if (sticky && pollCount % 4 === 0 && (await canCallAuthorizedApis())) {
+        closedSeenAtMs = 0;
+        return { ready: true, state: 'authorizationStateReady' };
       }
       await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
       continue;
     }
     if (LOGIN_GATE_STATES.has(t ?? '')) {
-      if (t === 'authorizationStateWaitPassword') {
+      if (t === 'authorizationStateWaitPassword' && !sticky) {
         return { ready: false, state: t };
       }
       if (sticky) {
@@ -662,6 +791,7 @@ export async function waitForTdlibAuthorizationReady(
         if (Date.now() - loginGateSeenAt < stickyGraceMs) {
           // Prefer getMe — Ready may lag behind an already-usable session.
           if (pollCount % 4 === 0 && (await canCallAuthorizedApis())) {
+            closedSeenAtMs = 0;
             return { ready: true, state: 'authorizationStateReady' };
           }
           await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
@@ -674,6 +804,7 @@ export async function waitForTdlibAuthorizationReady(
     await new Promise((r) => setTimeout(r, AUTH_READY_POLL_MS));
   }
   if (await canCallAuthorizedApis()) {
+    closedSeenAtMs = 0;
     return { ready: true, state: lastState ?? 'authorizationStateReady' };
   }
   return { ready: false, state: lastState };
@@ -705,6 +836,10 @@ export async function ensureTdlibAuthorizedForSend(options?: {
   const sticky = hasStickyLocalTelegramSession();
   await waitUntilTdlibNotRecreating(8_000);
 
+  if (expectEmptyDbAfterLogout) {
+    throw new Error('Telegram выходит из аккаунта. Подождите и попробуйте снова.');
+  }
+
   // Probe Closed BEFORE applyTdlibParameters — otherwise doApply throws
   // "TDLib client is closed" and never reaches recoverTdlibSession below.
   let live = await readLiveAuthState().catch((error) => {
@@ -712,7 +847,24 @@ export async function ensureTdlibAuthorizedForSend(options?: {
     return null;
   });
 
-  if (isClosedAuthState(live)) {
+  if (live === 'authorizationStateLoggingOut') {
+    throw new Error('Telegram выходит из аккаунта. Подождите и попробуйте снова.');
+  }
+
+  // Closing: wait soft / fail — never destroy the client mid-close.
+  if (live === 'authorizationStateClosing') {
+    const { ready, state } = await waitForTdlibAuthorizationReady(4_000, {
+      stickySession: sticky,
+    });
+    live = state;
+    if (ready || (await canCallAuthorizedApis())) return;
+    if (live === 'authorizationStateClosing' || live === 'authorizationStateLoggingOut') {
+      throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');
+    }
+  }
+
+  if (isTrulyClosedAuthState(live)) {
+    if (closedSeenAtMs === 0) closedSeenAtMs = Date.now();
     if (!allowSessionReload) {
       logTdlibEvent('ensureAuthorized: Closed, reload not allowed', {
         level: 'error',
@@ -720,7 +872,10 @@ export async function ensureTdlibAuthorizedForSend(options?: {
       });
       throw new Error('TDLib client is closed');
     }
-    // Closed cannot soft-recover — hard recreate is truly necessary.
+    if (expectEmptyDbAfterLogout) {
+      throw new Error('Telegram выходит из аккаунта. Подождите и попробуйте снова.');
+    }
+    // True Closed cannot soft-recover — hard recreate with debounce/DB/budget gates.
     const recovered = await recoverTdlibSession({ allowRecreate: true }).catch(() => false);
     if (recovered || (await canCallAuthorizedApis())) return;
     live = await readLiveAuthState().catch(() => live);
@@ -737,6 +892,9 @@ export async function ensureTdlibAuthorizedForSend(options?: {
     await applyTdlibParameters();
   } catch (error) {
     if (allowSessionReload && isTdlibClientClosedError(error)) {
+      if (expectEmptyDbAfterLogout) {
+        throw new Error('Telegram выходит из аккаунта. Подождите и попробуйте снова.');
+      }
       const recovered = await recoverTdlibSession({ allowRecreate: true }).catch(() => false);
       if (recovered || (await canCallAuthorizedApis())) return;
       live = await readLiveAuthState().catch(() => 'authorizationStateClosed');
@@ -758,15 +916,15 @@ export async function ensureTdlibAuthorizedForSend(options?: {
   });
   if (live === 'authorizationStateReady' || (await canCallAuthorizedApis())) return;
 
-  if (live === 'authorizationStateWaitPassword') {
+  if (live === 'authorizationStateWaitPassword' && !sticky) {
     throw new Error('Нужен облачный пароль 2FA Telegram. Откройте Настройки → Telegram.');
   }
 
-  if (live === 'authorizationStateLoggingOut') {
+  if (live === 'authorizationStateLoggingOut' || live === 'authorizationStateClosing') {
     throw new Error('Telegram выходит из аккаунта. Подождите и попробуйте снова.');
   }
 
-  const isClosed = isClosedAuthState(live);
+  const isClosed = isTrulyClosedAuthState(live);
   const needsParams = live === 'authorizationStateWaitTdlibParameters' || live == null;
 
   if (needsParams || isClosed) {
@@ -788,23 +946,23 @@ export async function ensureTdlibAuthorizedForSend(options?: {
     allowSessionReload &&
     (isClosed || needsParams || (sticky && LOGIN_GATE_STATES.has(live ?? '')))
   ) {
-    // Soft by default; hard only if still Closed after soft.
+    // Soft by default; hard only if still true Closed after soft.
     const recovered = await recoverTdlibSession({
-      allowRecreate: isClosedAuthState(live),
+      allowRecreate: isTrulyClosedAuthState(live),
     }).catch(() => false);
     if (recovered || (await canCallAuthorizedApis())) return;
     live = await readLiveAuthState().catch(() => live);
   }
 
-  if (live === 'authorizationStateWaitPassword') {
+  if (live === 'authorizationStateWaitPassword' && !sticky) {
     throw new Error('Нужен облачный пароль 2FA Telegram. Откройте Настройки → Telegram.');
   }
 
   if (sticky) {
     await failIfStickySessionDatabaseGone(live);
     // Sticky = we still believe a local session exists (DB present or unknown).
-    // Soft background only when not Closed (Closed heals on next send with allowRecreate).
-    if (!isClosedAuthState(live)) {
+    // Soft background only when not Closed/Closing (Closed heals on next send with allowRecreate).
+    if (!isClosedOrClosingAuthState(live) && live !== 'authorizationStateLoggingOut') {
       scheduleBackgroundTdlibRecovery();
     }
     throw new Error('Telegram переподключается. Подождите пару секунд и попробуйте снова.');

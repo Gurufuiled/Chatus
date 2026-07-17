@@ -201,7 +201,18 @@ export function TelegramAuthScreen() {
   const completeAuthSuccess = useCallback(
     async (options?: { navigateToChats?: boolean }) => {
       telegramAccountStore.getState().setAuthStatus("ready");
-      telegramAccountStore.getState().setTelegramUserId(0);
+      // Prefer real getMe id; never stick a placeholder 0 (treated as unset).
+      try {
+        const me = (await tdlibClient.send({ "@type": "getMe" })) as Record<
+          string,
+          unknown
+        >;
+        throwIfTdError(me);
+        const id = typeof me.id === "number" && me.id > 0 ? me.id : null;
+        telegramAccountStore.getState().setTelegramUserId(id);
+      } catch {
+        telegramAccountStore.getState().setTelegramUserId(null);
+      }
       await telegramAccountStore.getState().persistSnapshot();
       syncChatusPhoneFromTelegramAuth().catch(console.error);
       requestContactsAndSync().catch(console.error);

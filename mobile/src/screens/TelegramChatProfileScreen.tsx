@@ -43,6 +43,7 @@ import {
 } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import { probeTdlibAuthStatus } from '../services/tdlib/tdlibAuthState';
+import { isValidTelegramUserId } from '../services/tdlib/tdlibSessionPolicy';
 import { useTheme } from '../contexts/ThemeContext';
 import { uiStore } from '../stores/uiStore';
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeId } from '../theme/chatThemes';
@@ -266,13 +267,16 @@ export function TelegramChatProfileScreen() {
 
   const ensureReady = useCallback(async () => {
     await applyTdlibParameters();
-    const { ready, state } = await waitForTdlibAuthorizationReady();
-    if (ready) return;
     const store = telegramAccountStore.getState();
-    const shouldProtectSession =
+    const sticky =
       store.authStatus === 'ready' ||
-      store.telegramUserId != null ||
-      store.dialogs.length > 0;
+      store.dialogs.length > 0 ||
+      isValidTelegramUserId(store.telegramUserId);
+    const { ready, state } = await waitForTdlibAuthorizationReady(undefined, {
+      stickySession: sticky,
+    });
+    if (ready) return;
+    const shouldProtectSession = sticky;
     const probe = await probeTdlibAuthStatus(shouldProtectSession ? 'ready' : store.authStatus);
     if (probe.status === 'ready') return;
     scheduleBackgroundTdlibRecovery();

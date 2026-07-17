@@ -14,6 +14,7 @@ import {
 import { buildChatRowLoadFailure } from './telegramDialogFallback';
 import { buildDialogPreviewFromChat, previewTextFromChat } from './telegramDialogPreview';
 import { scheduleTopTelegramChatsPreload } from './telegramChatPreload';
+import { isValidTelegramUserId } from '../../services/tdlib/tdlibSessionPolicy';
 
 /** Задержка перед фоновой предзагрузкой истории после первичного синка диалогов. */
 const PRELOAD_AFTER_SYNC_DELAY_MS = 2500;
@@ -28,7 +29,7 @@ function shouldKeepExistingDialogs(): boolean {
 
 function shouldProtectCurrentTelegramSession(): boolean {
   const { authStatus, telegramUserId, dialogs } = telegramAccountStore.getState();
-  return authStatus === 'ready' || telegramUserId != null || dialogs.length > 0;
+  return authStatus === 'ready' || isValidTelegramUserId(telegramUserId) || dialogs.length > 0;
 }
 
 export function matchesDialogQuery(row: TelegramDialogRow, normalizedQuery: string) {
@@ -196,7 +197,10 @@ async function refreshTelegramDialogsOnce(): Promise<void> {
   telegramAccountStore.getState().setDialogsSyncing(true);
   try {
     await applyTdlibParameters();
-    const { ready, state } = await waitForTdlibAuthorizationReady();
+    const sticky = shouldProtectCurrentTelegramSession();
+    const { ready, state } = await waitForTdlibAuthorizationReady(undefined, {
+      stickySession: sticky,
+    });
     if (!ready) {
       // If TDLib briefly reports WaitPhoneNumber/WaitCode while a known session exists,
       // treat it as transient recovery and keep the current dialogs/session UX intact.

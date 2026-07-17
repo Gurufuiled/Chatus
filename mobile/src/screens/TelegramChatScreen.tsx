@@ -70,6 +70,7 @@ import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { uiStore } from '../stores/uiStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
+import { isValidTelegramUserId } from '../services/tdlib/tdlibSessionPolicy';
 import { bubbleRadius } from '../theme/colors';
 import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
 import { useInvertedChatScrollFab } from '../hooks/useInvertedChatScrollFab';
@@ -457,8 +458,8 @@ export function TelegramChatScreen() {
     const store = telegramAccountStore.getState();
     const allowSessionReload =
       store.authStatus === 'ready' ||
-      store.telegramUserId != null ||
-      store.dialogs.length > 0;
+      store.dialogs.length > 0 ||
+      isValidTelegramUserId(store.telegramUserId);
     await ensureTdlibAuthorizedForSend({ allowSessionReload });
   }, []);
 

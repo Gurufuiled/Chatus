@@ -26,7 +26,24 @@ import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
 import { syncChatusPhoneFromTelegramAuth } from '../services/telegramChatusPhoneSync';
 import { logTdlibEvent } from '../services/clientRemoteLog';
+import { isValidTelegramUserId } from '../services/tdlib/tdlibSessionPolicy';
+import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 
+async function syncTelegramUserIdFromGetMe(): Promise<void> {
+  try {
+    const me = (await tdlibClient.send({ '@type': 'getMe' })) as Record<string, unknown>;
+    throwIfTdError(me);
+    const id = typeof me.id === 'number' ? me.id : null;
+    if (!isValidTelegramUserId(id)) return;
+    const store = telegramAccountStore.getState();
+    if (store.telegramUserId !== id) {
+      store.setTelegramUserId(id);
+      void store.persistSnapshot();
+    }
+  } catch {
+    /* getMe not ready yet */
+  }
+}
 /**
  * Глобально: входящие TDLib → превью в шторку (фон), регистрация FCM в Telegram после авторизации.
  * Также слушает updateAuthorizationState и синхронизирует стор немедленно — без polling'а.
@@ -44,8 +61,12 @@ export function TelegramTdlibNotificationListener() {
 
     const tryRegisterFcm = async () => {
       await applyTdlibParameters();
-      const { ready } = await waitForTdlibAuthorizationReady();
+      const sticky = telegramAccountStore.getState().hasLocalSession();
+      const { ready } = await waitForTdlibAuthorizationReady(undefined, {
+        stickySession: sticky,
+      });
       if (!ready) return;
+      void syncTelegramUserIdFromGetMe();
       let ok = await registerTelegramAndroidPushWithTdlib();
       if (!ok) {
         await new Promise<void>((r) => setTimeout(r, 2500));
@@ -82,7 +103,7 @@ export function TelegramTdlibNotificationListener() {
         // Always probe — including idle — so an on-disk TDLib session can restore after
         // SecureStore miss / crash without forcing the user through SMS again.
         const probeFrom =
-          store.authStatus === 'idle' && store.telegramUserId != null
+          store.authStatus === 'idle' && isValidTelegramUserId(store.telegramUserId)
             ? 'ready'
             : store.authStatus;
         const { status } = await probeTdlibAuthStatus(probeFrom);
@@ -144,18 +165,49 @@ export function TelegramTdlibNotificationListener() {
                 scheduleAuthPersist();
                 syncChatusPhoneFromTelegramAuth().catch(console.error);
               }
+              void syncTelegramUserIdFromGetMe();
               break;
             case 'authorizationStateWaitCode':
             case 'authorizationStateWaitEmailCode':
             case 'authorizationStateWaitOtherDeviceConfirmation':
-              if (store.authStatus !== 'waiting_code') {
-                store.setAuthStatus('waiting_code');
-                scheduleAuthPersist();
-              }
-              break;
             case 'authorizationStateWaitPassword':
-              if (store.authStatus !== 'waiting_password') {
-                store.setAuthStatus('waiting_password');
+              // Mirror WaitPhone sticky protection: never drop Ready → waiting_* unless
+              // Settings logout / empty DB cleared sticky.
+              if (store.authStatus === 'ready' || isValidTelegramUserId(store.telegramUserId)) {
+                void (async () => {
+                  const live = stateType ?? null;
+                  if (!(await shouldClearStickyTelegramSession(live))) {
+                    if (!isTdlibRecoveryInFlight()) {
+                      scheduleBackgroundTdlibRecovery();
+                    }
+                    return;
+                  }
+                  const now = telegramAccountStore.getState();
+                  if (!now.hasLocalSession()) {
+                    clearTdlibLoggingOutExpectation();
+                    return;
+                  }
+                  if (!(await shouldClearStickyTelegramSession(live))) return;
+                  logTdlibEvent('WaitCode/Password + empty/logout — clear sticky session', {
+                    level: 'warn',
+                    data: { state: live },
+                    flushSoon: true,
+                  });
+                  await now.clearLocalTelegramSession();
+                  clearTdlibLoggingOutExpectation();
+                })();
+                break;
+              }
+              if (
+                stateType === 'authorizationStateWaitPassword'
+                  ? store.authStatus !== 'waiting_password'
+                  : store.authStatus !== 'waiting_code'
+              ) {
+                store.setAuthStatus(
+                  stateType === 'authorizationStateWaitPassword'
+                    ? 'waiting_password'
+                    : 'waiting_code',
+                );
                 scheduleAuthPersist();
               }
               break;
@@ -164,7 +216,7 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateWaitRegistration':
               // Never drop a Ready session back to phone entry — only Settings logout does.
               // Transient WaitPhone while DB opens after recreate must not stack recoveries.
-              if (store.authStatus === 'ready' || store.telegramUserId != null) {
+              if (store.authStatus === 'ready' || isValidTelegramUserId(store.telegramUserId)) {
                 void (async () => {
                   const live = stateType ?? null;
                   if (!(await shouldClearStickyTelegramSession(live))) {
@@ -233,9 +285,12 @@ export function TelegramTdlibNotificationListener() {
                   clearTdlibLoggingOutExpectation();
                   return;
                 }
-                if (!isTdlibRecoveryInFlight()) {
-                  scheduleBackgroundTdlibRecovery();
-                }
+                // Do not schedule soft background recover on Closed — send-path hard recreate
+                // after sticky/DB checks owns heal.
+                logTdlibEvent('auth Closed with sticky DB — defer hard recreate to send path', {
+                  level: 'info',
+                  data: { prevStatus: store.authStatus },
+                });
               })();
               break;
             default:
