@@ -13,9 +13,16 @@ private final class PendingTdlibRequest {
   }
 }
 
+private enum PendingRegistration {
+  case registered
+  case duplicate
+  case unavailable
+}
+
 private func shouldEmitUpdateToJs(_ updateType: String) -> Bool {
   switch updateType {
   case "updateAuthorizationState",
+       "updateServiceNotification",
        "updateNewMessage",
        "updateMessageSendSucceeded",
        "updateMessageSendFailed",
@@ -39,7 +46,9 @@ private func shouldEmitUpdateToJs(_ updateType: String) -> Bool {
 @objc(Tdlib)
 final class Tdlib: RCTEventEmitter {
   private static let sendTimeoutSeconds: TimeInterval = 240
+  private static let maxLogTailBytes = 128 * 1024
 
+  private let instanceId = UUID().uuidString
   private let stateLock = NSLock()
   private let sendLock = NSLock()
   /// Serializes td_json_client_receive vs destroy/recreate (TDLib forbids concurrent use).
@@ -48,12 +57,15 @@ final class Tdlib: RCTEventEmitter {
   private var receiveThread: Thread?
   private var destroyed = false
   private var receivePaused = false
+  private var requestsSuspended = false
   private var hasActiveListeners = false
   private var pending: [String: PendingTdlibRequest] = [:]
+  private var diagnosticLogPath: String?
 
   override init() {
     super.init()
     client = td_json_client_create()
+    NSLog("[Tdlib/%@] init client=%@", instanceId, client == nil ? "nil" : "created")
     startReceiveThread()
   }
 
@@ -62,15 +74,14 @@ final class Tdlib: RCTEventEmitter {
   }
 
   override func supportedEvents() -> [String]! {
-    ["td_json_update"]
+    ["td_json_update", "td_json_diagnostic"]
   }
 
   override func startObserving() {
     stateLock.lock()
     hasActiveListeners = true
     stateLock.unlock()
-    // Bridge reload: resume I/O paused by invalidate (client kept alive).
-    resumeIoIfNeeded()
+    emitLifecycleDiagnostic("listeners_started")
   }
 
   override func stopObserving() {
@@ -84,18 +95,35 @@ final class Tdlib: RCTEventEmitter {
     _ resolve: RCTPromiseResolveBlock,
     rejecter reject: RCTPromiseRejectBlock
   ) {
+    guard !isDestroyed() else {
+      reject("E_TD_NATIVE", "TDLib module was unloaded.", nil)
+      return
+    }
+    stateLock.lock()
+    if destroyed || requestsSuspended {
+      stateLock.unlock()
+      reject("E_TD_RECREATE", "TDLib client is already stopping or being recreated.", nil)
+      return
+    }
+    requestsSuspended = true
+    receivePaused = true
+    stateLock.unlock()
+
     rejectAllPending(code: "E_TD_RECREATE", message: "TDLib client is being recreated.")
 
     // Pause receive loop, then take clientIoLock so we never destroy while
     // td_json_client_receive is in flight (undefined behavior / native crash).
-    stateLock.lock()
-    receivePaused = true
-    stateLock.unlock()
-
     sendLock.lock()
     clientIoLock.lock()
 
     stateLock.lock()
+    if destroyed {
+      stateLock.unlock()
+      clientIoLock.unlock()
+      sendLock.unlock()
+      reject("E_TD_NATIVE", "TDLib module was unloaded.", nil)
+      return
+    }
     let oldClient = client
     client = nil
     stateLock.unlock()
@@ -106,23 +134,71 @@ final class Tdlib: RCTEventEmitter {
 
     let newClient = td_json_client_create()
     stateLock.lock()
-    client = newClient
-    receivePaused = false
-    destroyed = false
-    let created = client != nil
+    let invalidatedDuringCreate = destroyed
+    if !invalidatedDuringCreate {
+      client = newClient
+      receivePaused = false
+      requestsSuspended = false
+    }
+    let created = !invalidatedDuringCreate && client != nil
     stateLock.unlock()
 
+    if invalidatedDuringCreate, let newClient {
+      td_json_client_destroy(newClient)
+    }
     clientIoLock.unlock()
     sendLock.unlock()
 
+    if invalidatedDuringCreate {
+      reject("E_TD_NATIVE", "TDLib module was unloaded.", nil)
+      return
+    }
     ensureReceiveThreadRunning()
 
     if !created {
       reject("E_TD_NATIVE", "Failed to recreate TDLib client.", nil)
       return
     }
-    NSLog("[Tdlib] client recreated — session can reload from database_directory")
+    emitLifecycleDiagnostic("client_recreated")
     resolve(true)
+  }
+
+  @objc(getInstanceIdentity:rejecter:)
+  func getInstanceIdentity(
+    _ resolve: RCTPromiseResolveBlock,
+    rejecter reject: RCTPromiseRejectBlock
+  ) {
+    resolve(["instanceId": instanceId])
+  }
+
+  @objc(readTdlibLogTail:resolver:rejecter:)
+  func readTdlibLogTail(
+    _ maxBytes: NSNumber,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    let byteLimit = min(Self.maxLogTailBytes, max(1, maxBytes.intValue))
+    stateLock.lock()
+    let path = diagnosticLogPath
+    stateLock.unlock()
+    guard let path else {
+      reject("E_TD_LOG_READ", "TDLib diagnostic log is not configured.", nil)
+      return
+    }
+    DispatchQueue.global(qos: .utility).async {
+      let url = URL(fileURLWithPath: path)
+      do {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let size = try handle.seekToEnd()
+        let start = size > UInt64(byteLimit) ? size - UInt64(byteLimit) : 0
+        try handle.seek(toOffset: start)
+        let data = try handle.read(upToCount: byteLimit) ?? Data()
+        resolve(String(decoding: data, as: UTF8.self))
+      } catch {
+        reject("E_TD_LOG_READ", "Failed to read TDLib diagnostic log.", error)
+      }
+    }
   }
 
   @objc(getUses24HourClock:rejecter:)
@@ -482,9 +558,6 @@ final class Tdlib: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    // After bridge invalidate, client is kept alive but receive was paused.
-    resumeIoIfNeeded()
-
     var payloadObject: [String: Any]
     do {
       guard let data = queryJson.data(using: .utf8),
@@ -498,6 +571,9 @@ final class Tdlib: RCTEventEmitter {
       return
     }
 
+    excludeTdlibDirectoriesFromBackupIfNeeded(payloadObject)
+    rememberDiagnosticLogPathIfNeeded(payloadObject)
+
     var extra = coerceExtraKey(payloadObject["@extra"])
     if extra.isEmpty {
       extra = "rn_\(UUID().uuidString)"
@@ -505,12 +581,18 @@ final class Tdlib: RCTEventEmitter {
     }
 
     let pendingRequest = PendingTdlibRequest(resolve: resolve, reject: reject)
-    if !registerPending(extra: extra, request: pendingRequest) {
+    switch registerPending(extra: extra, request: pendingRequest) {
+    case .registered:
+      break
+    case .duplicate:
       reject(
         "E_TD_JSON",
         "Parallel TDLib request with the same @extra. Wait for the response or avoid custom @extra.",
         nil
       )
+      return
+    case .unavailable:
+      reject("E_TD_NATIVE", "TDLib client is stopping or being recreated.", nil)
       return
     }
 
@@ -525,6 +607,9 @@ final class Tdlib: RCTEventEmitter {
     sendLock.lock()
     defer { sendLock.unlock() }
 
+    guard isPending(extra: extra) else {
+      return
+    }
     if isDestroyed() {
       removePending(extra: extra)?.reject("E_TD_NATIVE", "TDLib I/O is stopped.", nil)
       return
@@ -545,50 +630,56 @@ final class Tdlib: RCTEventEmitter {
   }
 
   override func invalidate() {
-    // Keep client alive across RN bridge reload; destroy only in deinit.
-    // Do NOT markDestroyed() — that would make activeClient() nil forever and
-    // block JS recovery (Closed path / recreateClient) after reload.
-    // Android parity: do NOT td_json_client_destroy here either.
-    stateLock.lock()
-    receivePaused = true
-    stateLock.unlock()
-    receiveThread?.cancel()
-
-    let deadline = Date().addingTimeInterval(2)
-    while receiveThread?.isExecuting == true && Date() < deadline {
-      Thread.sleep(forTimeInterval: 0.05)
-    }
-
+    NSLog("[Tdlib/%@] lifecycle=invalidate", instanceId)
+    stopAndDestroyClient(reason: "invalidate")
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module was unloaded.")
-
     super.invalidate()
   }
 
   deinit {
-    markDestroyed()
-    stateLock.lock()
-    receivePaused = true
-    stateLock.unlock()
-    receiveThread?.cancel()
+    NSLog("[Tdlib/%@] deinit", instanceId)
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module deallocated.")
+    stopAndDestroyClient(reason: "deinit")
+  }
 
-    // Process teardown only — safe to destroy the native client.
+  /**
+   * Permanently stops this module instance and destroys its TDLib client.
+   * Lock order matches recreateClient: sendLock -> clientIoLock -> stateLock.
+   */
+  private func stopAndDestroyClient(reason: String) {
+    stateLock.lock()
+    let wasDestroyed = destroyed
+    destroyed = true
+    receivePaused = true
+    requestsSuspended = true
+    let thread = receiveThread
+    stateLock.unlock()
+
+    thread?.cancel()
+
     sendLock.lock()
     clientIoLock.lock()
-    if let client {
-      td_json_client_destroy(client)
-      self.client = nil
+    stateLock.lock()
+    destroyed = true
+    receivePaused = true
+    requestsSuspended = true
+    let oldClient = client
+    client = nil
+    stateLock.unlock()
+    if let oldClient {
+      td_json_client_destroy(oldClient)
     }
     clientIoLock.unlock()
     sendLock.unlock()
-  }
 
-  /// Clear soft-stop from invalidate and restart receive if the thread exited.
-  private func resumeIoIfNeeded() {
-    stateLock.lock()
-    receivePaused = false
-    stateLock.unlock()
-    ensureReceiveThreadRunning()
+    if !wasDestroyed || oldClient != nil {
+      NSLog(
+        "[Tdlib/%@] %@ client=%@",
+        instanceId,
+        reason,
+        oldClient == nil ? "already_nil" : "destroyed"
+      )
+    }
   }
 
   private func startReceiveThread() {
@@ -701,6 +792,66 @@ final class Tdlib: RCTEventEmitter {
     }
   }
 
+  private func excludeTdlibDirectoriesFromBackupIfNeeded(_ payload: [String: Any]) {
+    guard payload["@type"] as? String == "setTdlibParameters" else {
+      return
+    }
+    for key in ["database_directory", "files_directory"] {
+      guard let path = payload[key] as? String, !path.isEmpty else {
+        continue
+      }
+      var url = URL(fileURLWithPath: path, isDirectory: true)
+      var values = URLResourceValues()
+      values.isExcludedFromBackup = true
+      do {
+        try url.setResourceValues(values)
+        let verified = try url.resourceValues(forKeys: [.isExcludedFromBackupKey])
+          .isExcludedFromBackup == true
+        NSLog(
+          "[Tdlib/%@] backup exclusion %@ for %@",
+          instanceId,
+          verified ? "verified" : "not_verified",
+          key
+        )
+      } catch {
+        NSLog("[Tdlib/%@] backup exclusion failed for %@: %@", instanceId, key, error.localizedDescription)
+      }
+    }
+  }
+
+  private func rememberDiagnosticLogPathIfNeeded(_ payload: [String: Any]) {
+    guard payload["@type"] as? String == "setLogStream",
+          let stream = payload["log_stream"] as? [String: Any],
+          stream["@type"] as? String == "logStreamFile",
+          let path = stream["path"] as? String,
+          !path.isEmpty else {
+      return
+    }
+    stateLock.lock()
+    diagnosticLogPath = path
+    stateLock.unlock()
+  }
+
+  private func emitLifecycleDiagnostic(_ event: String) {
+    NSLog("[Tdlib/%@] lifecycle=%@", instanceId, event)
+    guard listenersActive() else {
+      return
+    }
+    let emit = { [weak self] in
+      guard let self, self.listenersActive() else {
+        return
+      }
+      self.sendEvent(
+        withName: "td_json_diagnostic",
+        body: [
+          "event": String(event.prefix(64)),
+          "instanceId": self.instanceId,
+        ]
+      )
+    }
+    DispatchQueue.main.async(execute: emit)
+  }
+
   private func coerceExtraKey(_ value: Any?) -> String {
     guard let value else {
       return ""
@@ -726,26 +877,32 @@ final class Tdlib: RCTEventEmitter {
     return destroyed
   }
 
-  private func markDestroyed() {
-    stateLock.lock()
-    destroyed = true
-    stateLock.unlock()
-  }
-
   private func listenersActive() -> Bool {
     stateLock.lock()
     defer { stateLock.unlock() }
     return hasActiveListeners
   }
 
-  private func registerPending(extra: String, request: PendingTdlibRequest) -> Bool {
+  private func registerPending(
+    extra: String,
+    request: PendingTdlibRequest
+  ) -> PendingRegistration {
     stateLock.lock()
     defer { stateLock.unlock() }
+    if destroyed || requestsSuspended {
+      return .unavailable
+    }
     if pending[extra] != nil {
-      return false
+      return .duplicate
     }
     pending[extra] = request
-    return true
+    return .registered
+  }
+
+  private func isPending(extra: String) -> Bool {
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return pending[extra] != nil
   }
 
   private func removePending(extra: String) -> PendingTdlibRequest? {

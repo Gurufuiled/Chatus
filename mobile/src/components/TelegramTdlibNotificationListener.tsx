@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
+import { Alert } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
 import {
   applyTdlibParameters,
   cancelBackgroundTdlibRecovery,
+  captureTdlibLoggingOutDiagnostics,
   clearTdlibLoggingOutExpectation,
+  ensureTdlibReadyForPhoneLogin,
   getTdlibClientIdentity,
   isExpectingEmptyTdlibDatabaseAfterLogout,
   isTdlibRecoveryInFlight,
@@ -28,6 +31,140 @@ import { syncChatusPhoneFromTelegramAuth } from '../services/telegramChatusPhone
 import { logTdlibEvent } from '../services/clientRemoteLog';
 import { isValidTelegramUserId } from '../services/tdlib/tdlibSessionPolicy';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
+import {
+  createTdlibServiceNotificationDeduper,
+  getTdlibServiceNotificationUiDecision,
+  markTdlibAuthKeyDrop,
+  parseTdlibServiceNotification,
+} from '../services/tdlib/tdlibDiagnostics';
+import {
+  createAuthKeyDropAlertActions,
+  performConfirmedAuthKeyDropLogout,
+} from '../services/tdlib/tdlibServiceNotificationActions';
+
+let authKeyDropAlertVisible = false;
+let authKeyDropActionInFlight = false;
+let serviceNotificationAlertVisible = false;
+const serviceNotificationDeduper = createTdlibServiceNotificationDeduper();
+
+function waitForTdlibAuthorizationClosed(timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutTimer);
+      if (pollTimer) clearTimeout(pollTimer);
+      unsubscribe();
+      if (error) reject(error);
+      else resolve();
+    };
+    const readClosed = (value: Record<string, unknown>): boolean =>
+      value['@type'] === 'authorizationStateClosed' ||
+      (value['@type'] === 'updateAuthorizationState' &&
+        (value.authorization_state as { '@type'?: unknown } | undefined)?.['@type'] ===
+          'authorizationStateClosed');
+    const unsubscribe = tdlibClient.subscribe((update) => {
+      if (readClosed(update)) finish();
+    });
+    const timeoutTimer = setTimeout(() => {
+      finish(new Error('TDLib не подтвердил завершение сессии. Попробуйте ещё раз.'));
+    }, timeoutMs);
+    const poll = async () => {
+      if (settled) return;
+      const state = (await tdlibClient
+        .send({ '@type': 'getAuthorizationState' })
+        .catch(() => null)) as Record<string, unknown> | null;
+      if (state && readClosed(state)) {
+        finish();
+        return;
+      }
+      if (!settled) pollTimer = setTimeout(poll, 250);
+    };
+    void poll();
+  });
+}
+
+async function destroyDroppedAuthKeySession(): Promise<void> {
+  logTdlibEvent('AUTH_KEY_DROP confirmed — destroy local TDLib session', {
+    level: 'warn',
+    flushSoon: true,
+  });
+  await performConfirmedAuthKeyDropLogout({
+    enterExclusiveDestroyMode: () =>
+      markTdlibLoggingOut({ deferLocalClearUntilClosed: true }),
+    sendTdlib: (query) => tdlibClient.send(query),
+    waitForClosed: waitForTdlibAuthorizationClosed,
+    clearLocalSession: () => telegramAccountStore.getState().clearLocalTelegramSession(),
+    prepareFreshLogin: ensureTdlibReadyForPhoneLogin,
+  });
+}
+
+function showTdlibServiceNotification(
+  serviceNotification: NonNullable<ReturnType<typeof parseTdlibServiceNotification>>,
+): void {
+  const decision = getTdlibServiceNotificationUiDecision(serviceNotification);
+  if (decision.kind === 'auth_key_drop') {
+    if (authKeyDropAlertVisible || authKeyDropActionInFlight) return;
+    if (!serviceNotificationDeduper.shouldDisplay(serviceNotification)) return;
+    authKeyDropAlertVisible = true;
+    const releaseGuard = () => {
+      authKeyDropAlertVisible = false;
+    };
+    const actions = createAuthKeyDropAlertActions({
+      releaseAlert: releaseGuard,
+      startAction: () => {
+        authKeyDropActionInFlight = true;
+      },
+      finishAction: () => {
+        authKeyDropActionInFlight = false;
+      },
+      performLogout: destroyDroppedAuthKeySession,
+      onError: (error) => {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Не удалось завершить сессию Telegram. Попробуйте ещё раз.';
+        Alert.alert(
+          'Не удалось выйти из Telegram',
+          message,
+          [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Повторить', onPress: actions.confirm },
+          ],
+          { cancelable: true },
+        );
+      },
+    });
+    Alert.alert(
+      decision.title,
+      decision.message,
+      [
+        { text: 'Отмена', style: 'cancel', onPress: actions.cancel },
+        {
+          text: 'Выйти',
+          style: 'destructive',
+          onPress: actions.confirm,
+        },
+      ],
+      { cancelable: true, onDismiss: releaseGuard },
+    );
+    return;
+  }
+  if (decision.kind === 'none' || serviceNotificationAlertVisible) return;
+  if (!serviceNotificationDeduper.shouldDisplay(serviceNotification)) return;
+  serviceNotificationAlertVisible = true;
+  const releaseGuard = () => {
+    serviceNotificationAlertVisible = false;
+  };
+  Alert.alert(
+    decision.title,
+    decision.message,
+    [{ text: 'OK', onPress: releaseGuard }],
+    { cancelable: true, onDismiss: releaseGuard },
+  );
+}
 
 async function syncTelegramUserIdFromGetMe(): Promise<void> {
   try {
@@ -123,6 +260,29 @@ export function TelegramTdlibNotificationListener() {
 
     unsubTd = tdlibClient.subscribe((update) => {
       try {
+        const serviceNotification = parseTdlibServiceNotification(update);
+        if (serviceNotification) {
+          if (serviceNotification.isAuthKeyDrop) {
+            markTdlibAuthKeyDrop(serviceNotification);
+          }
+          if (__DEV__) {
+            console.info(
+              '[tdlib-notify] service notification',
+              serviceNotification.notificationType,
+              serviceNotification.text,
+            );
+          }
+          logTdlibEvent(
+            `service notification ${serviceNotification.remoteNotificationType}`,
+            {
+              level: serviceNotification.isAuthKeyDrop ? 'error' : 'info',
+              flushSoon: serviceNotification.isAuthKeyDrop,
+            },
+          );
+          showTdlibServiceNotification(serviceNotification);
+          return;
+        }
+
         if (update['@type'] === 'updateAuthorizationState') {
           const authState = update['authorization_state'] as Record<string, unknown> | undefined;
           const stateType = authState?.['@type'] as string | undefined;
@@ -149,6 +309,7 @@ export function TelegramTdlibNotificationListener() {
             });
           }
           const store = telegramAccountStore.getState();
+          serviceNotificationDeduper.observeAuthState(stateType);
           switch (stateType) {
             case 'authorizationStateReady':
               clearTdlibLoggingOutExpectation();
@@ -156,6 +317,7 @@ export function TelegramTdlibNotificationListener() {
                 level: 'info',
                 data: {
                   ...getTdlibClientIdentity(),
+                  ...tdlibClient.getNativeInstanceIdentity(),
                   prevStatus: store.authStatus,
                 },
                 flushSoon: true,
@@ -256,6 +418,7 @@ export function TelegramTdlibNotificationListener() {
             case 'authorizationStateLoggingOut':
               // LoggingOut wipes the TDLib DB — do NOT schedule recover (empty DB + sticky Ready
               // loops forever on "переподключается").
+              void captureTdlibLoggingOutDiagnostics();
               markTdlibLoggingOut();
               if (store.hasLocalSession()) {
                 logTdlibEvent('auth LoggingOut — will clear sticky after Closed', {

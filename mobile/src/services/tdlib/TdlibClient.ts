@@ -14,6 +14,8 @@ const DANGEROUS_QUERY_TYPES = new Set(['logOut', 'close', 'destroy']);
 function getNativeModule(): {
   sendClientJson: (json: string) => Promise<string>;
   recreateClient?: () => Promise<boolean>;
+  getInstanceIdentity?: () => Promise<{ instanceId?: unknown }>;
+  readTdlibLogTail?: (maxBytes: number) => Promise<string>;
   addListener?: (eventType: string) => void;
   removeListeners?: (count: number) => void;
 } | null {
@@ -21,6 +23,8 @@ function getNativeModule(): {
     | {
         sendClientJson: (json: string) => Promise<string>;
         recreateClient?: () => Promise<boolean>;
+        getInstanceIdentity?: () => Promise<{ instanceId?: unknown }>;
+        readTdlibLogTail?: (maxBytes: number) => Promise<string>;
         addListener?: (eventType: string) => void;
         removeListeners?: (count: number) => void;
       }
@@ -55,6 +59,7 @@ class TdlibClientImpl {
   private listeners = new Set<TdUpdateListener>();
   private pendingUpdates: TdlibUpdate[] = [];
   private flushScheduled = false;
+  private nativeInstanceId: string | null = null;
 
   constructor() {
     const mod = getNativeModule();
@@ -63,7 +68,37 @@ class TdlibClientImpl {
       this.emitter.addListener('td_json_update', (payload: { json?: string }) => {
         if (payload?.json) this.enqueue(payload.json);
       });
+      this.emitter.addListener(
+        'td_json_diagnostic',
+        (payload: { event?: unknown; instanceId?: unknown }) => {
+          this.recordNativeLifecycle(payload);
+        },
+      );
+      if (mod.getInstanceIdentity) {
+        void mod
+          .getInstanceIdentity()
+          .then((payload) => this.recordNativeLifecycle({ ...payload, event: 'identity' }))
+          .catch(() => undefined);
+      }
     }
+  }
+
+  private recordNativeLifecycle(payload: { event?: unknown; instanceId?: unknown }): void {
+    const event =
+      typeof payload?.event === 'string'
+        ? payload.event.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 64)
+        : 'unknown';
+    const instanceId =
+      typeof payload?.instanceId === 'string' &&
+      /^[A-Fa-f0-9-]{8,64}$/.test(payload.instanceId)
+        ? payload.instanceId
+        : null;
+    if (instanceId) this.nativeInstanceId = instanceId;
+    logTdlibEvent(`native lifecycle ${event}`, {
+      level: event === 'invalidate' ? 'warn' : 'info',
+      data: instanceId ? { instanceId } : undefined,
+      flushSoon: event === 'invalidate' || event === 'listeners_started',
+    });
   }
 
   private enqueue(json: string) {
@@ -140,6 +175,16 @@ class TdlibClientImpl {
     if (!mod?.recreateClient) return false;
     await mod.recreateClient();
     return true;
+  }
+
+  async readTdlibLogTail(maxBytes = 128 * 1024): Promise<string | null> {
+    const mod = getNativeModule();
+    if (!mod?.readTdlibLogTail) return null;
+    return mod.readTdlibLogTail(Math.max(1, Math.min(128 * 1024, maxBytes)));
+  }
+
+  getNativeInstanceIdentity(): { nativeInstanceId: string | null } {
+    return { nativeInstanceId: this.nativeInstanceId };
   }
 
   /** Dev fallback when iOS native is not yet compiled into the target. */

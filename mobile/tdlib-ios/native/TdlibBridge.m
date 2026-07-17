@@ -13,6 +13,13 @@ RCT_EXTERN_METHOD(getUses24HourClock:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(recreateClient:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(getInstanceIdentity:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(readTdlibLogTail:(nonnull NSNumber *)maxBytes
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(centerCropSquareVideo:(NSString *)inputPath
                   maxSide:(nonnull NSNumber *)maxSide
                   resolver:(RCTPromiseResolveBlock)resolve
