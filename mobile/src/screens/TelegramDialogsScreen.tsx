@@ -1,23 +1,27 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ChatsStackParamList } from '../navigation/types';
-import { useTheme } from '../contexts/ThemeContext';
-import { telegramAccountStore, type TelegramDialogRow } from '../stores/telegramAccountStore';
-import { ChatListSearchBar } from '../components/ChatListSearchBar';
-import { TelegramDialogListRow } from '../components/TelegramDialogListRow';
-import { createChatListStyles } from './chatList.styles';
-import { matchesDialogQuery } from './telegramChat/telegramDialogsLoader';
-import { useTelegramDialogsRefresh } from './telegramChat/useTelegramDialogsRefresh';
+import React, { useCallback, useMemo, useState } from "react";
+import { FlatList, RefreshControl, Text, View, Platform } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { ChatsStackParamList } from "../navigation/types";
+import { useTheme } from "../contexts/ThemeContext";
+import {
+  telegramAccountStore,
+  type TelegramDialogRow,
+} from "../stores/telegramAccountStore";
+import { ChatListSearchBar } from "../components/ChatListSearchBar";
+import { TelegramDialogListRow } from "../components/TelegramDialogListRow";
+import { createChatListStyles } from "./chatList.styles";
+import { matchesDialogQuery } from "./telegramChat/telegramDialogsLoader";
+import { useTelegramDialogsRefresh } from "./telegramChat/useTelegramDialogsRefresh";
 
 export function TelegramDialogsScreen() {
   const { colors } = useTheme();
   const listStyles = useMemo(() => createChatListStyles(colors), [colors]);
-  const navigation = useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<ChatsStackParamList>>();
   const dialogs = telegramAccountStore((s) => s.dialogs);
-  const telegramReady = telegramAccountStore((s) => s.authStatus === 'ready');
-  const [query, setQuery] = useState('');
+  const telegramReady = telegramAccountStore((s) => s.authStatus === "ready");
+  const [query, setQuery] = useState("");
   const [refreshing, setRefreshing] = React.useState(false);
 
   const refresh = useTelegramDialogsRefresh(telegramReady);
@@ -51,12 +55,16 @@ export function TelegramDialogsScreen() {
     () => (
       <View style={listStyles.empty}>
         {lastError && !isSearchActive ? (
-          <Text style={{ color: '#E53935', textAlign: 'center', marginBottom: 12 }}>{lastError}</Text>
+          <Text
+            style={{ color: "#E53935", textAlign: "center", marginBottom: 12 }}
+          >
+            {lastError}
+          </Text>
         ) : null}
         <Text style={listStyles.emptyText}>
           {isSearchActive
-            ? 'Ничего не найдено'
-            : 'Список чатов пуст. Если аккаунт только что подключили, подождите синхронизацию и потяните список вниз для обновления.'}
+            ? "Ничего не найдено"
+            : "Список чатов пуст. Если аккаунт только что подключили, подождите синхронизацию и потяните список вниз для обновления."}
         </Text>
       </View>
     ),
@@ -74,6 +82,13 @@ export function TelegramDialogsScreen() {
         data={filteredDialogs}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        removeClippedSubviews={
+          Platform.OS === "android" ? true : !isSearchActive
+        }
+        initialNumToRender={12}
+        maxToRenderPerBatch={Platform.OS === "android" ? 5 : 8}
+        updateCellsBatchingPeriod={Platform.OS === "android" ? 60 : 45}
+        windowSize={Platform.OS === "android" ? 5 : 8}
         keyboardShouldPersistTaps="handled"
         ItemSeparatorComponent={renderItemSeparator}
         ListHeaderComponent={
@@ -89,7 +104,11 @@ export function TelegramDialogsScreen() {
         }
         ListEmptyComponent={empty}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={colors.accent} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void onRefresh()}
+            tintColor={colors.accent}
+          />
         }
       />
     </View>
