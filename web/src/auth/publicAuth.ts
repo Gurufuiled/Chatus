@@ -1,4 +1,4 @@
-import { refreshAccessToken, getOAuthLoginUrl, type RefreshTokenResponse } from '@/services/authService';
+import { refreshAccessToken, getOAuthLoginUrl, getMe, type RefreshTokenResponse } from '@/services/authService';
 import { ApiError, setAccessToken, setAuthFailureHandler } from '@/services/apiClient';
 import { useAuthUiStore } from '@/stores/authUiStore';
 import { activateUiPreview } from '@/dev/uiPreview';
@@ -13,6 +13,7 @@ const RESTORE_REFRESH_TIMEOUT_MS = 10_000;
 const ACCESS_TOKEN_SKEW_MS = 60_000;
 
 let bootSessionGeneration = 0;
+let devBypassGeneration = 0;
 
 function nextBootGeneration(): number {
   bootSessionGeneration += 1;
@@ -207,8 +208,31 @@ export function activateDevPublicAuthBypass(): void {
   }
 
   setAccessToken(token);
-  useAuthUiStore.getState().setAccessToken(token);
-  useAuthUiStore.getState().setEmbedStatus('ready');
+  const store = useAuthUiStore.getState();
+  store.setAccessToken(token);
+  store.setAuthError(null);
+  store.setEmbedStatus('exchanging');
+
+  const generation = ++devBypassGeneration;
+
+  void (async () => {
+    try {
+      const user = await getMe();
+      if (generation !== devBypassGeneration) return;
+      const current = useAuthUiStore.getState();
+      if (current.accessToken !== token) return;
+      current.setUser(user);
+      current.setEmbedStatus('ready');
+    } catch (err) {
+      if (generation !== devBypassGeneration) return;
+      const current = useAuthUiStore.getState();
+      if (current.accessToken !== token) return;
+      if (current.embedStatus !== 'exchanging') return;
+      current.setUser(null);
+      current.setEmbedStatus('error');
+      current.setAuthError(mapAuthError(err));
+    }
+  })();
 }
 
 export function applyOAuthExchangeFromUrl(authError: string | null): void {

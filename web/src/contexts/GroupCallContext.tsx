@@ -1420,6 +1420,9 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           : [];
         if (!chatId || !roomId) return;
         if (participants.length === 0) {
+          // Ignore stale empty snapshots from a previous room in this chat.
+          const current = activeRoomByChatIdRef.current[chatId];
+          if (current && current.id !== roomId) return;
           applyActiveRoomSnapshot(chatId, null);
         } else {
           setActiveRoomByChatId((prev) => {

@@ -1,4 +1,4 @@
-import { exchangeLoginusInitData, refreshAccessToken } from '@/services/authService';
+import { exchangeLoginusInitData, getMe, refreshAccessToken } from '@/services/authService';
 import type { RefreshTokenResponse } from '@/services/authService';
 import { ApiError, setAccessToken, setAuthFailureHandler } from '@/services/apiClient';
 import { useAuthUiStore } from '@/stores/authUiStore';
@@ -17,6 +17,7 @@ const EXCHANGE_RETRY_DELAY_MS = 600;
 const RESTORE_REFRESH_TIMEOUT_MS = 10_000;
 
 let bootSessionGeneration = 0;
+let devBypassGeneration = 0;
 
 /** Cancel in-flight session restore so a fresh loginus:init can exchange. */
 export function prioritizeLoginusInit(): void {
@@ -210,6 +211,31 @@ export function activateDevAuthBypass(): void {
   }
 
   setAccessToken(token);
-  useAuthUiStore.getState().setAccessToken(token);
-  useAuthUiStore.getState().setEmbedStatus('ready');
+  const store = useAuthUiStore.getState();
+  store.setAccessToken(token);
+  store.setAuthError(null);
+  store.setEmbedStatus('exchanging');
+
+  const generation = ++devBypassGeneration;
+
+  // Group calls (and other identity checks) require authUiStore.user — load /users/me.
+  void (async () => {
+    try {
+      const user = await getMe();
+      if (generation !== devBypassGeneration) return;
+      const current = useAuthUiStore.getState();
+      // Another auth path may have taken over (e.g. preview).
+      if (current.accessToken !== token) return;
+      current.setUser(user);
+      current.setEmbedStatus('ready');
+    } catch (err) {
+      if (generation !== devBypassGeneration) return;
+      const current = useAuthUiStore.getState();
+      if (current.accessToken !== token) return;
+      if (current.embedStatus !== 'exchanging') return;
+      current.setUser(null);
+      current.setEmbedStatus('error');
+      current.setAuthError(mapAuthError(err));
+    }
+  })();
 }

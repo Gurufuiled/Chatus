@@ -1,22 +1,17 @@
-# Локальный dev на Windows/macOS: LAN-доступ с телефона/эмулятора, без Traefik.
-# Запуск: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d db api livekit
-
+# Local override: avoid Windows excluded UDP 50000-50100; no Traefik network needed.
 services:
-  api:
-    ports: !override
-      - '0.0.0.0:${PORT:-4000}:4000'
-      - '0.0.0.0:${WS_PORT:-4001}:4001'
-      - '0.0.0.0:${SIGNALING_PORT:-4002}:4002'
-    networks: !override
-      - default
-
   livekit:
-    command: --config /etc/livekit.yaml --dev
-    volumes: !override
+    volumes:
       - ./livekit.local.yaml:/etc/livekit.yaml:ro
-    ports: !override
-      - '0.0.0.0:7880:7880'
-      - '0.0.0.0:7881:7881'
-      - '60000-60020:60000-60020/udp'
-    networks: !override
+    ports:
+      - '127.0.0.1:7880:7880'
+      - '127.0.0.1:7881:7881'
+      - '51000-51100:51000-51100/udp'
+    networks:
+      - default
+    # Drop traefik-public for local (external network may be absent / unused)
+    labels: []
+
+  db:
+    networks:
       - default

@@ -1,13 +1,16 @@
-# LiveKit local Windows — UDP вне excluded port range Hyper-V (см. netsh excludedportrange)
+# Local-only LiveKit config (Windows Hyper-V excludes UDP 50000-50100).
+# Used by: docker compose -f docker-compose.yml -f docker-compose.local.yml up -d livekit
+
 port: 7880
 bind_addresses:
   - ""
 
 rtc:
   tcp_port: 7881
-  port_range_start: 60000
-  port_range_end: 60020
+  port_range_start: 51000
+  port_range_end: 51100
   use_external_ip: false
+  node_ip: 127.0.0.1
 
 keys:
   devkey: devsecret_change_me_in_production
@@ -19,7 +22,9 @@ room:
 logging:
   level: info
 
+turn:
+  enabled: false
+
 webhook:
   api_key: devkey
-  urls:
-    - http://api:4000/api/livekit/webhook
+  urls: []
