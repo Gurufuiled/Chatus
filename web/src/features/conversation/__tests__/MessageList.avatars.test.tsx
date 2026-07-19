@@ -180,4 +180,34 @@ describe('MessageList group avatars', () => {
     expect(container.querySelector('.message-list__avatar-slot')).toBeNull();
     expect(container.querySelector('.message-list__row--group-in')).toBeNull();
   });
+
+  it('skips avatar gutter for system messages', () => {
+    vi.mocked(useMessagesQuery).mockReturnValue(
+      mockMessages([
+        makeMessage({
+          id: 'sys-1',
+          sender_id: 'u1',
+          sender_name: 'Алиса',
+          msg_type: 'system',
+          content: 'Начат групповой звонок',
+          created_at: t0,
+        }),
+        makeMessage({
+          id: 'm1',
+          sender_id: 'u1',
+          sender_name: 'Алиса',
+          content: 'всем привет',
+          created_at: t0 + 1000,
+        }),
+      ]),
+    );
+
+    const { container } = render(<MessageList chatId="chat-1" />);
+    const systemRow = container.querySelector('#msg-sys-1');
+    expect(systemRow).toHaveClass('message-list__row--system');
+    expect(systemRow!.querySelector('.message-list__avatar-slot')).toBeNull();
+    expect(systemRow).not.toHaveClass('message-list__row--group-in');
+    expect(container.querySelectorAll('.message-list__row--group-in')).toHaveLength(1);
+    expect(container.querySelector('#msg-m1 .message-list__avatar-slot .avatar')).toBeTruthy();
+  });
 });

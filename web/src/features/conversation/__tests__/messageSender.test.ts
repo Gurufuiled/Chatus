@@ -59,6 +59,13 @@ describe('messageSender', () => {
     );
     expect(fromMember.displayName).toBe('Bob Member');
     expect(fromMember.avatarUrl).toContain('/uploads/bob.png');
+
+    const unknown = resolveMessageSender(
+      chat,
+      makeMessage({ sender_id: 'u-missing', sender_name: null, sender_avatar_url: null }),
+    );
+    expect(unknown.displayName).toBe('Участник');
+    expect(unknown.avatarUrl).toBeNull();
   });
 
   it('chains same incoming sender within the time gap', () => {
