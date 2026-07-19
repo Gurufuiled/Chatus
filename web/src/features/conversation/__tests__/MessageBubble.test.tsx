@@ -273,9 +273,44 @@ describe('MessageBubble', () => {
       msg_type: 'text',
       content: 'Заходи chatus://join/demo-token сюда',
     });
-    render(
+    const { container } = render(
       <MessageBubble chatId="chat-1" message={message} isOutgoing={false} selectionActive={false} />,
     );
+    expect(container.querySelector('.message-bubble--invite')).toBeNull();
     expect(screen.getByRole('button', { name: 'chatus://join/demo-token' })).toBeInTheDocument();
+  });
+
+  it('shows colored sender name when requested for group runs', () => {
+    const message = makeMessage({ sender_name: 'Мария' });
+    const { container } = render(
+      <MessageBubble
+        chatId="chat-1"
+        message={message}
+        isOutgoing={false}
+        selectionActive={false}
+        showSenderName
+        senderDisplayName="Мария"
+        senderNameColor="#E17076"
+      />,
+    );
+    const name = screen.getByText('Мария');
+    expect(name).toHaveClass('message-bubble__sender-name');
+    expect(name).toHaveStyle({ color: '#E17076' });
+    expect(container.querySelector('.message-bubble--with-sender')).toBeTruthy();
+  });
+
+  it('hides sender name when showSenderName is false', () => {
+    const message = makeMessage({ sender_name: 'Мария' });
+    render(
+      <MessageBubble
+        chatId="chat-1"
+        message={message}
+        isOutgoing={false}
+        selectionActive={false}
+        showSenderName={false}
+        senderDisplayName="Мария"
+      />,
+    );
+    expect(screen.queryByText('Мария')).not.toBeInTheDocument();
   });
 });

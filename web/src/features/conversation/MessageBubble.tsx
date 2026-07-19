@@ -61,6 +61,10 @@ interface MessageBubbleProps {
   message: MappedMessage;
   isOutgoing: boolean;
   selectionActive: boolean;
+  /** Group chats: colored sender name above the first bubble in a run. */
+  showSenderName?: boolean;
+  senderDisplayName?: string;
+  senderNameColor?: string;
   onContextMenu?: (e: React.MouseEvent) => void;
   onHighlightMessage?: (messageId: string) => void;
 }
@@ -71,6 +75,9 @@ export function MessageBubble({
   message,
   isOutgoing,
   selectionActive,
+  showSenderName = false,
+  senderDisplayName,
+  senderNameColor,
   onContextMenu,
   onHighlightMessage,
 }: MessageBubbleProps) {
@@ -298,12 +305,24 @@ export function MessageBubble({
     );
   }
 
+  const resolvedSenderName =
+    senderDisplayName?.trim() || message.sender_name?.trim() || '';
+  const senderNameNode =
+    showSenderName && resolvedSenderName ? (
+      <span
+        className="message-bubble__sender-name"
+        style={senderNameColor ? { color: senderNameColor } : undefined}
+      >
+        {resolvedSenderName}
+      </span>
+    ) : null;
+
   return (
     <div
       className={`message-stack${isOutgoing ? ' message-stack--outgoing' : ' message-stack--incoming'}`}
     >
       <div
-        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' || Boolean(media?.is_round) ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}${replyMessage ? ' message-bubble--with-reply' : ''}`}
+        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' || Boolean(media?.is_round) ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}${replyMessage ? ' message-bubble--with-reply' : ''}${senderNameNode ? ' message-bubble--with-sender' : ''}`}
         onContextMenu={onContextMenu}
       >
         {canReact ? (
@@ -312,6 +331,7 @@ export function MessageBubble({
         <div className="message-bubble__content">
           {hasReactions ? (
             <>
+              {senderNameNode}
               {forwardNode}
               {replyNode}
               <div className="message-bubble__body">{body}</div>
@@ -328,6 +348,7 @@ export function MessageBubble({
             </>
           ) : (
             <>
+              {senderNameNode}
               {forwardNode}
               {replyNode}
               {body}

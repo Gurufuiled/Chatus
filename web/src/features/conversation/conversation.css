@@ -147,7 +147,7 @@
 .message-list__inner {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   min-height: 100%;
   justify-content: flex-end;
 }
@@ -155,6 +155,12 @@
 .message-list__row {
   display: flex;
   max-width: 75%;
+  margin-top: 6px;
+  align-items: flex-end;
+}
+
+.message-list__row--chain {
+  margin-top: 2px;
 }
 
 .message-list__row--incoming {
@@ -163,6 +169,50 @@
 
 .message-list__row--outgoing {
   align-self: flex-end;
+}
+
+.message-list__row--system {
+  max-width: 100%;
+  align-self: center;
+  justify-content: center;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+.message-list__row--group-in {
+  max-width: min(85%, calc(75% + 40px));
+  gap: 8px;
+}
+
+.message-list__avatar-slot {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 1px;
+}
+
+.message-list__row--group-in .message-stack {
+  flex: 1;
+  min-width: 0;
+}
+
+.message-bubble__sender-name {
+  display: block;
+  flex: 0 0 100%;
+  width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0 0 3px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-bubble--with-sender {
+  padding-top: 5px;
 }
 
 .message-bubble {
@@ -813,6 +863,8 @@
 }
 
 .message-forward-header {
+  flex: 0 0 100%;
+  width: 100%;
   padding: 0 2px 4px;
   font-size: 12px;
   line-height: 1.3;

@@ -5,7 +5,13 @@ import { useChatsQuery } from '@/queries/chats.queries';
 import { getChatDisplayName } from '@/features/chat-list/chatListFormatters';
 import { useMessageContextStore } from '@/stores/messageContextStore';
 import { useSelectionStore } from '@/stores/selectionStore';
+import { Avatar } from '@/components/avatar/Avatar';
 import { MessageBubble } from './MessageBubble';
+import {
+  isSameGroupMessageRun,
+  isSystemLikeMessage,
+  resolveMessageSender,
+} from './messageSender';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 
@@ -19,6 +25,7 @@ export function MessageList({ chatId }: MessageListProps) {
   const { data: chats } = useChatsQuery();
   const chat = chats?.find((c) => c.id === chatId);
   const chatTitle = chat ? getChatDisplayName(chat) : 'Группа';
+  const isGroupChat = chat?.chat_type === 'group';
   const closeMessageMenu = useMessageContextStore((s) => s.closeMessageMenu);
   const openMessageMenu = useMessageContextStore((s) => s.openMessageMenu);
   const selectionActive = useSelectionStore((s) => s.isActive && s.chatId === chatId);
@@ -106,17 +113,48 @@ export function MessageList({ chatId }: MessageListProps) {
     );
   }
 
+  const visibleMessages = messages.filter((message) => !message.is_deleted);
+
   return (
     <div className="message-list" ref={containerRef} role="log" aria-relevant="additions">
       <div className="message-list__inner">
-        {messages.filter((message) => !message.is_deleted).map((message) => {
-          const isOutgoing = !!me?.id && message.sender_id === me.id;
+        {visibleMessages.map((message, index) => {
+          // While `me` is loading, avoid treating own messages as incoming (avatar flash).
+          const meId = me?.id;
+          const isOutgoing = !!meId && message.sender_id === meId;
           const isSelected = selectedIds.includes(message.id);
+          const isSystem = isSystemLikeMessage(message);
+          const prev = visibleMessages[index - 1];
+          const next = visibleMessages[index + 1];
+          const chainedWithPrev = isSameGroupMessageRun(prev, message, meId);
+          const chainedWithNext = isSameGroupMessageRun(message, next, meId);
+          // Groups only: left avatar gutter for incoming (non-system) bubbles.
+          // Skip until `me` is known so own rows don't briefly get the gutter.
+          const showGroupAvatarGutter = Boolean(
+            isGroupChat && meId && !isOutgoing && !isSystem,
+          );
+          const showSenderName = showGroupAvatarGutter && !chainedWithPrev;
+          const showAvatar = showGroupAvatarGutter && !chainedWithNext;
+          const sender = showGroupAvatarGutter
+            ? resolveMessageSender(chat, message)
+            : null;
+
           return (
             <div
               key={message.id}
               id={`msg-${message.id}`}
-              className={`message-list__row${isOutgoing ? ' message-list__row--outgoing' : ' message-list__row--incoming'}${selectionActive ? ' message-list__row--selectable' : ''}${isSelected ? ' message-list__row--selected' : ''}${highlightedId === message.id ? ' message-list__row--highlighted' : ''}`}
+              className={[
+                'message-list__row',
+                isOutgoing ? 'message-list__row--outgoing' : 'message-list__row--incoming',
+                isSystem ? 'message-list__row--system' : '',
+                showGroupAvatarGutter ? 'message-list__row--group-in' : '',
+                chainedWithPrev ? 'message-list__row--chain' : '',
+                selectionActive ? 'message-list__row--selectable' : '',
+                isSelected ? 'message-list__row--selected' : '',
+                highlightedId === message.id ? 'message-list__row--highlighted' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               onClick={() => handleRowClick(message.id)}
             >
               {selectionActive ? (
@@ -133,12 +171,30 @@ export function MessageList({ chatId }: MessageListProps) {
                   </svg>
                 </span>
               ) : null}
+              {showGroupAvatarGutter ? (
+                <div
+                  className="message-list__avatar-slot"
+                  aria-hidden={!showAvatar}
+                >
+                  {showAvatar && sender ? (
+                    <Avatar
+                      name={sender.displayName}
+                      imageUrl={sender.avatarUrl}
+                      size={32}
+                      fallbackColor={sender.color}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
               <MessageBubble
                 chatId={chatId}
                 chatTitle={chatTitle}
                 message={message}
                 isOutgoing={isOutgoing}
                 selectionActive={selectionActive}
+                showSenderName={showSenderName}
+                senderDisplayName={sender?.displayName}
+                senderNameColor={sender?.color}
                 onContextMenu={(e) => handleContextMenu(message.id, e)}
                 onHighlightMessage={triggerHighlight}
               />

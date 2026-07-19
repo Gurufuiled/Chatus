@@ -5,6 +5,8 @@ interface AvatarProps {
   name: string;
   imageUrl?: string | null;
   size?: number;
+  /** Optional solid fallback background (e.g. peer color in group chats). */
+  fallbackColor?: string;
 }
 
 function getInitials(name: string): string {
@@ -14,13 +16,18 @@ function getInitials(name: string): string {
   return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase();
 }
 
-export function Avatar({ name, imageUrl, size = 48 }: AvatarProps) {
+export function Avatar({ name, imageUrl, size = 48, fallbackColor }: AvatarProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const showImage = Boolean(imageUrl) && failedUrl !== imageUrl;
   const style = {
     width: size,
     height: size,
-    fontSize: Math.max(12, Math.round(size * 0.34)),
+    // Small avatars (typing stack) need a lower floor than header/list sizes.
+    fontSize:
+      size < 24
+        ? Math.max(6, Math.round(size * 0.42))
+        : Math.max(12, Math.round(size * 0.34)),
+    ...(fallbackColor ? { background: fallbackColor } : null),
   };
 
   if (showImage && imageUrl) {
