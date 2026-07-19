@@ -66,16 +66,21 @@
   width: 100%;
   display: flex;
   justify-content: flex-end;
+  margin-left: auto;
   padding: 6px 0;
+  box-sizing: border-box;
 }
 
 .group-call-system-message__card {
-  max-width: 82%;
+  width: max-content;
+  max-width: min(280px, 100%);
+  margin-left: auto;
   border-radius: 16px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(255, 255, 255, 0.96);
   padding: 10px 12px;
   box-shadow: 0 3px 8px rgba(138, 150, 168, 0.1);
+  box-sizing: border-box;
 }
 
 .group-call-system-message__row {

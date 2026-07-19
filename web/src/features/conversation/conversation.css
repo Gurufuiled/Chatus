@@ -172,8 +172,10 @@
 }
 
 .message-list__row--system {
+  /* Full list width so group-call cards can dock right; plain system text stays centered via justify-content. */
+  width: 100%;
   max-width: 100%;
-  align-self: center;
+  align-self: stretch;
   justify-content: center;
   margin-top: 10px;
   margin-bottom: 4px;
