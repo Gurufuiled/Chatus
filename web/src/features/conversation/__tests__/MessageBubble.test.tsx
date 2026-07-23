@@ -198,6 +198,147 @@ describe('MessageBubble', () => {
     expect(img).toHaveAttribute('src', expect.stringContaining('/uploads/photo.jpg'));
   });
 
+  it('overlays timestamp on media-only photo bubbles', () => {
+    const message = makeMessage({
+      msg_type: 'image',
+      content: null,
+      status: 'read',
+      media: [makeMedia({ remote_url: '/uploads/photo.jpg' })],
+    });
+    const { container } = render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing selectionActive={false} />,
+    );
+    expect(container.querySelector('.message-bubble--visual-media')).toBeTruthy();
+    expect(container.querySelector('.message-bubble--media-only')).toBeTruthy();
+    const overlay = container.querySelector('.message-bubble__meta--overlay');
+    expect(overlay).toBeTruthy();
+    expect(container.querySelector('.message-bubble__media-frame')?.contains(overlay)).toBe(true);
+    expect(overlay?.querySelector('.chat-status-checks')).toBeTruthy();
+  });
+
+  it('keeps timestamp below caption for photo with caption', () => {
+    const message = makeMessage({
+      msg_type: 'image',
+      content: 'Hello caption',
+      status: 'sent',
+      media: [makeMedia({ remote_url: '/uploads/photo.jpg' })],
+    });
+    const { container } = render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing={false} selectionActive={false} />,
+    );
+    expect(container.querySelector('.message-bubble--with-caption')).toBeTruthy();
+    expect(container.querySelector('.message-bubble__meta--overlay')).toBeNull();
+    expect(screen.getByText('Hello caption')).toHaveClass('message-bubble__caption');
+    expect(container.querySelector('.message-bubble__meta')).toBeTruthy();
+  });
+
+  it('shows sender name above visual media in groups', () => {
+    const message = makeMessage({
+      msg_type: 'image',
+      content: null,
+      sender_name: 'Мария',
+      media: [makeMedia({ remote_url: '/uploads/photo.jpg' })],
+    });
+    const { container } = render(
+      <MessageBubble
+        chatId="chat-1"
+        message={message}
+        isOutgoing={false}
+        selectionActive={false}
+        showSenderName
+        senderDisplayName="Мария"
+        senderNameColor="#E17076"
+      />,
+    );
+    expect(screen.getByText('Мария')).toHaveClass('message-bubble__sender-name');
+    expect(container.querySelector('.message-bubble--with-sender')).toBeTruthy();
+    expect(container.querySelector('.message-bubble__meta--overlay')).toBeTruthy();
+  });
+
+  it('keeps external meta when image url is missing', () => {
+    const message = makeMessage({
+      msg_type: 'image',
+      content: null,
+      media: [],
+    });
+    const { container } = render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing selectionActive={false} />,
+    );
+    expect(container.querySelector('.message-bubble__meta--overlay')).toBeNull();
+    expect(container.querySelector('.message-bubble__meta')).toBeTruthy();
+  });
+
+  it('overlays timestamp on media-only flat video above controls', () => {
+    const message = makeMessage({
+      msg_type: 'video',
+      content: null,
+      status: 'sent',
+      media: [makeMedia({ remote_url: '/uploads/clip.mp4', media_type: 'video' })],
+    });
+    const { container } = render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing selectionActive={false} />,
+    );
+    expect(container.querySelector('.message-bubble--flat-video')).toBeTruthy();
+    expect(container.querySelector('.message-bubble--album')).toBeNull();
+    expect(container.querySelector('.message-bubble__meta--overlay')).toBeTruthy();
+  });
+
+  it('overlays timestamp on media-only album bubbles', () => {
+    const message = makeMessage({
+      msg_type: 'image',
+      content: null,
+      status: 'read',
+      media: [
+        makeMedia({ id: 'm1', remote_url: '/uploads/a.jpg' }),
+        makeMedia({ id: 'm2', remote_url: '/uploads/b.jpg' }),
+      ],
+    });
+    const { container } = render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing selectionActive={false} />,
+    );
+    expect(container.querySelector('.message-bubble--album')).toBeTruthy();
+    expect(container.querySelector('.message-bubble--media-only')).toBeTruthy();
+    expect(container.querySelector('.message-bubble--flat-video')).toBeNull();
+    const overlay = container.querySelector('.message-bubble__meta--overlay');
+    expect(overlay).toBeTruthy();
+    expect(container.querySelector('.message-bubble__media-frame')?.contains(overlay)).toBe(true);
+  });
+
+  it('keeps external meta for video with caption', () => {
+    const message = makeMessage({
+      msg_type: 'video',
+      content: 'Watch this',
+      status: 'sent',
+      media: [makeMedia({ remote_url: '/uploads/clip.mp4', media_type: 'video' })],
+    });
+    const { container } = render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing={false} selectionActive={false} />,
+    );
+    expect(container.querySelector('.message-bubble--with-caption')).toBeTruthy();
+    expect(container.querySelector('.message-bubble__meta--overlay')).toBeNull();
+    expect(screen.getByText('Watch this')).toHaveClass('message-bubble__caption');
+    expect(container.querySelector('.message-bubble__meta')).toBeTruthy();
+  });
+
+  it('keeps bubble chrome for media-only with reactions', () => {
+    const message = makeMessage({
+      msg_type: 'image',
+      content: null,
+      status: 'read',
+      media: [makeMedia({ remote_url: '/uploads/photo.jpg' })],
+      reactions: [{ emoji: '👍', count: 1, reacted_by_me: false }],
+    });
+    const { container } = render(
+      <MessageBubble chatId="chat-1" message={message} isOutgoing selectionActive={false} />,
+    );
+    const bubble = container.querySelector('.message-bubble');
+    expect(bubble).toHaveClass('message-bubble--media-only');
+    expect(bubble).toHaveClass('message-bubble--with-reactions');
+    expect(container.querySelector('.message-bubble__meta--overlay')).toBeTruthy();
+    expect(container.querySelector('.message-bubble__footer')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Реакция 👍' })).toBeInTheDocument();
+  });
+
   it('toggles reaction when chip is clicked', async () => {
     const user = userEvent.setup();
     const message = makeMessage({

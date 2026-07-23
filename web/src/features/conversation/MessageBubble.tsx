@@ -189,13 +189,32 @@ export function MessageBubble({
   const media = mediaList[0];
   const mediaUrl = media?.remote_url ? resolveMediaUrl(media.remote_url) : null;
   const isAlbum = isAlbumMessage(message.msg_type, mediaList.length);
+  const isRoundVideo =
+    message.msg_type === 'video_note' || Boolean(media?.is_round);
   const albumCaption = isAlbum && isAlbumCaption(message.content) ? message.content?.trim() : null;
+  const imageCaption =
+    !isAlbum && message.msg_type === 'image' && isAlbumCaption(message.content)
+      ? message.content?.trim()
+      : null;
   const videoCaption =
     !isAlbum &&
     message.msg_type === 'video' &&
+    !isRoundVideo &&
     isAlbumCaption(message.content)
       ? message.content?.trim()
       : null;
+  const visualCaption = albumCaption ?? imageCaption ?? videoCaption ?? null;
+  const hasVisualCaption = Boolean(visualCaption);
+  /** Photo / video / album — Telegram flush media + overlay time (not voice/file/video-note). */
+  const isVisualMedia =
+    isAlbum ||
+    message.msg_type === 'image' ||
+    (message.msg_type === 'video' && !isRoundVideo);
+  const showVisualWrap =
+    isAlbum ||
+    (message.msg_type === 'image' && Boolean(mediaUrl)) ||
+    (message.msg_type === 'video' && !isRoundVideo && Boolean(mediaUrl));
+  const useMediaMetaOverlay = showVisualWrap && !hasVisualCaption;
   const isMediaBubble =
     isAlbum ||
     message.msg_type === 'image' ||
@@ -203,11 +222,15 @@ export function MessageBubble({
     message.msg_type === 'file' ||
     message.msg_type === 'video' ||
     message.msg_type === 'video_note';
+  const isFlatVideo =
+    !isAlbum && message.msg_type === 'video' && !isRoundVideo && Boolean(mediaUrl);
   const reactions = message.reactions ?? [];
   const canReact = message.status !== 'sending' && message.status !== 'error';
 
-  const meta = (
-    <span className="message-bubble__meta">
+  const renderMeta = (overlay: boolean) => (
+    <span
+      className={`message-bubble__meta${overlay ? ' message-bubble__meta--overlay' : ''}`}
+    >
       {message.status === 'error' ? (
         <span className="message-bubble__error-label" title="Failed to send">
           !
@@ -220,34 +243,40 @@ export function MessageBubble({
     </span>
   );
 
+  const meta = renderMeta(false);
+  const metaOverlay = useMediaMetaOverlay ? renderMeta(true) : null;
+
   const hasReactions = reactions.length > 0;
+
+  const wrapVisualMedia = (mediaNode: React.ReactNode, caption: string | null) => (
+    <div className="message-bubble__visual">
+      <div className="message-bubble__media-frame">
+        {mediaNode}
+        {metaOverlay}
+      </div>
+      {caption ? (
+        <p className="message-bubble__text message-bubble__caption">{caption}</p>
+      ) : null}
+    </div>
+  );
 
   let body: React.ReactNode;
 
   if (stickerUrl) {
     body = <img src={stickerUrl} alt="Sticker" className="message-bubble__sticker" />;
   } else if (isAlbum) {
-    body = (
-      <>
-        <AlbumMessageContent
-          media={mediaList}
-          msgType={message.msg_type}
-          allowDownload={allowSave}
-        />
-        {albumCaption ? (
-          <p className="message-bubble__text message-bubble__caption">{albumCaption}</p>
-        ) : null}
-      </>
+    body = wrapVisualMedia(
+      <AlbumMessageContent
+        media={mediaList}
+        msgType={message.msg_type}
+        allowDownload={allowSave}
+      />,
+      albumCaption,
     );
   } else if (message.msg_type === 'image' && mediaUrl) {
-    const imageCaption = isAlbumCaption(message.content) ? message.content?.trim() : null;
-    body = (
-      <>
-        <ImageMessageContent url={mediaUrl} allowDownload={allowSave} />
-        {imageCaption ? (
-          <p className="message-bubble__text message-bubble__caption">{imageCaption}</p>
-        ) : null}
-      </>
+    body = wrapVisualMedia(
+      <ImageMessageContent url={mediaUrl} allowDownload={allowSave} />,
+      imageCaption,
     );
   } else if (message.msg_type === 'voice' && mediaUrl) {
     body = (
@@ -270,22 +299,22 @@ export function MessageBubble({
       />
     );
   } else if ((message.msg_type === 'video' || message.msg_type === 'video_note') && mediaUrl) {
-    body = (
-      <>
-        <VideoMessageContent
-          url={mediaUrl}
-          poster={media?.thumbnail_url}
-          round={message.msg_type === 'video_note' || Boolean(media?.is_round)}
-          messageId={message.id}
-          authorLabel={message.sender_name}
-          durationMs={media?.duration_ms ?? 0}
-          registerPlayback={message.msg_type === 'video_note' || Boolean(media?.is_round)}
-          controlsDownload={allowSave}
-        />
-        {videoCaption ? (
-          <p className="message-bubble__text message-bubble__caption">{videoCaption}</p>
-        ) : null}
-      </>
+    const videoNode = (
+      <VideoMessageContent
+        url={mediaUrl}
+        poster={media?.thumbnail_url}
+        round={isRoundVideo}
+        messageId={message.id}
+        authorLabel={message.sender_name}
+        durationMs={media?.duration_ms ?? 0}
+        registerPlayback={isRoundVideo}
+        controlsDownload={allowSave}
+      />
+    );
+    body = isRoundVideo ? (
+      videoNode
+    ) : (
+      wrapVisualMedia(videoNode, videoCaption)
     );
   } else if (isPollMessage(message)) {
     body = <PollMessageContent chatId={chatId} message={message} disabled={selectionActive} />;
@@ -317,14 +346,33 @@ export function MessageBubble({
       </span>
     ) : null;
 
+  const hideExternalMeta = useMediaMetaOverlay;
+  const bubbleClassName = [
+    'message-bubble',
+    isOutgoing ? 'message-bubble--outgoing' : 'message-bubble--incoming',
+    message.status === 'sending' ? 'message-bubble--sending' : '',
+    message.status === 'error' ? 'message-bubble--error' : '',
+    stickerUrl ? 'message-bubble--sticker' : '',
+    isMediaBubble ? 'message-bubble--media' : '',
+    isVisualMedia && showVisualWrap ? 'message-bubble--visual-media' : '',
+    showVisualWrap && !hasVisualCaption ? 'message-bubble--media-only' : '',
+    showVisualWrap && hasVisualCaption ? 'message-bubble--with-caption' : '',
+    isFlatVideo ? 'message-bubble--flat-video' : '',
+    isRoundVideo ? 'message-bubble--video-note' : '',
+    isAlbum ? 'message-bubble--album' : '',
+    hasReactions ? 'message-bubble--with-reactions' : '',
+    replyMessage ? 'message-bubble--with-reply' : '',
+    forwardName ? 'message-bubble--with-forward' : '',
+    senderNameNode ? 'message-bubble--with-sender' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div
       className={`message-stack${isOutgoing ? ' message-stack--outgoing' : ' message-stack--incoming'}`}
     >
-      <div
-        className={`message-bubble${isOutgoing ? ' message-bubble--outgoing' : ' message-bubble--incoming'}${message.status === 'sending' ? ' message-bubble--sending' : ''}${message.status === 'error' ? ' message-bubble--error' : ''}${stickerUrl ? ' message-bubble--sticker' : ''}${isMediaBubble ? ' message-bubble--media' : ''}${message.msg_type === 'video_note' || Boolean(media?.is_round) ? ' message-bubble--video-note' : ''}${isAlbum ? ' message-bubble--album' : ''}${hasReactions ? ' message-bubble--with-reactions' : ''}${replyMessage ? ' message-bubble--with-reply' : ''}${senderNameNode ? ' message-bubble--with-sender' : ''}`}
-        onContextMenu={onContextMenu}
-      >
+      <div className={bubbleClassName} onContextMenu={onContextMenu}>
         {canReact ? (
           <MessageQuickReaction chatId={chatId} messageId={message.id} />
         ) : null}
@@ -343,7 +391,7 @@ export function MessageBubble({
                   isOutgoing={isOutgoing}
                   disabled={!canReact}
                 />
-                {meta}
+                {!hideExternalMeta ? meta : null}
               </div>
             </>
           ) : (
@@ -352,7 +400,7 @@ export function MessageBubble({
               {forwardNode}
               {replyNode}
               {body}
-              {meta}
+              {!hideExternalMeta ? meta : null}
             </>
           )}
         </div>
