@@ -28,6 +28,7 @@ import {
   CreateContactScreen,
   CreateGroupChatScreen,
   GroupProfileScreen,
+  GroupSettingsScreen,
   TelegramChatProfileScreen,
   TelegramChatScreen,
 } from '../screens';
@@ -525,6 +526,11 @@ export function ChatsStack() {
       <Stack.Screen
         name="GroupProfile"
         component={GroupProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="GroupSettings"
+        component={GroupSettingsScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

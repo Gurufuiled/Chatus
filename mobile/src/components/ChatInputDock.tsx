@@ -33,6 +33,7 @@ type ChatInputDockProps = {
   replyAuthorName: string | null;
   onCancelReply: () => void;
   isScreenFocused?: boolean;
+  textRestriction?: string | null;
   voiceRestriction?: string | null;
   mediaRestriction?: string | null;
   commentCooldownEndsAt?: number | null;
@@ -63,6 +64,7 @@ export function ChatInputDock({
   replyAuthorName,
   onCancelReply,
   isScreenFocused = true,
+  textRestriction = null,
   voiceRestriction = null,
   mediaRestriction = null,
   commentCooldownEndsAt = null,
@@ -96,6 +98,7 @@ export function ChatInputDock({
           replyAuthorName={replyAuthorName}
           onCancelReply={onCancelReply}
           isScreenFocused={isScreenFocused}
+          textRestriction={textRestriction}
           voiceRestriction={voiceRestriction}
           mediaRestriction={mediaRestriction}
           commentCooldownEndsAt={commentCooldownEndsAt}

@@ -78,6 +78,8 @@ type InputAttachmentSheetProps = {
   galleryEnabled: boolean;
   galleryItems: GalleryItem[];
   galleryLoading: boolean;
+  /** True while the next gallery page is being appended at the bottom of the grid. */
+  galleryLoadingMore?: boolean;
   galleryDenied: boolean;
   /** Текст при отказе в доступе к медиатеке (по умолчанию — фото и видео). */
   galleryDeniedHint?: string;
@@ -87,14 +89,21 @@ type InputAttachmentSheetProps = {
   onClose: () => void;
   onToggleGalleryItem: (item: GalleryItem) => void;
   onCaptionChange: (text: string) => void;
-  onSendSelected: () => void;
+  /** Called near the end of the gallery grid to fetch the next media page. */
+  onLoadMoreGallery?: () => void;
+  /** Optional override allows preview to send its current item without a state-update race. */
+  onSendSelected: (itemsOverride?: GalleryItem[]) => void;
   onRunAttachmentAction: (action: () => Promise<void>) => void;
   /** Нижняя кнопка вместо дока режимов (например «Все фото…» для аватара). */
   bottomButton?: GallerySheetBottomButton;
   galleryInteractDisabled?: boolean;
   /** URI после обрезки в превью (itemId → file://…). */
   editedUris?: Map<string, string>;
-  onEditedUriChange?: (itemId: string, uri: string) => void;
+  onEditedUriChange?: (
+    itemId: string,
+    uri: string,
+    size?: { width: number; height: number },
+  ) => void;
 };
 
 function createAttachmentSheetStyles(c: ThemeColors) {
@@ -489,6 +498,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   galleryEnabled,
   galleryItems,
   galleryLoading,
+  galleryLoadingMore = false,
   galleryDenied,
   galleryDeniedHint,
   attachmentActions,
@@ -497,6 +507,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   onClose,
   onToggleGalleryItem,
   onCaptionChange,
+  onLoadMoreGallery,
   onSendSelected,
   onRunAttachmentAction,
   bottomButton,
@@ -873,6 +884,9 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
       windowSize={5}
       updateCellsBatchingPeriod={40}
       keyboardShouldPersistTaps="handled"
+      onEndReached={() => onLoadMoreGallery?.()}
+      onEndReachedThreshold={0.65}
+      ListFooterComponent={galleryLoadingMore ? <GallerySkeletonGrid rows={1} /> : null}
       onScroll={scrollHandler}
       scrollEventThrottle={16}
     />
@@ -1001,7 +1015,10 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                       style={styles.captionInput}
                       multiline
                     />
-                    <Pressable style={styles.sendBtn} onPress={onSendSelected}>
+                    <Pressable
+                      style={styles.sendBtn}
+                      onPress={() => onSendSelected()}
+                    >
                       <Feather
                         name="send"
                         size={20}
@@ -1080,9 +1097,9 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
         onCaptionChange={onCaptionChange}
         onClose={closePreview}
         onToggleSelect={onToggleGalleryItem}
-        onSend={() => {
+        onSend={(item) => {
           closePreview();
-          onSendSelected();
+          onSendSelected(item ? [item] : undefined);
         }}
       />
     </>

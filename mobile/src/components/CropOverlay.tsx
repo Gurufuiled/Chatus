@@ -19,15 +19,18 @@ import { useTheme } from '../contexts/ThemeContext';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const MIN_CROP = 60;
-const HANDLE_SIZE = 28;
-const HANDLE_HIT = 36;
+const HANDLE_SIZE = 30;
+const HANDLE_HIT = 44;
 const GRID_LINES = 2;
+const EDITOR_SIDE_INSET = 24;
+const EDITOR_TOP_CHROME = 70;
+const EDITOR_BOTTOM_CHROME = 82;
 
 type Rect = { x: number; y: number; w: number; h: number };
 
 type CropOverlayProps = {
   uri: string;
-  onConfirm: (croppedUri: string) => void;
+  onConfirm: (croppedUri: string, size: { width: number; height: number }) => void;
   onCancel: () => void;
 };
 
@@ -145,6 +148,7 @@ export const CropOverlay = React.memo(function CropOverlay({
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
+  const [workingUri, setWorkingUri] = useState<string | null>(null);
   const [imageReady, setImageReady] = useState(false);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({
     w: SCREEN_WIDTH,
@@ -153,16 +157,58 @@ export const CropOverlay = React.memo(function CropOverlay({
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
+    let active = true;
     setImgSize(null);
+    setWorkingUri(null);
     setImageReady(false);
-  }, [uri]);
+
+    // Normalize the original first. expo-image and ImageManipulator then use
+    // the exact same orientation and pixel coordinate system for the preview
+    // and the final crop.
+    void ImageManipulator.manipulateAsync(uri, [], {
+      compress: 1,
+      format: ImageManipulator.SaveFormat.JPEG,
+    })
+      .then((result) => {
+        if (!active) return;
+        setWorkingUri(result.uri);
+        setImgSize({ w: result.width, h: result.height });
+      })
+      .catch((error) => {
+        if (__DEV__) console.warn('[CropOverlay] image normalization failed:', error);
+        if (active) onCancel();
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [onCancel, uri]);
 
   const imageRect = useMemo(() => {
+    const bounds: Rect = {
+      x: EDITOR_SIDE_INSET,
+      y: insets.top + EDITOR_TOP_CHROME,
+      w: Math.max(1, containerSize.w - EDITOR_SIDE_INSET * 2),
+      h: Math.max(
+        1,
+        containerSize.h -
+          insets.top -
+          insets.bottom -
+          EDITOR_TOP_CHROME -
+          EDITOR_BOTTOM_CHROME,
+      ),
+    };
     if (!imgSize) {
-      return { x: 0, y: 0, w: containerSize.w, h: containerSize.h };
+      return bounds;
     }
-    return getImageDisplayRect(imgSize.w, imgSize.h, containerSize.w, containerSize.h);
-  }, [imgSize, containerSize]);
+    const fitted = getImageDisplayRect(imgSize.w, imgSize.h, bounds.w, bounds.h);
+    return {
+      x: fitted.x + bounds.x,
+      y: fitted.y + bounds.y,
+      w: fitted.w,
+      h: fitted.h,
+    };
+  }, [containerSize, imgSize, insets.bottom, insets.top]);
 
   const [cropRect, setCropRect] = useState<Rect>(imageRect);
   const cropRef = useRef(cropRect);
@@ -283,12 +329,15 @@ export const CropOverlay = React.memo(function CropOverlay({
     if (!imgSize || processing || !imageReady) return;
     setProcessing(true);
     try {
+      // Жест обновляет ref синхронно: так сохраняем именно последнюю видимую
+      // рамку, даже если пользователь сразу нажал подтверждение.
+      const selectedCrop = cropRef.current;
       const scaleX = imgSize.w / imageRect.w;
       const scaleY = imgSize.h / imageRect.h;
-      let originX = Math.round((cropRect.x - imageRect.x) * scaleX);
-      let originY = Math.round((cropRect.y - imageRect.y) * scaleY);
-      let width = Math.round(cropRect.w * scaleX);
-      let height = Math.round(cropRect.h * scaleY);
+      let originX = Math.round((selectedCrop.x - imageRect.x) * scaleX);
+      let originY = Math.round((selectedCrop.y - imageRect.y) * scaleY);
+      let width = Math.round(selectedCrop.w * scaleX);
+      let height = Math.round(selectedCrop.h * scaleY);
 
       originX = Math.max(0, Math.min(originX, imgSize.w - 1));
       originY = Math.max(0, Math.min(originY, imgSize.h - 1));
@@ -296,18 +345,18 @@ export const CropOverlay = React.memo(function CropOverlay({
       height = Math.max(1, Math.min(height, imgSize.h - originY));
 
       const result = await ImageManipulator.manipulateAsync(
-        uri,
+        workingUri,
         [{ crop: { originX, originY, width, height } }],
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG },
       );
-      onConfirm(result.uri);
+      onConfirm(result.uri, { width: result.width, height: result.height });
     } catch (err) {
       if (__DEV__) console.warn('[CropOverlay] crop error:', err);
       onCancel();
     } finally {
       setProcessing(false);
     }
-  }, [cropRect, imageReady, imageRect, imgSize, onCancel, onConfirm, processing, uri]);
+  }, [imageReady, imageRect, imgSize, onCancel, onConfirm, processing, workingUri]);
 
   const onContainerLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -336,23 +385,26 @@ export const CropOverlay = React.memo(function CropOverlay({
 
   return (
     <View style={styles.root} onLayout={onContainerLayout}>
-      <Image
-        source={{ uri }}
-        style={styles.bgImage}
+      {workingUri ? (
+        <Image
+        source={{ uri: workingUri }}
+        style={[
+          styles.bgImage,
+          {
+            left: imageRect.x,
+            top: imageRect.y,
+            width: imageRect.w,
+            height: imageRect.h,
+          },
+        ]}
         contentFit="contain"
         cachePolicy="memory-disk"
-        onLoad={(e) => {
-          const w = e.source.width;
-          const h = e.source.height;
-          if (w > 0 && h > 0) {
-            setImgSize({ w, h });
-            setImageReady(true);
-          }
-        }}
+        onLoad={() => setImageReady(true)}
         onError={() => {
-          if (__DEV__) console.warn('[CropOverlay] image load failed:', uri);
+          if (__DEV__) console.warn('[CropOverlay] image load failed:', workingUri);
         }}
       />
+      ) : null}
 
       {imgSize ? (
         <>
@@ -427,8 +479,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   bgImage: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
   },
   mask: {
     position: 'absolute',
@@ -482,6 +533,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 12,
+    backgroundColor: 'rgba(14,18,24,0.86)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.16)',
     zIndex: 110,
   },
   bottomSpacer: {
@@ -493,12 +547,15 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
   confirmBtn: {
     backgroundColor: '#3390EC',
   },
   toolBtnPressed: {
-    opacity: 0.6,
+    opacity: 0.74,
+    transform: [{ scale: 0.94 }],
   },
 });

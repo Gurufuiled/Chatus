@@ -14,6 +14,7 @@ export type ChatsStackParamList = {
   Chat: { chatId: string; chatTitle?: string; focusMessageId?: string; startSearch?: boolean; openThemePicker?: boolean };
   ChatProfile: { chatId: string; userId: string; chatTitle?: string };
   GroupProfile: { chatId: string; chatTitle?: string };
+  GroupSettings: { chatId: string };
   CreateGroupChat: undefined;
   ChannelCatalog: undefined;
   /** Deep link: chatus://c/:slug — public channel by slug */

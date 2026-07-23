@@ -5,6 +5,7 @@ export { ChatProfileScreen } from './ChatProfileScreen';
 export { ComposeMessageScreen } from './ComposeMessageScreen';
 export { CreateContactScreen } from './CreateContactScreen';
 export { GroupProfileScreen } from './GroupProfileScreen';
+export { GroupSettingsScreen } from './GroupSettingsScreen';
 export { CreateGroupChatScreen } from './CreateGroupChatScreen';
 export { ChannelCatalogScreen } from './ChannelCatalogScreen';
 export { ChannelLinkGateScreen } from './ChannelLinkGateScreen';

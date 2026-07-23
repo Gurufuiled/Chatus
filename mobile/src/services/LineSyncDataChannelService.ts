@@ -22,10 +22,13 @@ type DataChannelLike = {
   readyState?: string;
   send: (data: string) => void;
   close?: () => void;
-  onopen?: (() => void) | null;
-  onclose?: (() => void) | null;
-  onerror?: (() => void) | null;
-  onmessage?: ((event: { data?: unknown }) => void) | null;
+  // `@livekit/react-native-webrtc` passes a native event argument to these
+  // callbacks, while the service does not need it. Keep the adapter permissive
+  // so its contract matches both the native channel and test doubles.
+  onopen?: ((event?: any) => void) | null;
+  onclose?: ((event?: any) => void) | null;
+  onerror?: ((event?: any) => void) | null;
+  onmessage?: ((event: { data?: unknown } | any) => void) | null;
 };
 
 type PeerConnectionLike = RTCPeerConnection & {

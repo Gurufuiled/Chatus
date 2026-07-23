@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type GestureResponderEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import Reanimated, {
@@ -101,6 +102,18 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ALBUM_VIEWER_CLOSE_SWIPE_DISTANCE = 84;
 const FILE_ROW_WIDTH = Math.min(Dimensions.get('window').width * 0.76, 320);
 const ALBUM_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);
+const VIEWER_MAX_ZOOM = 4;
+
+function readViewerPinch(event: GestureResponderEvent) {
+  const touches = (event.nativeEvent as unknown as {
+    touches?: Array<{ pageX: number; pageY: number }>;
+  }).touches;
+  if (!touches || touches.length < 2) return null;
+  const [first, second] = touches;
+  const dx = second.pageX - first.pageX;
+  const dy = second.pageY - first.pageY;
+  return { distance: Math.hypot(dx, dy) };
+}
 /** Текст + стикер в одном пузыре — размер эмблемы рядом с текстом. */
 const COMPOSITE_INLINE_STICKER_PX = 40;
 
@@ -411,6 +424,9 @@ function AlbumMediaViewerModal({
   const [activeIndex, setActiveIndex] = React.useState(state?.initialIndex ?? 0);
   const listRef = React.useRef<FlatList<VisualMediaItem> | null>(null);
   const translateY = React.useRef(new Animated.Value(0)).current;
+  const zoomScale = React.useRef(new Animated.Value(1)).current;
+  const pinchStartRef = React.useRef<{ distance: number; scale: number } | null>(null);
+  const zoomScaleRef = React.useRef(1);
   const media = state?.media ?? [];
 
   const resetPosition = React.useCallback(() => {
@@ -437,29 +453,64 @@ function AlbumMediaViewerModal({
   const panResponder = React.useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponderCapture: (_, gesture) => gesture.numberActiveTouches >= 2,
         onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
+          gesture.numberActiveTouches >= 2 ||
+          (zoomScaleRef.current <= 1.01 &&
+            Math.abs(gesture.dy) > 6 &&
+            Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04),
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
-        onPanResponderMove: (_, gesture) => {
+          gesture.numberActiveTouches >= 2 ||
+          (zoomScaleRef.current <= 1.01 &&
+            Math.abs(gesture.dy) > 6 &&
+            Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04),
+        onPanResponderGrant: (event, gesture) => {
+          const pinch = gesture.numberActiveTouches >= 2 ? readViewerPinch(event) : null;
+          pinchStartRef.current = pinch
+            ? { distance: pinch.distance, scale: zoomScaleRef.current }
+            : null;
+        },
+        onPanResponderMove: (event, gesture) => {
+          if (gesture.numberActiveTouches >= 2) {
+            const pinch = readViewerPinch(event);
+            const start = pinchStartRef.current;
+            if (pinch && start && start.distance > 0) {
+              const nextScale = Math.max(
+                1,
+                Math.min(VIEWER_MAX_ZOOM, start.scale * (pinch.distance / start.distance)),
+              );
+              zoomScaleRef.current = nextScale;
+              zoomScale.setValue(nextScale);
+            }
+            return;
+          }
           translateY.setValue(gesture.dy);
         },
         onPanResponderRelease: (_, gesture) => {
+          const wasPinching = pinchStartRef.current != null;
+          pinchStartRef.current = null;
+          if (wasPinching || zoomScaleRef.current > 1.01) return;
           if (Math.abs(gesture.dy) > ALBUM_VIEWER_CLOSE_SWIPE_DISTANCE || Math.abs(gesture.vy) > 0.92) {
             closeFromSwipe(gesture.dy || gesture.vy);
             return;
           }
           resetPosition();
         },
-        onPanResponderTerminate: resetPosition,
+        onPanResponderTerminate: () => {
+          pinchStartRef.current = null;
+          if (zoomScaleRef.current <= 1.01) resetPosition();
+        },
         onPanResponderTerminationRequest: () => true,
       }),
-    [closeFromSwipe, resetPosition, translateY]
+    [closeFromSwipe, resetPosition, translateY, zoomScale]
   );
 
   React.useEffect(() => {
     setActiveIndex(state?.initialIndex ?? 0);
     translateY.setValue(0);
+    zoomScale.setValue(1);
+    zoomScaleRef.current = 1;
+    pinchStartRef.current = null;
     if (!state?.media?.length) return;
     requestAnimationFrame(() => {
       listRef.current?.scrollToIndex({
@@ -468,6 +519,12 @@ function AlbumMediaViewerModal({
       });
     });
   }, [state, translateY]);
+
+  const dismissScale = translateY.interpolate({
+    inputRange: [-SCREEN_HEIGHT, 0, SCREEN_HEIGHT],
+    outputRange: [0.72, 1, 0.72],
+    extrapolate: 'clamp',
+  });
 
   return (
     <Modal
@@ -496,52 +553,59 @@ function AlbumMediaViewerModal({
         </View>
 
         <Animated.View
-          style={[styles.viewerSwipeable, { transform: [{ translateY }] }]}
+          style={[styles.viewerSwipeable, { transform: [{ translateY }, { scale: dismissScale }] }]}
           {...panResponder.panHandlers}
         >
-          <FlatList
-            ref={listRef}
-            style={styles.viewerFlatList}
-            data={media}
-            keyExtractor={(item, index) => `${item.remote_url ?? item.thumbnail_url ?? 'media'}-${index}`}
-            horizontal
-            pagingEnabled
-            bounces={false}
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={state?.initialIndex ?? 0}
-            getItemLayout={(_, index) => ({
-              length: SCREEN_WIDTH,
-              offset: SCREEN_WIDTH * index,
-              index,
-            })}
-            onMomentumScrollEnd={(event) => {
-              const nextIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-              setActiveIndex(Math.max(0, Math.min(media.length - 1, nextIndex)));
-            }}
-            onScrollToIndexFailed={({ index }) => {
-              requestAnimationFrame(() => {
-                listRef.current?.scrollToOffset({
-                  offset: SCREEN_WIDTH * index,
-                  animated: false,
+          <Animated.View
+            style={[
+              styles.viewerImageStrip,
+              { transform: [{ scale: zoomScale }] },
+            ]}
+          >
+            <FlatList
+              ref={listRef}
+              style={styles.viewerFlatList}
+              data={media}
+              keyExtractor={(item, index) => `${item.remote_url ?? item.thumbnail_url ?? 'media'}-${index}`}
+              horizontal
+              pagingEnabled
+              bounces={false}
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={state?.initialIndex ?? 0}
+              getItemLayout={(_, index) => ({
+                length: SCREEN_WIDTH,
+                offset: SCREEN_WIDTH * index,
+                index,
+              })}
+              onMomentumScrollEnd={(event) => {
+                const nextIndex = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+                setActiveIndex(Math.max(0, Math.min(media.length - 1, nextIndex)));
+              }}
+              onScrollToIndexFailed={({ index }) => {
+                requestAnimationFrame(() => {
+                  listRef.current?.scrollToOffset({
+                    offset: SCREEN_WIDTH * index,
+                    animated: false,
+                  });
                 });
-              });
-            }}
-            renderItem={({ item }) => {
-              const raw = item.remote_url?.trim() || item.thumbnail_url?.trim() || '';
-              const uri = resolveMediaUrl(raw || null) ?? raw;
-              return (
-                <Pressable
-                  style={styles.viewerSlide}
-                  android_disableSound
-                  {...panResponder.panHandlers}
-                >
-                  {uri ? (
-                    <Image source={{ uri }} style={styles.viewerImage} contentFit="contain" cachePolicy="disk" />
-                  ) : null}
-                </Pressable>
-              );
-            }}
-          />
+              }}
+              renderItem={({ item }) => {
+                const raw = item.remote_url?.trim() || item.thumbnail_url?.trim() || '';
+                const uri = resolveMediaUrl(raw || null) ?? raw;
+                return (
+                  <Pressable
+                    style={styles.viewerSlide}
+                    android_disableSound
+                    {...panResponder.panHandlers}
+                  >
+                    {uri ? (
+                      <Image source={{ uri }} style={styles.viewerImage} contentFit="contain" cachePolicy="disk" />
+                    ) : null}
+                  </Pressable>
+                );
+              }}
+            />
+          </Animated.View>
 
           <View style={[styles.viewerBottomBar, { paddingBottom: insets.bottom + 18 }]} />
         </Animated.View>
@@ -2098,6 +2162,7 @@ const MessageRow = React.memo(function MessageRow({
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
           isForwarded={isForwarded}
           forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
+          onOpenFullscreen={() => onOpenAlbumMedia([media], 0)}
         />
       );
 
@@ -3200,6 +3265,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   viewerSwipeable: {
+    flex: 1,
+  },
+  viewerImageStrip: {
     flex: 1,
   },
   viewerFlatList: {

@@ -429,6 +429,7 @@ export function GroupProfileScreen() {
     [currentUserId, members]
   );
   const isOwner = currentMembership?.role === 'owner' || chat?.created_by === currentUserId;
+  const isAdmin = isOwner || currentMembership?.role === 'admin';
   const avatarUrl = resolveAvatarUrl(
     (isEditMode ? avatarDraftUrl : chat?.avatar_url) ?? null
   );
@@ -1086,6 +1087,13 @@ export function GroupProfileScreen() {
           icon: 'pin' as any,
         },
       ];
+      if (isAdmin) {
+        items.push({
+          key: 'group-settings',
+          label: 'Управление группой',
+          icon: 'sliders',
+        });
+      }
       if (isOwner) {
         items.push({
           key: 'delete-group',
@@ -1093,7 +1101,8 @@ export function GroupProfileScreen() {
           icon: 'trash-2',
           color: '#D04857',
         });
-      } else {
+      }
+      if (!isOwner) {
         items.push({
           key: 'leave-group',
           label: 'Покинуть группу',
@@ -1103,7 +1112,7 @@ export function GroupProfileScreen() {
       }
       return items;
     },
-    [isOwner, isPinned]
+    [isAdmin, isOwner, isPinned]
   );
 
   const handleMoreMenuAction = useCallback(
@@ -1127,11 +1136,16 @@ export function GroupProfileScreen() {
         return;
       }
 
+      if (key === 'group-settings') {
+        closeMoreMenu(() => navigation.navigate('GroupSettings', { chatId }));
+        return;
+      }
+
       if (key === 'delete-group') {
         handleDeleteGroup();
       }
     },
-    [handleDeleteGroup, handleLeaveGroup, closeMoreMenu, chat, isPinned]
+    [handleDeleteGroup, handleLeaveGroup, closeMoreMenu, chat, chatId, isPinned, navigation]
   );
 
   const actionMenuItems = useMemo<AnchoredPopoverMenuItem[]>(

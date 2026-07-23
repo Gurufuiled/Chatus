@@ -45,6 +45,7 @@ interface ApiChat {
   members?: {
     user_id: string;
     role?: string;
+    admin_permissions?: Record<string, boolean> | null;
     tag?: string | null;
     tag_color?: string | null;
     joined_at?: number;
@@ -58,6 +59,13 @@ interface ApiChat {
       last_seen: number | null;
     };
   }[];
+  my_permissions?: {
+    can_send_messages?: boolean;
+    can_send_media?: boolean;
+    can_restrict_saving_bypass?: boolean;
+    [key: string]: boolean | undefined;
+  };
+  restrict_saving_content?: boolean;
   peer_display_name?: string | null;
 }
 
@@ -117,6 +125,8 @@ function mapApiChatToChat(api: ApiChat): Chat {
     created_at: normalizeTimestampRequired(api.created_at),
     updated_at: normalizeTimestampRequired(api.updated_at),
     members: api.members?.map(normalizeApiMember),
+    my_permissions: api.my_permissions,
+    restrict_saving_content: api.restrict_saving_content,
     peer_display_name: api.peer_display_name ?? null,
   };
 }
@@ -276,6 +286,41 @@ export async function updateGroupMemberTag(
   try {
     const data = (await res.json()) as ApiChat;
     return mapApiChatToChat(data);
+  } catch {
+    throw new Error('Invalid response from server');
+  }
+}
+
+export type GroupAdminPermissionsPatch = Partial<{
+  role: 'admin' | 'member';
+  can_change_info: boolean;
+  can_delete_messages: boolean;
+  can_ban_users: boolean;
+  can_invite_users: boolean;
+  can_pin_messages: boolean;
+  can_manage_invite_links: boolean;
+  can_manage_video_chats: boolean;
+  can_add_admins: boolean;
+}>;
+
+/** Promote, demote, or update a group administrator. */
+export async function updateGroupAdmin(
+  chatId: string,
+  memberId: string,
+  payload: GroupAdminPermissionsPatch,
+): Promise<Chat> {
+  const res = await apiPatch(
+    `/chats/${encodeURIComponent(chatId)}/members/${encodeURIComponent(memberId)}/admin`,
+    payload,
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Failed to update group administrator: ${res.status}`);
+  }
+
+  try {
+    return mapApiChatToChat((await res.json()) as ApiChat);
   } catch {
     throw new Error('Invalid response from server');
   }

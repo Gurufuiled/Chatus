@@ -26,6 +26,7 @@ export function RootNavigator() {
 
   React.useEffect(() => {
     void uiStore.getState().hydrateChatThemes();
+    void uiStore.getState().hydrateChatWallpapers();
   }, []);
 
   if (isLoading) {

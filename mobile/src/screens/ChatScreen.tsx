@@ -650,6 +650,18 @@ export function ChatScreen() {
   const currentChat = chatStore(
     useCallback((state) => state.chats.find((c) => c.id === chatId) ?? null, [chatId])
   );
+  const groupTextRestriction =
+    currentChat?.chat_type === 'group' && currentChat.my_permissions?.can_send_messages === false
+      ? 'В этой группе вам запрещено отправлять сообщения.'
+      : null;
+  const groupMediaRestriction =
+    currentChat?.chat_type === 'group' && currentChat.my_permissions?.can_send_media === false
+      ? 'В этой группе вам запрещено отправлять медиа и файлы.'
+      : null;
+  const contentSavingRestricted =
+    currentChat?.chat_type === 'group' &&
+    currentChat.restrict_saving_content === true &&
+    currentChat.my_permissions?.can_restrict_saving_bypass !== true;
   const hadChatInStoreRef = React.useRef(false);
   React.useEffect(() => {
     if (currentChat) {
@@ -666,19 +678,23 @@ export function ChatScreen() {
     }
   }, [currentChat, navigation]);
   const chatThemeId = uiStore((state) => state.chatThemeIdByChatId[chatId] ?? DEFAULT_CHAT_THEME_ID);
+  const chatWallpaperId = uiStore((state) => state.chatWallpaperIdByChatId[chatId] ?? chatThemeId);
   
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
   const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
+  const [draftWallpaperId, setDraftWallpaperId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
 
   useEffect(() => {
     if (route.params.openThemePicker) {
       setIsThemePickerVisible(true);
       setDraftThemeId(chatThemeId as ChatThemeId);
+      setDraftWallpaperId(chatWallpaperId as ChatThemeId);
       navigation.setParams({ openThemePicker: undefined });
     }
-  }, [route.params.openThemePicker, navigation, chatThemeId]);
+  }, [route.params.openThemePicker, navigation, chatThemeId, chatWallpaperId]);
 
   const activeThemeId = isThemePickerVisible ? draftThemeId : chatThemeId;
+  const activeWallpaperId = isThemePickerVisible ? draftWallpaperId : chatWallpaperId;
   const chatTheme = React.useMemo(
     () => getChatTheme(activeThemeId, resolvedScheme),
     [activeThemeId, resolvedScheme],
@@ -686,8 +702,9 @@ export function ChatScreen() {
 
   const handleApplyTheme = useCallback(() => {
     uiStore.getState().setChatTheme(chatId, draftThemeId);
+    uiStore.getState().setChatWallpaper(chatId, draftWallpaperId);
     setIsThemePickerVisible(false);
-  }, [chatId, draftThemeId]);
+  }, [chatId, draftThemeId, draftWallpaperId]);
 
 
   const [initialLoadElapsed, setInitialLoadElapsed] = React.useState(
@@ -800,7 +817,7 @@ export function ChatScreen() {
     () => selectedMessagesSorted.filter((message) => canForwardMessage(message)),
     [selectedMessagesSorted]
   );
-  const canForwardSelectedMessages = forwardableSelectedMessages.length > 0;
+  const canForwardSelectedMessages = !contentSavingRestricted && forwardableSelectedMessages.length > 0;
 
   /** Stable signature when private chat `members` hydrate (peer id becomes available). */
   const privatePeerMembersSignature = useMemo(() => {
@@ -2860,7 +2877,7 @@ export function ChatScreen() {
     }
 
     const isPinned = pinnedMessageId === activeMenuMessage.id;
-    const canForward = canForwardMessage(activeMenuMessage);
+    const canForward = !contentSavingRestricted && canForwardMessage(activeMenuMessage);
 
     return [
       { key: 'reply', label: 'Ответить', icon: 'corner-left-up', color: themeColors.textPrimary, disabled: false },
@@ -2876,7 +2893,7 @@ export function ChatScreen() {
       { key: 'delete', label: 'Удалить', icon: 'trash-2', color: '#E53935', disabled: false },
       { key: 'select', label: 'Выбрать', icon: 'check-circle', color: themeColors.textPrimary, disabled: false },
     ];
-  }, [activeMenuMessage, currentUserId, menuMode, pinnedMessageId, themeColors]);
+  }, [activeMenuMessage, contentSavingRestricted, currentUserId, menuMode, pinnedMessageId, themeColors]);
 
 
   const isGroupChat = currentChat?.chat_type === 'group';
@@ -3011,7 +3028,7 @@ export function ChatScreen() {
         collapsable={false}
         style={[styles.chatContentLayer, { backgroundColor: chatTheme.canvasColor }]}
       >
-        <ChatBackgroundPattern themeId={activeThemeId} />
+        <ChatBackgroundPattern themeId={activeWallpaperId} />
         {Platform.OS === 'android' ? (
           <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
         ) : null}
@@ -3290,6 +3307,9 @@ export function ChatScreen() {
             replyAuthorName={replyAuthorName}
             onCancelReply={clearReplyState}
             isScreenFocused={isFocused}
+            textRestriction={sendChannel === 'chatus' ? groupTextRestriction : null}
+            mediaRestriction={sendChannel === 'chatus' ? groupMediaRestriction : null}
+            voiceRestriction={sendChannel === 'chatus' ? (groupTextRestriction ?? groupMediaRestriction) : null}
             replyPeerFirstLineId={replyToMessage?.chat_id ?? chatId}
             chatusStickersComposer
             onVoiceActiveChange={setIsVoiceRecording}
@@ -3363,7 +3383,9 @@ export function ChatScreen() {
       <ChatThemePickerModal
         visible={isThemePickerVisible}
         selectedThemeId={draftThemeId}
+        selectedWallpaperId={draftWallpaperId}
         onSelectTheme={setDraftThemeId}
+        onSelectWallpaper={setDraftWallpaperId}
         onApply={handleApplyTheme}
         onClose={() => setIsThemePickerVisible(false)}
       />

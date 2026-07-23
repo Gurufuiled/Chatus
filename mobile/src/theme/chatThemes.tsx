@@ -16,9 +16,12 @@ const DEFAULT_CHAT_BACKGROUND = require('../../chat/chat-bg.png');
 
 const CHAT_THEME_IMAGE_ASSETS = {
   /** 1536² PNG (апскейл + лёгкое зерно против JPEG-полос при cover на экране). */
-  meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.png'),
-  frost: require('../assets/chat-themes/bg_snow_doodle.png'),
-  sunset: require('../assets/chat-themes/bg_holiday_doodle.png'),
+  mintLight: require('../assets/chat-themes/bg_mint_doodle.png'),
+  mintDark: require('../assets/chat-themes/bg_mint_doodle_dark.png'),
+  skyLight: require('../assets/chat-themes/bg_sky_doodle.png'),
+  skyDark: require('../assets/chat-themes/bg_sky_doodle_dark.png'),
+  peachLight: require('../assets/chat-themes/bg_peach_doodle.png'),
+  peachDark: require('../assets/chat-themes/bg_peach_doodle_dark.png'),
   /** Светлая «Без темы»: `bg_default_light_doodle` (арт preview wall_light_v2) + `@2x`/`@3x`. */
   defaultLightDoodle: require('../assets/chat-themes/bg_default_light_doodle.png'),
   /** Тёмная «Без темы»: `bg_night_doodle` (арт preview wall_dark_v1) + `@2x`/`@3x`. */
@@ -47,7 +50,7 @@ export type ChatTheme = {
   deletedBubbleMe: string;
   deletedTextMe: string;
   canvasColor: string;
-  wallpaperKind: 'default-image' | 'asset-image';
+  wallpaperKind: 'default-image' | 'asset-image' | 'solid';
   wallpaperBase: string;
   wallpaperTint: string;
   wallpaperAsset?: ImageSourcePropType;
@@ -86,68 +89,71 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
   meadow: {
     id: 'meadow',
     name: 'Киберпанк',
-    bubbleMe: '#E0D4F6',
-    bubbleMeText: '#3B1C69',
-    bubbleMeMeta: 'rgba(59,28,105,0.68)',
-    bubbleMeAccent: '#8B5CD6',
-    replyBubbleMe: '#F0E8FA',
-    replyAccentMe: '#45A8DB',
-    replyTextMe: '#1E4770',
-    replyAuthorMe: '#2F8FCD',
-    forwardHeaderMeSub: 'rgba(16,56,92,0.48)',
-    forwardHeaderMe: '#0F3A5C',
-    deletedBubbleMe: '#D7ECF6',
-    deletedTextMe: '#47657E',
-    canvasColor: '#9366B4',
+    bubbleMe: '#4DAF81',
+    bubbleMeText: '#FFFFFF',
+    bubbleMeMeta: 'rgba(255,255,255,0.82)',
+    bubbleMeAccent: '#2F8F64',
+    replyBubbleMe: '#75C89B',
+    replyAccentMe: '#D8F8E4',
+    replyTextMe: 'rgba(255,255,255,0.92)',
+    replyAuthorMe: '#E2FFE9',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+    forwardHeaderMe: '#FFFFFF',
+    deletedBubbleMe: '#D8F0DE',
+    deletedTextMe: '#39715A',
+    canvasColor: '#D8F1D9',
     wallpaperKind: 'asset-image',
-    wallpaperBase: '#4956A6',
-    wallpaperTint: 'rgba(255,255,255,0.015)',
-    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.meadow,
-    previewBadge: 'CY',
+    wallpaperBase: '#D8F1D9',
+    wallpaperTint: 'rgba(255,255,255,0.035)',
+    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.mintLight,
+    previewBadge: 'М',
+    ...{ name: 'Мята' },
   },
   frost: {
     id: 'frost',
     name: 'Снег',
-    bubbleMe: '#D4E9F6',
-    bubbleMeText: '#1C4469',
-    bubbleMeMeta: 'rgba(28,68,105,0.68)',
-    bubbleMeAccent: '#5CA1D6',
-    replyBubbleMe: '#E8F4FA',
-    replyAccentMe: '#6D8CDE',
-    replyTextMe: '#34517D',
-    replyAuthorMe: '#5E7FD6',
-    forwardHeaderMeSub: 'rgba(38,63,108,0.48)',
-    forwardHeaderMe: '#2A4A7A',
-    deletedBubbleMe: '#E2EAF4',
-    deletedTextMe: '#61708D',
-    canvasColor: '#5CA1D6',
+    bubbleMe: '#6C7FD3',
+    bubbleMeText: '#FFFFFF',
+    bubbleMeMeta: 'rgba(255,255,255,0.82)',
+    bubbleMeAccent: '#5064BD',
+    replyBubbleMe: '#8F9DDF',
+    replyAccentMe: '#E4E9FF',
+    replyTextMe: 'rgba(255,255,255,0.92)',
+    replyAuthorMe: '#EEF0FF',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+    forwardHeaderMe: '#FFFFFF',
+    deletedBubbleMe: '#E6EBFA',
+    deletedTextMe: '#5A6888',
+    canvasColor: '#D7E5FC',
     wallpaperKind: 'asset-image',
-    wallpaperBase: '#324A96',
-    wallpaperTint: 'rgba(255,255,255,0.012)',
-    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.frost,
-    previewBadge: 'SP',
+    wallpaperBase: '#D7E5FC',
+    wallpaperTint: 'rgba(255,255,255,0.03)',
+    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.skyLight,
+    previewBadge: 'Н',
+    ...{ name: 'Небо' },
   },
   sunset: {
     id: 'sunset',
     name: 'Новый год',
-    bubbleMe: '#D4F6EE',
-    bubbleMeText: '#1C695A',
-    bubbleMeMeta: 'rgba(28,105,90,0.68)',
-    bubbleMeAccent: '#4AD6B9',
-    replyBubbleMe: '#E8FAF5',
-    replyAccentMe: '#D38C2C',
-    replyTextMe: '#7B561B',
-    replyAuthorMe: '#C37A29',
-    forwardHeaderMeSub: 'rgba(110,73,21,0.52)',
-    forwardHeaderMe: '#7A4A10',
-    deletedBubbleMe: '#F5E6C6',
-    deletedTextMe: '#8B7140',
-    canvasColor: '#88C0BA',
+    bubbleMe: '#D87A68',
+    bubbleMeText: '#FFFFFF',
+    bubbleMeMeta: 'rgba(255,255,255,0.84)',
+    bubbleMeAccent: '#B85E50',
+    replyBubbleMe: '#E89988',
+    replyAccentMe: '#FFE7DF',
+    replyTextMe: 'rgba(255,255,255,0.92)',
+    replyAuthorMe: '#FFF1EB',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+    forwardHeaderMe: '#FFFFFF',
+    deletedBubbleMe: '#F7E4DB',
+    deletedTextMe: '#8D6258',
+    canvasColor: '#FFE5D8',
     wallpaperKind: 'asset-image',
-    wallpaperBase: '#EAA76F',
-    wallpaperTint: 'rgba(255,255,255,0.02)',
-    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.sunset,
-    previewBadge: 'NY',
+    wallpaperBase: '#FFE5D8',
+    wallpaperTint: 'rgba(255,255,255,0.035)',
+    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.peachLight,
+    previewBadge: 'П',
+    ...{ name: 'Персик' },
   },
 };
 
@@ -169,12 +175,71 @@ const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
   forwardHeaderMe: 'rgba(255,255,255,0.95)',
   deletedBubbleMe: '#2A3544',
   deletedTextMe: 'rgba(255,255,255,0.65)',
-  canvasColor: '#141820',
-  wallpaperKind: 'asset-image',
-  wallpaperBase: '#10151C',
-  wallpaperTint: 'rgba(255,255,255,0.015)',
-  wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.night,
+  canvasColor: '#0E1621',
+  wallpaperKind: 'solid',
+  wallpaperBase: '#0E1621',
+  wallpaperTint: 'transparent',
   previewBadge: '×',
+};
+
+const CHAT_THEMES_DARK: Record<'meadow' | 'frost' | 'sunset', ChatTheme> = {
+  meadow: {
+    ...CHAT_THEMES.meadow,
+    bubbleMe: '#247D77',
+    bubbleMeText: '#FFFFFF',
+    bubbleMeMeta: 'rgba(255,255,255,0.82)',
+    bubbleMeAccent: '#7DD9C4',
+    replyBubbleMe: '#1A3338',
+    replyAccentMe: '#7DD9C4',
+    replyTextMe: '#E3F4EE',
+    replyAuthorMe: '#8EE1CB',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+    forwardHeaderMe: '#FFFFFF',
+    deletedBubbleMe: '#1E3D42',
+    deletedTextMe: 'rgba(255,255,255,0.72)',
+    canvasColor: '#0D4D50',
+    wallpaperBase: '#0D4D50',
+    wallpaperTint: 'rgba(0,0,0,0.03)',
+    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.mintDark,
+  },
+  frost: {
+    ...CHAT_THEMES.frost,
+    bubbleMe: '#536DC5',
+    bubbleMeText: '#FFFFFF',
+    bubbleMeMeta: 'rgba(255,255,255,0.82)',
+    bubbleMeAccent: '#9EAEFF',
+    replyBubbleMe: '#1F2B54',
+    replyAccentMe: '#9EAEFF',
+    replyTextMe: '#E7EBFF',
+    replyAuthorMe: '#AAB7FF',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+    forwardHeaderMe: '#FFFFFF',
+    deletedBubbleMe: '#252F58',
+    deletedTextMe: 'rgba(255,255,255,0.72)',
+    canvasColor: '#17245E',
+    wallpaperBase: '#17245E',
+    wallpaperTint: 'rgba(0,0,0,0.035)',
+    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.skyDark,
+  },
+  sunset: {
+    ...CHAT_THEMES.sunset,
+    bubbleMe: '#A66A52',
+    bubbleMeText: '#FFFFFF',
+    bubbleMeMeta: 'rgba(255,255,255,0.84)',
+    bubbleMeAccent: '#F0B786',
+    replyBubbleMe: '#30272E',
+    replyAccentMe: '#F0B786',
+    replyTextMe: '#F6EAE4',
+    replyAuthorMe: '#F1B68B',
+    forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
+    forwardHeaderMe: '#FFFFFF',
+    deletedBubbleMe: '#3A2D34',
+    deletedTextMe: 'rgba(255,255,255,0.72)',
+    canvasColor: '#30252F',
+    wallpaperBase: '#30252F',
+    wallpaperTint: 'rgba(0,0,0,0.04)',
+    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.peachDark,
+  },
 };
 
 export function isChatThemeId(value: string | null | undefined): value is ChatThemeId {
@@ -189,6 +254,9 @@ export function getChatTheme(
   if (id === 'default' && resolvedScheme === 'dark') {
     return DEFAULT_CHAT_THEME_DARK;
   }
+  if (resolvedScheme === 'dark' && id !== 'default') {
+    return CHAT_THEMES_DARK[id];
+  }
   return CHAT_THEMES[id];
 }
 
@@ -197,7 +265,8 @@ export function getOutgoingReactionAccent(theme: ChatTheme): string {
   return theme.reactionMeAccent ?? theme.bubbleMeAccent;
 }
 
-function getChatWallpaperSource(theme: ChatTheme): ImageSourcePropType {
+function getChatWallpaperSource(theme: ChatTheme): ImageSourcePropType | null {
+  if (theme.wallpaperKind === 'solid') return null;
   return theme.wallpaperKind === 'default-image' ? DEFAULT_CHAT_BACKGROUND : theme.wallpaperAsset!;
 }
 
@@ -234,17 +303,19 @@ export function ChatWallpaper({
         style,
       ]}
     >
-      <Image
-        source={source}
-        contentFit="cover"
-        style={[
-          styles.wallpaperImageOverscan,
-          styles.wallpaperImage,
-          rounded && styles.wallpaperRounded,
-        ]}
-        cachePolicy="memory-disk"
-        transition={0}
-      />
+      {source ? (
+        <Image
+          source={source}
+          contentFit="cover"
+          style={[
+            styles.wallpaperImageOverscan,
+            styles.wallpaperImage,
+            rounded && styles.wallpaperRounded,
+          ]}
+          cachePolicy="memory-disk"
+          transition={0}
+        />
+      ) : null}
       <View style={[styles.overlay, { backgroundColor: tintColor }]} />
       {children}
     </View>
@@ -253,28 +324,33 @@ export function ChatWallpaper({
 
 type ChatThemePreviewProps = {
   themeId: ChatThemeId;
+  wallpaperId?: ChatThemeId;
   selected: boolean;
 };
 
 export const ChatThemePreview = React.memo(function ChatThemePreview({
   themeId,
+  wallpaperId,
   selected,
 }: ChatThemePreviewProps) {
   const { resolvedScheme } = useTheme();
   const theme = getChatTheme(themeId, resolvedScheme);
-  const source = getChatWallpaperSource(theme);
+  const wallpaper = getChatTheme(wallpaperId ?? themeId, resolvedScheme);
+  const source = getChatWallpaperSource(wallpaper);
 
   return (
     <View style={[styles.previewCard, selected && styles.previewCardSelected]}>
-      <View style={styles.previewSurface}>
+      <View style={[styles.previewSurface, { backgroundColor: wallpaper.wallpaperBase }]}>
         <View style={styles.previewInner}>
-          <Image
-            source={source}
-            contentFit="cover"
-            style={[StyleSheet.absoluteFillObject, styles.previewInnerImage]}
-            cachePolicy="memory-disk"
-            transition={0}
-          />
+          {source ? (
+            <Image
+              source={source}
+              contentFit="cover"
+              style={[StyleSheet.absoluteFillObject, styles.previewInnerImage]}
+              cachePolicy="memory-disk"
+              transition={0}
+            />
+          ) : null}
           <View style={[styles.previewOverlay, { backgroundColor: 'rgba(255,255,255,0.01)' }]} />
           <View style={styles.previewGlassChip} />
           <View style={styles.previewBubbleOther} />

@@ -99,6 +99,8 @@ export interface InputBarProps {
   onCancelReply?: () => void;
   isScreenFocused?: boolean;
   onVoiceActiveChange?: (isActive: boolean) => void;
+  /** When set, disables message composition and explains why the group is read-only. */
+  textRestriction?: string | null;
   /**
    * Если задано — голосовые/видео-кружки отключены, а при попытке записи
    * показывается telegram-style всплывающая подсказка с этим текстом.
@@ -146,6 +148,7 @@ let sharedAttachmentGalleryCache: GalleryItem[] | null = null;
 let sharedAttachmentGalleryCachedAtMs = 0;
 
 const ATTACHMENT_GALLERY_CACHE_TTL_MS = 5 * 60 * 1000;
+const ATTACHMENT_GALLERY_PAGE_SIZE = 60;
 
 type VoiceRecordMode = 'idle' | 'holding' | 'locked';
 type RecordingEntryMode = 'voice' | 'video';
@@ -225,6 +228,7 @@ export function InputBar({
   onCancelReply,
   isScreenFocused = true,
   onVoiceActiveChange,
+  textRestriction = null,
   voiceRestriction = null,
   mediaRestriction = null,
   commentCooldownEndsAt = null,
@@ -258,6 +262,7 @@ export function InputBar({
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryLoadingMore, setGalleryLoadingMore] = useState(false);
   const [galleryDenied, setGalleryDenied] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<MediaPickResult | null>(null);
   const [selectedGalleryItems, setSelectedGalleryItems] = useState<GalleryItem[]>([]);
@@ -268,6 +273,9 @@ export function InputBar({
   const [voiceTouchTracking, setVoiceTouchTracking] = useState(false);
   const [voiceRecordingStartedAtMs, setVoiceRecordingStartedAtMs] = useState(0);
 
+  const galleryEndCursorRef = useRef<string | undefined>(undefined);
+  const galleryHasNextPageRef = useRef(false);
+  const galleryLoadingMoreRef = useRef(false);
   const voiceRecordModeRef = useRef<VoiceRecordMode>('idle');
   const recordingEntryModeRef = useRef<RecordingEntryMode>('voice');
   const voiceStartPendingRef = useRef(false);
@@ -290,7 +298,7 @@ export function InputBar({
 
   const hasText = inputText.trim().length > 0;
   const hasPendingMedia = pendingMedia != null;
-  const canSend = hasText || hasPendingMedia;
+  const canSend = !textRestriction && (hasText || hasPendingMedia);
   const isVoiceRecording = voiceRecordModeState !== 'idle';
   const isVoiceLocked = voiceRecordModeState === 'locked';
   const canUseVideoNotes = onSendVideoNote != null;
@@ -826,6 +834,7 @@ export function InputBar({
   const loadGallery = useCallback(async () => {
     if (!onSendMedia) return;
 
+    let hydratedFromCache = false;
     const cacheAge = Date.now() - sharedAttachmentGalleryCachedAtMs;
     if (
       sharedAttachmentGalleryCache &&
@@ -836,24 +845,26 @@ export function InputBar({
       setGalleryItems(sharedAttachmentGalleryCache);
       setGalleryDenied(false);
       setGalleryLoading(false);
-      return;
+      hydratedFromCache = true;
     }
 
     // После выхода из приложения процесс обнуляется — читаем последний снимок с диска,
     // чтобы не ждать MediaLibrary на «холодном» открытии скрепки.
-    let hydratedFromDisk = false;
-    try {
-      const diskItems = await readAttachmentGalleryDiskCache();
-      if (diskItems && diskItems.length > 0) {
-        setGalleryItems(diskItems);
-        setGalleryDenied(false);
-        setGalleryLoading(false);
-        sharedAttachmentGalleryCache = diskItems;
-        sharedAttachmentGalleryCachedAtMs = Date.now();
-        hydratedFromDisk = true;
+    let hydratedFromDisk = hydratedFromCache;
+    if (!hydratedFromCache) {
+      try {
+        const diskItems = await readAttachmentGalleryDiskCache();
+        if (diskItems && diskItems.length > 0) {
+          setGalleryItems(diskItems);
+          setGalleryDenied(false);
+          setGalleryLoading(false);
+          sharedAttachmentGalleryCache = diskItems;
+          sharedAttachmentGalleryCachedAtMs = Date.now();
+          hydratedFromDisk = true;
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
 
     if (!hydratedFromDisk) {
@@ -875,9 +886,11 @@ export function InputBar({
       setGalleryDenied(false);
       const result = await MediaLibrary.getAssetsAsync({
         mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
-        first: 48,
+        first: ATTACHMENT_GALLERY_PAGE_SIZE,
         sortBy: [[MediaLibrary.SortBy.creationTime, false]],
       });
+      galleryEndCursorRef.current = result.endCursor;
+      galleryHasNextPageRef.current = result.hasNextPage;
 
       // Map immediately so the grid appears without waiting for localUri
       const mapped = result.assets.map((asset) => ({
@@ -927,6 +940,62 @@ export function InputBar({
       sharedAttachmentGalleryCache = null;
       void clearAttachmentGalleryDiskCache();
       setGalleryLoading(false);
+      galleryEndCursorRef.current = undefined;
+      galleryHasNextPageRef.current = false;
+    }
+  }, [onSendMedia]);
+
+  const loadMoreGallery = useCallback(async () => {
+    const cursor = galleryEndCursorRef.current;
+    if (
+      !onSendMedia ||
+      !cursor ||
+      !galleryHasNextPageRef.current ||
+      galleryLoadingMoreRef.current
+    ) {
+      return;
+    }
+
+    galleryLoadingMoreRef.current = true;
+    setGalleryLoadingMore(true);
+    try {
+      const result = await MediaLibrary.getAssetsAsync({
+        mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
+        first: ATTACHMENT_GALLERY_PAGE_SIZE,
+        after: cursor,
+        sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+      });
+      galleryEndCursorRef.current = result.endCursor;
+      galleryHasNextPageRef.current = result.hasNextPage;
+
+      const nextPage: GalleryItem[] = result.assets.map((asset) => ({
+        id: asset.id,
+        kind: resolveGalleryItemKind(asset.mediaType),
+        uri: asset.uri,
+        localUri: undefined,
+        width: asset.width,
+        height: asset.height,
+        durationMs:
+          asset.mediaType === MediaLibrary.MediaType.video
+            ? Math.max(0, Math.round((asset.duration ?? 0) * 1000))
+            : undefined,
+        fileName: asset.filename,
+      }));
+
+      setGalleryItems((current) => {
+        const knownIds = new Set(current.map((item) => item.id));
+        const next = [...current, ...nextPage.filter((item) => !knownIds.has(item.id))];
+        sharedAttachmentGalleryCache = next;
+        sharedAttachmentGalleryCachedAtMs = Date.now();
+        // Keep only the fast-start page on disk; the full, growing list stays in memory.
+        void writeAttachmentGalleryDiskCache(next.slice(0, ATTACHMENT_GALLERY_PAGE_SIZE));
+        return next;
+      });
+    } catch (err) {
+      if (__DEV__) console.warn('[InputBar] loadMoreGallery error:', err);
+    } finally {
+      galleryLoadingMoreRef.current = false;
+      setGalleryLoadingMore(false);
     }
   }, [onSendMedia]);
 
@@ -1002,10 +1071,10 @@ export function InputBar({
     []
   );
 
-  const handleSendSelectedGalleryItems = useCallback(async () => {
-    if (!onSendMedia || selectedGalleryItems.length === 0) return;
+  const handleSendSelectedGalleryItems = useCallback(async (itemsOverride?: GalleryItem[]) => {
+    const items = itemsOverride ?? selectedGalleryItems;
+    if (!onSendMedia || items.length === 0) return;
 
-    const items = selectedGalleryItems;
     const caption = galleryCaption.trim();
     setSelectedGalleryItems([]);
     setGalleryCaption('');
@@ -1045,12 +1114,21 @@ export function InputBar({
     return map;
   }, [galleryItems, selectedGalleryItems]);
 
-  const handleGalleryEditedUri = useCallback((itemId: string, uri: string) => {
+  const handleGalleryEditedUri = useCallback((
+    itemId: string,
+    uri: string,
+    size?: { width: number; height: number },
+  ) => {
+    const dimensions =
+      size && Number.isFinite(size.width) && Number.isFinite(size.height) &&
+      size.width > 0 && size.height > 0
+        ? { width: Math.round(size.width), height: Math.round(size.height) }
+        : {};
     setSelectedGalleryItems((prev) =>
-      prev.map((it) => (it.id === itemId ? { ...it, localUri: uri } : it)),
+      prev.map((it) => (it.id === itemId ? { ...it, localUri: uri, ...dimensions } : it)),
     );
     setGalleryItems((prev) =>
-      prev.map((it) => (it.id === itemId ? { ...it, localUri: uri } : it)),
+      prev.map((it) => (it.id === itemId ? { ...it, localUri: uri, ...dimensions } : it)),
     );
   }, []);
 
@@ -1713,7 +1791,13 @@ export function InputBar({
                     styles.inputComposerField,
                     { height: composerContentHeight },
                   ]}
-                  placeholder={placeholder}
+                  placeholder={textRestriction ?? placeholder}
+                  editable={!textRestriction}
+                  onFocus={() => {
+                    if (!textRestriction) return;
+                    inputRef.current?.blur();
+                    showRestrictionHint(textRestriction);
+                  }}
                   placeholderTextColor={themeColors.placeholder}
                   value={inputText}
                   onChangeText={handleInputChange}
@@ -1841,6 +1925,7 @@ export function InputBar({
         galleryEnabled={onSendMedia != null}
         galleryItems={galleryItems}
         galleryLoading={galleryLoading}
+        galleryLoadingMore={galleryLoadingMore}
         galleryDenied={galleryDenied}
         attachmentActions={attachmentActions}
         selectedItems={selectedGalleryItems}
@@ -1848,10 +1933,13 @@ export function InputBar({
         onClose={closeAttachmentSheet}
         onToggleGalleryItem={handleToggleGalleryItem}
         onCaptionChange={setGalleryCaption}
+        onLoadMoreGallery={() => {
+          void loadMoreGallery();
+        }}
         editedUris={galleryEditedUris}
         onEditedUriChange={handleGalleryEditedUri}
-        onSendSelected={() => {
-          void handleSendSelectedGalleryItems();
+        onSendSelected={(itemsOverride) => {
+          void handleSendSelectedGalleryItems(itemsOverride);
         }}
         onRunAttachmentAction={runAttachmentAction}
       />

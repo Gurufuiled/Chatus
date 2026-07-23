@@ -75,6 +75,7 @@ export interface ChatRow {
   members?: {
     user_id: string;
     role?: string;
+    admin_permissions?: Record<string, boolean> | null;
     tag?: string | null;
     tag_color?: string | null;
     joined_at?: number;
@@ -90,6 +91,14 @@ export interface ChatRow {
       last_seen: number | null;
     };
   }[];
+  /** Effective rights of the current user in a group, supplied by the API. */
+  my_permissions?: {
+    can_send_messages?: boolean;
+    can_send_media?: boolean;
+    can_restrict_saving_bypass?: boolean;
+    [key: string]: boolean | undefined;
+  };
+  restrict_saving_content?: boolean;
   /** From API: display name of peer in private chat. */
   peer_display_name?: string | null;
   /** Local alias for private contact, never overwritten by server sync. */

@@ -215,11 +215,12 @@ export function TelegramChatScreen() {
     messageThreadId,
   } = route.params;
   const telegramWallpaperKey = `telegram:${telegramChatId}`;
-  const storedWallpaperThemeId = uiStore((s) => s.chatThemeIdByChatId[telegramWallpaperKey]);
-  const wallpaperThemeId = storedWallpaperThemeId ?? DEFAULT_CHAT_THEME_ID;
+  const storedThemeId = uiStore((s) => s.chatThemeIdByChatId[telegramWallpaperKey]);
+  const storedWallpaperThemeId = uiStore((s) => s.chatWallpaperIdByChatId[telegramWallpaperKey]);
+  const wallpaperThemeId = storedWallpaperThemeId ?? storedThemeId ?? DEFAULT_CHAT_THEME_ID;
   const chatTheme = useMemo(
-    () => getChatTheme(wallpaperThemeId, resolvedScheme),
-    [resolvedScheme, wallpaperThemeId],
+    () => getChatTheme(storedThemeId ?? DEFAULT_CHAT_THEME_ID, resolvedScheme),
+    [resolvedScheme, storedThemeId],
   );
   const chatId = useMemo(() => Number.parseInt(telegramChatId, 10), [telegramChatId]);
 

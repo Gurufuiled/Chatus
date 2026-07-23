@@ -115,6 +115,7 @@ interface ApiChat {
   members?: {
     user_id: string;
     role?: string;
+    admin_permissions?: Record<string, boolean> | null;
     tag?: string | null;
     tag_color?: string | null;
     joined_at?: number;
@@ -129,6 +130,13 @@ interface ApiChat {
       last_seen: number | null;
     };
   }[];
+  my_permissions?: {
+    can_send_messages?: boolean;
+    can_send_media?: boolean;
+    can_restrict_saving_bypass?: boolean;
+    [key: string]: boolean | undefined;
+  };
+  restrict_saving_content?: boolean;
   peer_display_name?: string | null;
 }
 
@@ -188,6 +196,8 @@ function mapApiChatToChat(api: ApiChat): Chat {
     created_at: normalizeTimestampRequired(api.created_at),
     updated_at: normalizeTimestampRequired(api.updated_at),
     members: api.members?.map(normalizeApiMember),
+    my_permissions: api.my_permissions,
+    restrict_saving_content: api.restrict_saving_content,
     peer_display_name: api.peer_display_name ?? null,
   };
 }

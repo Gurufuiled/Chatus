@@ -134,13 +134,19 @@ function FullscreenVideoModal({
 }) {
   const [trackWidth, setTrackWidth] = useState(1);
   const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(1);
+  const [isMuted, setIsMuted] = useState(false);
   const [speedMenuVisible, setSpeedMenuVisible] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [scrubbingSec, setScrubbingSec] = useState<number | null>(null);
+  const [skipFeedback, setSkipFeedback] = useState<'back' | 'forward' | null>(null);
   const controlsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapRef = useRef<{ at: number; x: number } | null>(null);
   const player = useVideoPlayer(uri, (instance) => {
     instance.loop = false;
     instance.playbackRate = 1;
+    instance.muted = false;
     instance.timeUpdateEventInterval = 0.25;
   });
   const { isPlaying } = useEvent(player, 'playingChange', {
@@ -178,6 +184,8 @@ function FullscreenVideoModal({
 
     return () => {
       clearControlsHideTimer();
+      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      if (skipFeedbackTimerRef.current) clearTimeout(skipFeedbackTimerRef.current);
       try {
         player.pause();
         player.currentTime = 0;
@@ -214,6 +222,11 @@ function FullscreenVideoModal({
   );
   const currentSec = scrubbingSec ?? playerCurrentSec;
   const progress = durationSec > 0 ? Math.min(currentSec / durationSec, 1) : 0;
+  const hasEnded = durationSec > 0 && playerCurrentSec >= durationSec - 0.1;
+
+  useEffect(() => {
+    if (hasEnded) setControlsVisible(true);
+  }, [hasEnded]);
 
   const seekToRatio = useCallback(
     (ratio: number) => {
@@ -231,6 +244,17 @@ function FullscreenVideoModal({
       seekToRatio(locationX / trackWidth);
     },
     [durationSec, seekToRatio, trackWidth]
+  );
+
+  const seekBySeconds = useCallback(
+    (offsetSec: number) => {
+      if (durationSec <= 0) return;
+      const nextTime = Math.max(0, Math.min(durationSec, playerCurrentSec + offsetSec));
+      player.currentTime = nextTime;
+      setScrubbingSec(nextTime);
+      requestAnimationFrame(() => setScrubbingSec(null));
+    },
+    [durationSec, player, playerCurrentSec],
   );
 
   const handleTogglePlayback = useCallback(() => {
@@ -279,14 +303,39 @@ function FullscreenVideoModal({
     [clearControlsHideTimer, isPlaying, scheduleControlsHide, seekToLocationX]
   );
 
-  const handleFullscreenTap = useCallback(() => {
+  const handleFullscreenTap = useCallback((event: Parameters<NonNullable<React.ComponentProps<typeof Pressable>['onPress']>>[0]) => {
     if (speedMenuVisible) {
       setSpeedMenuVisible(false);
       return;
     }
 
-    setControlsVisible((visible) => !visible);
-  }, [speedMenuVisible]);
+    const now = Date.now();
+    const x = event.nativeEvent.locationX;
+    const previousTap = lastTapRef.current;
+    if (previousTap && now - previousTap.at < 260) {
+      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+      lastTapRef.current = null;
+      const direction = x < SCREEN_WIDTH / 2 ? 'back' : 'forward';
+      setControlsVisible(true);
+      seekBySeconds(direction === 'back' ? -10 : 10);
+      setSkipFeedback(direction);
+      if (skipFeedbackTimerRef.current) clearTimeout(skipFeedbackTimerRef.current);
+      skipFeedbackTimerRef.current = setTimeout(() => {
+        setSkipFeedback(null);
+        skipFeedbackTimerRef.current = null;
+      }, 650);
+      return;
+    }
+
+    lastTapRef.current = { at: now, x };
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = setTimeout(() => {
+      setControlsVisible((visible) => !visible);
+      lastTapRef.current = null;
+      tapTimerRef.current = null;
+    }, 260);
+  }, [seekBySeconds, speedMenuVisible]);
 
   const handleSpeedButtonPress = useCallback(
     (event: Parameters<NonNullable<React.ComponentProps<typeof Pressable>['onPress']>>[0]) => {
@@ -307,6 +356,13 @@ function FullscreenVideoModal({
     [player]
   );
 
+  const handleToggleMute = useCallback(() => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    player.muted = nextMuted;
+    setControlsVisible(true);
+  }, [isMuted, player]);
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.fullscreenBackdrop}>
@@ -322,6 +378,13 @@ function FullscreenVideoModal({
           style={styles.fullscreenTapLayer}
           onPress={handleFullscreenTap}
         />
+
+        {skipFeedback ? (
+          <View pointerEvents="none" style={skipFeedback === 'back' ? styles.skipFeedbackLeft : styles.skipFeedbackRight}>
+            <Feather name={skipFeedback === 'back' ? 'rotate-ccw' : 'rotate-cw'} size={22} color="#FFFFFF" />
+            <Text style={styles.skipFeedbackText}>10 сек</Text>
+          </View>
+        ) : null}
 
         {controlsVisible ? (
           <Pressable
@@ -364,12 +427,12 @@ function FullscreenVideoModal({
           <View style={styles.playbackControlsRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={isPlaying ? 'Pause video' : 'Play video'}
+              accessibilityLabel={hasEnded ? 'Replay video' : isPlaying ? 'Pause video' : 'Play video'}
               onPress={handleTogglePlayback}
               style={({ pressed }) => [styles.primaryPlayControl, pressed && styles.controlPressed]}
             >
               <Feather
-                name={isPlaying ? 'pause' : 'play'}
+                name={hasEnded ? 'rotate-cw' : isPlaying ? 'pause' : 'play'}
                 size={30}
                 color="#111827"
                 style={!isPlaying ? styles.primaryPlayIcon : undefined}
@@ -385,12 +448,19 @@ function FullscreenVideoModal({
               accessibilityRole="adjustable"
               accessibilityLabel="Video progress"
               onLayout={handleTrackLayout}
-              style={styles.progressTrack}
+              style={[styles.progressTrack, scrubbingSec != null && styles.progressTrackScrubbing]}
               {...progressPanResponder.panHandlers}
             >
-              <View style={styles.progressTrackRail} />
-              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-              <View style={[styles.progressThumb, { left: `${progress * 100}%` }]} />
+              <View style={[styles.progressTrackRail, scrubbingSec != null && styles.progressTrackRailScrubbing]} />
+              <View style={[styles.progressFill, scrubbingSec != null && styles.progressFillScrubbing, { width: `${progress * 100}%` }]} />
+              <View style={[styles.progressThumb, scrubbingSec != null && styles.progressThumbScrubbing, { left: `${progress * 100}%` }]} />
+              {scrubbingSec != null ? (
+                <View style={[styles.scrubTimeBadge, { left: `${progress * 100}%` }]}>
+                  <Text style={styles.scrubTimeText}>
+                    {formatPlaybackElapsedDuration(scrubbingSec * 1000, Math.max(durationSec * 1000, 0))}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <Text style={styles.timeText}>
               {durationSec > 0 ? formatMediaDuration(durationSec * 1000) : '0:00'}
@@ -400,11 +470,18 @@ function FullscreenVideoModal({
           <View style={styles.bottomActionsRow}>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={isMuted ? 'Unmute video' : 'Mute video'}
+              onPress={handleToggleMute}
+              style={({ pressed }) => [styles.speedButton, pressed && styles.controlPressed]}
+            >
+              <Feather name={isMuted ? 'volume-x' : 'volume-2'} size={19} color="#FFFFFF" />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Playback speed"
               onPress={handleSpeedButtonPress}
               style={({ pressed }) => [styles.speedButton, pressed && styles.controlPressed]}
             >
-              <Feather name="settings" size={18} color="#FFFFFF" />
               <Text style={styles.speedButtonText}>{formatPlaybackRateLabel(playbackRate)}</Text>
             </Pressable>
           </View>
@@ -883,6 +960,36 @@ const styles = StyleSheet.create({
   fullscreenTapLayer: {
     ...StyleSheet.absoluteFillObject,
   },
+  skipFeedbackLeft: {
+    position: 'absolute',
+    left: '16%',
+    top: '46%',
+    minWidth: 78,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 18,
+    backgroundColor: 'rgba(8,12,18,0.64)',
+    alignItems: 'center',
+    gap: 3,
+  },
+  skipFeedbackRight: {
+    position: 'absolute',
+    right: '16%',
+    top: '46%',
+    minWidth: 78,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 18,
+    backgroundColor: 'rgba(8,12,18,0.64)',
+    alignItems: 'center',
+    gap: 3,
+  },
+  skipFeedbackText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '800',
+  },
   fullscreenVideo: {
     width: '100%',
     height: '100%',
@@ -949,6 +1056,9 @@ const styles = StyleSheet.create({
     height: 28,
     justifyContent: 'center',
   },
+  progressTrackScrubbing: {
+    height: 38,
+  },
   progressTrackRail: {
     position: 'absolute',
     left: 0,
@@ -957,12 +1067,35 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.34)',
   },
+  progressTrackRailScrubbing: {
+    height: 5,
+  },
+  scrubTimeBadge: {
+    position: 'absolute',
+    bottom: 27,
+    minWidth: 48,
+    marginLeft: -24,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(8,12,18,0.82)',
+    alignItems: 'center',
+  },
+  scrubTimeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
   progressFill: {
     position: 'absolute',
     left: 0,
     height: 3,
     borderRadius: 999,
     backgroundColor: '#FFFFFF',
+  },
+  progressFillScrubbing: {
+    height: 5,
   },
   progressThumb: {
     position: 'absolute',
@@ -971,6 +1104,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginLeft: -6,
     backgroundColor: '#FFFFFF',
+  },
+  progressThumbScrubbing: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginLeft: -8,
   },
   bottomActionsRow: {
     minHeight: 48,

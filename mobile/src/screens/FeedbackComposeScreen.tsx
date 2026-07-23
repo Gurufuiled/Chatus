@@ -132,8 +132,8 @@ export function FeedbackComposeScreen({ navigation, route }: Props) {
     setGalleryCaption('');
   }, []);
 
-  const handleSendSelectedFromSheet = useCallback(async () => {
-    const item = selectedGalleryItems[0];
+  const handleSendSelectedFromSheet = useCallback(async (itemsOverride?: GalleryItem[]) => {
+    const item = (itemsOverride ?? selectedGalleryItems)[0];
     if (!item) return;
 
     setSheetUploading(true);
@@ -278,7 +278,7 @@ export function FeedbackComposeScreen({ navigation, route }: Props) {
         onClose={closeAttachmentSheet}
         onToggleGalleryItem={handleToggleGalleryItem}
         onCaptionChange={setGalleryCaption}
-        onSendSelected={() => void handleSendSelectedFromSheet()}
+        onSendSelected={(itemsOverride) => void handleSendSelectedFromSheet(itemsOverride)}
         onRunAttachmentAction={async () => {}}
       />
 

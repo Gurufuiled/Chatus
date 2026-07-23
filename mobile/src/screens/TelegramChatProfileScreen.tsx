@@ -234,6 +234,7 @@ export function TelegramChatProfileScreen() {
   const [blockSheetVisible, setBlockSheetVisible] = useState(false);
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
   const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
+  const [draftWallpaperId, setDraftWallpaperId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
 
   const actionMenuAnimation = useRef(new Animated.Value(0)).current;
   const moreMenuAnimation = useRef(new Animated.Value(0)).current;
@@ -243,6 +244,9 @@ export function TelegramChatProfileScreen() {
   const currentThemeId =
     (uiStore.getState().chatThemeIdByChatId[wallpaperKey] as ChatThemeId | undefined) ??
     DEFAULT_CHAT_THEME_ID;
+  const currentWallpaperId =
+    (uiStore.getState().chatWallpaperIdByChatId[wallpaperKey] as ChatThemeId | undefined) ??
+    currentThemeId;
 
   const avatarColor = useMemo(() => getAvatarColor(displayName), [displayName]);
   const initial =
@@ -647,15 +651,17 @@ export function TelegramChatProfileScreen() {
 
   const handleApplyChatTheme = useCallback(() => {
     uiStore.getState().setChatTheme(wallpaperKey, draftThemeId);
+    uiStore.getState().setChatWallpaper(wallpaperKey, draftWallpaperId);
     setIsThemePickerVisible(false);
-  }, [draftThemeId, wallpaperKey]);
+  }, [draftThemeId, draftWallpaperId, wallpaperKey]);
 
   const openThemePicker = useCallback(() => {
     closeMoreMenu(() => {
       setDraftThemeId(currentThemeId);
+      setDraftWallpaperId(currentWallpaperId);
       setIsThemePickerVisible(true);
     });
-  }, [closeMoreMenu, currentThemeId]);
+  }, [closeMoreMenu, currentThemeId, currentWallpaperId]);
 
   const handleDeleteChatPress = useCallback(() => {
     closeMoreMenu(() => {
@@ -788,6 +794,7 @@ export function TelegramChatProfileScreen() {
         key: 'change-wallpaper',
         label: 'Изменить обои',
         iconImage: WALLPAPER_MENU_ICON,
+        ...{ label: 'Оформление чата' },
       },
       {
         key: 'delete-chat',
@@ -1063,7 +1070,9 @@ export function TelegramChatProfileScreen() {
       <ChatThemePickerModal
         visible={isThemePickerVisible}
         selectedThemeId={draftThemeId}
+        selectedWallpaperId={draftWallpaperId}
         onSelectTheme={setDraftThemeId}
+        onSelectWallpaper={setDraftWallpaperId}
         onApply={handleApplyChatTheme}
         onClose={() => setIsThemePickerVisible(false)}
       />
