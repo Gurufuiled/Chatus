@@ -191,17 +191,18 @@ export function MessageBubble({
   const isAlbum = isAlbumMessage(message.msg_type, mediaList.length);
   const isRoundVideo =
     message.msg_type === 'video_note' || Boolean(media?.is_round);
-  const albumCaption = isAlbum && isAlbumCaption(message.content) ? message.content?.trim() : null;
+  const albumCaption =
+    isAlbum && isAlbumCaption(message.content) ? (message.content?.trim() ?? null) : null;
   const imageCaption =
     !isAlbum && message.msg_type === 'image' && isAlbumCaption(message.content)
-      ? message.content?.trim()
+      ? (message.content?.trim() ?? null)
       : null;
   const videoCaption =
     !isAlbum &&
     message.msg_type === 'video' &&
     !isRoundVideo &&
     isAlbumCaption(message.content)
-      ? message.content?.trim()
+      ? (message.content?.trim() ?? null)
       : null;
   const visualCaption = albumCaption ?? imageCaption ?? videoCaption ?? null;
   const hasVisualCaption = Boolean(visualCaption);
