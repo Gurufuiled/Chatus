@@ -92,8 +92,8 @@ android {
         applicationId 'com.chatus.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2064630337
-        versionName "1.0.26"
+        versionCode 2064630338
+        versionName "1.0.27"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
