@@ -70,7 +70,7 @@ const PreviewSlide = React.memo(function PreviewSlide({
         source={{ uri }}
         style={styles.media}
         contentFit="contain"
-        cachePolicy="disk"
+        cachePolicy="memory-disk"
       />
     </View>
   );

@@ -79,6 +79,8 @@ type InputAttachmentSheetProps = {
   galleryEnabled: boolean;
   galleryItems: GalleryItem[];
   galleryLoading: boolean;
+  /** True while the next media-library page is appended to the grid. */
+  galleryLoadingMore?: boolean;
   galleryDenied: boolean;
   /** Текст при отказе в доступе к медиатеке (по умолчанию — фото и видео). */
   galleryDeniedHint?: string;
@@ -88,6 +90,8 @@ type InputAttachmentSheetProps = {
   onClose: () => void;
   onToggleGalleryItem: (item: GalleryItem) => void;
   onCaptionChange: (text: string) => void;
+  /** Loads the next media-library page when the user approaches the grid end. */
+  onLoadMoreGallery?: () => void;
   onSendSelected: () => void;
   onRunAttachmentAction: (action: () => Promise<void>) => void;
   /** Нижняя кнопка вместо дока режимов (например «Все фото…» для аватара). */
@@ -418,7 +422,7 @@ const GalleryCell = React.memo(function GalleryCell({
             source={{ uri: previewUri }}
             style={styles.galleryImage}
             contentFit="cover"
-            cachePolicy="disk"
+            cachePolicy="memory-disk"
           />
         ) : (
           <View style={styles.galleryVideoFallback}>
@@ -490,6 +494,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   galleryEnabled,
   galleryItems,
   galleryLoading,
+  galleryLoadingMore = false,
   galleryDenied,
   galleryDeniedHint,
   attachmentActions,
@@ -498,6 +503,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   onClose,
   onToggleGalleryItem,
   onCaptionChange,
+  onLoadMoreGallery,
   onSendSelected,
   onRunAttachmentAction,
   bottomButton,
@@ -528,7 +534,6 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   }, [collapsedTranslateY, expandedH, maxTranslateY, snapCollapsedY]);
 
   const [shouldClose, setShouldClose] = React.useState(false);
-  const [galleryOpenEpoch, setGalleryOpenEpoch] = React.useState(0);
   const listRef =
     useAnimatedRef<React.ComponentRef<typeof AnimatedGalleryFlatList>>();
   const gridPanRef = React.useRef<any>(null);
@@ -550,12 +555,16 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
 
   React.useEffect(() => {
     if (visible) {
-      setGalleryOpenEpoch((n) => n + 1);
       scrollY.value = 0;
       listScrollEnabled.value = false;
       sheetTranslateY.value = expandedH;
       sheetTranslateY.value = withSpring(collapsedTranslateY, SPRING_CFG);
-      return undefined;
+      const raf = requestAnimationFrame(resetGalleryScrollPosition);
+      const timer = setTimeout(resetGalleryScrollPosition, 100);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(timer);
+      };
     }
     sheetTranslateY.value = collapsedTranslateY;
     scrollY.value = 0;
@@ -566,24 +575,10 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
     collapsedTranslateY,
     expandedH,
     listScrollEnabled,
+    resetGalleryScrollPosition,
     scrollY,
     sheetTranslateY,
   ]);
-
-  React.useEffect(() => {
-    if (!visible || galleryOpenEpoch === 0) {
-      return undefined;
-    }
-    scrollY.value = 0;
-    const raf = requestAnimationFrame(() => {
-      resetGalleryScrollPosition();
-    });
-    const timer = setTimeout(resetGalleryScrollPosition, 100);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(timer);
-    };
-  }, [galleryOpenEpoch, resetGalleryScrollPosition, scrollY, visible]);
 
   const requestClose = React.useCallback(() => {
     setShouldClose(true);
@@ -811,10 +806,13 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
 
   const handlePreviewPhoto = React.useCallback(
     (item: GalleryItem) => {
+      if (!selectedById.has(item.id)) {
+        onToggleGalleryItem(item);
+      }
       const idx = galleryItems.findIndex((g) => g.id === item.id);
       if (idx >= 0) setPreviewIndex(idx);
     },
-    [galleryItems],
+    [galleryItems, onToggleGalleryItem, selectedById],
   );
 
   const closePreview = React.useCallback(() => setPreviewIndex(null), []);
@@ -857,7 +855,6 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
 
   const galleryList = (
     <AnimatedGalleryFlatList
-      key={`gallery-${galleryOpenEpoch}`}
       ref={listRef}
       simultaneousHandlers={gridPanRef}
       animatedProps={listAnimatedProps}
@@ -880,6 +877,11 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
       windowSize={5}
       updateCellsBatchingPeriod={40}
       keyboardShouldPersistTaps="handled"
+      onEndReached={onLoadMoreGallery}
+      onEndReachedThreshold={0.65}
+      ListFooterComponent={
+        galleryLoadingMore ? <GallerySkeletonGrid rows={1} /> : null
+      }
       onScroll={scrollHandler}
       scrollEventThrottle={16}
     />

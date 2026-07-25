@@ -13,6 +13,8 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type NativeSyntheticEvent,
+  type TextInputContentSizeChangeEventData,
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -52,6 +54,12 @@ import { StickerPackSheet } from './StickerPackSheet';
 import type { SendChannelAnchorRect } from './SendChannelSelector';
 import { PlatformSourceIcon } from './PlatformSourceIcon';
 import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
+import {
+  COMPOSER_INPUT_MAX_HEIGHT,
+  COMPOSER_INPUT_MIN_HEIGHT,
+  clampComposerInputHeight,
+  shouldScrollComposerInput,
+} from './composerSizing';
 import {
   friendStickerIdToEmoji,
   getFriendStickerIdForEmoji,
@@ -162,6 +170,7 @@ let sharedAttachmentGalleryCache: GalleryItem[] | null = null;
 let sharedAttachmentGalleryCachedAtMs = 0;
 
 const ATTACHMENT_GALLERY_CACHE_TTL_MS = 5 * 60 * 1000;
+const ATTACHMENT_GALLERY_PAGE_SIZE = 60;
 
 type VoiceRecordMode = 'idle' | 'holding' | 'locked';
 type RecordingEntryMode = 'voice' | 'video';
@@ -269,10 +278,12 @@ export function InputBar({
   const [stickerSheetBootTab, setStickerSheetBootTab] = useState<StickerPanelTopTab | null>(null);
   const sendAnchorRef = useRef<View>(null);
   const [inputText, setInputText] = useState('');
+  const [composerInputHeight, setComposerInputHeight] = useState(COMPOSER_INPUT_MIN_HEIGHT);
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryLoadingMore, setGalleryLoadingMore] = useState(false);
   const [galleryDenied, setGalleryDenied] = useState(false);
   const [pendingMedia, setPendingMedia] = useState<MediaPickResult | null>(null);
   const [selectedGalleryItems, setSelectedGalleryItems] = useState<GalleryItem[]>([]);
@@ -283,6 +294,9 @@ export function InputBar({
   const [voiceTouchTracking, setVoiceTouchTracking] = useState(false);
   const [voiceRecordingStartedAtMs, setVoiceRecordingStartedAtMs] = useState(0);
 
+  const galleryEndCursorRef = useRef<string | undefined>(undefined);
+  const galleryHasNextPageRef = useRef(false);
+  const galleryLoadingMoreRef = useRef(false);
   const voiceRecordModeRef = useRef<VoiceRecordMode>('idle');
   const recordingEntryModeRef = useRef<RecordingEntryMode>('voice');
   const voiceStartPendingRef = useRef(false);
@@ -443,6 +457,7 @@ export function InputBar({
 
     if (selectedMedia) {
       setInputText('');
+      setComposerInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
       setPendingMedia(null);
       onCancelReply?.();
 
@@ -455,6 +470,7 @@ export function InputBar({
     }
 
     setInputText('');
+    setComposerInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
     onCancelReply?.();
     onInputChange?.('');
 
@@ -479,9 +495,22 @@ export function InputBar({
   const handleInputChange = useCallback(
     (text: string) => {
       setInputText(text);
+      if (text.length === 0) {
+        setComposerInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
+      }
       onInputChange?.(text);
     },
     [onInputChange]
+  );
+
+  const handleComposerContentSizeChange = useCallback(
+    (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
+      const nextHeight = clampComposerInputHeight(event.nativeEvent.contentSize.height);
+      setComposerInputHeight((currentHeight) =>
+        Math.abs(currentHeight - nextHeight) < 1 ? currentHeight : nextHeight,
+      );
+    },
+    [],
   );
 
   const openStickerPanel = useCallback(
@@ -837,6 +866,7 @@ export function InputBar({
   const loadGallery = useCallback(async () => {
     if (!onSendMedia) return;
 
+    let hydratedFromCache = false;
     const cacheAge = Date.now() - sharedAttachmentGalleryCachedAtMs;
     if (
       sharedAttachmentGalleryCache &&
@@ -847,32 +877,38 @@ export function InputBar({
       setGalleryItems(sharedAttachmentGalleryCache);
       setGalleryDenied(false);
       setGalleryLoading(false);
-      return;
+      hydratedFromCache = true;
     }
 
     // После выхода из приложения процесс обнуляется — читаем последний снимок с диска,
     // чтобы не ждать MediaLibrary на «холодном» открытии скрепки.
-    let hydratedFromDisk = false;
-    try {
-      const diskItems = await readAttachmentGalleryDiskCache();
-      if (diskItems && diskItems.length > 0) {
-        setGalleryItems(diskItems);
-        setGalleryDenied(false);
-        setGalleryLoading(false);
-        sharedAttachmentGalleryCache = diskItems;
-        sharedAttachmentGalleryCachedAtMs = Date.now();
-        hydratedFromDisk = true;
+    let hydratedFromDisk = hydratedFromCache;
+    if (!hydratedFromCache) {
+      try {
+        const diskItems = await readAttachmentGalleryDiskCache();
+        if (diskItems && diskItems.length > 0) {
+          setGalleryItems(diskItems);
+          setGalleryDenied(false);
+          setGalleryLoading(false);
+          sharedAttachmentGalleryCache = diskItems;
+          sharedAttachmentGalleryCachedAtMs = Date.now();
+          hydratedFromDisk = true;
+        }
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
     }
 
     if (!hydratedFromDisk) {
       setGalleryLoading(true);
     }
     try {
-      const permission = await MediaLibrary.requestPermissionsAsync();
-      const granted = permission.granted || permission.accessPrivileges === 'limited';
+      let permission = await MediaLibrary.getPermissionsAsync();
+      let granted = permission.granted || permission.accessPrivileges === 'limited';
+      if (!granted && permission.canAskAgain) {
+        permission = await MediaLibrary.requestPermissionsAsync();
+        granted = permission.granted || permission.accessPrivileges === 'limited';
+      }
 
       if (!granted) {
         setGalleryDenied(true);
@@ -880,15 +916,19 @@ export function InputBar({
         sharedAttachmentGalleryCache = null;
         void clearAttachmentGalleryDiskCache();
         setGalleryLoading(false);
+        galleryEndCursorRef.current = undefined;
+        galleryHasNextPageRef.current = false;
         return;
       }
 
       setGalleryDenied(false);
       const result = await MediaLibrary.getAssetsAsync({
         mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
-        first: 48,
+        first: ATTACHMENT_GALLERY_PAGE_SIZE,
         sortBy: [[MediaLibrary.SortBy.creationTime, false]],
       });
+      galleryEndCursorRef.current = result.endCursor;
+      galleryHasNextPageRef.current = result.hasNextPage;
 
       // Map immediately so the grid appears without waiting for localUri
       const mapped = result.assets.map((asset) => ({
@@ -904,7 +944,11 @@ export function InputBar({
             : undefined,
         fileName: asset.filename,
       }));
-      setGalleryItems(mapped);
+      setGalleryItems((current) => {
+        if (!hydratedFromDisk) return mapped;
+        const firstPageIds = new Set(mapped.map((item) => item.id));
+        return [...mapped, ...current.filter((item) => !firstPageIds.has(item.id))];
+      });
       // Раньше loading держался до завершения всех getAssetInfoAsync (десятки вызовов подряд) —
       // скелетон висел 5–8 с. Показываем сетку сразу по uri из getAssetsAsync.
       setGalleryLoading(false);
@@ -929,7 +973,9 @@ export function InputBar({
         });
         sharedAttachmentGalleryCache = next;
         sharedAttachmentGalleryCachedAtMs = Date.now();
-        void writeAttachmentGalleryDiskCache(next);
+        void writeAttachmentGalleryDiskCache(
+          next.slice(0, ATTACHMENT_GALLERY_PAGE_SIZE),
+        );
         return next;
       });
     } catch (err) {
@@ -938,6 +984,66 @@ export function InputBar({
       sharedAttachmentGalleryCache = null;
       void clearAttachmentGalleryDiskCache();
       setGalleryLoading(false);
+      galleryEndCursorRef.current = undefined;
+      galleryHasNextPageRef.current = false;
+    }
+  }, [onSendMedia]);
+
+  const loadMoreGallery = useCallback(async () => {
+    const cursor = galleryEndCursorRef.current;
+    if (
+      !onSendMedia ||
+      !cursor ||
+      !galleryHasNextPageRef.current ||
+      galleryLoadingMoreRef.current
+    ) {
+      return;
+    }
+
+    galleryLoadingMoreRef.current = true;
+    setGalleryLoadingMore(true);
+    try {
+      const result = await MediaLibrary.getAssetsAsync({
+        mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
+        first: ATTACHMENT_GALLERY_PAGE_SIZE,
+        after: cursor,
+        sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+      });
+      galleryEndCursorRef.current = result.endCursor;
+      galleryHasNextPageRef.current = result.hasNextPage;
+
+      const nextPage: GalleryItem[] = result.assets.map((asset) => ({
+        id: asset.id,
+        kind: resolveGalleryItemKind(asset.mediaType),
+        uri: asset.uri,
+        localUri: undefined,
+        width: asset.width,
+        height: asset.height,
+        durationMs:
+          asset.mediaType === MediaLibrary.MediaType.video
+            ? Math.max(0, Math.round((asset.duration ?? 0) * 1000))
+            : undefined,
+        fileName: asset.filename,
+      }));
+
+      setGalleryItems((current) => {
+        const knownIds = new Set(current.map((item) => item.id));
+        const next = [
+          ...current,
+          ...nextPage.filter((item) => !knownIds.has(item.id)),
+        ];
+        sharedAttachmentGalleryCache = next;
+        sharedAttachmentGalleryCachedAtMs = Date.now();
+        void writeAttachmentGalleryDiskCache(
+          next.slice(0, ATTACHMENT_GALLERY_PAGE_SIZE),
+        );
+        return next;
+      });
+    } catch (err) {
+      if (__DEV__) console.warn('[InputBar] loadMoreGallery error:', err);
+    } finally {
+      galleryLoadingMoreRef.current = false;
+      setGalleryLoadingMore(false);
     }
   }, [onSendMedia]);
 
@@ -1662,7 +1768,10 @@ export function InputBar({
                 }}
               />
             ) : (
-            <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}>
+            <Reanimated.View
+              layout={COMPOSER_DOCK_LAYOUT}
+              style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}
+            >
               {showAttachmentButton ? (
                 stickerInLeadingCluster && chatusStickersComposer ? (
                   <View style={styles.leadingCluster} accessibilityRole="toolbar">
@@ -1728,12 +1837,18 @@ export function InputBar({
                   style={[
                     styles.input,
                     styles.inputComposerField,
+                    { height: composerInputHeight },
                   ]}
                   placeholder={placeholder}
                   placeholderTextColor={themeColors.placeholder}
                   value={inputText}
                   onChangeText={handleInputChange}
+                  onContentSizeChange={handleComposerContentSizeChange}
                   multiline
+                  scrollEnabled={shouldScrollComposerInput(composerInputHeight)}
+                  textAlignVertical={
+                    composerInputHeight === COMPOSER_INPUT_MIN_HEIGHT ? 'center' : 'top'
+                  }
                   maxLength={4096}
                 />
               </View>
@@ -1807,7 +1922,7 @@ export function InputBar({
                   />
                 </RNAnimated.View>
               )}
-            </View>
+            </Reanimated.View>
             )}
           </Reanimated.View>
 
@@ -1854,6 +1969,7 @@ export function InputBar({
         galleryEnabled={onSendMedia != null}
         galleryItems={galleryItems}
         galleryLoading={galleryLoading}
+        galleryLoadingMore={galleryLoadingMore}
         galleryDenied={galleryDenied}
         attachmentActions={attachmentActions}
         selectedItems={selectedGalleryItems}
@@ -1861,6 +1977,9 @@ export function InputBar({
         onClose={closeAttachmentSheet}
         onToggleGalleryItem={handleToggleGalleryItem}
         onCaptionChange={setGalleryCaption}
+        onLoadMoreGallery={() => {
+          void loadMoreGallery();
+        }}
         editedUris={galleryEditedUris}
         onEditedUriChange={handleGalleryEditedUri}
         onSendSelected={() => {
@@ -2094,7 +2213,7 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
     minWidth: 0,
     position: 'relative',
     justifyContent: 'flex-end',
-    alignSelf: 'stretch',
+    alignSelf: 'flex-end',
   },
   leadingAction: {
     width: MIN_TAP_TARGET,
@@ -2115,8 +2234,8 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
     marginBottom: 1,
   },
   input: {
-    minHeight: MIN_TAP_TARGET,
-    maxHeight: 120,
+    minHeight: COMPOSER_INPUT_MIN_HEIGHT,
+    maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
     paddingHorizontal: 8,
     paddingTop: 11,
     paddingBottom: 10,
@@ -2125,7 +2244,6 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
     color: themeColors.textPrimary,
   },
   inputComposerField: {
-    flex: 1,
     alignSelf: 'stretch',
     minWidth: 0,
   },
