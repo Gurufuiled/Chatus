@@ -34,9 +34,12 @@ const FORCE = process.argv.includes('--force');
 const TDLIB_VERSION_COMMITS = {
   '1.8.52': '4269f54e16b9cf564efc2db5bcd29743a2eec6ee',
   'v1.8.52': '4269f54e16b9cf564efc2db5bcd29743a2eec6ee',
+  // Official tdlib/td master at the 1.8.66 version bump. Patch releases aren't tagged.
+  '1.8.66': '022d60202e446ad1287b9fb68e687c8a0760788b',
+  'v1.8.66': '022d60202e446ad1287b9fb68e687c8a0760788b',
 };
 
-const TDLIB_IOS_VERSION = process.env.TDLIB_IOS_VERSION || '1.8.52';
+const TDLIB_IOS_VERSION = process.env.TDLIB_IOS_VERSION || '1.8.66';
 const legacyTag = process.env.TDLIB_IOS_TAG;
 const TDLIB_IOS_REF =
   process.env.TDLIB_IOS_REF ||

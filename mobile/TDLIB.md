@@ -55,7 +55,7 @@ TELEGRAM_API_HASH=your_hash_here
 Команда из `mobile/`:
 
 ```bash
-npm run tdlib:fetch-ios
+npm run tdlib:build-ios
 ```
 
 Скрипт `scripts/fetchTdlibIos.mjs`:
@@ -85,7 +85,7 @@ npm run tdlib:build-ios
 
 Скрипт `scripts/buildTdlibIos.mjs`:
 
-1. клонирует `tdlib/td` в `mobile/tdlib-ios/src/td` и переключается на коммит **1.8.52** (`4269f54e…` — тот же коммит, что up9cloud/ios-libtdjson v1.8.52; в официальном репозитории нет git-тега `v1.8.52`, только `v1.8.0`);
+1. клонирует `tdlib/td` в `mobile/tdlib-ios/src/td` и переключается на закреплённый коммит **1.8.66** (`022d6020…`; у официального TDLib нет patch-тегов);
 2. генерирует исходники TDLib через `cmake -DTD_GENERATE_SOURCE_FILES=ON`;
 3. запускает `example/ios/build-openssl.sh`;
 4. запускает `example/ios/build.sh`;
@@ -112,7 +112,7 @@ Fresh checkout на Mac перед любым `expo run:ios`, `pod install` ил
 
 ```bash
 npm ci
-npm run tdlib:fetch-ios
+npm run tdlib:build-ios
 npx expo prebuild --platform ios --clean
 cd ios
 pod install

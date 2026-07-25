@@ -27,7 +27,7 @@
 ```bash
 cd mobile
 npm ci
-npm run tdlib:fetch-ios
+npm run tdlib:build-ios
 cd ios
 pod install
 ```

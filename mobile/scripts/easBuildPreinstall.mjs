@@ -18,8 +18,9 @@ function run(script) {
 }
 
 if (platform === 'ios') {
-  const fromSource = process.env.TDLIB_IOS_FROM_SOURCE === '1';
-  run(fromSource ? './scripts/buildTdlibIos.mjs' : './scripts/fetchTdlibIos.mjs');
+  // 1.8.66 is pinned to an official TDLib commit. The old third-party iOS
+  // prebuilt is only available for 1.8.52, so iOS must build the pinned source.
+  run('./scripts/buildTdlibIos.mjs');
 } else if (platform === 'android') {
   // Existing Android release workflow depends on fetching libtdjson.so before prebuild.
   run('./scripts/fetchTdlibAndroid.mjs');

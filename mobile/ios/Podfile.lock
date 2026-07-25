@@ -3142,7 +3142,7 @@ PODS:
     - SDWebImage/Core (~> 5.17)
   - SocketRocket (0.7.1)
   - SwiftUIIntrospect (1.3.0)
-  - TdLib (1.8.52)
+  - TdLib (1.8.66)
   - WebRTC-SDK (144.7559.10)
   - Yoga (0.83.6)
   - ZXingObjC/Core (3.6.9)

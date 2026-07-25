@@ -20,7 +20,12 @@ const headerFile = path.join(headerDir, 'td_json_client.h');
 const exportHeaderFile = path.join(headerDir, 'tdjson_export.h');
 
 /** Пин под iOS prebuild up9cloud/ios-libtdjson v1.8.52 (тот же тег, что Android). */
-const TDLIB_IOS_TAG = process.env.TDLIB_IOS_TAG || 'v1.8.52';
+const TDLIB_IOS_TAG = process.env.TDLIB_IOS_TAG;
+if (!TDLIB_IOS_TAG) {
+  throw new Error(
+    'No prebuilt TDLib is approved for iOS production. Run "npm run tdlib:build-ios" (TDLib 1.8.66), or explicitly set TDLIB_IOS_TAG only for legacy debugging.',
+  );
+}
 const FRAMEWORK_URL = `https://github.com/up9cloud/ios-libtdjson/releases/download/${TDLIB_IOS_TAG}/libtdjson.xcframework.tar.gz`;
 /** Минимальный размер tarball (~30 MB); защита от обрезанной загрузки */
 const MIN_FRAMEWORK_TGZ_BYTES = 30 * 1024 * 1024;

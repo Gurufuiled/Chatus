@@ -20,10 +20,18 @@ import {
 /** Shown in Telegram → Devices; keep in sync with setTdlibParameters. */
 export const TDLIB_DEVICE_MODEL = 'Chatus';
 
+/** Telegram uses this as part of the active-session identity. */
+export function getTdlibSystemVersion(): string {
+  const platformName = Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : Platform.OS;
+  const version = String(Platform.Version ?? '').trim();
+  return version ? `${platformName} ${version}` : platformName;
+}
+
 /** Safe identity for remote logs (never includes api_hash). */
 export function getTdlibClientIdentity(): {
   apiId: number | null;
   deviceModel: string;
+  systemVersion: string;
   applicationVersion: string;
   platform: string;
 } {
@@ -31,6 +39,7 @@ export function getTdlibClientIdentity(): {
   return {
     apiId,
     deviceModel: TDLIB_DEVICE_MODEL,
+    systemVersion: getTdlibSystemVersion(),
     applicationVersion: String(Constants.expoConfig?.version ?? '1.0.0'),
     platform: Platform.OS,
   };
@@ -855,6 +864,7 @@ async function doApplyTdlibParameters(shouldAbort?: () => boolean): Promise<void
     api_hash: apiHash,
     system_language_code: 'ru',
     device_model: TDLIB_DEVICE_MODEL,
+    system_version: getTdlibSystemVersion(),
     application_version: applicationVersion,
   });
   throwIfTdError(setRes);

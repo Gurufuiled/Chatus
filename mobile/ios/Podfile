@@ -40,7 +40,7 @@ def ensure_tdlib_embed_phase
       SLICE="${FRAMEWORK_ROOT}/ios-arm64/libtdjson.dylib"
     fi
     if [ ! -f "${SLICE}" ]; then
-      echo "error: missing ${SLICE}. Run: npm run tdlib:fetch-ios" >&2
+      echo "error: missing ${SLICE}. Run: npm run tdlib:build-ios" >&2
       exit 1
     fi
     DEST="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}"
