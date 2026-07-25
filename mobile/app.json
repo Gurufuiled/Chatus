@@ -62,7 +62,6 @@
     "userInterfaceStyle": "light",
     "scheme": ["messenger", "chatus"],
     "splash": {
-      "image": "./assets/chatus_icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#E7EBF0"
     },

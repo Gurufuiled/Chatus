@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { appLinking } from './src/navigation/linking';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
+import { View, Text, StyleSheet } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
@@ -14,7 +14,6 @@ import { VoicePlayerProvider } from './src/contexts/VoicePlayerContext';
 import { WebSocketProvider } from './src/contexts/WebSocketProvider';
 import { BootstrapErrorBoundary } from './src/components/BootstrapErrorBoundary';
 import { RootNavigator } from './src/navigation';
-import { colors } from './src/theme/colors';
 import { InAppPushNotification } from './src/components/InAppPushNotification';
 import { AppUpdateGate } from './src/components/AppUpdateGate';
 import { initDatabase } from './src/services/DatabaseService';
@@ -24,6 +23,11 @@ import { telegramAccountStore } from './src/stores/telegramAccountStore';
 import { TelegramTdlibNotificationListener } from './src/components/TelegramTdlibNotificationListener';
 import { ensureAndroidPushChannels } from './src/services/pushNotificationsService';
 import { prefetchMessageTimeFormat } from './src/utils/formatMessageTime';
+
+// Keep the native launch screen in place while the local database and session hydrate.
+// This avoids a second, React-rendered splash frame flashing between launch and chats.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.setOptions({ duration: 220, fade: true });
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -52,19 +56,16 @@ export default function App() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!isReady) return;
+    const frame = requestAnimationFrame(() => {
+      SplashScreen.hide();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isReady]);
+
   if (!isReady) {
-    return (
-      <View style={styles.center}>
-        <Image
-          accessibilityIgnoresInvertColors
-          source={require('./assets/chatus_icon.png')}
-          style={styles.bootLogo}
-          contentFit="contain"
-        />
-        <ActivityIndicator size="large" color={colors.accent} style={styles.bootSpinner} />
-        <StatusBar style="auto" />
-      </View>
-    );
+    return null;
   }
 
   if (bootstrapError) {
@@ -138,20 +139,6 @@ function ThemedStatusBar() {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.chatBackground,
-  },
-  bootLogo: {
-    width: 96,
-    height: 96,
-    marginBottom: 20,
-  },
-  bootSpinner: {
-    marginTop: 4,
-  },
   errorWrap: {
     flex: 1,
     justifyContent: 'center',
