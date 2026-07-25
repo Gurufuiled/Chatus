@@ -13,8 +13,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-  type NativeSyntheticEvent,
-  type TextInputContentSizeChangeEventData,
+  type TextLayoutEvent,
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -57,7 +56,7 @@ import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
 import {
   COMPOSER_INPUT_MAX_HEIGHT,
   COMPOSER_INPUT_MIN_HEIGHT,
-  clampComposerInputHeight,
+  composerInputHeightForLineCount,
   shouldScrollComposerInput,
 } from './composerSizing';
 import {
@@ -503,9 +502,12 @@ export function InputBar({
     [onInputChange]
   );
 
-  const handleComposerContentSizeChange = useCallback(
-    (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
-      const nextHeight = clampComposerInputHeight(event.nativeEvent.contentSize.height);
+  const handleComposerTextLayout = useCallback(
+    (event: TextLayoutEvent) => {
+      const nextHeight = composerInputHeightForLineCount(
+        event.nativeEvent.lines.length,
+        typography.messageTextLineHeight,
+      );
       setComposerInputHeight((currentHeight) =>
         Math.abs(currentHeight - nextHeight) < 1 ? currentHeight : nextHeight,
       );
@@ -1832,6 +1834,15 @@ export function InputBar({
               ) : null}
 
               <View style={styles.composerInputStickerCluster}>
+                <Text
+                  pointerEvents="none"
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                  style={styles.composerMeasureText}
+                  onTextLayout={handleComposerTextLayout}
+                >
+                  {`${inputText || ' '}\u200B`}
+                </Text>
                 <TextInput
                   ref={inputRef}
                   style={[
@@ -1843,9 +1854,10 @@ export function InputBar({
                   placeholderTextColor={themeColors.placeholder}
                   value={inputText}
                   onChangeText={handleInputChange}
-                  onContentSizeChange={handleComposerContentSizeChange}
                   multiline
                   scrollEnabled={shouldScrollComposerInput(composerInputHeight)}
+                  lineBreakModeIOS="wordWrapping"
+                  lineBreakStrategyIOS="standard"
                   textAlignVertical={
                     composerInputHeight === COMPOSER_INPUT_MIN_HEIGHT ? 'center' : 'top'
                   }
@@ -2246,6 +2258,15 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
   inputComposerField: {
     alignSelf: 'stretch',
     minWidth: 0,
+  },
+  composerMeasureText: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    top: 0,
+    opacity: 0,
+    fontSize: typography.messageText,
+    lineHeight: typography.messageTextLineHeight,
   },
   trailingAction: {
     width: MIN_TAP_TARGET,
