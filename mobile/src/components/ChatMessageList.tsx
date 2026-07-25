@@ -72,8 +72,8 @@ import { ChatScrollToBottomButton } from './ChatScrollToBottomButton';
 import { useInvertedChatScrollFab } from '../hooks/useInvertedChatScrollFab';
 import {
   formatChatDayLabel,
-  getChatDayKey,
   isValidChatTimestamp,
+  shouldShowChatDaySeparator,
 } from '../utils/formatChatDayLabel';
 import {
   buildStickerGroupedChatRows,
@@ -601,11 +601,13 @@ function wrapChatRowWithDaySeparator(
   dayLabel: string,
 ): React.ReactElement {
   if (!showDaySeparator) return row;
-  // Inverted FlatList flips each row — separator after message renders above it visually.
+  // Inverted FlatList applies scaleY:-1 to both the list and each cell, so
+  // within-cell order stays top→bottom. Separator must come before the message
+  // so the day pill sits above the first message of that day.
   return (
     <>
-      {row}
       <ChatDaySeparator label={dayLabel} />
+      {row}
     </>
   );
 }
@@ -2684,10 +2686,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
           break;
         }
       }
-      const showDaySeparator =
-        isValidChatTimestamp(itemDateMs) &&
-        (olderComparableDateMs == null ||
-          getChatDayKey(itemDateMs) !== getChatDayKey(olderComparableDateMs));
+      const showDaySeparator = shouldShowChatDaySeparator(itemDateMs, olderComparableDateMs);
       const dayLabel = formatChatDayLabel(itemDateMs);
 
       if ('kind' in item && item.kind === 'sticker_group') {
@@ -2845,6 +2844,7 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         scrollEventThrottle={48}
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         removeClippedSubviews={Platform.OS === 'android' ? true : !activeVideoNoteVisible}
         initialNumToRender={activeVideoNoteVisible ? 16 : 12}
         maxToRenderPerBatch={Platform.OS === 'android' ? 4 : (activeVideoNoteVisible ? 14 : 6)}

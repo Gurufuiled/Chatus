@@ -62,6 +62,8 @@ type CallUiState = {
   isLocalVideoEnabled: boolean;
   isRemoteVideoEnabled: boolean;
   hasRemoteVideoEverEnabled: boolean;
+  /** Bumps when remote video tracks are added so RTCView remounts on iOS. */
+  remoteVideoRenderKey: number;
   localStreamUrl: string | null;
   remoteStreamUrl: string | null;
 };
@@ -139,11 +141,17 @@ function buildCallAudioMode(isSpeakerOn: boolean) {
   } satisfies Parameters<typeof Audio.setAudioModeAsync>[0];
 }
 
-function buildOfferOptions(shouldReceiveVideo: boolean) {
+function buildOfferOptions(_shouldReceiveVideo?: boolean) {
+  // Always advertise recv video so mid-call camera upgrades renegotiate cleanly
+  // on Unified Plan (especially iOS ↔ Android).
   return {
     offerToReceiveAudio: true,
-    offerToReceiveVideo: shouldReceiveVideo,
+    offerToReceiveVideo: true,
   };
+}
+
+function sdpOffersVideo(sdp: string | undefined): boolean {
+  return typeof sdp === 'string' && /m=video\s/i.test(sdp);
 }
 
 function getCallControlsLayout(screenWidth: number): CallControlsLayout {
@@ -232,7 +240,11 @@ function getCallKindFromOffer(callType: CallKind | undefined) {
 }
 
 function hasEnabledVideoTrack(stream: RTCMediaStream | null | undefined) {
-  return Boolean(stream?.getVideoTracks().some((track) => track.enabled));
+  return Boolean(
+    stream?.getVideoTracks().some(
+      (track) => track.enabled && (track as MediaStreamTrack).readyState !== 'ended'
+    )
+  );
 }
 
 function getStreamUrl(stream: RTCMediaStream | null | undefined) {
@@ -587,6 +599,7 @@ const CallOverlay = React.memo(function CallOverlay({
           <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
           {showMainVideo ? (
             <RTCView
+              key={`main-${mainVideoUrl}-${callState.remoteVideoRenderKey}-${mainMirror ? 'local' : 'remote'}`}
               streamURL={mainVideoUrl!}
               style={styles.remoteVideo}
               objectFit="cover"
@@ -718,6 +731,7 @@ const CallOverlay = React.memo(function CallOverlay({
               <View style={styles.videoPipShell}>
                 <View style={styles.videoPipClip}>
                   <RTCView
+                    key={`pip-${pipVideoUrl}-${callState.remoteVideoRenderKey}-${pipMirror ? 'local' : 'remote'}`}
                     streamURL={pipVideoUrl!}
                     style={styles.videoPipRtc}
                     objectFit="cover"
@@ -854,10 +868,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       state
         ? {
             ...state,
-            callKind: nextKind ?? state.callKind,
+            callKind: nextKind ?? (hasRemoteVideo ? 'video' : state.callKind),
             isRemoteVideoEnabled: hasRemoteVideo,
             hasRemoteVideoEverEnabled: state.hasRemoteVideoEverEnabled || hasRemoteVideo,
             remoteStreamUrl: nextRemoteStreamUrl,
+            remoteVideoRenderKey:
+              hasRemoteVideo &&
+              (!state.hasRemoteVideoEverEnabled ||
+                nextRemoteStreamUrl !== state.remoteStreamUrl)
+                ? state.remoteVideoRenderKey + 1
+                : state.remoteVideoRenderKey,
           }
         : state
     );
@@ -868,6 +888,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       const existingStream = localStreamRef.current;
       if (existingStream) {
         if (withVideo && existingStream.getVideoTracks().length === 0) {
+          const camPermission = await Camera.getCameraPermissionsAsync();
+          if (camPermission.status !== 'granted') {
+            const requested = await Camera.requestCameraPermissionsAsync();
+            if (requested.status !== 'granted') {
+              throw new Error('Camera permission denied');
+            }
+          }
           const videoStream = await mediaDevices.getUserMedia({
             audio: false,
             video: {
@@ -894,6 +921,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         const requested = await Camera.requestMicrophonePermissionsAsync();
         if (requested.status !== 'granted') {
           throw new Error('Microphone permission denied');
+        }
+      }
+
+      if (withVideo) {
+        const camPermission = await Camera.getCameraPermissionsAsync();
+        if (camPermission.status !== 'granted') {
+          const requested = await Camera.requestCameraPermissionsAsync();
+          if (requested.status !== 'granted') {
+            throw new Error('Camera permission denied');
+          }
         }
       }
 
@@ -962,6 +999,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }).ontrack = (event) => {
         const incomingStream = event.streams?.[0] ?? null;
         const existing = remoteStreamRef.current;
+        const videoBefore = existing?.getVideoTracks().length ?? 0;
 
         if (!existing) {
           remoteStreamRef.current = incomingStream;
@@ -990,7 +1028,32 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        updateRemoteStreamState();
+        const attached = remoteStreamRef.current;
+        const videoAfter = attached?.getVideoTracks().length ?? 0;
+        // iOS RTCView often ignores video tracks added after first attach —
+        // clone the stream so toURL() changes and the view remounts.
+        if (attached && videoAfter > videoBefore) {
+          try {
+            remoteStreamRef.current = new RTCMediaStream(attached.getTracks());
+          } catch {
+            // Keep merged stream if clone fails.
+          }
+        }
+
+        const bindTrackLifecycle = (track: MediaStreamTrack) => {
+          if (track.kind !== 'video') return;
+          const refresh = () => updateRemoteStreamState('video');
+          track.onunmute = refresh;
+          track.onmute = () => updateRemoteStreamState();
+          track.onended = () => updateRemoteStreamState();
+        };
+        if (event.track) {
+          bindTrackLifecycle(event.track as MediaStreamTrack);
+        }
+
+        updateRemoteStreamState(
+          event.track?.kind === 'video' || videoAfter > 0 ? 'video' : undefined
+        );
       };
 
       const promoteToActive = () => {
@@ -1148,6 +1211,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           isLocalVideoEnabled: false,
           isRemoteVideoEnabled: false,
           hasRemoteVideoEverEnabled: false,
+          remoteVideoRenderKey: 0,
           localStreamUrl: null,
           remoteStreamUrl: null,
         };
@@ -1361,18 +1425,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
               });
             }
 
+            const offerHasVideo =
+              nextCallKind === 'video' || sdpOffersVideo(sdp.sdp);
+
             setCallState((state) =>
               state
                 ? {
                     ...state,
-                    callKind: nextCallKind,
-                    isRemoteVideoEnabled: nextCallKind === 'video' ? state.isRemoteVideoEnabled : false,
-                    hasRemoteVideoEverEnabled:
-                      nextCallKind === 'video' ? state.hasRemoteVideoEverEnabled : false,
-                    remoteStreamUrl: nextCallKind === 'video' ? state.remoteStreamUrl : null,
+                    callKind: offerHasVideo ? 'video' : nextCallKind,
                   }
                 : state
             );
+            updateRemoteStreamState(offerHasVideo ? 'video' : undefined);
           } catch {
             await cleanupCallSession();
             Alert.alert('Звонок прерван', 'Не удалось обновить медиасоединение.');
@@ -1401,6 +1465,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           isLocalVideoEnabled: false,
           isRemoteVideoEnabled: false,
           hasRemoteVideoEverEnabled: false,
+          remoteVideoRenderKey: 0,
           localStreamUrl: null,
           remoteStreamUrl: null,
         });
@@ -1472,7 +1537,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     });
 
     return unsubscribe;
-  }, [cleanupCallSession, clearOutgoingTimeout, flushPendingIceCandidates]);
+  }, [cleanupCallSession, clearOutgoingTimeout, flushPendingIceCandidates, updateRemoteStreamState]);
 
   const contextValue = useMemo(
     () => ({

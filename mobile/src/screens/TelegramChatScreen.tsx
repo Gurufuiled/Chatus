@@ -76,8 +76,8 @@ import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
 import { useInvertedChatScrollFab } from '../hooks/useInvertedChatScrollFab';
 import {
   formatChatDayLabel,
-  getChatDayKey,
   isValidChatTimestamp,
+  shouldShowChatDaySeparator,
 } from '../utils/formatChatDayLabel';
 import { ensureSquareVideoNoteFile } from '../utils/ensureSquareVideoNoteFile';
 import { ChatBackgroundPattern } from './chatScreen.shared';
@@ -187,9 +187,15 @@ export function TelegramChatScreen() {
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
   const isVoiceRecordingShared = useSharedValue(false);
+  const suppressComposerDockPaddingShared = useSharedValue(false);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const { dockAnimatedStyle: inputDockAnimatedStyle, listWrapAnimatedStyle: listKeyboardAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), isVoiceRecordingShared);
+    useChatComposerKeyboardLiftStyles(
+      useAnimatedKeyboard(),
+      isVoiceRecordingShared,
+      insets.bottom,
+      suppressComposerDockPaddingShared,
+    );
   const blurTargetRef = useRef<View>(null);
   const { colors, resolvedScheme } = useTheme();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -404,6 +410,9 @@ export function TelegramChatScreen() {
   const searchMatchSignature = matchedMessageIds.join('|');
 
   const telegramSelectionMode = selectedTelegramMessageIds.length > 0;
+  useEffect(() => {
+    suppressComposerDockPaddingShared.value = telegramSelectionMode;
+  }, [suppressComposerDockPaddingShared, telegramSelectionMode]);
 
   const channelMediaClamp = useMemo(
     () => ({
@@ -3004,16 +3013,16 @@ export function TelegramChatScreen() {
                     break;
                   }
                 }
-                const showDaySeparator =
-                  isValidChatTimestamp(info.item.dateMs) &&
-                  (olderComparableDateMs == null ||
-                    getChatDayKey(info.item.dateMs) !== getChatDayKey(olderComparableDateMs));
+                const showDaySeparator = shouldShowChatDaySeparator(
+                  info.item.dateMs,
+                  olderComparableDateMs,
+                );
                 return (
                   <View>
-                    {renderMessageRow(info)}
                     {showDaySeparator ? (
                       <ChatDaySeparator label={formatChatDayLabel(info.item.dateMs)} />
                     ) : null}
+                    {renderMessageRow(info)}
                   </View>
                 );
               }}
@@ -3024,6 +3033,7 @@ export function TelegramChatScreen() {
                 { paddingTop: CHAT_MSG_VERTICAL_PADDING + inputBarHeight + composerDockPaddingBottom },
               ]}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               refreshing={loading}
               onRefresh={() => void loadHistory(false)}
               onEndReached={() => void loadHistory(true)}
@@ -3060,7 +3070,10 @@ export function TelegramChatScreen() {
           </Reanimated.View>
           <Reanimated.View style={[styles.composerDockAbsolute, inputDockAnimatedStyle]}>
             <View
-              style={[styles.bottomChrome, !telegramSelectionMode ? { paddingBottom: composerDockPaddingBottom } : null]}
+              style={[
+                styles.bottomChrome,
+                telegramSelectionMode ? { paddingBottom: Math.max(insets.bottom, 12) } : null,
+              ]}
               onLayout={(e) => {
                 const h = e.nativeEvent.layout.height;
                 if (h > 0) setInputBarHeight(Math.ceil(h));
@@ -3070,9 +3083,7 @@ export function TelegramChatScreen() {
                 <Text style={styles.loadingOlder}>Загружаем старые сообщения...</Text>
               ) : null}
               {telegramSelectionMode ? (
-                <View
-                  style={[styles.selectionBatchWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}
-                >
+                <View style={styles.selectionBatchWrap}>
                   <View style={styles.selectionBatchRow}>
                     <Pressable
                       accessibilityRole="button"

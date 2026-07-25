@@ -143,10 +143,47 @@ async function main() {
 
   await copyDir(builtFramework, outputFramework);
   await copyDir(builtInclude, outputInclude);
+  await normalizeXcframeworkDylibNames(outputFramework);
 
   console.log(`TDLib iOS ${TDLIB_IOS_VERSION} (${TDLIB_IOS_REF}) ready:`);
   console.log(`  ${outputFramework}`);
   console.log(`  ${outputInclude}`);
+}
+
+/**
+ * Official TDLib create-xcframework emits versioned names (libtdjson.1.8.66.dylib).
+ * CocoaPods vendored_libraries and the embed script expect libtdjson.dylib.
+ */
+async function normalizeXcframeworkDylibNames(frameworkRoot) {
+  const entries = await fs.promises.readdir(frameworkRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const sliceDir = path.join(frameworkRoot, entry.name);
+    const files = await fs.promises.readdir(sliceDir);
+    const versioned = files.find((name) => /^libtdjson\.\d+\.\d+\.\d+\.dylib$/.test(name));
+    const unversioned = path.join(sliceDir, 'libtdjson.dylib');
+    if (versioned) {
+      const from = path.join(sliceDir, versioned);
+      await fs.promises.rm(unversioned, { force: true });
+      await fs.promises.copyFile(from, unversioned);
+      await fs.promises.chmod(unversioned, 0o755);
+      await fs.promises.rm(from, { force: true });
+      run('install_name_tool', ['-id', '@rpath/libtdjson.dylib', unversioned]);
+    }
+  }
+
+  const infoPlist = path.join(frameworkRoot, 'Info.plist');
+  if (await pathExists(infoPlist)) {
+    for (const idx of [0, 1]) {
+      for (const key of ['BinaryPath', 'LibraryPath']) {
+        run('/usr/libexec/PlistBuddy', [
+          '-c',
+          `Set :AvailableLibraries:${idx}:${key} libtdjson.dylib`,
+          infoPlist,
+        ]);
+      }
+    }
+  }
 }
 
 main().catch((error) => {

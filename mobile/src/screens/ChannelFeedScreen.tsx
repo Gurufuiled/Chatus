@@ -873,7 +873,7 @@ export function ChannelFeedScreen() {
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), undefined, insets.bottom);
   const { channelId, inviteToken: routeInviteToken } = route.params;
   const detail = channelStore((state) => state.detailsById[channelId]);
   const linkResolve = channelStore((state) => state.linkResolveByChannelId[channelId]);
@@ -2182,6 +2182,7 @@ export function ChannelFeedScreen() {
             keyExtractor={(item) => item.id}
             renderItem={renderPost}
             removeClippedSubviews={false}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             refreshing={loading}
             onRefresh={() => void load()}
             contentContainerStyle={[
@@ -2238,11 +2239,7 @@ export function ChannelFeedScreen() {
       {detail?.can_post ? (
         <ChatInputDock
           onLayout={handleInputBarLayout}
-          animatedStyle={[
-            styles.inputBarWrap,
-            inputBarAnimatedStyle,
-            { paddingBottom: composerDockPaddingBottom },
-          ]}
+          animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle]}
           placeholder="Публикация"
           onSendText={handleSendText}
           onSendVoice={handleSendVoice}

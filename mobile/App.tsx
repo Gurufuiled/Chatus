@@ -14,6 +14,7 @@ import { VoicePlayerProvider } from './src/contexts/VoicePlayerContext';
 import { WebSocketProvider } from './src/contexts/WebSocketProvider';
 import { BootstrapErrorBoundary } from './src/components/BootstrapErrorBoundary';
 import { RootNavigator } from './src/navigation';
+import { colors } from './src/theme/colors';
 import { InAppPushNotification } from './src/components/InAppPushNotification';
 import { AppUpdateGate } from './src/components/AppUpdateGate';
 import { initDatabase } from './src/services/DatabaseService';
@@ -24,8 +25,8 @@ import { TelegramTdlibNotificationListener } from './src/components/TelegramTdli
 import { ensureAndroidPushChannels } from './src/services/pushNotificationsService';
 import { prefetchMessageTimeFormat } from './src/utils/formatMessageTime';
 
-// Keep the native launch screen in place while the local database and session hydrate.
-// This avoids a second, React-rendered splash frame flashing between launch and chats.
+// Keep the native launch screen (solid color, no icon) while DB/session hydrate.
+// Avoids a second React-rendered splash with the Chatus icon square.
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 SplashScreen.setOptions({ duration: 220, fade: true });
 
@@ -59,7 +60,9 @@ export default function App() {
   useEffect(() => {
     if (!isReady) return;
     const frame = requestAnimationFrame(() => {
-      SplashScreen.hide();
+      void SplashScreen.hideAsync().catch(() => {
+        SplashScreen.hide();
+      });
     });
     return () => cancelAnimationFrame(frame);
   }, [isReady]);
@@ -113,18 +116,18 @@ export default function App() {
 }
 
 function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
-  const { colors, resolvedScheme } = useTheme();
+  const { colors: themeColors, resolvedScheme } = useTheme();
   const navTheme = React.useMemo(() => {
     const base = resolvedScheme === 'dark' ? DarkTheme : DefaultTheme;
     return {
       ...base,
       colors: {
         ...base.colors,
-        background: colors.chatBackground,
-        card: colors.chatBackground,
+        background: themeColors.chatBackground,
+        card: themeColors.chatBackground,
       },
     };
-  }, [colors.chatBackground, resolvedScheme]);
+  }, [themeColors.chatBackground, resolvedScheme]);
 
   return (
     <NavigationContainer linking={appLinking as never} theme={navTheme}>

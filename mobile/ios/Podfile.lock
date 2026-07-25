@@ -128,6 +128,8 @@ PODS:
     - ExpoModulesCore
   - ExpoSecureStore (55.0.13):
     - ExpoModulesCore
+  - ExpoSplashScreen (55.0.23):
+    - ExpoModulesCore
   - ExpoSQLite (55.0.15):
     - ExpoModulesCore
   - ExpoVideo (55.0.15):
@@ -3182,6 +3184,7 @@ DEPENDENCIES:
   - ExpoModulesJSI (from `../node_modules/expo-modules-core`)
   - ExpoNotifications (from `../node_modules/expo-notifications/ios`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
+  - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
   - ExpoSQLite (from `../node_modules/expo-sqlite/ios`)
   - ExpoVideo (from `../node_modules/expo-video/ios`)
   - ExpoVideoThumbnails (from `../node_modules/expo-video-thumbnails/ios`)
@@ -3351,6 +3354,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-notifications/ios"
   ExpoSecureStore:
     :path: "../node_modules/expo-secure-store/ios"
+  ExpoSplashScreen:
+    :path: "../node_modules/expo-splash-screen/ios"
   ExpoSQLite:
     :path: "../node_modules/expo-sqlite/ios"
   ExpoVideo:
@@ -3568,6 +3573,7 @@ SPEC CHECKSUMS:
   ExpoModulesJSI: 8589717ca75637de3b00f8dbf8cc734ee227f9bd
   ExpoNotifications: 62874a70930f0e5cab6ab75c4cd867b8f2b9578b
   ExpoSecureStore: 03372541cb9b7f67601fa2ed0a8c2abbc9037e04
+  ExpoSplashScreen: cee537e413b4fb9f81437df2c01e9876bee9b9fe
   ExpoSQLite: 9989421186383e2229b8736ff58cea4ee8e21d8b
   ExpoVideo: fe990ba488ca5e4b2e9b7b63c4039134de9e6205
   ExpoVideoThumbnails: e33e336b7db87b701d62ce309d99ce8bc003cc2a
@@ -3665,11 +3671,11 @@ SPEC CHECKSUMS:
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   SwiftUIIntrospect: 98661078c48f6660bcb3da776b8cf080197fb703
-  TdLib: afdb40c9fcdfd24c240943ef320b787aea81a357
+  TdLib: 36e00be2021dc56f85d9dbadb7a1f6d3409fef85
   WebRTC-SDK: 1d7fc2ae91da6edd63e25f3882ff24f86a8d9d8b
   Yoga: 1faf3c4e0544d93bea302723cef777b4410a2534
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: f3b08731fc4b7b9d8030e57a473180e7c7e6a435
+PODFILE CHECKSUM: 1ac4f123ee045066a497b3c016741b88b03b4783
 
 COCOAPODS: 1.10.2

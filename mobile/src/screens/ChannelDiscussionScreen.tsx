@@ -739,7 +739,7 @@ export function ChannelDiscussionScreen() {
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), undefined, insets.bottom);
   const blurTargetRef = React.useRef<View | null>(null);
   useFocusEffect(
     React.useCallback(() => {
@@ -1309,6 +1309,7 @@ export function ChannelDiscussionScreen() {
             refreshing={loading}
             onRefresh={() => void load()}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
               contentContainerStyle={[styles.listContent, { paddingBottom: (thread?.can_comment ? inputBarHeight : 16) + composerDockPaddingBottom }]}
               ListHeaderComponent={<OriginalPostHeader post={thread?.post ?? null} st={styles} />}
               ListEmptyComponent={!loading ? <Text style={styles.emptyText}>Комментариев пока нет</Text> : null}
@@ -1319,7 +1320,7 @@ export function ChannelDiscussionScreen() {
         {thread?.can_comment ? (
           <ChatInputDock
             onLayout={handleInputBarLayout}
-            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle, { paddingBottom: composerDockPaddingBottom }]}
+            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle]}
             placeholder="Прокомментировать"
             onSendText={handleSendText}
             onSendVoice={handleSendVoice}

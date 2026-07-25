@@ -479,7 +479,7 @@ export function ChatScreen() {
   const blurTargetRef = useRef<View | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
   const { dockAnimatedStyle: inputBarAnimatedStyle, listWrapAnimatedStyle } =
-    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard());
+    useChatComposerKeyboardLiftStyles(useAnimatedKeyboard(), undefined, insets.bottom);
   const [inputBarHeight, setInputBarHeight] = useState(82);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
   const [selectionActionBarHeight, setSelectionActionBarHeight] = useState(104);
@@ -3085,12 +3085,7 @@ export function ChatScreen() {
             onLayout={handleSelectionActionBarLayout}
             style={[styles.selectionDockWrap, inputBarAnimatedStyle]}
           >
-            <View
-              style={[
-                styles.selectionDockRow,
-                { paddingBottom: composerDockPaddingBottom + 2 },
-              ]}
-            >
+            <View style={styles.selectionDockRow}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Удалить выбранные сообщения"
@@ -3165,11 +3160,7 @@ export function ChatScreen() {
         ) : (
           <ChatInputDock
             onLayout={handleInputBarLayout}
-            animatedStyle={[
-              styles.inputBarWrap,
-              inputBarAnimatedStyle,
-              { paddingBottom: composerDockPaddingBottom },
-            ]}
+            animatedStyle={[styles.inputBarWrap, inputBarAnimatedStyle]}
             onSendText={(text) => {
               if (sendChannel === 'telegram') {
                 trySendTelegramText(text);

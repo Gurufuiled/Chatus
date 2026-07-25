@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Keyboard, Platform } from 'react-native';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
-import { useAnimatedStyle } from 'react-native-reanimated';
+import { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 /** Нижний отступ дока, когда нет `insets.bottom` или он меньше этого значения. */
 const CHAT_COMPOSER_DOCK_PADDING_MIN = 8;
@@ -35,56 +35,78 @@ export const CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET = Platform.OS !== 'an
  */
 export const CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT = Platform.OS === 'android';
 
+function dockPaddingForKeyboardHeight(keyboardHeight: number, restPad: number, openPad: number): number {
+  'worklet';
+  const kb = Math.max(keyboardHeight, 0);
+  if (kb <= 0) return restPad;
+  // Shrink home-indicator padding over the first `restPad` px of keyboard rise so
+  // interactive dismiss stays locked to IME (no React-state snap on willShow/willHide).
+  const span = Math.max(restPad - openPad, 1);
+  if (kb >= span) return openPad;
+  return restPad - (kb / span) * (restPad - openPad);
+}
+
 /**
  * Стили смещения абсолютного дока и нижнего отступа списка относительно клавиатуры.
+ * `insetsBottom` drives animated dock `paddingBottom` in sync with keyboard height.
+ * When `suppressDockPaddingShared` is true (e.g. selection bar owns the inset), padding is 0.
  */
 export function useChatComposerKeyboardLiftStyles(
   animatedKeyboard: ChatComposerAnimatedKeyboard,
-  isVoiceRecordingShared?: SharedValue<boolean>
+  isVoiceRecordingShared?: SharedValue<boolean>,
+  insetsBottom = 0,
+  suppressDockPaddingShared?: SharedValue<boolean>,
 ) {
+  const restPad = Math.max(insetsBottom, CHAT_COMPOSER_DOCK_PADDING_MIN);
+  const restPadShared = useSharedValue(restPad);
+  const openPadShared = useSharedValue(CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN);
+
+  useEffect(() => {
+    restPadShared.value = restPad;
+  }, [restPad, restPadShared]);
+
   const dockAnimatedStyle = useAnimatedStyle(() => {
-    if (isVoiceRecordingShared?.value) return { transform: [{ translateY: 0 }] };
+    const suppressPad = suppressDockPaddingShared?.value === true;
+    const rest = suppressPad ? 0 : restPadShared.value;
+    const open = suppressPad ? 0 : openPadShared.value;
+    if (isVoiceRecordingShared?.value) {
+      return {
+        transform: [{ translateY: 0 }],
+        paddingBottom: rest,
+      };
+    }
     const kb = Math.max(animatedKeyboard.height.value, 0);
     const offset =
       CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET || CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT
         ? kb
         : 0;
-    return { transform: [{ translateY: -offset }] };
+    return {
+      transform: [{ translateY: -offset }],
+      paddingBottom: dockPaddingForKeyboardHeight(kb, rest, open),
+    };
   });
 
   const listWrapAnimatedStyle = useAnimatedStyle(() => {
     if (isVoiceRecordingShared?.value) return { marginBottom: 0 };
+    const applyLift =
+      CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET || CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT;
+    if (!applyLift) return { marginBottom: 0 };
     const kb = Math.max(animatedKeyboard.height.value, 0);
-    const margin =
-      CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET || CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT
-        ? kb
-        : 0;
-    return { marginBottom: margin };
+    const rest = restPadShared.value;
+    const open = openPadShared.value;
+    const dockPad = dockPaddingForKeyboardHeight(kb, rest, open);
+    // Keep inverted list bottom inset locked to the live dock pad so rows do not
+    // jump when keyboard opens, and do not leave a gap when pad shrinks to openPad.
+    return { marginBottom: kb + dockPad - rest };
   });
 
   return { dockAnimatedStyle, listWrapAnimatedStyle };
 }
 
 /**
- * Нижний padding дока композера: на Android при открытой клавиатуре не суммируем полный gesture inset
- * с уже поджатым под IME layout (см. {@link CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN}).
+ * Stable bottom inset for list content / FAB — never toggles on keyboard show/hide,
+ * so inverted chat rows do not jump when the composer rises.
  */
 export function useChatComposerDockPaddingBottom(insetsBottom: number): number {
-  const [kbOpen, setKbOpen] = useState(false);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const show = Keyboard.addListener(showEvent, () => setKbOpen(true));
-    const hide = Keyboard.addListener(hideEvent, () => setKbOpen(false));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  if (kbOpen) {
-    return CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN;
-  }
   return Math.max(insetsBottom, CHAT_COMPOSER_DOCK_PADDING_MIN);
 }

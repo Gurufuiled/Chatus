@@ -10,10 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Reanimated, { useAnimatedKeyboard } from 'react-native-reanimated';
-import {
-  useChatComposerDockPaddingBottom,
-  useChatComposerKeyboardLiftStyles,
-} from '../../utils/chatComposerKeyboard';
+import { useChatComposerKeyboardLiftStyles } from '../../utils/chatComposerKeyboard';
 import { AuthWizardTextField } from './AuthWizardTextField';
 
 type Props = {
@@ -55,8 +52,11 @@ export const TelegramAuthPasswordDock = memo(function TelegramAuthPasswordDock({
 }: Props) {
   const passwordInputRef = useRef<TextInput>(null);
   const animatedKeyboard = useAnimatedKeyboard();
-  const { dockAnimatedStyle } = useChatComposerKeyboardLiftStyles(animatedKeyboard);
-  const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insetsBottom);
+  const { dockAnimatedStyle } = useChatComposerKeyboardLiftStyles(
+    animatedKeyboard,
+    undefined,
+    insetsBottom,
+  );
 
   useEffect(() => {
     if (preparing) return;
@@ -72,7 +72,6 @@ export const TelegramAuthPasswordDock = memo(function TelegramAuthPasswordDock({
         {
           backgroundColor: isLight ? '#FFFFFF' : colors.inputBackgroundSolid,
           borderTopColor: ui.border,
-          paddingBottom: composerDockPaddingBottom,
         },
       ]}
     >
