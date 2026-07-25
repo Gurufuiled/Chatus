@@ -59,7 +59,7 @@
     "version": "1.0.36",
     "orientation": "portrait",
     "icon": "./assets/chatus_icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "scheme": ["messenger", "chatus"],
     "splash": {
       "resizeMode": "contain",
