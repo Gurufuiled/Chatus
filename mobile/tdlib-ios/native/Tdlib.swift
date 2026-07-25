@@ -47,6 +47,13 @@ private func shouldEmitUpdateToJs(_ updateType: String) -> Bool {
 final class Tdlib: RCTEventEmitter {
   private static let sendTimeoutSeconds: TimeInterval = 240
   private static let maxLogTailBytes = 128 * 1024
+  /**
+   * React Native can construct the replacement native module before invalidating
+   * the previous bridge. Instance-local locks cannot protect TDLib in that window:
+   * two clients would open the same database and use the same auth key.
+   */
+  private static let lifecycleLock = NSLock()
+  private static weak var activeOwner: Tdlib?
 
   private let instanceId = UUID().uuidString
   private let stateLock = NSLock()
@@ -64,7 +71,19 @@ final class Tdlib: RCTEventEmitter {
 
   override init() {
     super.init()
+
+    Self.lifecycleLock.lock()
+    if let previous = Self.activeOwner, previous !== self {
+      previous.stopAndDestroyClientLocked(reason: "superseded")
+      previous.rejectAllPending(
+        code: "E_TD_NATIVE",
+        message: "TDLib module was superseded by a new React Native bridge."
+      )
+    }
     client = td_json_client_create()
+    Self.activeOwner = self
+    Self.lifecycleLock.unlock()
+
     NSLog("[Tdlib/%@] init client=%@", instanceId, client == nil ? "nil" : "created")
     startReceiveThread()
   }
@@ -95,6 +114,13 @@ final class Tdlib: RCTEventEmitter {
     _ resolve: RCTPromiseResolveBlock,
     rejecter reject: RCTPromiseRejectBlock
   ) {
+    Self.lifecycleLock.lock()
+    defer { Self.lifecycleLock.unlock() }
+
+    guard Self.activeOwner === self else {
+      reject("E_TD_NATIVE", "TDLib module is no longer the active bridge owner.", nil)
+      return
+    }
     guard !isDestroyed() else {
       reject("E_TD_NATIVE", "TDLib module was unloaded.", nil)
       return
@@ -631,7 +657,12 @@ final class Tdlib: RCTEventEmitter {
 
   override func invalidate() {
     NSLog("[Tdlib/%@] lifecycle=invalidate", instanceId)
-    stopAndDestroyClient(reason: "invalidate")
+    Self.lifecycleLock.lock()
+    stopAndDestroyClientLocked(reason: "invalidate")
+    if Self.activeOwner === self {
+      Self.activeOwner = nil
+    }
+    Self.lifecycleLock.unlock()
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module was unloaded.")
     super.invalidate()
   }
@@ -639,14 +670,23 @@ final class Tdlib: RCTEventEmitter {
   deinit {
     NSLog("[Tdlib/%@] deinit", instanceId)
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module deallocated.")
-    stopAndDestroyClient(reason: "deinit")
+    Self.lifecycleLock.lock()
+    stopAndDestroyClientLocked(reason: "deinit")
+    if Self.activeOwner === self {
+      Self.activeOwner = nil
+    }
+    Self.lifecycleLock.unlock()
   }
 
   /**
    * Permanently stops this module instance and destroys its TDLib client.
    * Lock order matches recreateClient: sendLock -> clientIoLock -> stateLock.
    */
-  private func stopAndDestroyClient(reason: String) {
+  /**
+   * Caller must hold lifecycleLock. This makes client teardown/create atomic
+   * across separate RCTBridge module instances.
+   */
+  private func stopAndDestroyClientLocked(reason: String) {
     stateLock.lock()
     let wasDestroyed = destroyed
     destroyed = true
