@@ -11,6 +11,7 @@ import { getNestedRecord } from '../screens/telegramChat/tdlibMapping';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
 import { syncChatusPhoneFromTelegramAuth } from '../services/telegramChatusPhoneSync';
+import { logTdlibEvent, scheduleTdlibLogFlush } from '../services/clientRemoteLog';
 
 /**
  * Глобально: входящие TDLib → превью в шторку (фон), регистрация FCM в Telegram после авторизации.
@@ -69,6 +70,18 @@ export function TelegramTdlibNotificationListener() {
           const stateType = authState?.['@type'] as string | undefined;
           if (__DEV__) {
             console.log('[tdlib-notify] updateAuthorizationState ->', stateType);
+          }
+          if (stateType) {
+            const terminal =
+              stateType === 'authorizationStateReady' ||
+              stateType === 'authorizationStateLoggingOut' ||
+              stateType === 'authorizationStateClosing' ||
+              stateType === 'authorizationStateClosed';
+            logTdlibEvent('authorization state', {
+              level: terminal && stateType !== 'authorizationStateReady' ? 'error' : 'info',
+              data: { state: stateType },
+              flushSoon: terminal,
+            });
           }
           const store = telegramAccountStore.getState();
           switch (stateType) {
@@ -140,9 +153,15 @@ export function TelegramTdlibNotificationListener() {
           body: preview,
         });
       } catch (e) {
+        logTdlibEvent('authorization update handling failed', {
+          level: 'error',
+          data: { error: e instanceof Error ? e.message : String(e) },
+          flushSoon: true,
+        });
         if (__DEV__) console.warn('[tdlib-notify] subscribe parse', e);
       }
     });
+    scheduleTdlibLogFlush();
 
     return () => {
       if (persistAuthDebounce) clearTimeout(persistAuthDebounce);
