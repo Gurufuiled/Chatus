@@ -20,6 +20,13 @@ const DOWNLOAD_URL = `https://github.com/up9cloud/android-libtdjson/releases/dow
 
 const isWin = process.platform === 'win32';
 
+async function syncJniLibsIntoAndroidProject() {
+  const androidJni = path.join(mobileRoot, 'android', 'app', 'src', 'main', 'jniLibs');
+  if (!fs.existsSync(path.join(mobileRoot, 'android', 'app', 'src', 'main'))) return;
+  await fs.promises.mkdir(path.dirname(androidJni), { recursive: true });
+  await fs.promises.cp(jniDest, androidJni, { recursive: true });
+}
+
 async function main() {
   const hasSo =
     fs.existsSync(path.join(jniDest, 'arm64-v8a', 'libtdjson.so')) ||
@@ -29,6 +36,7 @@ async function main() {
   } else if (hasSo && !process.argv.includes('--force')) {
     // eslint-disable-next-line no-console
     console.log(`jniLibs уже есть: ${jniDest}\n  (перезапись: node ./scripts/fetchTdlibAndroid.mjs --force)\n`);
+    await syncJniLibsIntoAndroidProject();
     return;
   }
 
@@ -53,11 +61,7 @@ async function main() {
 
   await fs.promises.rm(tmpDir, { recursive: true, force: true });
 
-  const androidJni = path.join(mobileRoot, 'android', 'app', 'src', 'main', 'jniLibs');
-  if (fs.existsSync(path.join(mobileRoot, 'android', 'app', 'src', 'main'))) {
-    await fs.promises.mkdir(path.dirname(androidJni), { recursive: true });
-    await fs.promises.cp(jniDest, androidJni, { recursive: true });
-  }
+  await syncJniLibsIntoAndroidProject();
 
   // eslint-disable-next-line no-console
   console.log(`\n  → ${path.join(jniDest, 'arm64-v8a', 'libtdjson.so')} (и остальные ABI)\n`);

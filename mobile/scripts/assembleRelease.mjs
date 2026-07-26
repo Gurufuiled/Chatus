@@ -57,6 +57,15 @@ if (/^(https?:\/\/)?(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.0\.0\.1|loca
 
 assertGradleVersionMatchesAppJson();
 
+const tdlibFetch = spawnSync(process.execPath, [path.join(__dirname, 'fetchTdlibAndroid.mjs')], {
+  cwd: mobileRoot,
+  stdio: 'inherit',
+  env: process.env,
+});
+if ((tdlibFetch.status ?? 1) !== 0) {
+  process.exit(tdlibFetch.status ?? 1);
+}
+
 const isWin = process.platform === 'win32';
 const gradle = isWin ? path.join(androidDir, 'gradlew.bat') : path.join(androidDir, 'gradlew');
 const gradleEnv = { ...process.env, MOBILE_ENV: 'production' };
