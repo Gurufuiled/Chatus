@@ -39,6 +39,7 @@ private fun shouldEmitUpdateToJs(updateType: String): Boolean =
     "updateChatPosition",
     "updateChatReadInbox",
     "updateChatTitle",
+    "updateChatPhoto",
     "updateUserChatAction",
     -> true
     else -> false
@@ -52,6 +53,7 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     const val NAME = "Tdlib"
     private const val TAG = "TdlibModule"
     private const val SEND_TIMEOUT_MS = 240_000L
+    private const val MAX_LOG_TAIL_CHARS = 128 * 1024
   }
 
   private fun coerceExtraKey(obj: JSONObject): String {
@@ -68,6 +70,9 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
+  private val instanceId = UUID.randomUUID().toString()
+  private val diagnosticLock = Any()
+  private val diagnosticTail = StringBuilder()
   private val clientId: Int
   @Volatile private var destroyed = false
   @Volatile private var receiveRunning = false
@@ -92,6 +97,7 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
           2,
           JsonClient.LogMessageCallback { level, message ->
             val line = "[tdlib log $level] ${message ?: ""}"
+            appendDiagnostic(line)
             when {
               level >= 4 -> Log.e(TAG, line)
               level == 3 -> Log.w(TAG, line)
@@ -129,6 +135,29 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
             "tdlib-receive",
           )
           .apply { start() }
+    }
+  }
+
+  /** Keep a local bounded tail; JS applies its strict allow-list before upload. */
+  private fun appendDiagnostic(line: String) {
+    synchronized(diagnosticLock) {
+      diagnosticTail.append(line).append('\n')
+      val overflow = diagnosticTail.length - MAX_LOG_TAIL_CHARS
+      if (overflow > 0) diagnosticTail.delete(0, overflow)
+    }
+  }
+
+  private fun emitLifecycleDiagnostic(event: String) {
+    try {
+      if (!reactContext.hasActiveReactInstance()) return
+      val map = Arguments.createMap()
+      map.putString("event", event)
+      map.putString("instanceId", instanceId)
+      reactContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("td_json_diagnostic", map)
+    } catch (e: Exception) {
+      Log.w(TAG, "emit td_json_diagnostic", e)
     }
   }
 
@@ -219,6 +248,24 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
 
   override fun getName(): String = NAME
 
+  @ReactMethod
+  fun getInstanceIdentity(promise: Promise) {
+    promise.resolve(Arguments.createMap().apply { putString("instanceId", instanceId) })
+  }
+
+  @ReactMethod
+  fun readTdlibLogTail(maxBytes: Int, promise: Promise) {
+    try {
+      val limit = maxBytes.coerceIn(1, MAX_LOG_TAIL_CHARS)
+      val tail = synchronized(diagnosticLock) {
+        diagnosticTail.toString().takeLast(limit)
+      }
+      promise.resolve(tail)
+    } catch (e: Exception) {
+      promise.reject("E_TD_LOG_READ", e.message, e)
+    }
+  }
+
   /** System Settings → 24-hour format (used by JS message time labels). */
   @ReactMethod
   fun getUses24HourClock(promise: Promise) {
@@ -227,6 +274,69 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     } catch (e: Exception) {
       promise.reject("E_TIME_FORMAT", e.message, e)
     }
+  }
+
+  /**
+   * Center-crop helper for video notes. Android camera ratio 1:1 usually already square —
+   * if the file is already square and ≤ maxSide we return the same path; otherwise reject
+   * so JS can show a clear error (full MediaCodec crop is not wired here).
+   */
+  @ReactMethod
+  fun centerCropSquareVideo(inputPath: String, maxSide: Int, promise: Promise) {
+    Thread {
+      try {
+        val trimmed = inputPath.trim()
+        if (trimmed.isEmpty()) {
+          promise.reject("E_VIDEO_CROP", "Empty video path", null)
+          return@Thread
+        }
+        val path =
+          if (trimmed.startsWith("file://")) trimmed.removePrefix("file://") else trimmed
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+          retriever.setDataSource(path)
+          val width =
+            retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+              ?.toIntOrNull()
+              ?: 0
+          val height =
+            retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+              ?.toIntOrNull()
+              ?: 0
+          if (width <= 0 || height <= 0) {
+            promise.reject("E_VIDEO_CROP", "Invalid video dimensions", null)
+            return@Thread
+          }
+          // Match display orientation (JS isSquareVideoDimensions / expo-video track size).
+          val rotation =
+            retriever
+              .extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+              ?.toIntOrNull()
+              ?: 0
+          val displayWidth = if (rotation == 90 || rotation == 270) height else width
+          val displayHeight = if (rotation == 90 || rotation == 270) width else height
+          val sideDiff = kotlin.math.abs(displayWidth - displayHeight)
+          val maxDim = maxOf(displayWidth, displayHeight)
+          val limit = maxSide.coerceIn(240, 640)
+          if (sideDiff <= 4 && maxDim <= limit + 4) {
+            promise.resolve(path)
+            return@Thread
+          }
+          promise.reject(
+            "E_VIDEO_CROP",
+            "Video is not square; re-record the circle with the in-app camera.",
+            null,
+          )
+        } finally {
+          try {
+            retriever.release()
+          } catch (_: Exception) {
+          }
+        }
+      } catch (e: Exception) {
+        promise.reject("E_VIDEO_CROP", e.message, e)
+      }
+    }.start()
   }
 
   @ReactMethod
@@ -325,6 +435,7 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
   }
 
   override fun invalidate() {
+    emitLifecycleDiagnostic("invalidate")
     destroyed = true
     receiveRunning = false
     receiveThread?.interrupt()
