@@ -223,9 +223,8 @@ export function markTdlibLoggingOut(options?: {
   cancelBackgroundTdlibRecovery();
 }
 
-/** Best-effort, bounded iOS diagnostic capture; failures never affect auth state. */
+/** Best-effort, bounded native diagnostic capture; failures never affect auth state. */
 export async function captureTdlibLoggingOutDiagnostics(): Promise<void> {
-  if (Platform.OS !== 'ios') return;
   const now = Date.now();
   if (now - lastLoggingOutLogCaptureMs < 10_000) return;
   lastLoggingOutLogCaptureMs = now;

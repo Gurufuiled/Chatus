@@ -53,6 +53,7 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     const val NAME = "Tdlib"
     private const val TAG = "TdlibModule"
     private const val SEND_TIMEOUT_MS = 240_000L
+    private const val MAX_LOG_TAIL_CHARS = 128 * 1024
   }
 
   private fun coerceExtraKey(obj: JSONObject): String {
@@ -69,6 +70,9 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
+  private val instanceId = UUID.randomUUID().toString()
+  private val diagnosticLock = Any()
+  private val diagnosticTail = StringBuilder()
   private val clientId: Int
   @Volatile private var destroyed = false
   @Volatile private var receiveRunning = false
@@ -93,6 +97,7 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
           2,
           JsonClient.LogMessageCallback { level, message ->
             val line = "[tdlib log $level] ${message ?: ""}"
+            appendDiagnostic(line)
             when {
               level >= 4 -> Log.e(TAG, line)
               level == 3 -> Log.w(TAG, line)
@@ -130,6 +135,29 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
             "tdlib-receive",
           )
           .apply { start() }
+    }
+  }
+
+  /** Keep a local bounded tail; JS applies its strict allow-list before upload. */
+  private fun appendDiagnostic(line: String) {
+    synchronized(diagnosticLock) {
+      diagnosticTail.append(line).append('\n')
+      val overflow = diagnosticTail.length - MAX_LOG_TAIL_CHARS
+      if (overflow > 0) diagnosticTail.delete(0, overflow)
+    }
+  }
+
+  private fun emitLifecycleDiagnostic(event: String) {
+    try {
+      if (!reactContext.hasActiveReactInstance()) return
+      val map = Arguments.createMap()
+      map.putString("event", event)
+      map.putString("instanceId", instanceId)
+      reactContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit("td_json_diagnostic", map)
+    } catch (e: Exception) {
+      Log.w(TAG, "emit td_json_diagnostic", e)
     }
   }
 
@@ -219,6 +247,24 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
   }
 
   override fun getName(): String = NAME
+
+  @ReactMethod
+  fun getInstanceIdentity(promise: Promise) {
+    promise.resolve(Arguments.createMap().apply { putString("instanceId", instanceId) })
+  }
+
+  @ReactMethod
+  fun readTdlibLogTail(maxBytes: Int, promise: Promise) {
+    try {
+      val limit = maxBytes.coerceIn(1, MAX_LOG_TAIL_CHARS)
+      val tail = synchronized(diagnosticLock) {
+        diagnosticTail.toString().takeLast(limit)
+      }
+      promise.resolve(tail)
+    } catch (e: Exception) {
+      promise.reject("E_TD_LOG_READ", e.message, e)
+    }
+  }
 
   /** System Settings → 24-hour format (used by JS message time labels). */
   @ReactMethod
@@ -389,6 +435,7 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
   }
 
   override fun invalidate() {
+    emitLifecycleDiagnostic("invalidate")
     destroyed = true
     receiveRunning = false
     receiveThread?.interrupt()
