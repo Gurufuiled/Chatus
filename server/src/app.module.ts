@@ -21,7 +21,6 @@ import { MailboxModule } from './mailbox/mailbox.module';
 import { AdminModule } from './admin/admin.module';
 import { LineSyncModule } from './linesync/linesync.module';
 import { GroupCallsModule } from './group-calls/group-calls.module';
-import { ClientLogsModule } from './client-logs/client-logs.module';
 
 @Module({
   imports: [
@@ -41,7 +40,6 @@ import { ClientLogsModule } from './client-logs/client-logs.module';
     AdminModule,
     LineSyncModule,
     GroupCallsModule,
-    ClientLogsModule,
     WebsocketModule,
     SignalingModule,
   ],
