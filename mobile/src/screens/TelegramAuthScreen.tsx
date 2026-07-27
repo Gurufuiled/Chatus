@@ -16,6 +16,7 @@ import {
   Text,
   View,
 } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useFocusEffect,
@@ -160,10 +161,12 @@ export function TelegramAuthScreen() {
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [qrLink, setQrLink] = useState<string | null>(null);
   const firstScreenFocus = useRef(true);
   /** Не уводить в чаты, если пользователь уже ушёл с экрана, а sync завершился позже. */
   const screenFocusedRef = useRef(false);
   const authWaitAbortRef = useRef<AbortController | null>(null);
+  const qrUnsubscribeRef = useRef<(() => void) | null>(null);
 
   const { apiId, apiHash } = useMemo(() => getTelegramBuildCredentials(), []);
   const isLight = resolvedScheme === "light";
@@ -901,6 +904,103 @@ export function TelegramAuthScreen() {
     );
   }, []);
 
+  const stopQrLogin = useCallback(() => {
+    qrUnsubscribeRef.current?.();
+    qrUnsubscribeRef.current = null;
+    setQrLink(null);
+  }, []);
+
+  const startQrLogin = useCallback(async () => {
+    if (busy || preparing || apiId == null || !apiHash) return;
+    setBusy(true);
+    setBootstrapError(null);
+    stopQrLogin();
+    try {
+      await withTimeout(
+        applyTdlibParameters(),
+        30000,
+        "TDLib не смог инициализировать параметры за 30 секунд.",
+      );
+      const auth = (await tdlibClient.send({
+        "@type": "getAuthorizationState",
+      })) as { "@type"?: string };
+      throwIfTdError(auth);
+      if (auth["@type"] === "authorizationStateReady") {
+        await completeAuthSuccess();
+        return;
+      }
+      if (auth["@type"] !== "authorizationStateWaitPhoneNumber") {
+        throw new Error(
+          `QR-вход сейчас недоступен (состояние: ${auth["@type"] ?? "unknown"}).`,
+        );
+      }
+
+      let settled = false;
+      qrUnsubscribeRef.current = tdlibClient.subscribe((update) => {
+        if (update["@type"] !== "updateAuthorizationState") return;
+        const state = update["authorization_state"] as
+          | Record<string, unknown>
+          | undefined;
+        const stateType = state?.["@type"];
+        if (settled) return;
+        if (stateType === "authorizationStateWaitOtherDeviceConfirmation") {
+          const link = typeof state.link === "string" ? state.link : "";
+          if (link) {
+            setQrLink(link);
+            setBusy(false);
+          }
+          return;
+        }
+        if (stateType === "authorizationStateReady") {
+          settled = true;
+          stopQrLogin();
+          void completeAuthSuccess().catch((error) => {
+            setBootstrapError(error instanceof Error ? error.message : String(error));
+            setBusy(false);
+          });
+          return;
+        }
+        if (
+          stateType === "authorizationStateLoggingOut" ||
+          stateType === "authorizationStateClosing" ||
+          stateType === "authorizationStateClosed"
+        ) {
+          settled = true;
+          stopQrLogin();
+          setBootstrapError("Telegram прервал QR-вход. Попробуйте получить новый QR-код.");
+          setBusy(false);
+        }
+      });
+
+      const result = await runTdlibAuthorizationQuery(() =>
+        withTimeout(
+          tdlibClient.send({ "@type": "requestQrCodeAuthentication" }) as Promise<unknown>,
+          30000,
+          "Telegram не выдал QR-код за 30 секунд.",
+        ),
+      );
+      throwIfTdError(result);
+      if (!settled && !qrLink) {
+        // The update normally arrives asynchronously; keep the subscription alive.
+        setBusy(false);
+      }
+    } catch (error) {
+      stopQrLogin();
+      setBusy(false);
+      setBootstrapError(error instanceof Error ? error.message : String(error));
+    }
+  }, [
+    apiHash,
+    apiId,
+    busy,
+    completeAuthSuccess,
+    preparing,
+    qrLink,
+    stopQrLogin,
+  ]);
+
+  useEffect(() => () => stopQrLogin(), [stopQrLogin]);
+
   const status = telegramAccountStore((s) => s.authStatus);
 
   const authStep = resolveAuthWizardStep(status);
@@ -1030,18 +1130,60 @@ export function TelegramAuthScreen() {
         ) : null}
 
         {showAuthForm && authStep === "phone" ? (
-          <TelegramAuthPhoneFields
-            phoneInitialValue={phone}
-            onCommitPhone={setPhone}
-            onSubmitPhone={submitPhone}
-            busy={busy}
-            preparing={preparing}
-            canSendPhone={!!canSendPhone}
-            phonePrimary={phonePrimary}
-            colors={colors}
-            ui={ui}
-            inputFieldStyle={inputFieldStyle}
-          />
+          <>
+            <TelegramAuthPhoneFields
+              phoneInitialValue={phone}
+              onCommitPhone={setPhone}
+              onSubmitPhone={submitPhone}
+              busy={busy}
+              preparing={preparing}
+              canSendPhone={!!canSendPhone}
+              phonePrimary={phonePrimary}
+              colors={colors}
+              ui={ui}
+              inputFieldStyle={inputFieldStyle}
+            />
+            {qrLink ? (
+              <View
+                style={[
+                  styles.qrCard,
+                  { backgroundColor: ui.fieldBg, borderColor: ui.border },
+                ]}
+              >
+                <Text style={[styles.qrTitle, { color: colors.textPrimary }]}>
+                  Отсканируйте QR-код в Telegram
+                </Text>
+                <Text style={[styles.qrSubtitle, { color: ui.hint }]}>
+                  Откройте Telegram на другом устройстве: Настройки → Устройства → Подключить устройство.
+                </Text>
+                <View style={styles.qrCodeFrame}>
+                  <QRCode value={qrLink} size={208} backgroundColor="#FFFFFF" color="#111827" />
+                </View>
+                <Pressable onPress={stopQrLogin} style={styles.qrCancel}>
+                  <Text style={[styles.qrCancelText, { color: colors.accent }]}>
+                    Отменить и ввести номер
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={() => void startQrLogin()}
+                disabled={busy || preparing || apiId == null || !apiHash}
+                style={({ pressed }) => [
+                  styles.secondaryBtn,
+                  {
+                    marginTop: 10,
+                    backgroundColor: ui.secondaryBtnBg,
+                    opacity: busy || preparing ? 0.5 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>
+                  {busy ? "Получаем QR-код…" : "Войти по QR-коду"}
+                </Text>
+              </Pressable>
+            )}
+          </>
         ) : null}
 
         {showAuthForm && authStep === "code" ? (
@@ -1215,6 +1357,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryBtnText: { fontWeight: "700", fontSize: 15 },
+  qrCard: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 16,
+  },
+  qrTitle: { fontSize: 17, fontWeight: "700", textAlign: "center" },
+  qrSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  qrCodeFrame: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginTop: 16,
+    padding: 12,
+  },
+  qrCancel: { marginTop: 14, padding: 4 },
+  qrCancelText: { fontSize: 14, fontWeight: "600" },
   resetWrap: { marginTop: 28 },
   resetText: { color: "#E53935", fontWeight: "600", fontSize: 15 },
 });
