@@ -29,6 +29,6 @@
   --chat-wallpaper-pattern: none;
   --chat-bubble-incoming-bg: #ffffff;
   --chat-bubble-incoming-border: rgba(0, 0, 0, 0.06);
-  --chat-bubble-outgoing-bg: #eeffde;
+  --chat-bubble-outgoing-bg: #e1f3fe;
   --chat-bubble-shadow: 0 1px 2px rgba(16, 35, 47, 0.12);
 }
