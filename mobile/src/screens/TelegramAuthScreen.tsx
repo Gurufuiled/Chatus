@@ -910,6 +910,11 @@ export function TelegramAuthScreen() {
     setQrLink(null);
   }, []);
 
+  const cancelQrLogin = useCallback(() => {
+    stopQrLogin();
+    telegramAccountStore.getState().setAuthStatus("waiting_phone");
+  }, [stopQrLogin]);
+
   const startQrLogin = useCallback(async () => {
     if (busy || preparing || apiId == null || !apiHash) return;
     setBusy(true);
@@ -929,7 +934,15 @@ export function TelegramAuthScreen() {
         await completeAuthSuccess();
         return;
       }
-      if (auth["@type"] !== "authorizationStateWaitPhoneNumber") {
+      const qrEligibleStates = new Set([
+        "authorizationStateWaitPhoneNumber",
+        "authorizationStateWaitCode",
+        "authorizationStateWaitPassword",
+        "authorizationStateWaitEmailAddress",
+        "authorizationStateWaitEmailCode",
+        "authorizationStateWaitRegistration",
+      ]);
+      if (!qrEligibleStates.has(auth["@type"] ?? "")) {
         throw new Error(
           `QR-вход сейчас недоступен (состояние: ${auth["@type"] ?? "unknown"}).`,
         );
@@ -1143,50 +1156,26 @@ export function TelegramAuthScreen() {
               ui={ui}
               inputFieldStyle={inputFieldStyle}
             />
-            {qrLink ? (
-              <View
-                style={[
-                  styles.qrCard,
-                  { backgroundColor: ui.fieldBg, borderColor: ui.border },
-                ]}
-              >
-                <Text style={[styles.qrTitle, { color: colors.textPrimary }]}>
-                  Отсканируйте QR-код в Telegram
-                </Text>
-                <Text style={[styles.qrSubtitle, { color: ui.hint }]}>
-                  Откройте Telegram на другом устройстве: Настройки → Устройства → Подключить устройство.
-                </Text>
-                <View style={styles.qrCodeFrame}>
-                  <QRCode value={qrLink} size={208} backgroundColor="#FFFFFF" color="#111827" />
-                </View>
-                <Pressable onPress={stopQrLogin} style={styles.qrCancel}>
-                  <Text style={[styles.qrCancelText, { color: colors.accent }]}>
-                    Отменить и ввести номер
-                  </Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable
-                onPress={() => void startQrLogin()}
-                disabled={busy || preparing || apiId == null || !apiHash}
-                style={({ pressed }) => [
-                  styles.secondaryBtn,
-                  {
-                    marginTop: 10,
-                    backgroundColor: ui.secondaryBtnBg,
-                    opacity: busy || preparing ? 0.5 : pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>
-                  {busy ? "Получаем QR-код…" : "Войти по QR-коду"}
-                </Text>
-              </Pressable>
-            )}
+            <Pressable
+              onPress={() => void startQrLogin()}
+              disabled={busy || preparing || apiId == null || !apiHash}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                {
+                  marginTop: 10,
+                  backgroundColor: ui.secondaryBtnBg,
+                  opacity: busy || preparing ? 0.5 : pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.secondaryBtnText, { color: colors.accent }]}>
+                {busy ? "Получаем QR-код…" : "Войти по QR-коду"}
+              </Text>
+            </Pressable>
           </>
         ) : null}
 
-        {showAuthForm && authStep === "code" ? (
+        {showAuthForm && authStep === "code" && !qrLink ? (
           <>
             <View style={styles.codeHintRow}>
               <Pressable onPress={showCodeDeliveryInfo} hitSlop={8}>
@@ -1245,6 +1234,30 @@ export function TelegramAuthScreen() {
               )}
             </Pressable>
           </>
+        ) : null}
+
+        {showAuthForm && qrLink ? (
+          <View
+            style={[
+              styles.qrCard,
+              { backgroundColor: ui.fieldBg, borderColor: ui.border },
+            ]}
+          >
+            <Text style={[styles.qrTitle, { color: colors.textPrimary }]}>
+              Отсканируйте QR-код в Telegram
+            </Text>
+            <Text style={[styles.qrSubtitle, { color: ui.hint }]}>
+              Откройте Telegram на другом устройстве: Настройки → Устройства → Подключить устройство.
+            </Text>
+            <View style={styles.qrCodeFrame}>
+              <QRCode value={qrLink} size={208} backgroundColor="#FFFFFF" color="#111827" />
+            </View>
+            <Pressable onPress={cancelQrLogin} style={styles.qrCancel}>
+              <Text style={[styles.qrCancelText, { color: colors.accent }]}>
+                Отменить и ввести номер
+              </Text>
+            </Pressable>
+          </View>
         ) : null}
 
         {showAuthForm && authStep === "password" ? (
