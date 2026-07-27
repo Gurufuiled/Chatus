@@ -19,6 +19,18 @@ import {
 
 /** Shown in Telegram → Devices; keep in sync with setTdlibParameters. */
 export const TDLIB_DEVICE_MODEL = 'Chatus';
+const TDLIB_DATABASE_FOLDER = 'tdlib';
+const TDLIB_FILES_FOLDER = 'tdlib_files';
+
+/**
+ * A native TDLib client on iOS must not be destroyed as a side effect of a
+ * failed send/recovery. The next explicit login is the only safe place to
+ * create a replacement client there. Android keeps its established recovery
+ * behaviour.
+ */
+function canAutomaticallyRecreateTdlibClient(): boolean {
+  return Platform.OS !== 'ios';
+}
 
 /** Telegram uses this as part of the active-session identity. */
 export function getTdlibSystemVersion(): string {
@@ -66,8 +78,10 @@ export async function getTdlibDirectories(): Promise<{ databaseDir: string; file
   }
   const baseUri = doc.replace(/\/+$/, '');
   const basePath = fileUriToFilesystemPath(doc);
-  const databaseUri = `${baseUri}/tdlib`;
-  const filesUri = `${baseUri}/tdlib_files`;
+  // documentDirectory is persistent app storage on iOS. Do not use cacheDirectory:
+  // iOS may purge it and TDLib would then lose the auth-key database.
+  const databaseUri = `${baseUri}/${TDLIB_DATABASE_FOLDER}`;
+  const filesUri = `${baseUri}/${TDLIB_FILES_FOLDER}`;
   await FileSystem.makeDirectoryAsync(databaseUri, { intermediates: true }).catch(() => undefined);
   await FileSystem.makeDirectoryAsync(filesUri, { intermediates: true }).catch(() => undefined);
   const databaseDir = `${basePath}/tdlib`.replace(/\/+/g, '/');
@@ -612,6 +626,17 @@ async function canProceedWithHardRecreate(
 ): Promise<boolean> {
   if (recoveryWasCancelled(capturedEpoch)) return false;
   if (!allowRecreate) return false;
+  if (!canAutomaticallyRecreateTdlibClient()) {
+    // iOS may enter Closed because Telegram revoked the auth key. Recreating a
+    // client from a send/recovery path only creates more session churn; wait
+    // for the user to explicitly start a new login instead.
+    logTdlibEvent('automatic recreate disabled on iOS', {
+      level: 'warn',
+      data: { state: live },
+      flushSoon: true,
+    });
+    return false;
+  }
   if (
     !shouldAllowHardRecreateOnClosed({
       authState: live,
@@ -822,6 +847,17 @@ async function doApplyTdlibParameters(shouldAbort?: () => boolean): Promise<void
   }
   const { databaseDir, filesDir } = await getTdlibDirectories();
   if (shouldAbort?.()) return;
+
+  logTdlibEvent('TDLib persistent storage configured', {
+    level: 'info',
+    data: {
+      platform: Platform.OS,
+      root: 'documentDirectory',
+      databaseFolder: TDLIB_DATABASE_FOLDER,
+      filesFolder: TDLIB_FILES_FOLDER,
+      directoriesDistinct: databaseDir !== filesDir,
+    },
+  });
 
   try {
     await tdlibClient.send({
