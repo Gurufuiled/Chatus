@@ -22,9 +22,12 @@ export function mapTdlibAuthStateToStore(
       return 'waiting_password';
     case 'authorizationStateWaitCode':
     case 'authorizationStateWaitEmailCode':
-    case 'authorizationStateWaitOtherDeviceConfirmation':
       // Mid-login only. Never kick a Ready session back to SMS entry on a brief glitch.
       return current === 'ready' || current === 'error' ? 'ready' : 'waiting_code';
+    case 'authorizationStateWaitOtherDeviceConfirmation':
+      // QR authorization is not an SMS/code step. Keep it distinct so the QR can
+      // be restored after the app returns from Telegram or is relaunched by iOS.
+      return current === 'ready' || current === 'error' ? 'ready' : 'waiting_qr';
     case 'authorizationStateWaitPhoneNumber':
     case 'authorizationStateWaitEmailAddress':
     case 'authorizationStateWaitRegistration':

@@ -37,4 +37,10 @@ assert.equal(
   'wait parameters keeps ready',
 );
 
+assert.equal(
+  mapTdlibAuthStateToStore('authorizationStateWaitOtherDeviceConfirmation', 'waiting_phone'),
+  'waiting_qr',
+  'QR confirmation must not be shown as an SMS code step',
+);
+
 console.log('tdlibAuthState.test.ts OK');

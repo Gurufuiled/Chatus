@@ -363,11 +363,15 @@ export function TelegramTdlibNotificationListener() {
               if (
                 stateType === 'authorizationStateWaitPassword'
                   ? store.authStatus !== 'waiting_password'
+                  : stateType === 'authorizationStateWaitOtherDeviceConfirmation'
+                    ? store.authStatus !== 'waiting_qr'
                   : store.authStatus !== 'waiting_code'
               ) {
                 store.setAuthStatus(
                   stateType === 'authorizationStateWaitPassword'
                     ? 'waiting_password'
+                    : stateType === 'authorizationStateWaitOtherDeviceConfirmation'
+                      ? 'waiting_qr'
                     : 'waiting_code',
                 );
                 scheduleAuthPersist();
@@ -405,6 +409,7 @@ export function TelegramTdlibNotificationListener() {
               }
               if (
                 store.authStatus !== 'waiting_code' &&
+                store.authStatus !== 'waiting_qr' &&
                 store.authStatus !== 'waiting_password'
               ) {
                 store.setAuthStatus('waiting_phone');

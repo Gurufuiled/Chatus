@@ -167,6 +167,9 @@ export function TelegramAuthScreen() {
   const screenFocusedRef = useRef(false);
   const authWaitAbortRef = useRef<AbortController | null>(null);
   const qrUnsubscribeRef = useRef<(() => void) | null>(null);
+  const qrFlowActiveRef = useRef(
+    telegramAccountStore.getState().authStatus === "waiting_qr",
+  );
 
   const { apiId, apiHash } = useMemo(() => getTelegramBuildCredentials(), []);
   const isLight = resolvedScheme === "light";
@@ -284,6 +287,7 @@ export function TelegramAuthScreen() {
       if (
         current === "waiting_phone" ||
         current === "waiting_code" ||
+        current === "waiting_qr" ||
         current === "waiting_password" ||
         current === "idle"
       ) {
@@ -307,6 +311,13 @@ export function TelegramAuthScreen() {
             await telegramAccountStore.getState().persistSnapshot();
           }
           return "waiting_code";
+        }
+        if (t === "authorizationStateWaitOtherDeviceConfirmation") {
+          if (current !== "waiting_qr") {
+            telegramAccountStore.getState().setAuthStatus("waiting_qr");
+            await telegramAccountStore.getState().persistSnapshot();
+          }
+          return "waiting_qr";
         }
         if (t === "authorizationStateWaitPassword") {
           if (current !== "waiting_password") {
@@ -341,7 +352,24 @@ export function TelegramAuthScreen() {
       void (async () => {
         try {
           setBootstrapError(null);
-          await syncAuthorizationFromTdlib();
+          const syncedStatus = await syncAuthorizationFromTdlib();
+          if (syncedStatus === "waiting_qr") {
+            qrFlowActiveRef.current = true;
+            const auth = (await tdlibClient.send({
+              "@type": "getAuthorizationState",
+            })) as Record<string, unknown>;
+            throwIfTdError(auth);
+            if (
+              auth["@type"] === "authorizationStateWaitOtherDeviceConfirmation" &&
+              typeof auth.link === "string" &&
+              auth.link
+            ) {
+              setQrLink(auth.link);
+            }
+          } else if (syncedStatus === "ready" && qrFlowActiveRef.current) {
+            qrFlowActiveRef.current = false;
+            await completeAuthSuccess();
+          }
         } catch (e) {
           if (!cancelled) {
             setBootstrapError(e instanceof Error ? e.message : String(e));
@@ -356,7 +384,7 @@ export function TelegramAuthScreen() {
         authWaitAbortRef.current?.abort();
         authWaitAbortRef.current = null;
       };
-    }, [apiHash, apiId, syncAuthorizationFromTdlib]),
+    }, [apiHash, apiId, completeAuthSuccess, syncAuthorizationFromTdlib]),
   );
 
   const submitPhone = useCallback(async (rawPhone?: string) => {
@@ -911,6 +939,7 @@ export function TelegramAuthScreen() {
   }, []);
 
   const cancelQrLogin = useCallback(() => {
+    qrFlowActiveRef.current = false;
     stopQrLogin();
     telegramAccountStore.getState().setAuthStatus("waiting_phone");
   }, [stopQrLogin]);
@@ -920,6 +949,7 @@ export function TelegramAuthScreen() {
     setBusy(true);
     setBootstrapError(null);
     stopQrLogin();
+    qrFlowActiveRef.current = true;
     try {
       await withTimeout(
         applyTdlibParameters(),
@@ -959,6 +989,8 @@ export function TelegramAuthScreen() {
         if (stateType === "authorizationStateWaitOtherDeviceConfirmation") {
           const link = typeof state.link === "string" ? state.link : "";
           if (link) {
+            telegramAccountStore.getState().setAuthStatus("waiting_qr");
+            void telegramAccountStore.getState().persistSnapshot();
             setQrLink(link);
             setBusy(false);
           }
@@ -966,6 +998,7 @@ export function TelegramAuthScreen() {
         }
         if (stateType === "authorizationStateReady") {
           settled = true;
+          qrFlowActiveRef.current = false;
           stopQrLogin();
           void completeAuthSuccess().catch((error) => {
             setBootstrapError(error instanceof Error ? error.message : String(error));
@@ -979,6 +1012,7 @@ export function TelegramAuthScreen() {
           stateType === "authorizationStateClosed"
         ) {
           settled = true;
+          qrFlowActiveRef.current = false;
           stopQrLogin();
           setBootstrapError("Telegram прервал QR-вход. Попробуйте получить новый QR-код.");
           setBusy(false);
@@ -998,6 +1032,7 @@ export function TelegramAuthScreen() {
         setBusy(false);
       }
     } catch (error) {
+      qrFlowActiveRef.current = false;
       stopQrLogin();
       setBusy(false);
       setBootstrapError(error instanceof Error ? error.message : String(error));
@@ -1029,6 +1064,16 @@ export function TelegramAuthScreen() {
     }
     void refreshPasswordStepInfo();
   }, [authStep, refreshPasswordStepInfo, status]);
+
+  useEffect(() => {
+    if (status !== "ready" || !qrFlowActiveRef.current) return;
+    qrFlowActiveRef.current = false;
+    stopQrLogin();
+    void completeAuthSuccess().catch((error) => {
+      setBootstrapError(error instanceof Error ? error.message : String(error));
+      setBusy(false);
+    });
+  }, [completeAuthSuccess, status, stopQrLogin]);
 
   const canSendPhone =
     !preparing && !busy && apiId != null && apiHash && status !== "ready";
@@ -1142,7 +1187,7 @@ export function TelegramAuthScreen() {
           </View>
         ) : null}
 
-        {showAuthForm && authStep === "phone" ? (
+        {showAuthForm && authStep === "phone" && status !== "waiting_qr" ? (
           <>
             <TelegramAuthPhoneFields
               phoneInitialValue={phone}
@@ -1247,7 +1292,7 @@ export function TelegramAuthScreen() {
               Отсканируйте QR-код в Telegram
             </Text>
             <Text style={[styles.qrSubtitle, { color: ui.hint }]}>
-              Откройте Telegram на другом устройстве: Настройки → Устройства → Подключить устройство.
+              Откройте Telegram на другом устройстве: Настройки → Устройства → Подключить устройство. После сканирования обязательно нажмите «Подтвердить вход».
             </Text>
             <View style={styles.qrCodeFrame}>
               <QRCode value={qrLink} size={208} backgroundColor="#FFFFFF" color="#111827" />

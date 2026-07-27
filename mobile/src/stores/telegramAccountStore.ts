@@ -29,6 +29,7 @@ export type TelegramAuthStatus =
   | 'waiting_parameters'
   | 'waiting_phone'
   | 'waiting_code'
+  | 'waiting_qr'
   | 'waiting_password'
   | 'ready'
   | 'error';
