@@ -21,6 +21,27 @@ import {
 export const TDLIB_DEVICE_MODEL = 'Chatus';
 const TDLIB_DATABASE_FOLDER = 'tdlib';
 const TDLIB_FILES_FOLDER = 'tdlib_files';
+/**
+ * Diagnostic iOS namespace. It intentionally does not reuse the legacy folders,
+ * so no restored/copied auth key can participate in the next authorization.
+ * Keep the namespace stable across launches: rotating it would log the user out
+ * on every app update.
+ */
+const TDLIB_IOS_DATABASE_FOLDER = 'tdlib_ios_isolated_v1';
+const TDLIB_IOS_FILES_FOLDER = 'tdlib_ios_files_isolated_v1';
+
+function getTdlibFolderNames(): { databaseFolder: string; filesFolder: string } {
+  if (Platform.OS === 'ios') {
+    return {
+      databaseFolder: TDLIB_IOS_DATABASE_FOLDER,
+      filesFolder: TDLIB_IOS_FILES_FOLDER,
+    };
+  }
+  return {
+    databaseFolder: TDLIB_DATABASE_FOLDER,
+    filesFolder: TDLIB_FILES_FOLDER,
+  };
+}
 
 /**
  * A native TDLib client on iOS must not be destroyed as a side effect of a
@@ -78,14 +99,15 @@ export async function getTdlibDirectories(): Promise<{ databaseDir: string; file
   }
   const baseUri = doc.replace(/\/+$/, '');
   const basePath = fileUriToFilesystemPath(doc);
+  const { databaseFolder, filesFolder } = getTdlibFolderNames();
   // documentDirectory is persistent app storage on iOS. Do not use cacheDirectory:
   // iOS may purge it and TDLib would then lose the auth-key database.
-  const databaseUri = `${baseUri}/${TDLIB_DATABASE_FOLDER}`;
-  const filesUri = `${baseUri}/${TDLIB_FILES_FOLDER}`;
+  const databaseUri = `${baseUri}/${databaseFolder}`;
+  const filesUri = `${baseUri}/${filesFolder}`;
   await FileSystem.makeDirectoryAsync(databaseUri, { intermediates: true }).catch(() => undefined);
   await FileSystem.makeDirectoryAsync(filesUri, { intermediates: true }).catch(() => undefined);
-  const databaseDir = `${basePath}/tdlib`.replace(/\/+/g, '/');
-  const filesDir = `${basePath}/tdlib_files`.replace(/\/+/g, '/');
+  const databaseDir = `${basePath}/${databaseFolder}`.replace(/\/+/g, '/');
+  const filesDir = `${basePath}/${filesFolder}`.replace(/\/+/g, '/');
   return { databaseDir, filesDir };
 }
 
@@ -846,6 +868,7 @@ async function doApplyTdlibParameters(shouldAbort?: () => boolean): Promise<void
     return;
   }
   const { databaseDir, filesDir } = await getTdlibDirectories();
+  const { databaseFolder, filesFolder } = getTdlibFolderNames();
   if (shouldAbort?.()) return;
 
   logTdlibEvent('TDLib persistent storage configured', {
@@ -853,8 +876,9 @@ async function doApplyTdlibParameters(shouldAbort?: () => boolean): Promise<void
     data: {
       platform: Platform.OS,
       root: 'documentDirectory',
-      databaseFolder: TDLIB_DATABASE_FOLDER,
-      filesFolder: TDLIB_FILES_FOLDER,
+      databaseFolder,
+      filesFolder,
+      isolatedIosDatabase: Platform.OS === 'ios',
       directoriesDistinct: databaseDir !== filesDir,
     },
   });
