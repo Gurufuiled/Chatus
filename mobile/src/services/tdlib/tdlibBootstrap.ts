@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Crypto from 'expo-crypto';
 import { getTelegramBuildCredentials, tdlibClient } from './TdlibClient';
 import { throwIfTdError } from './tdlibErrors';
 import {
@@ -80,6 +81,28 @@ export function getTdlibClientIdentity(): {
 
 function readAuthStateType(auth: unknown): string {
   return (auth as { '@type'?: string } | null)?.['@type'] ?? '';
+}
+
+async function getTelegramCredentialsFingerprint(apiId: number, apiHash: string): Promise<string> {
+  const digest = await Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    `${apiId}:${apiHash.trim().toLowerCase()}`,
+  );
+  return digest.slice(0, 20);
+}
+
+async function readTdlibStringOption(name: string): Promise<string | null> {
+  try {
+    const result = (await tdlibClient.send({
+      '@type': 'getOption',
+      name,
+    })) as { '@type'?: unknown; value?: unknown };
+    return result['@type'] === 'optionValueString' && typeof result.value === 'string'
+      ? result.value
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /** TDLib ждёт POSIX-путь; Expo `documentDirectory` — `file:///…`. */
@@ -929,9 +952,20 @@ async function doApplyTdlibParameters(shouldAbort?: () => boolean): Promise<void
   throwIfTdError(setRes);
   tdlibParametersAppliedThisProcess = true;
   if (shouldAbort?.()) return;
+  const [credentialsFingerprint, tdlibVersion, tdlibCommitHash] = await Promise.all([
+    getTelegramCredentialsFingerprint(apiId, apiHash).catch(() => 'unavailable'),
+    readTdlibStringOption('version'),
+    readTdlibStringOption('commit_hash'),
+  ]);
+  if (shouldAbort?.()) return;
   logTdlibEvent('setTdlibParameters ok', {
     level: 'info',
-    data: getTdlibClientIdentity(),
+    data: {
+      ...getTdlibClientIdentity(),
+      credentialsFingerprint,
+      tdlibVersion,
+      tdlibCommitHash,
+    },
     flushSoon: true,
   });
 }
