@@ -117,6 +117,7 @@ final class Tdlib: RCTEventEmitter {
     Self.lifecycleLock.lock()
     defer { Self.lifecycleLock.unlock() }
 
+    emitLifecycleDiagnostic("recreate_requested")
     guard Self.activeOwner === self else {
       reject("E_TD_NATIVE", "TDLib module is no longer the active bridge owner.", nil)
       return
@@ -157,6 +158,10 @@ final class Tdlib: RCTEventEmitter {
     if let oldClient {
       td_json_client_destroy(oldClient)
     }
+    emitLifecycleDiagnostic(
+      "recreate_old_destroyed",
+      data: ["hadClient": oldClient != nil]
+    )
 
     let newClient = td_json_client_create()
     stateLock.lock()
@@ -172,6 +177,10 @@ final class Tdlib: RCTEventEmitter {
     if invalidatedDuringCreate, let newClient {
       td_json_client_destroy(newClient)
     }
+    emitLifecycleDiagnostic(
+      "recreate_new_created",
+      data: ["created": newClient != nil && !invalidatedDuringCreate]
+    )
     clientIoLock.unlock()
     sendLock.unlock()
 
@@ -194,7 +203,10 @@ final class Tdlib: RCTEventEmitter {
     _ resolve: RCTPromiseResolveBlock,
     rejecter reject: RCTPromiseRejectBlock
   ) {
-    resolve(["instanceId": instanceId])
+    resolve([
+      "instanceId": instanceId,
+      "processId": ProcessInfo.processInfo.processIdentifier,
+    ])
   }
 
   @objc(readTdlibLogTail:resolver:rejecter:)
@@ -590,11 +602,20 @@ final class Tdlib: RCTEventEmitter {
             let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         reject("E_TD_JSON", "TDLib query must be a JSON object.", nil)
         return
-      }
-      payloadObject = object
+    }
+    payloadObject = object
     } catch {
       reject("E_TD_JSON", error.localizedDescription, error)
       return
+    }
+
+    if let queryType = payloadObject["@type"] as? String,
+       ["logOut", "close", "destroy"].contains(queryType) {
+      NSLog("[Tdlib/%@] native outbound dangerous query=%@", instanceId, queryType)
+      emitLifecycleDiagnostic(
+        "native_outbound_\(queryType)",
+        data: ["queryType": queryType]
+      )
     }
 
     excludeTdlibDirectoriesFromBackupIfNeeded(payloadObject)
@@ -657,6 +678,7 @@ final class Tdlib: RCTEventEmitter {
 
   override func invalidate() {
     NSLog("[Tdlib/%@] lifecycle=invalidate", instanceId)
+    emitLifecycleDiagnostic("invalidate")
     Self.lifecycleLock.lock()
     stopAndDestroyClientLocked(reason: "invalidate")
     if Self.activeOwner === self {
@@ -669,6 +691,7 @@ final class Tdlib: RCTEventEmitter {
 
   deinit {
     NSLog("[Tdlib/%@] deinit", instanceId)
+    emitLifecycleDiagnostic("deinit")
     rejectAllPending(code: "E_TD_NATIVE", message: "TDLib module deallocated.")
     Self.lifecycleLock.lock()
     stopAndDestroyClientLocked(reason: "deinit")
@@ -720,6 +743,14 @@ final class Tdlib: RCTEventEmitter {
         oldClient == nil ? "already_nil" : "destroyed"
       )
     }
+    emitLifecycleDiagnostic(
+      "client_destroyed",
+      data: [
+        "reason": reason,
+        "hadClient": oldClient != nil,
+        "wasAlreadyDestroyed": wasDestroyed,
+      ]
+    )
   }
 
   private func startReceiveThread() {
@@ -872,7 +903,7 @@ final class Tdlib: RCTEventEmitter {
     stateLock.unlock()
   }
 
-  private func emitLifecycleDiagnostic(_ event: String) {
+  private func emitLifecycleDiagnostic(_ event: String, data: [String: Any]? = nil) {
     NSLog("[Tdlib/%@] lifecycle=%@", instanceId, event)
     guard listenersActive() else {
       return
@@ -886,6 +917,8 @@ final class Tdlib: RCTEventEmitter {
         body: [
           "event": String(event.prefix(64)),
           "instanceId": self.instanceId,
+          "processId": ProcessInfo.processInfo.processIdentifier,
+          "data": data ?? [:],
         ]
       )
     }

@@ -1,4 +1,4 @@
-import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { AppState, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { withTdlibRequestGate } from './tdlibRequestGate';
 import { logTdlibEvent } from '../clientRemoteLog';
@@ -14,7 +14,7 @@ const DANGEROUS_QUERY_TYPES = new Set(['logOut', 'close', 'destroy']);
 function getNativeModule(): {
   sendClientJson: (json: string) => Promise<string>;
   recreateClient?: () => Promise<boolean>;
-  getInstanceIdentity?: () => Promise<{ instanceId?: unknown }>;
+  getInstanceIdentity?: () => Promise<{ instanceId?: unknown; processId?: unknown }>;
   readTdlibLogTail?: (maxBytes: number) => Promise<string>;
   addListener?: (eventType: string) => void;
   removeListeners?: (count: number) => void;
@@ -23,7 +23,7 @@ function getNativeModule(): {
     | {
         sendClientJson: (json: string) => Promise<string>;
         recreateClient?: () => Promise<boolean>;
-        getInstanceIdentity?: () => Promise<{ instanceId?: unknown }>;
+        getInstanceIdentity?: () => Promise<{ instanceId?: unknown; processId?: unknown }>;
         readTdlibLogTail?: (maxBytes: number) => Promise<string>;
         addListener?: (eventType: string) => void;
         removeListeners?: (count: number) => void;
@@ -60,6 +60,7 @@ class TdlibClientImpl {
   private pendingUpdates: TdlibUpdate[] = [];
   private flushScheduled = false;
   private nativeInstanceId: string | null = null;
+  private appStateSubscription: { remove: () => void } | null = null;
 
   constructor() {
     const mod = getNativeModule();
@@ -70,7 +71,12 @@ class TdlibClientImpl {
       });
       this.emitter.addListener(
         'td_json_diagnostic',
-        (payload: { event?: unknown; instanceId?: unknown }) => {
+        (payload: {
+          event?: unknown;
+          instanceId?: unknown;
+          processId?: unknown;
+          data?: unknown;
+        }) => {
           this.recordNativeLifecycle(payload);
         },
       );
@@ -81,9 +87,23 @@ class TdlibClientImpl {
           .catch(() => undefined);
       }
     }
+    let previousState = AppState.currentState;
+    this.appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      logTdlibEvent(`app lifecycle ${nextState}`, {
+        level: nextState === 'background' || nextState === 'inactive' ? 'warn' : 'info',
+        data: { previousState, nextState },
+        flushSoon: true,
+      });
+      previousState = nextState;
+    });
   }
 
-  private recordNativeLifecycle(payload: { event?: unknown; instanceId?: unknown }): void {
+  private recordNativeLifecycle(payload: {
+    event?: unknown;
+    instanceId?: unknown;
+    processId?: unknown;
+    data?: unknown;
+  }): void {
     const event =
       typeof payload?.event === 'string'
         ? payload.event.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 64)
@@ -94,10 +114,29 @@ class TdlibClientImpl {
         ? payload.instanceId
         : null;
     if (instanceId) this.nativeInstanceId = instanceId;
+    const payloadData =
+      payload.data && typeof payload.data === 'object'
+        ? payload.data
+        : undefined;
     logTdlibEvent(`native lifecycle ${event}`, {
-      level: event === 'invalidate' ? 'warn' : 'info',
-      data: instanceId ? { instanceId } : undefined,
-      flushSoon: event === 'invalidate' || event === 'listeners_started',
+      level:
+        event.includes('destroy') ||
+        event.includes('invalidate') ||
+        event.includes('deinit') ||
+        event.includes('superseded')
+          ? 'warn'
+          : 'info',
+      data: {
+        ...(instanceId ? { instanceId } : {}),
+        ...(typeof payload.processId === 'number' ? { processId: payload.processId } : {}),
+        ...(payloadData && !Array.isArray(payloadData) ? payloadData : {}),
+      },
+      flushSoon:
+        event.includes('destroy') ||
+        event.includes('invalidate') ||
+        event.includes('deinit') ||
+        event.includes('superseded') ||
+        event === 'listeners_started',
     });
   }
 
@@ -169,6 +208,11 @@ class TdlibClientImpl {
     logTdlibEvent('OUTBOUND recreateClient', {
       level: 'warn',
       data: { stack: stackHint() },
+      flushSoon: true,
+    });
+    logTdlibEvent('native recreate requested', {
+      level: 'warn',
+      data: { nativeInstanceId: this.nativeInstanceId },
       flushSoon: true,
     });
     const mod = getNativeModule();
