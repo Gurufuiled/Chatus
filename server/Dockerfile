@@ -34,7 +34,9 @@ ENV PORT=4000
 
 EXPOSE 4000 4001 4002
 
-USER node
+# The entrypoint fixes permissions for persistent upload and diagnostic volumes,
+# then drops privileges to the node user before starting the API.
+USER root
 
 # Prisma CLI остаётся из devDependencies — нужен для migrate deploy при старте контейнера
 ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -49,6 +49,8 @@ services:
       LIVEKIT_URL: ws://livekit:7880
       # Firebase Admin SDK (FCM direct push). Файл монтируется с хоста (см. volumes).
       FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/app/firebase-service-account.json}
+      # iOS/Android remote diagnostics → POST /api/client-logs
+      CLIENT_LOGS_DIR: /app/logs/client
     depends_on:
       db:
         condition: service_healthy
@@ -56,6 +58,7 @@ services:
         condition: service_started
     volumes:
       - chatus_uploads:/app/uploads
+      - chatus_client_logs:/app/logs/client
       # APK на лендинге /downloads/chatus-release.apk — заливай через scripts/deploy-apk-prod.mjs без пересборки образа
       - ./public/downloads:/app/public/downloads:ro
       # read-only: ключ не в образе и не в git
@@ -117,6 +120,7 @@ services:
 volumes:
   chatus_pgdata:
   chatus_uploads:
+  chatus_client_logs:
 
 networks:
   traefik-public:

@@ -15,6 +15,7 @@ import { SignalingModule } from './signaling/signaling.module';
 import { ChannelsModule } from './channels/channels.module';
 import { MiniAppsModule } from './mini-apps/mini-apps.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { ClientLogsModule } from './client-logs/client-logs.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MailboxModule } from './mailbox/mailbox.module';
 import { AdminModule } from './admin/admin.module';
@@ -33,6 +34,7 @@ import { ClientLogsModule } from './client-logs/client-logs.module';
     ChannelsModule,
     MiniAppsModule,
     FeedbackModule,
+    ClientLogsModule,
     UploadModule,
     ScheduleModule.forRoot(),
     MailboxModule,
