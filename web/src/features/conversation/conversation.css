@@ -222,17 +222,19 @@
   max-width: 100%;
   padding: 7px 10px 5px;
   border-radius: 12px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--chat-bubble-shadow, 0 1px 2px rgba(16, 35, 47, 0.12));
   word-break: break-word;
 }
 
 .message-bubble--incoming {
-  background: #ffffff;
+  background: var(--chat-bubble-incoming-bg, #ffffff);
+  border: 1px solid var(--chat-bubble-incoming-border, rgba(0, 0, 0, 0.06));
   border-bottom-left-radius: 4px;
 }
 
 .message-bubble--outgoing {
-  background: #effdde;
+  background: var(--chat-bubble-outgoing-bg, #eeffde);
+  border: 1px solid transparent;
   border-bottom-right-radius: 4px;
 }
 
@@ -245,7 +247,8 @@
 }
 
 .message-bubble--deleted {
-  background: rgba(255, 255, 255, 0.65);
+  background: #f4f4f5;
+  border: 1px solid rgba(0, 0, 0, 0.05);
   font-style: italic;
 }
 
@@ -613,8 +616,7 @@
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  --chat-wallpaper-base: #ddece8;
-  background-color: var(--chat-wallpaper-base);
+  background-color: var(--chat-wallpaper-base, #ffffff);
 }
 
 .conversation-drop-zone::before {
@@ -622,20 +624,11 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-color: var(--chat-wallpaper-base);
-  background-image: var(--chat-wallpaper-pattern);
+  background-color: var(--chat-wallpaper-base, #ffffff);
+  background-image: var(--chat-wallpaper-pattern, none);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  pointer-events: none;
-}
-
-.conversation-drop-zone::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background: rgba(255, 255, 255, 0.06);
   pointer-events: none;
 }
 
@@ -702,6 +695,7 @@
 
 .message-bubble--sticker {
   background: transparent;
+  border: none;
   box-shadow: none;
   padding: 2px;
 }
@@ -742,6 +736,7 @@
     .message-bubble--with-reply
   ):not(.message-bubble--with-forward):not(.message-bubble--with-reactions) {
   background: transparent;
+  border: none;
   box-shadow: none;
 }
 
@@ -1136,7 +1131,7 @@
 }
 
 .message-bubble--outgoing .message-forward-header {
-  color: rgba(255, 255, 255, 0.92);
+  color: #487fe8;
 }
 
 .message-bubble--visual-media.message-bubble--outgoing .message-forward-header {

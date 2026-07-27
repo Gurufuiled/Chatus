@@ -28,7 +28,6 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useGlobalEscape } from '@/hooks/useGlobalEscape';
 import { ChatInfoSidebar } from './ChatInfoSidebar';
 import { getOutgoingMessagePreview } from './messageFormatters';
-import wallpaperUrl from '@/assets/wallpapers/chat-wallpaper.png';
 import './conversation.css';
 
 interface ConversationPaneProps {
@@ -225,11 +224,7 @@ export function ConversationPane({ chatId }: ConversationPaneProps) {
             onUnpin={handleUnpin}
           />
         ) : null}
-        <ConversationDropZone
-          chatId={chatId}
-          disabled={messagesLoading}
-          style={{ ['--chat-wallpaper-pattern' as string]: `url(${wallpaperUrl})` }}
-        >
+        <ConversationDropZone chatId={chatId} disabled={messagesLoading}>
           <div ref={bodyRef} className="conversation-pane__body">
             <MessageList chatId={chatId} />
           </div>
