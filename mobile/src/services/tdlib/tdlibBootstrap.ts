@@ -54,9 +54,19 @@ function canAutomaticallyRecreateTdlibClient(): boolean {
   return Platform.OS !== 'ios';
 }
 
-/** Telegram uses this as part of the active-session identity. */
+/**
+ * Telegram anti-fraud drops unofficial clients that report a real iOS system_version
+ * (AUTH_KEY_UNREGISTERED). Probe A/B on same api_id/phone/VPN: real iOS dies in ~1 min,
+ * `Android 14` survives 20 min. Keep Android on the real OS string.
+ */
+const TDLIB_IOS_SYSTEM_VERSION_SPOOF = 'Android 14';
+
+/** Value sent in setTdlibParameters.system_version (and mirrored in remote identity logs). */
 export function getTdlibSystemVersion(): string {
-  const platformName = Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : Platform.OS;
+  if (Platform.OS === 'ios') {
+    return TDLIB_IOS_SYSTEM_VERSION_SPOOF;
+  }
+  const platformName = Platform.OS === 'android' ? 'Android' : Platform.OS;
   const version = String(Platform.Version ?? '').trim();
   return version ? `${platformName} ${version}` : platformName;
 }
