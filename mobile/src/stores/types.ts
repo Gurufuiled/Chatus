@@ -12,6 +12,11 @@ export type Chat = ChatRow;
 export type MessageSource = 'chatus' | 'telegram';
 
 export type Message = MessageRow & {
+  /**
+   * UI-only stable list identity. An optimistic message keeps this key when the
+   * server replaces its temporary id, preventing an iOS FlatList remount.
+   */
+  ui_key?: string;
   source?: MessageSource;
   sender_name?: string | null;
   sender_avatar_url?: string | null;

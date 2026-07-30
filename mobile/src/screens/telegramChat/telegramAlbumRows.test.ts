@@ -25,7 +25,13 @@ function row(
 }
 
 const twoPhotos = collapseTelegramAlbumRows([
-  row(102, 'image', 55),
+  {
+    ...row(102, 'image', 55),
+    forwardInfo: {
+      senderName: 'Лидер мнений среди удобрений',
+      avatarUri: 'file:///channel.jpg',
+    },
+  },
   row(101, 'image', 55),
 ]);
 
@@ -34,6 +40,7 @@ assert.equal(twoPhotos[0]?.kind, 'album');
 assert.equal(twoPhotos[0]?.albumMedia?.length, 2);
 assert.equal(twoPhotos[0]?.text, 'caption');
 assert.equal(twoPhotos[0]?.albumMessageIds?.join(','), '101,102');
+assert.equal(twoPhotos[0]?.forwardInfo?.senderName, 'Лидер мнений среди удобрений');
 
 const singleWithAlbumId = collapseTelegramAlbumRows([row(10, 'image', 7)]);
 assert.equal(singleWithAlbumId.length, 1);

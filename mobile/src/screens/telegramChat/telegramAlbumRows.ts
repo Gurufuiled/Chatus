@@ -50,6 +50,7 @@ function buildAlbumRow(parts: TelegramMessageRow[]): TelegramMessageRow | null {
   const anchor = sorted[sorted.length - 1]!;
   const captionRow =
     [...sorted].reverse().find((row) => (row.text ?? '').trim().length > 0) ?? anchor;
+  const forwardInfoRow = sorted.find((row) => row.forwardInfo != null);
   const albumMessageIds = sorted.map((row) => row.messageId);
   const mediaAlbumId = anchor.mediaAlbumId ?? sorted[0]?.mediaAlbumId;
 
@@ -59,6 +60,7 @@ function buildAlbumRow(parts: TelegramMessageRow[]): TelegramMessageRow | null {
     messageId: anchor.messageId,
     kind: 'album',
     text: captionRow.text ?? '',
+    forwardInfo: forwardInfoRow?.forwardInfo ?? anchor.forwardInfo,
     albumMedia: items,
     albumMessageIds,
     mediaAlbumId,

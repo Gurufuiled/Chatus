@@ -657,28 +657,40 @@ export function ChatScreen() {
     }
   }, [currentChat, navigation]);
   const chatThemeId = uiStore((state) => state.chatThemeIdByChatId[chatId] ?? DEFAULT_CHAT_THEME_ID);
+  const chatWallpaperId = uiStore(
+    (state) => state.chatWallpaperIdByChatId[chatId] ?? chatThemeId,
+  );
   
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
   const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
+  const [draftWallpaperId, setDraftWallpaperId] =
+    useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
 
   useEffect(() => {
     if (route.params.openThemePicker) {
       setIsThemePickerVisible(true);
       setDraftThemeId(chatThemeId as ChatThemeId);
+      setDraftWallpaperId(chatWallpaperId as ChatThemeId);
       navigation.setParams({ openThemePicker: undefined });
     }
-  }, [route.params.openThemePicker, navigation, chatThemeId]);
+  }, [route.params.openThemePicker, navigation, chatThemeId, chatWallpaperId]);
 
   const activeThemeId = isThemePickerVisible ? draftThemeId : chatThemeId;
+  const activeWallpaperId = isThemePickerVisible ? draftWallpaperId : chatWallpaperId;
   const chatTheme = React.useMemo(
     () => getChatTheme(activeThemeId, resolvedScheme),
     [activeThemeId, resolvedScheme],
   );
+  const chatWallpaperTheme = React.useMemo(
+    () => getChatTheme(activeWallpaperId, resolvedScheme),
+    [activeWallpaperId, resolvedScheme],
+  );
 
   const handleApplyTheme = useCallback(() => {
     uiStore.getState().setChatTheme(chatId, draftThemeId);
+    uiStore.getState().setChatWallpaper(chatId, draftWallpaperId);
     setIsThemePickerVisible(false);
-  }, [chatId, draftThemeId]);
+  }, [chatId, draftThemeId, draftWallpaperId]);
 
 
   const [initialLoadElapsed, setInitialLoadElapsed] = React.useState(
@@ -2934,9 +2946,9 @@ export function ChatScreen() {
       <BlurTargetView
         ref={blurTargetRef}
         collapsable={false}
-        style={[styles.chatContentLayer, { backgroundColor: chatTheme.canvasColor }]}
+        style={[styles.chatContentLayer, { backgroundColor: chatWallpaperTheme.canvasColor }]}
       >
-        <ChatBackgroundPattern themeId={activeThemeId} />
+        <ChatBackgroundPattern themeId={activeWallpaperId} />
         <View style={{ height: insets.top + ANDROID_CHAT_HEADER_TOOLBAR_HEIGHT }} />
         <ChatTopBanners
           selectionMode={selectionMode}
@@ -3280,7 +3292,9 @@ export function ChatScreen() {
       <ChatThemePickerModal
         visible={isThemePickerVisible}
         selectedThemeId={draftThemeId}
+        selectedWallpaperId={draftWallpaperId}
         onSelectTheme={setDraftThemeId}
+        onSelectWallpaper={setDraftWallpaperId}
         onApply={handleApplyTheme}
         onClose={() => setIsThemePickerVisible(false)}
       />

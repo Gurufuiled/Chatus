@@ -29,6 +29,8 @@ type UIState = {
   isPinnedMessagesHydrated: boolean;
   chatThemeIdByChatId: Record<string, string>;
   isChatThemesHydrated: boolean;
+  chatWallpaperIdByChatId: Record<string, string>;
+  isChatWallpapersHydrated: boolean;
   blockedUserIds: Record<string, true>;
   isBlockedUsersHydrated: boolean;
   pushNotification: PushNotificationData | null;
@@ -52,6 +54,9 @@ type UIActions = {
   setChatTheme: (chatId: string, themeId: string) => void;
   removeChatTheme: (chatId: string) => void;
   hydrateChatThemes: () => Promise<void>;
+  setChatWallpaper: (chatId: string, wallpaperId: string) => void;
+  removeChatWallpaper: (chatId: string) => void;
+  hydrateChatWallpapers: () => Promise<void>;
   setUserBlocked: (userId: string, blocked: boolean) => void;
   hydrateBlockedUsers: () => Promise<void>;
   showPushNotification: (data: Omit<PushNotificationData, 'id'>) => void;
@@ -65,6 +70,7 @@ type UIActions = {
 const TYPING_STALE_MS = 5000;
 const PINNED_MESSAGES_KEY = 'ui.pinnedMessageIdByChatId';
 const CHAT_THEMES_KEY = 'ui.chatThemeIdByChatId';
+const CHAT_WALLPAPERS_KEY = 'ui.chatWallpaperIdByChatId';
 const BLOCKED_USERS_KEY = 'ui.blockedUserIds';
 const APP_APPEARANCE_KEY = 'ui.appAppearancePreference';
 const CHAT_LIST_FILTER_KEY = 'ui.chatListFilter';
@@ -79,6 +85,8 @@ const initialState: UIState = {
   isPinnedMessagesHydrated: false,
   chatThemeIdByChatId: {},
   isChatThemesHydrated: false,
+  chatWallpaperIdByChatId: {},
+  isChatWallpapersHydrated: false,
   blockedUserIds: {},
   isBlockedUsersHydrated: false,
   pushNotification: null,
@@ -182,6 +190,34 @@ export const uiStore = create<UIState & UIActions>((set) => ({
       });
     } catch {
       set({ isChatThemesHydrated: true });
+    }
+  },
+
+  setChatWallpaper: (chatId, wallpaperId) =>
+    set((s) => {
+      const next = { ...s.chatWallpaperIdByChatId, [chatId]: wallpaperId };
+      void SecureStore.setItemAsync(CHAT_WALLPAPERS_KEY, JSON.stringify(next)).catch(() => {});
+      return { chatWallpaperIdByChatId: next };
+    }),
+
+  removeChatWallpaper: (chatId) =>
+    set((s) => {
+      const next = { ...s.chatWallpaperIdByChatId };
+      delete next[chatId];
+      void SecureStore.setItemAsync(CHAT_WALLPAPERS_KEY, JSON.stringify(next)).catch(() => {});
+      return { chatWallpaperIdByChatId: next };
+    }),
+
+  hydrateChatWallpapers: async () => {
+    try {
+      const raw = await SecureStore.getItemAsync(CHAT_WALLPAPERS_KEY);
+      const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      set({
+        chatWallpaperIdByChatId: parsed,
+        isChatWallpapersHydrated: true,
+      });
+    } catch {
+      set({ isChatWallpapersHydrated: true });
     }
   },
 

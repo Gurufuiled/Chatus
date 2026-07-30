@@ -1,15 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { colors, typography } from '../theme/colors';
 import Feather from '@expo/vector-icons/Feather';
 import { PlatformSourceIcon } from './PlatformSourceIcon';
 import type { MessageSource } from '../stores/types';
-
-const STATUS_TEXT_ICONS: Record<string, string> = {
-  sending: '\u23F1',
-  failed: '\u26A0',
-};
 
 interface MessageTimeStatusProps {
   time: string;
@@ -115,6 +110,28 @@ function SingleCheckIcon({
   );
 }
 
+function SendingClockIcon({
+  compact = false,
+  color,
+}: {
+  compact?: boolean;
+  color: string;
+}) {
+  const size = compact ? 10 : 11;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12" fill="none">
+      <Circle cx="6" cy="6" r="4.75" stroke={color} strokeWidth="1.35" />
+      <Path
+        d="M6 3.35V6.15L7.85 7.25"
+        stroke={color}
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export function MessageStatusIcon({
   status,
   isMe,
@@ -125,25 +142,22 @@ export function MessageStatusIcon({
 
   const resolvedIconColor = getResolvedIconColor(isMe, iconColor);
 
-  if (status === 'read') {
-    return <DoubleCheckIcon compact={compact} color={resolvedIconColor} />;
-  }
-
-  if (status === 'sent' || status === 'delivered') {
-    return <SingleCheckIcon compact={compact} color={resolvedIconColor} />;
-  }
-
-  const icon = STATUS_TEXT_ICONS[status] ?? STATUS_TEXT_ICONS.sending;
   return (
-    <Text
-      style={[
-        styles.icon,
-        compact && styles.iconCompact,
-        { color: resolvedIconColor },
-      ]}
-    >
-      {icon}
-    </Text>
+    <View style={[styles.statusSlot, compact && styles.statusSlotCompact]}>
+      {status === 'read' ? (
+        <DoubleCheckIcon compact={compact} color={resolvedIconColor} />
+      ) : status === 'sent' || status === 'delivered' ? (
+        <SingleCheckIcon compact={compact} color={resolvedIconColor} />
+      ) : status === 'failed' ? (
+        <Feather
+          name="alert-circle"
+          size={compact ? 10 : 11}
+          color={resolvedIconColor}
+        />
+      ) : (
+        <SendingClockIcon compact={compact} color={resolvedIconColor} />
+      )}
+    </View>
   );
 }
 
@@ -228,15 +242,16 @@ const styles = StyleSheet.create({
   timeMe: {
     color: colors.textSecondaryMuted,
   },
-  icon: {
-    fontSize: typography.timeStatus,
-    color: colors.textSecondary,
-    includeFontPadding: false,
-    lineHeight: typography.timeStatus + 1,
+  statusSlot: {
+    width: 16,
+    height: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  iconCompact: {
-    fontSize: 11,
-    lineHeight: 11,
+  statusSlotCompact: {
+    width: 14,
+    height: 10,
   },
   singleCheckWrap: {
     marginBottom: 0.5,

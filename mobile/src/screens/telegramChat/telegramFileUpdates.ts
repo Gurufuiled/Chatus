@@ -136,13 +136,10 @@ export function patchDialogsWithTdlibFile(
 export function collectPendingTdlibFileIds(rows: TelegramMessageRow[]): number[] {
   const ids = new Set<number>();
   for (const row of rows) {
-    // Photos and short voice files are useful immediately. Full videos are
-    // intentionally tap-to-download; only their small preview is automatic.
-    if (
-      row.mediaFullFileId != null &&
-      row.kind !== 'video' &&
-      row.kind !== 'video_note'
-    ) {
+    // TDLib downloads are asynchronous, so media keeps its thumbnail while the
+    // full file is prefetched in the background. A direct tap can still raise
+    // the same file to a higher priority.
+    if (row.mediaFullFileId != null) {
       ids.add(row.mediaFullFileId);
     }
     if (row.thumbnailFileId != null) ids.add(row.thumbnailFileId);
@@ -151,10 +148,30 @@ export function collectPendingTdlibFileIds(rows: TelegramMessageRow[]): number[]
     if (row.senderAvatarFileId != null) ids.add(row.senderAvatarFileId);
     if (row.kind === 'album') {
       for (const item of row.albumMedia ?? []) {
-        if (item.kind === 'image' && item.mediaFullFileId != null) {
+        if (item.mediaFullFileId != null) {
           ids.add(item.mediaFullFileId);
         }
         if (item.thumbnailFileId != null) ids.add(item.thumbnailFileId);
+      }
+    }
+  }
+  return [...ids];
+}
+
+export function collectPendingTdlibVideoFileIds(rows: TelegramMessageRow[]): number[] {
+  const ids = new Set<number>();
+  for (const row of rows) {
+    if (
+      (row.kind === 'video' || row.kind === 'video_note') &&
+      row.mediaFullFileId != null
+    ) {
+      ids.add(row.mediaFullFileId);
+    }
+    if (row.kind === 'album') {
+      for (const item of row.albumMedia ?? []) {
+        if (item.kind === 'video' && item.mediaFullFileId != null) {
+          ids.add(item.mediaFullFileId);
+        }
       }
     }
   }

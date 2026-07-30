@@ -3,6 +3,7 @@ import { ActivityIndicator, Dimensions, Pressable, StyleSheet, Text, View } from
 import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 import {
   MeBubbleChrome,
 } from './OutgoingBubbleViewportGradient';
@@ -18,6 +19,7 @@ export type TelegramMediaAlbumBubbleProps = {
   items: TelegramAlbumMediaItem[];
   isMe: boolean;
   caption?: string;
+  header?: React.ReactNode;
   time: string;
   status: string;
   styles: TelegramChatStyles;
@@ -47,6 +49,7 @@ export function TelegramMediaAlbumBubble({
   items,
   isMe,
   caption,
+  header,
   time,
   status,
   styles: st,
@@ -73,11 +76,16 @@ export function TelegramMediaAlbumBubble({
   const trimmedCaption = caption?.trim();
   const hasFooter = Boolean(footer);
   const hasReactions = Boolean(reactionsNode);
+  const hasHeader = Boolean(header);
   const gridClipStyle = incomingChannelPost
-    ? hasFooter || trimmedCaption || hasReactions
+    ? hasHeader
+      ? st.albumGridClipStacked
+      : hasFooter || trimmedCaption || hasReactions
       ? st.albumChannelGridClip
       : st.albumChannelGridClipSolo
-    : st.albumGridClip;
+    : hasHeader
+      ? st.albumGridClipStacked
+      : st.albumGridClip;
 
   const renderTile = (item: TelegramAlbumMediaItem, index: number, style: object) => {
     const uri = tileUri(item);
@@ -216,6 +224,22 @@ export function TelegramMediaAlbumBubble({
 
   const albumShell = (
     <>
+      {header ? (
+        <View
+          style={[
+            st.albumHeaderWrap,
+            isMe
+              ? viewportOutgoingGradient
+                ? { backgroundColor: 'transparent' }
+                : { backgroundColor: chatTheme.bubbleMe }
+              : incomingCaptionBg
+                ? { backgroundColor: incomingCaptionBg }
+                : st.albumCaptionOther,
+          ]}
+        >
+          {header}
+        </View>
+      ) : null}
       <View style={[gridClipStyle, { width: albumWidth }]}>
         {grid}
         {!trimmedCaption ? (
@@ -254,22 +278,24 @@ export function TelegramMediaAlbumBubble({
                 ],
           ]}
         >
-          <Text
-            style={[
+          <MessageTextBubbleBody
+            fillWidth
+            text={trimmedCaption}
+            textStyle={[
               st.albumCaptionText,
               isMe ? { color: chatTheme.bubbleMeText } : null,
               !isMe && incomingCaptionText ? { color: incomingCaptionText } : null,
             ]}
-          >
-            {trimmedCaption}
-          </Text>
-          <MessageTimeStatus
-            time={time}
-            status={status}
-            isMe={isMe}
-            compact
-            timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
-            iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+            meta={
+              <MessageTimeStatus
+                time={time}
+                status={status}
+                isMe={isMe}
+                compact
+                timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+                iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+              />
+            }
           />
         </View>
       ) : null}
@@ -304,7 +330,7 @@ export function TelegramMediaAlbumBubble({
         active
         scrollTick={scrollTick}
         fillColor={chatTheme.bubbleMe}
-        style={[st.albumBubble, st.albumBubbleMe]}
+        style={[st.albumBubble, st.albumBubbleMe, { width: albumWidth }]}
       >
         {albumShell}
       </MeBubbleChrome>
@@ -312,7 +338,13 @@ export function TelegramMediaAlbumBubble({
   }
 
   return (
-    <View style={[st.albumBubble, isMe ? st.albumBubbleMe : st.albumBubbleOther]}>
+    <View
+      style={[
+        st.albumBubble,
+        isMe ? st.albumBubbleMe : st.albumBubbleOther,
+        { width: albumWidth },
+      ]}
+    >
       {albumShell}
     </View>
   );

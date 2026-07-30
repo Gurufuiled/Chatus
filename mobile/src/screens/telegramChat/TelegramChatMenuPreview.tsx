@@ -11,7 +11,7 @@ import { VoiceBubble } from '../../components/VoiceBubble';
 import { TelegramMediaAlbumBubble } from '../../components/TelegramMediaAlbumBubble';
 import type { Message } from '../../stores/types';
 import type { ThemeColors } from '../../theme/palettes';
-import { formatTime } from './composer';
+import { formatMessageTime as formatTime } from '../../utils/formatMessageTime';
 import { getTelegramReplyPreviewText, getTelegramReplyThumbnailUri } from './messageRow';
 import type { TelegramChatStyles } from './telegramChatStyles';
 import type { TelegramMessageRow } from './types';

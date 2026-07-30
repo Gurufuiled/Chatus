@@ -247,15 +247,25 @@ export function TelegramChatProfileScreen() {
   const [blockSheetVisible, setBlockSheetVisible] = useState(false);
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
   const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
+  const [draftWallpaperId, setDraftWallpaperId] =
+    useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
 
   const actionMenuAnimation = useRef(new Animated.Value(0)).current;
   const moreMenuAnimation = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
   const moreButtonRef = useRef<View | null>(null);
 
-  const currentThemeId =
-    (uiStore.getState().chatThemeIdByChatId[wallpaperKey] as ChatThemeId | undefined) ??
-    DEFAULT_CHAT_THEME_ID;
+  const currentThemeId = uiStore(
+    (s) =>
+      (s.chatThemeIdByChatId[wallpaperKey] as ChatThemeId | undefined) ??
+      DEFAULT_CHAT_THEME_ID,
+  );
+  const currentWallpaperId = uiStore(
+    (s) =>
+      (s.chatWallpaperIdByChatId[wallpaperKey] as ChatThemeId | undefined) ??
+      ((s.chatThemeIdByChatId[wallpaperKey] as ChatThemeId | undefined) ??
+        DEFAULT_CHAT_THEME_ID),
+  );
 
   const avatarColor = useMemo(() => getAvatarColor(displayName), [displayName]);
   const initial =
@@ -678,8 +688,9 @@ export function TelegramChatProfileScreen() {
   useEffect(() => {
     if (!isThemePickerVisible) {
       setDraftThemeId(currentThemeId);
+      setDraftWallpaperId(currentWallpaperId);
     }
-  }, [currentThemeId, isThemePickerVisible]);
+  }, [currentThemeId, currentWallpaperId, isThemePickerVisible]);
 
   const handleMutePress = useCallback(() => {
     void (async () => {
@@ -764,15 +775,17 @@ export function TelegramChatProfileScreen() {
 
   const handleApplyChatTheme = useCallback(() => {
     uiStore.getState().setChatTheme(wallpaperKey, draftThemeId);
+    uiStore.getState().setChatWallpaper(wallpaperKey, draftWallpaperId);
     setIsThemePickerVisible(false);
-  }, [draftThemeId, wallpaperKey]);
+  }, [draftThemeId, draftWallpaperId, wallpaperKey]);
 
   const openThemePicker = useCallback(() => {
     closeMoreMenu(() => {
       setDraftThemeId(currentThemeId);
+      setDraftWallpaperId(currentWallpaperId);
       setIsThemePickerVisible(true);
     });
-  }, [closeMoreMenu, currentThemeId]);
+  }, [closeMoreMenu, currentThemeId, currentWallpaperId]);
 
   const handleDeleteChatPress = useCallback(() => {
     closeMoreMenu(() => {
@@ -903,7 +916,7 @@ export function TelegramChatProfileScreen() {
     const items: AnchoredPopoverMenuItem[] = [
       {
         key: 'change-wallpaper',
-        label: 'Изменить обои',
+        label: 'Оформление чата',
         iconImage: WALLPAPER_MENU_ICON,
       },
       {
@@ -1181,7 +1194,9 @@ export function TelegramChatProfileScreen() {
       <ChatThemePickerModal
         visible={isThemePickerVisible}
         selectedThemeId={draftThemeId}
+        selectedWallpaperId={draftWallpaperId}
         onSelectTheme={setDraftThemeId}
+        onSelectWallpaper={setDraftWallpaperId}
         onApply={handleApplyChatTheme}
         onClose={() => setIsThemePickerVisible(false)}
       />

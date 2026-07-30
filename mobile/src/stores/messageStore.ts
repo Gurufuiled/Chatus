@@ -36,8 +36,18 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
 
   setMessages: (chatId, messages) =>
     set((state) => {
-      const filteredIncoming = filterHiddenMessages(chatId, messages);
       const existing = state.messagesByChatId[chatId] ?? [];
+      const existingUiKeys = new Map(
+        existing
+          .filter((message) => message.ui_key)
+          .map((message) => [message.id, message.ui_key as string]),
+      );
+      const filteredIncoming = filterHiddenMessages(chatId, messages).map((message) => {
+        const existingUiKey = existingUiKeys.get(message.id);
+        return existingUiKey && !message.ui_key
+          ? { ...message, ui_key: existingUiKey }
+          : message;
+      });
       const now = Date.now();
       const OPTIMISTIC_TTL_MS = 2 * 60 * 1000;
       const serverIds = new Set(filteredIncoming.map((m) => m.id));

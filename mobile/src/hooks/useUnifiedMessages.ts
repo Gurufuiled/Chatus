@@ -57,7 +57,9 @@ export function useUnifiedMessages(
 
   const unifiedMessages = useMemo(() => {
     const unifiedChatus = chatusMessages.map((m) => chatusToUnified(m, myUserId));
-    const unifiedTelegram = telegramMessages.map((m) => telegramToUnified(m, myUserId));
+    const unifiedTelegram = telegramMessages
+      .map((m) => telegramToUnified(m, myUserId))
+      .filter((m): m is NonNullable<typeof m> => m != null);
 
     return mergeTimeline(unifiedChatus, unifiedTelegram);
   }, [chatusMessages, telegramMessages, myUserId]);

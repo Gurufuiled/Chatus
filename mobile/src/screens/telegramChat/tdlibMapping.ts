@@ -8,6 +8,7 @@ import {
 } from '../../services/tdlib/userNameCache';
 import { previewForUnsupported } from './composer';
 import { getTdMediaAlbumId, mergeTelegramFeedRows } from './telegramAlbumRows';
+import { classifyTelegramForwardOriginType } from './telegramForwardOrigin';
 import type {
   TelegramAlbumMediaItem,
   TelegramMessageRow,
@@ -151,11 +152,12 @@ export type ResolvedPhoto = {
   fullFileId?: number;
 };
 
-const scheduledTdlibFileDownloads = new Set<number>();
+const scheduledTdlibFileDownloads = new Map<number, number>();
 
 export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
-  if (scheduledTdlibFileDownloads.has(fileId)) return;
-  scheduledTdlibFileDownloads.add(fileId);
+  const scheduledPriority = scheduledTdlibFileDownloads.get(fileId) ?? 0;
+  if (scheduledPriority >= priority) return;
+  scheduledTdlibFileDownloads.set(fileId, priority);
   void tdlibClient
     .send({
       '@type': 'downloadFile',
@@ -167,7 +169,11 @@ export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
     })
     .catch(() => undefined)
     .finally(() => {
-      setTimeout(() => scheduledTdlibFileDownloads.delete(fileId), 15_000);
+      setTimeout(() => {
+        if (scheduledTdlibFileDownloads.get(fileId) === priority) {
+          scheduledTdlibFileDownloads.delete(fileId);
+        }
+      }, 15_000);
     });
 }
 
@@ -378,9 +384,9 @@ async function resolveForwardOrigin(
   const origin = getNestedRecord(forwardInfoRaw.origin);
   if (!origin) return null;
 
-  const type = origin['@type'];
+  const originKind = classifyTelegramForwardOriginType(origin['@type']);
   try {
-    if (type === 'messageForwardOriginUser') {
+    if (originKind === 'user') {
       const userId = typeof origin.sender_user_id === 'number' ? origin.sender_user_id : null;
       if (userId == null) return null;
       const cachedName = getCachedUserName(userId);
@@ -413,7 +419,7 @@ async function resolveForwardOrigin(
       return { senderName: name, avatarUri: null };
     }
     
-    if (type === 'messageForwardOriginChat' || type === 'messageForwardOriginChannel') {
+    if (originKind === 'chat' || originKind === 'channel') {
       const chatId = typeof origin.sender_chat_id === 'number' 
         ? origin.sender_chat_id 
         : typeof origin.chat_id === 'number' 
@@ -440,12 +446,12 @@ async function resolveForwardOrigin(
       return { senderName: name, avatarUri: null };
     }
 
-    if (type === 'messageForwardOriginMessageImport') {
+    if (originKind === 'import') {
       const name = typeof origin.sender_name === 'string' ? origin.sender_name.trim() : 'Imported';
       return { senderName: name, avatarUri: null };
     }
 
-    if (type === 'messageForwardOriginHiddenUser') {
+    if (originKind === 'hidden_user') {
       const name = typeof origin.sender_name === 'string' ? origin.sender_name.trim() : 'Hidden User';
       return { senderName: name, avatarUri: null };
     }

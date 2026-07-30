@@ -44,6 +44,7 @@ import { ImageBubble } from '../components/ImageBubble';
 import { InputBar, type FilePickResult, type MediaAlbumPickResult, type MediaPickResult } from '../components/InputBar';
 import { TelegramMediaAlbumBubble } from '../components/TelegramMediaAlbumBubble';
 import { MessageTextBubbleBody } from '../components/MessageTextBubbleBody';
+import { ForwardHeader } from '../components/ForwardHeader';
 import { MessageTimeStatus } from '../components/MessageTimeStatus';
 import { ReplySwipeWrapper } from '../components/ReplySwipeWrapper';
 import { ReplyPreview } from '../components/ReplyPreview';
@@ -88,13 +89,14 @@ import {
   CHAT_MSG_VERTICAL_PADDING,
 } from '../presentation/telegramChatUi';
 import {
+  buildInputMessageDocumentContent,
+  buildInputMessagePhotoContent,
   buildInputMessageVideoNoteContent,
-  fileUriToPath,
-  formattedText,
-  formatTime,
+  buildInputMessageVideoContent,
+  buildInputMessageVoiceNoteContent,
   getInputReplyTo,
-  getLocalInputFile,
 } from './telegramChat/composer';
+import { formatMessageTime as formatTime } from '../utils/formatMessageTime';
 import { computeTelegramChannelPostMediaMaxWidth } from './telegramChat/telegramChannelPostLayout';
 import {
   applyReadOutboxStatus,
@@ -129,6 +131,7 @@ import {
 } from './telegramChat/tdlibMapping';
 import {
   collectPendingTdlibFileIds,
+  collectPendingTdlibVideoFileIds,
   patchMessagesWithTdlibFile,
 } from './telegramChat/telegramFileUpdates';
 import {
@@ -211,9 +214,17 @@ export function TelegramChatScreen() {
     messageThreadId,
   } = route.params;
   const telegramWallpaperKey = `telegram:${telegramChatId}`;
-  const storedWallpaperThemeId = uiStore((s) => s.chatThemeIdByChatId[telegramWallpaperKey]);
-  const wallpaperThemeId = storedWallpaperThemeId ?? DEFAULT_CHAT_THEME_ID;
+  const storedThemeId = uiStore((s) => s.chatThemeIdByChatId[telegramWallpaperKey]);
+  const storedWallpaperThemeId = uiStore(
+    (s) => s.chatWallpaperIdByChatId[telegramWallpaperKey],
+  );
+  const wallpaperThemeId =
+    storedWallpaperThemeId ?? storedThemeId ?? DEFAULT_CHAT_THEME_ID;
   const chatTheme = useMemo(
+    () => getChatTheme(storedThemeId ?? DEFAULT_CHAT_THEME_ID, resolvedScheme),
+    [resolvedScheme, storedThemeId],
+  );
+  const chatWallpaperTheme = useMemo(
     () => getChatTheme(wallpaperThemeId, resolvedScheme),
     [resolvedScheme, wallpaperThemeId],
   );
@@ -232,6 +243,20 @@ export function TelegramChatScreen() {
   const [downloadingMediaFileIds, setDownloadingMediaFileIds] = useState<Set<number>>(
     () => new Set(),
   );
+  const schedulePendingMediaDownloads = useCallback((rows: TelegramMessageRow[]) => {
+    const videoIds = collectPendingTdlibVideoFileIds(rows);
+    if (videoIds.length > 0) {
+      setDownloadingMediaFileIds((current) => {
+        const next = new Set(current);
+        videoIds.forEach((fileId) => next.add(fileId));
+        return next;
+      });
+    }
+    const videoIdSet = new Set(videoIds);
+    for (const fileId of collectPendingTdlibFileIds(rows)) {
+      scheduleTdlibFileDownload(fileId, videoIdSet.has(fileId) ? 8 : 16);
+    }
+  }, []);
   const [loading, setLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -261,6 +286,15 @@ export function TelegramChatScreen() {
   const lastTapAtRef = useRef<number>(0);
   const lastTapMessageIdRef = useRef<string | null>(null);
   const [inputBarHeight, setInputBarHeight] = useState(88);
+  const hideSubscribedChannelFooter =
+    isChannel &&
+    !canPost &&
+    channelMemberStatus !== 'chatMemberStatusLeft';
+  useEffect(() => {
+    if (hideSubscribedChannelFooter) {
+      setInputBarHeight(0);
+    }
+  }, [hideSubscribedChannelFooter]);
   const [scrollTick, setScrollTick] = useState(0);
   const lastScrollBumpAtRef = useRef(0);
   const bumpScrollTickThrottled = useCallback(() => {
@@ -1324,9 +1358,7 @@ export function TelegramChatScreen() {
             const cached = await loadTelegramMessagesFromCache(chatId, threadParam);
             if (mountedRef.current && cached.length > 0) {
               mergeMapped(cached);
-              for (const fileId of collectPendingTdlibFileIds(cached)) {
-                scheduleTdlibFileDownload(fileId);
-              }
+              schedulePendingMediaDownloads(cached);
               setLoading(false);
             }
           } catch {
@@ -1341,9 +1373,7 @@ export function TelegramChatScreen() {
             const localMapped = await fetchBatch(true);
             if (mountedRef.current && localMapped.length > 0) {
               mergeMapped(localMapped);
-              for (const fileId of collectPendingTdlibFileIds(localMapped)) {
-                scheduleTdlibFileDownload(fileId);
-              }
+              schedulePendingMediaDownloads(localMapped);
               setLoading(false);
             }
           } catch {
@@ -1354,9 +1384,7 @@ export function TelegramChatScreen() {
         const mapped = await fetchBatch(false);
         if (!mountedRef.current || isStaleLoad()) return;
         mergeMapped(mapped);
-        for (const fileId of collectPendingTdlibFileIds(mapped)) {
-          scheduleTdlibFileDownload(fileId);
-        }
+        schedulePendingMediaDownloads(mapped);
         if (!isStaleLoad()) setLastError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1370,7 +1398,7 @@ export function TelegramChatScreen() {
         setLoadingOlder(false);
       }
     },
-    [chatId, ensureReady, messageThreadId],
+    [chatId, ensureReady, messageThreadId, schedulePendingMediaDownloads],
   );
 
   useFocusEffect(
@@ -1514,9 +1542,7 @@ export function TelegramChatScreen() {
           }).then((row) => {
             if (!row || !mountedRef.current) return;
             setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, row, oldMessageId)));
-            for (const fileId of collectPendingTdlibFileIds([row])) {
-              scheduleTdlibFileDownload(fileId);
-            }
+            schedulePendingMediaDownloads([row]);
             if (type === 'updateMessageSendSucceeded' && oldMessageId != null) {
               void deleteTelegramMessagesFromCache(chatId, threadParam, [oldMessageId]).catch(
                 () => {},
@@ -1529,7 +1555,13 @@ export function TelegramChatScreen() {
         }
       });
       return unsubscribe;
-    }, [chatId, isGroupChat, loadHistory, messageThreadId]),
+    }, [
+      chatId,
+      isGroupChat,
+      loadHistory,
+      messageThreadId,
+      schedulePendingMediaDownloads,
+    ]),
   );
 
   const sendText = useCallback(
@@ -1612,22 +1644,14 @@ export function TelegramChatScreen() {
       markOpenedChatRead();
       try {
         const stableVoiceUri = await ensureLocalFileUri(result.uri, 'telegram-voice.m4a');
-        const localPath = fileUriToPath(stableVoiceUri);
         const response = await sendTdlibWithRecovery({
           '@type': 'sendMessage',
           chat_id: chatId,
           reply_to: getInputReplyTo(activeReplyToMessageId),
-          input_message_content: {
-            '@type': 'inputMessageVoiceNote',
-            voice_note: {
-              '@type': 'inputFileLocal',
-              path: localPath,
-            },
-            duration: Math.max(1, Math.round(result.durationMs / 1000)),
-            waveform: '',
-            caption: null,
-            self_destruct_type: null,
-          },
+          input_message_content: buildInputMessageVoiceNoteContent({
+            voiceUri: stableVoiceUri,
+            durationMs: result.durationMs,
+          }),
         });
         const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
         if (mapped) {
@@ -1796,15 +1820,13 @@ export function TelegramChatScreen() {
     async (result: MediaPickResult) => {
       if (result.kind === 'video') {
         await sendInputMessageContent(
-          {
-            '@type': 'inputMessageVideo',
-            video: getLocalInputFile(result.uri),
-            duration: Math.max(1, Math.round((result.durationMs ?? 1000) / 1000)),
-            width: Math.max(1, Math.round(result.width ?? 1)),
-            height: Math.max(1, Math.round(result.height ?? 1)),
-            supports_streaming: true,
-            caption: formattedText(result.caption),
-          },
+          buildInputMessageVideoContent({
+            videoUri: result.uri,
+            durationMs: result.durationMs,
+            width: result.width,
+            height: result.height,
+            caption: result.caption,
+          }),
           result.caption?.trim() ? `Видео: ${result.caption.trim()}` : 'Видео',
           'Не удалось отправить видео',
           'video',
@@ -1814,13 +1836,12 @@ export function TelegramChatScreen() {
       }
 
       await sendInputMessageContent(
-        {
-          '@type': 'inputMessagePhoto',
-          photo: getLocalInputFile(result.uri),
-          width: Math.max(1, Math.round(result.width ?? 1)),
-          height: Math.max(1, Math.round(result.height ?? 1)),
-          caption: formattedText(result.caption),
-        },
+        buildInputMessagePhotoContent({
+          photoUri: result.uri,
+          width: result.width,
+          height: result.height,
+          caption: result.caption,
+        }),
         result.caption?.trim() ? `Фото: ${result.caption.trim()}` : 'Фото',
         'Не удалось отправить фото',
         'image',
@@ -1871,25 +1892,21 @@ export function TelegramChatScreen() {
 
       const contents = items.map((item, index) => {
         const isLast = index === items.length - 1;
-        const cap = formattedText(isLast ? result.caption : undefined);
         if (item.kind === 'video') {
-          return {
-            '@type': 'inputMessageVideo',
-            video: getLocalInputFile(item.uri),
-            duration: Math.max(1, Math.round((item.durationMs ?? 1000) / 1000)),
-            width: Math.max(1, Math.round(item.width ?? 1)),
-            height: Math.max(1, Math.round(item.height ?? 1)),
-            supports_streaming: true,
-            caption: cap,
-          };
+          return buildInputMessageVideoContent({
+            videoUri: item.uri,
+            durationMs: item.durationMs,
+            width: item.width,
+            height: item.height,
+            caption: isLast ? result.caption : undefined,
+          });
         }
-        return {
-          '@type': 'inputMessagePhoto',
-          photo: getLocalInputFile(item.uri),
-          width: Math.max(1, Math.round(item.width ?? 1)),
-          height: Math.max(1, Math.round(item.height ?? 1)),
-          caption: cap,
-        };
+        return buildInputMessagePhotoContent({
+          photoUri: item.uri,
+          width: item.width,
+          height: item.height,
+          caption: isLast ? result.caption : undefined,
+        });
       });
 
       try {
@@ -1933,12 +1950,7 @@ export function TelegramChatScreen() {
   const sendFile = useCallback(
     async (result: FilePickResult) => {
       await sendInputMessageContent(
-        {
-          '@type': 'inputMessageDocument',
-          document: getLocalInputFile(result.uri),
-          disable_content_type_detection: false,
-          caption: formattedText(),
-        },
+        buildInputMessageDocumentContent({ documentUri: result.uri }),
         result.name.trim() || 'Файл',
         'Не удалось отправить файл',
         'file',
@@ -2024,30 +2036,13 @@ export function TelegramChatScreen() {
         ) : null;
 
       const forwardHeaderNode = item.forwardInfo ? (
-        <View style={styles.forwardHeaderContainer}>
-          <Text style={[styles.forwardPrefixText, { color: isMe ? chatTheme.replyAccentMe : colors.accent }]}>
-            Переслано от
-          </Text>
-          <View style={styles.forwardAuthorRow}>
-            {item.forwardInfo.avatarUri ? (
-              <Image
-                source={{ uri: item.forwardInfo.avatarUri }}
-                style={styles.forwardAvatar}
-                contentFit="cover"
-                cachePolicy="disk"
-              />
-            ) : (
-              <View style={[styles.forwardAvatarFallback, { backgroundColor: isMe ? chatTheme.replyAccentMe : colors.accent }]}>
-                <Text style={styles.forwardAvatarInitial}>
-                  {(item.forwardInfo.senderName?.[0] || '?').toUpperCase()}
-                </Text>
-              </View>
-            )}
-            <Text style={[styles.forwardAuthorText, { color: isMe ? chatTheme.replyAccentMe : colors.accent }]} numberOfLines={1}>
-              {item.forwardInfo.senderName}
-            </Text>
-          </View>
-        </View>
+        <ForwardHeader
+          isMe={isMe}
+          name={item.forwardInfo.senderName}
+          avatarUri={item.forwardInfo.avatarUri}
+          labelColor={isMe ? chatTheme.forwardHeaderMeSub : colors.accent}
+          titleColor={isMe ? chatTheme.forwardHeaderMe : colors.accent}
+        />
       ) : null;
 
       const bubbleHeader =
@@ -2411,6 +2406,7 @@ export function TelegramChatScreen() {
             items={item.albumMedia}
             isMe={isMe}
             caption={item.text}
+            header={bubbleHeader}
             time={formatTime(item.dateMs)}
             status={item.status}
             styles={styles}
@@ -2982,7 +2978,7 @@ export function TelegramChatScreen() {
           floating
         />
 
-      <View style={{ flex: 1, backgroundColor: chatTheme.canvasColor }}>
+      <View style={{ flex: 1, backgroundColor: chatWallpaperTheme.canvasColor }}>
         <BlurTargetView ref={blurTargetRef} collapsable={false} style={styles.flexChatBody}>
           <View style={styles.wallpaperLayer} pointerEvents="none">
             <ChatBackgroundPattern themeId={wallpaperThemeId} />
@@ -3234,35 +3230,21 @@ export function TelegramChatScreen() {
                     Alert.alert('Информация', 'Функция беззвучной отправки будет реализована позже.');
                   }}
                 />
-              ) : (
+              ) : hideSubscribedChannelFooter ? null : (
                 <View style={styles.readOnlyFooter} accessibilityLabel="Панель действий">
                   {isChannel ? (
-                    channelMemberStatus === 'chatMemberStatusLeft' ? (
-                      <Pressable 
-                        onPress={() => {
-                          tdlibClient.send({ '@type': 'joinChat', chat_id: chatId })
-                            .then(() => setChannelMemberStatus('chatMemberStatusMember'))
-                            .catch(() => Alert.alert('Ошибка', 'Не удалось подписаться на канал'));
-                        }}
-                        style={{ paddingHorizontal: 24, paddingVertical: 8 }}
-                      >
-                        <Text style={[styles.readOnlyText, { color: colors.accent, fontWeight: '500' }]}>
-                          Подписаться
-                        </Text>
-                      </Pressable>
-                    ) : (
-                      <Pressable 
-                        onPress={() => {
-                          const nextMute = true; // Placeholder for toggle mute
-                          Alert.alert('Звук', 'Переключение уведомлений будет реализовано позже.');
-                        }}
-                        style={{ paddingHorizontal: 24, paddingVertical: 8 }}
-                      >
-                        <Text style={[styles.readOnlyText, { color: colors.textSecondary }]}>
-                          Убрать звук
-                        </Text>
-                      </Pressable>
-                    )
+                    <Pressable
+                      onPress={() => {
+                        tdlibClient.send({ '@type': 'joinChat', chat_id: chatId })
+                          .then(() => setChannelMemberStatus('chatMemberStatusMember'))
+                          .catch(() => Alert.alert('Ошибка', 'Не удалось подписаться на канал'));
+                      }}
+                      style={{ paddingHorizontal: 24, paddingVertical: 8 }}
+                    >
+                      <Text style={[styles.readOnlyText, { color: colors.accent, fontWeight: '500' }]}>
+                        Подписаться
+                      </Text>
+                    </Pressable>
                   ) : (
                     <Text style={styles.readOnlyText}>Только для чтения</Text>
                   )}

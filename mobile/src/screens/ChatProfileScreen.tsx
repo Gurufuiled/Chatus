@@ -368,6 +368,8 @@ export function ChatProfileScreen() {
   const [blockSheetVisible, setBlockSheetVisible] = useState(false);
   const [isThemePickerVisible, setIsThemePickerVisible] = useState(false);
   const [draftThemeId, setDraftThemeId] = useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
+  const [draftWallpaperId, setDraftWallpaperId] =
+    useState<ChatThemeId>(DEFAULT_CHAT_THEME_ID);
   const [isEditContactVisible, setIsEditContactVisible] = useState(false);
   const [firstNameDraft, setFirstNameDraft] = useState('');
   const [lastNameDraft, setLastNameDraft] = useState('');
@@ -393,6 +395,11 @@ export function ChatProfileScreen() {
   const isBlocked = uiStore((s) => Boolean(s.blockedUserIds[userId]));
   const currentThemeId = uiStore(
     (s) => (s.chatThemeIdByChatId[chatId] as ChatThemeId | undefined) ?? DEFAULT_CHAT_THEME_ID
+  );
+  const currentWallpaperId = uiStore(
+    (s) =>
+      (s.chatWallpaperIdByChatId[chatId] as ChatThemeId | undefined) ??
+      ((s.chatThemeIdByChatId[chatId] as ChatThemeId | undefined) ?? DEFAULT_CHAT_THEME_ID)
   );
 
   useLayoutEffect(() => {
@@ -432,8 +439,9 @@ export function ChatProfileScreen() {
   useEffect(() => {
     if (!isThemePickerVisible) {
       setDraftThemeId(currentThemeId);
+      setDraftWallpaperId(currentWallpaperId);
     }
-  }, [currentThemeId, isThemePickerVisible]);
+  }, [currentThemeId, currentWallpaperId, isThemePickerVisible]);
 
   useEffect(() => {
     const listenerId = scrollY.addListener(({ value }) => {
@@ -716,14 +724,16 @@ export function ChatProfileScreen() {
   const openThemePicker = useCallback(() => {
     closeMoreMenu(() => {
       setDraftThemeId(currentThemeId);
+      setDraftWallpaperId(currentWallpaperId);
       setIsThemePickerVisible(true);
     });
-  }, [closeMoreMenu, currentThemeId]);
+  }, [closeMoreMenu, currentThemeId, currentWallpaperId]);
 
   const handleApplyChatTheme = useCallback(() => {
     uiStore.getState().setChatTheme(chatId, draftThemeId);
+    uiStore.getState().setChatWallpaper(chatId, draftWallpaperId);
     setIsThemePickerVisible(false);
-  }, [chatId, draftThemeId]);
+  }, [chatId, draftThemeId, draftWallpaperId]);
 
   const deleteChatLocally = useCallback(async () => {
     try {
@@ -886,7 +896,7 @@ export function ChatProfileScreen() {
     () => [
       {
         key: 'change-wallpaper',
-        label: 'Изменить обои',
+        label: 'Оформление чата',
         iconImage: WALLPAPER_MENU_ICON,
       },
       {
@@ -1100,7 +1110,9 @@ export function ChatProfileScreen() {
       <ChatThemePickerModal
         visible={isThemePickerVisible}
         selectedThemeId={draftThemeId}
+        selectedWallpaperId={draftWallpaperId}
         onSelectTheme={setDraftThemeId}
+        onSelectWallpaper={setDraftWallpaperId}
         onApply={handleApplyChatTheme}
         onClose={() => setIsThemePickerVisible(false)}
       />

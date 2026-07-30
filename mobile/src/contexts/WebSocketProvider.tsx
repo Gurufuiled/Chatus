@@ -582,6 +582,9 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
               (mapped.media?.length ? mapped.media : sending.media);
             messageStore.getState().updateMessage(msg.chat_id, sending.id, {
               id: mapped.id,
+              // Keep the FlatList key stable while the temporary id is replaced
+              // by the server id. Otherwise iOS remounts the bubble on ACK.
+              ui_key: sending.ui_key ?? sending.id,
               content: mapped.content ?? null,
               reply_to_id: mapped.reply_to_id,
               forwarded_from_message_id: mapped.forwarded_from_message_id ?? null,

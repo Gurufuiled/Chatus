@@ -32,9 +32,9 @@ export function MessageTextBubbleBody({
   hasViews = false,
 }: MessageTextBubbleBodyProps) {
   const body = children ?? text;
-  const metaSpacer = hasViews
-    ? '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'
-    : '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0';
+  const minimumMetaWidth = hasViews ? 82 : 48;
+  const [metaWidth, setMetaWidth] = React.useState(minimumMetaWidth);
+  const reservedMetaWidth = Math.max(minimumMetaWidth, metaWidth) + 6;
 
   return (
     <View
@@ -44,11 +44,20 @@ export function MessageTextBubbleBody({
         styles.positionedContent,
       ]}
     >
-      <Text style={[textStyle, styles.messageText]}>
+      <Text style={[textStyle, styles.messageText, { paddingRight: reservedMetaWidth }]}>
         {body}
-        {metaSpacer}
       </Text>
-      <View style={styles.metaWrap}>{meta}</View>
+      <View
+        style={styles.metaWrap}
+        onLayout={(event) => {
+          const width = Math.ceil(event.nativeEvent.layout.width);
+          if (width > 0 && width !== metaWidth) {
+            setMetaWidth(width);
+          }
+        }}
+      >
+        {meta}
+      </View>
     </View>
   );
 }

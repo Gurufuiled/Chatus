@@ -50,6 +50,8 @@ const META_ROW_GAP = 6;
 const ANIMATION_DURATION_MS = 320;
 const COLLAPSE_DELAY_MS = 180;
 const ACTIVE_NOTE_RELEASE_DELAY_MS = 220;
+/** AVPlayer needs a short detach window after VideoView leaves the hierarchy on iOS. */
+const PLAYER_SESSION_RELEASE_DELAY_MS = Platform.OS === 'ios' ? 280 : 0;
 const REPLY_SWIPE_TRIGGER = 34;
 const REPLY_SWIPE_MAX = 72;
 const GENERATED_THUMBNAIL_TIME_MS = 0;
@@ -433,6 +435,7 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
   const replyHasTriggered = useSharedValue(false);
   const replyTriggerPop = useSharedValue(0);
   const collapseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playerReleaseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = React.useRef(true);
   const suppressPressUntilRef = React.useRef(0);
   const scrubProgressRef = React.useRef<number | null>(null);
@@ -534,6 +537,28 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
     }
   }, []);
 
+  const clearPlayerReleaseTimer = React.useCallback(() => {
+    if (playerReleaseTimerRef.current) {
+      clearTimeout(playerReleaseTimerRef.current);
+      playerReleaseTimerRef.current = null;
+    }
+  }, []);
+
+  const releasePlayerAfterViewDetach = React.useCallback(() => {
+    clearPlayerReleaseTimer();
+    const release = () => {
+      playerReleaseTimerRef.current = null;
+      if (isMountedRef.current) {
+        onReleasePlayerSession();
+      }
+    };
+    if (PLAYER_SESSION_RELEASE_DELAY_MS > 0) {
+      playerReleaseTimerRef.current = setTimeout(release, PLAYER_SESSION_RELEASE_DELAY_MS);
+      return;
+    }
+    requestAnimationFrame(release);
+  }, [clearPlayerReleaseTimer, onReleasePlayerSession]);
+
   const stopVoicePlayback = React.useCallback(() => {
     void VoicePlayerService.stop().catch(() => {});
   }, []);
@@ -569,7 +594,6 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
 
   const finishCollapse = React.useCallback(() => {
     if (!isMountedRef.current) {
-      onReleasePlayerSession();
       return;
     }
     try {
@@ -585,10 +609,8 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
     setIsThumbScrubbing(false);
     setIsThumbScrubPending(false);
     setScrubProgressValue(null);
-    requestAnimationFrame(() => {
-      onReleasePlayerSession();
-    });
-  }, [onReleasePlayerSession, player, setScrubProgressValue]);
+    releasePlayerAfterViewDetach();
+  }, [player, releasePlayerAfterViewDetach, setScrubProgressValue]);
 
   const hardStopPlayback = React.useCallback(() => {
     clearCollapseTimer();
@@ -614,11 +636,15 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
     setIsThumbScrubbing(false);
     setIsThumbScrubPending(false);
     setScrubProgressValue(null);
-    requestAnimationFrame(() => {
-      isMountedRef.current = false;
-      onReleasePlayerSession();
-    });
-  }, [clearCollapseTimer, normalizedUri, noteId, onReleasePlayerSession, player, setScrubProgressValue]);
+    releasePlayerAfterViewDetach();
+  }, [
+    clearCollapseTimer,
+    normalizedUri,
+    noteId,
+    player,
+    releasePlayerAfterViewDetach,
+    setScrubProgressValue,
+  ]);
 
   const animateProgress = React.useCallback(
     (target: number, onFinished?: () => void) => {
@@ -655,6 +681,7 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
   const expandInline = React.useCallback(() => {
     if (!normalizedUri) return;
     clearCollapseTimer();
+    clearPlayerReleaseTimer();
     stopVoicePlayback();
     if (getActiveVideoNoteId() !== noteId) {
       setActiveVideoNoteId(noteId);
@@ -676,7 +703,15 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
         }
       }
     });
-  }, [animateProgress, clearCollapseTimer, normalizedUri, noteId, player, stopVoicePlayback]);
+  }, [
+    animateProgress,
+    clearCollapseTimer,
+    clearPlayerReleaseTimer,
+    normalizedUri,
+    noteId,
+    player,
+    stopVoicePlayback,
+  ]);
 
   const syncPlaybackProgressFromCurrentPosition = React.useCallback(() => {
     const dur = effectiveDurationRef.current;
@@ -774,10 +809,17 @@ const VideoNoteBubblePlayerSession = React.memo(function VideoNoteBubblePlayerSe
     return () => {
       isMountedRef.current = false;
       clearCollapseTimer();
+      clearPlayerReleaseTimer();
       // Sync pause + ownership clear; delayed path must never touch player after release.
       releasePlaybackOwnership(true);
     };
-  }, [clearCollapseTimer, normalizedUri, noteId, releasePlaybackOwnership]);
+  }, [
+    clearCollapseTimer,
+    clearPlayerReleaseTimer,
+    normalizedUri,
+    noteId,
+    releasePlaybackOwnership,
+  ]);
 
   React.useEffect(() => {
     return subscribeToActiveVideoNote((activeId) => {

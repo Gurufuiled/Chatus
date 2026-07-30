@@ -324,6 +324,15 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
         console.warn('Migration v16->v17 failed:', e);
       }
     }
+    // v17->v18: TDLib 1.8.66 renamed forward-origin types. Drop rows that
+    // were cached before the mapper learned the new names.
+    if (currentVersion >= 17 && currentVersion < 18) {
+      try {
+        await db.execAsync('DELETE FROM telegram_messages;');
+      } catch (e) {
+        console.warn('Migration v17->v18 failed:', e);
+      }
+    }
     await db.execAsync(SCHEMA_SQL);
     await normalizeLegacyMessageTransport(db);
     await db.runAsync('PRAGMA user_version = ' + DB_VERSION);

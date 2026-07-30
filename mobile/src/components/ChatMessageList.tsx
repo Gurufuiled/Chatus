@@ -182,6 +182,7 @@ function MediaAlbumBubble({
   incomingCaptionBorder,
   incomingCaptionText,
   incomingCaptionMeta,
+  header,
 }: {
   message: Message;
   lineId: string;
@@ -200,6 +201,7 @@ function MediaAlbumBubble({
   incomingCaptionBorder?: string;
   incomingCaptionText?: string;
   incomingCaptionMeta?: string;
+  header?: React.ReactNode;
 }) {
   const media = (message.media ?? [])
     .filter((item) => item.remote_url?.trim())
@@ -209,6 +211,7 @@ function MediaAlbumBubble({
   const visibleMedia = media.slice(0, 9);
   const gap = 1.5;
   const caption = message.content?.trim();
+  const hasHeader = Boolean(header);
 
   const renderTile = (item: VisualMediaItem, index: number, style: object) => {
     const kind = getVisualMediaKind(message, item);
@@ -311,7 +314,28 @@ function MediaAlbumBubble({
 
   const albumShell = (
     <>
-      <View style={[styles.albumGridClip, { width: ALBUM_BUBBLE_WIDTH }]}>
+      {header ? (
+        <View
+          style={[
+            styles.albumHeaderWrap,
+            isMe
+              ? viewportOutgoingGradient
+                ? { backgroundColor: 'transparent' }
+                : { backgroundColor: chatTheme.bubbleMe }
+              : incomingCaptionBg
+                ? { backgroundColor: incomingCaptionBg }
+                : styles.albumCaptionOther,
+          ]}
+        >
+          {header}
+        </View>
+      ) : null}
+      <View
+        style={[
+          hasHeader ? styles.albumGridClipStacked : styles.albumGridClip,
+          { width: ALBUM_BUBBLE_WIDTH },
+        ]}
+      >
         {grid}
         {!caption ? (
           <View style={styles.albumTimeOverlay}>
@@ -347,23 +371,25 @@ function MediaAlbumBubble({
                 ],
           ]}
         >
-          <Text
-            style={[
+          <MessageTextBubbleBody
+            fillWidth
+            text={caption}
+            textStyle={[
               styles.albumCaptionText,
               isMe ? { color: chatTheme.bubbleMeText } : null,
               !isMe && incomingCaptionText ? { color: incomingCaptionText } : null,
             ]}
-          >
-            {caption}
-          </Text>
-          <MessageTimeStatus
-            time={time}
-            status={status}
-            isMe={isMe}
-            compact
-            timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
-            iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
-            source={message.source}
+            meta={
+              <MessageTimeStatus
+                time={time}
+                status={status}
+                isMe={isMe}
+                compact
+                timeColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+                iconColor={isMe ? chatTheme.bubbleMeMeta : incomingCaptionMeta}
+                source={message.source}
+              />
+            }
           />
         </View>
       ) : null}
@@ -386,7 +412,7 @@ function MediaAlbumBubble({
         active
         scrollTick={scrollTick}
         fillColor={chatTheme.bubbleMe}
-        style={[styles.albumBubble, styles.albumBubbleMe]}
+        style={[styles.albumBubble, styles.albumBubbleMe, { width: ALBUM_BUBBLE_WIDTH }]}
       >
         {albumShell}
       </MeBubbleChrome>
@@ -394,7 +420,13 @@ function MediaAlbumBubble({
   }
 
   return (
-    <View style={[styles.albumBubble, isMe ? styles.albumBubbleMe : styles.albumBubbleOther]}>
+    <View
+      style={[
+        styles.albumBubble,
+        isMe ? styles.albumBubbleMe : styles.albumBubbleOther,
+        { width: ALBUM_BUBBLE_WIDTH },
+      ]}
+    >
       {albumShell}
     </View>
   );
@@ -1181,13 +1213,6 @@ const MessageRow = React.memo(function MessageRow({
     selectionMode || !effectiveAllowReactions || !(bodyItem.reactions?.length ?? 0)
       ? undefined
       : bodyItem.reactions;
-  const isForwarded = !!(bodyItem.forwarded_from_name || bodyItem.forwarded_from_message_id);
-  const forwardBorderStyle = isForwarded ? {
-    borderLeftWidth: 3,
-    borderLeftColor: isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent,
-    paddingLeft: 8,
-    marginLeft: 2,
-  } : null;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
 
   React.useEffect(() => {
@@ -1671,7 +1696,7 @@ const MessageRow = React.memo(function MessageRow({
             <MessageTextBubbleBody
               text={searchHighlightQuery ? undefined : displayContent}
               textStyle={[styles.textContent, { color: themeColors.textPrimary }]}
-              rowStyle={[styles.bubbleContentRow, forwardBorderStyle]}
+              rowStyle={styles.bubbleContentRow}
               meta={
                 <MessageTimeStatus
                   time={formatTime(bodyItem.created_at)}
@@ -1724,7 +1749,7 @@ const MessageRow = React.memo(function MessageRow({
               styles.textContentMe,
               { color: chatTheme.bubbleMeText },
             ]}
-            rowStyle={[styles.bubbleContentRow, forwardBorderStyle]}
+            rowStyle={styles.bubbleContentRow}
             meta={
               <MessageTimeStatus
                 time={formatTime(bodyItem.created_at)}
@@ -1784,8 +1809,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingDurationColor={!isMe ? themeColors.textSecondary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
         />
       );
 
@@ -2015,6 +2038,7 @@ const MessageRow = React.memo(function MessageRow({
           incomingCaptionBorder={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionText={!isMe ? themeColors.textPrimary : undefined}
           incomingCaptionMeta={!isMe ? themeColors.textSecondary : undefined}
+          header={replySnippet ? null : renderIncomingHeader()}
         />
       );
 
@@ -2116,8 +2140,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
         />
       );
 
@@ -2235,8 +2257,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
         />
       );
 
@@ -2351,8 +2371,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingFileNameColor={!isMe ? themeColors.textPrimary : undefined}
           incomingSecondaryTextColor={!isMe ? themeColors.textSecondary : undefined}
           incomingCaptionColor={!isMe ? themeColors.textPrimary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
         />
       );
 
@@ -2826,7 +2844,8 @@ export const ChatMessageList = React.memo(function ChatMessageList({
     if ('kind' in row && row.kind === 'sticker_group') {
       return `sg:${row.messages.map((m) => m.id).join(':')}`;
     }
-    return (row as Message).id;
+    const message = row as Message;
+    return message.ui_key ?? message.id;
   }, []);
 
   return (
@@ -3104,6 +3123,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: '#D8DEE7',
+  },
+  albumGridClipStacked: {
+    borderRadius: 0,
+    overflow: 'hidden',
+    backgroundColor: '#D8DEE7',
+  },
+  albumHeaderWrap: {
+    paddingHorizontal: 10,
+    paddingTop: 7,
+    paddingBottom: 2,
   },
   albumRow: {
     flexDirection: 'row',
