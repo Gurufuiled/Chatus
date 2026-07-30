@@ -218,10 +218,12 @@ const styles = StyleSheet.create({
   },
   time: {
     fontSize: typography.timeStatus,
+    lineHeight: typography.timeStatus + 2,
     color: colors.textSecondary,
   },
   timeCompact: {
     fontSize: 11,
+    lineHeight: 13,
   },
   timeMe: {
     color: colors.textSecondaryMuted,

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import type { SharedValue } from 'react-native-reanimated';
 import { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
@@ -57,6 +58,7 @@ export function useChatComposerKeyboardLiftStyles(
   insetsBottom = 0,
   suppressDockPaddingShared?: SharedValue<boolean>,
 ) {
+  const controllerKeyboard = useReanimatedKeyboardAnimation();
   const restPad = Math.max(insetsBottom, CHAT_COMPOSER_DOCK_PADDING_MIN);
   const restPadShared = useSharedValue(restPad);
   const openPadShared = useSharedValue(CHAT_COMPOSER_DOCK_PADDING_WHEN_KEYBOARD_OPEN);
@@ -75,7 +77,12 @@ export function useChatComposerKeyboardLiftStyles(
         paddingBottom: rest,
       };
     }
-    const kb = Math.max(animatedKeyboard.height.value, 0);
+    // On iOS this value follows the keyboard frame during an interactive
+    // scroll-dismiss, so the composer and the list move on the same frame.
+    const kb =
+      Platform.OS === 'ios'
+        ? Math.max(-controllerKeyboard.height.value, 0)
+        : Math.max(animatedKeyboard.height.value, 0);
     const offset =
       CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET || CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT
         ? kb
@@ -91,7 +98,10 @@ export function useChatComposerKeyboardLiftStyles(
     const applyLift =
       CHAT_COMPOSER_APPLY_KEYBOARD_ANIMATION_OFFSET || CHAT_COMPOSER_APPLY_ANDROID_DOCK_KEYBOARD_LIFT;
     if (!applyLift) return { marginBottom: 0 };
-    const kb = Math.max(animatedKeyboard.height.value, 0);
+    const kb =
+      Platform.OS === 'ios'
+        ? Math.max(-controllerKeyboard.height.value, 0)
+        : Math.max(animatedKeyboard.height.value, 0);
     const rest = restPadShared.value;
     const open = openPadShared.value;
     const dockPad = dockPaddingForKeyboardHeight(kb, rest, open);

@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { CallProvider } from './src/contexts/CallContext';
@@ -89,27 +90,29 @@ export default function App() {
   return (
     <BootstrapErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider>
-          <SafeAreaProvider>
-            <AuthProvider initialSession={initialSession}>
-              <WebSocketProvider>
-                <VoicePlayerProvider>
-                  <CallProvider>
-                    <GroupCallProvider>
-                      <ThemedNavigationContainer>
-                        <ThemedStatusBar />
-                        <RootNavigator />
-                        <InAppPushNotification />
-                        <TelegramTdlibNotificationListener />
-                        <AppUpdateGate />
-                      </ThemedNavigationContainer>
-                    </GroupCallProvider>
-                  </CallProvider>
-                </VoicePlayerProvider>
-              </WebSocketProvider>
-            </AuthProvider>
-          </SafeAreaProvider>
-        </ThemeProvider>
+        <KeyboardProvider preload={false}>
+          <ThemeProvider>
+            <SafeAreaProvider>
+              <AuthProvider initialSession={initialSession}>
+                <WebSocketProvider>
+                  <VoicePlayerProvider>
+                    <CallProvider>
+                      <GroupCallProvider>
+                        <ThemedNavigationContainer>
+                          <ThemedStatusBar />
+                          <RootNavigator />
+                          <InAppPushNotification />
+                          <TelegramTdlibNotificationListener />
+                          <AppUpdateGate />
+                        </ThemedNavigationContainer>
+                      </GroupCallProvider>
+                    </CallProvider>
+                  </VoicePlayerProvider>
+                </WebSocketProvider>
+              </AuthProvider>
+            </SafeAreaProvider>
+          </ThemeProvider>
+        </KeyboardProvider>
       </GestureHandlerRootView>
     </BootstrapErrorBoundary>
   );

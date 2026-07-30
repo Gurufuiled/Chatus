@@ -19,10 +19,6 @@ const CHAT_THEME_IMAGE_ASSETS = {
   meadow: require('../assets/chat-themes/bg_cyberpunk_doodle.png'),
   frost: require('../assets/chat-themes/bg_snow_doodle.png'),
   sunset: require('../assets/chat-themes/bg_holiday_doodle.png'),
-  /** Светлая «Без темы»: `bg_default_light_doodle` (арт preview wall_light_v2) + `@2x`/`@3x`. */
-  defaultLightDoodle: require('../assets/chat-themes/bg_default_light_doodle.png'),
-  /** Тёмная «Без темы»: `bg_night_doodle` (арт preview wall_dark_v1) + `@2x`/`@3x`. */
-  night: require('../assets/chat-themes/bg_night_doodle.png'),
 } as const;
 
 export type ChatThemeId = 'default' | 'meadow' | 'frost' | 'sunset';
@@ -47,7 +43,7 @@ export type ChatTheme = {
   deletedBubbleMe: string;
   deletedTextMe: string;
   canvasColor: string;
-  wallpaperKind: 'default-image' | 'asset-image';
+  wallpaperKind: 'solid' | 'default-image' | 'asset-image';
   wallpaperBase: string;
   wallpaperTint: string;
   wallpaperAsset?: ImageSourcePropType;
@@ -60,27 +56,26 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
   default: {
     id: 'default',
     name: 'Без темы',
-    /** Исходящий бабл — зелёный как в Telegram под дефолтные зелёные обои. */
-    bubbleMe: '#5CBF4F',
+    /** Светлая тема по умолчанию: чистый белый фон и синий исходящий бабл. */
+    bubbleMe: '#3390EC',
     bubbleMeText: '#FFFFFF',
     bubbleMeMeta: 'rgba(255,255,255,0.88)',
-    /** Акценты внутри бабла (ссылки, волна голоса) — чуть темнее основного зелёного. */
-    bubbleMeAccent: '#3A9A3A',
-    /** Чипы реакций на своих сообщениях — заметнее «кислотный» зелёный. */
-    reactionMeAccent: '#00C853',
-    replyBubbleMe: '#7FD96E',
-    replyAccentMe: '#FFF9C4',
+    /** Акценты внутри бабла (ссылки, волна голоса) — чуть темнее основного синего. */
+    bubbleMeAccent: '#1976D2',
+    /** Чипы реакций на своих сообщениях используют насыщенный синий. */
+    reactionMeAccent: '#0D6ECA',
+    replyBubbleMe: '#64A9EE',
+    replyAccentMe: '#D8ECFF',
     replyTextMe: 'rgba(255,255,255,0.92)',
-    replyAuthorMe: '#FFF3B0',
+    replyAuthorMe: '#E7F4FF',
     forwardHeaderMeSub: 'rgba(255,255,255,0.55)',
     forwardHeaderMe: 'rgba(255,255,255,0.96)',
-    deletedBubbleMe: '#C8E6C9',
-    deletedTextMe: '#2E6B32',
-    canvasColor: '#E6F2EE',
-    wallpaperKind: 'asset-image',
-    wallpaperBase: '#DDECE8',
-    wallpaperTint: 'rgba(255, 255, 255, 0.06)',
-    wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.defaultLightDoodle,
+    deletedBubbleMe: '#D9EBFC',
+    deletedTextMe: '#356B9E',
+    canvasColor: '#FFFFFF',
+    wallpaperKind: 'solid',
+    wallpaperBase: '#FFFFFF',
+    wallpaperTint: 'transparent',
     previewBadge: '×',
   },
   meadow: {
@@ -153,7 +148,7 @@ export const CHAT_THEMES: Record<ChatThemeId, ChatTheme> = {
 
 export const CHAT_THEME_ORDER: ChatThemeId[] = ['default', 'meadow', 'frost', 'sunset'];
 
-/** «Без темы» при тёмной теме — `bg_night_doodle` (wall_dark_v1) + `@2x`/`@3x`. */
+/** «Без темы» при тёмной теме — однотонный фон как в веб-версии Chatus. */
 const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
   id: 'default',
   name: 'Без темы',
@@ -169,11 +164,10 @@ const DEFAULT_CHAT_THEME_DARK: ChatTheme = {
   forwardHeaderMe: 'rgba(255,255,255,0.95)',
   deletedBubbleMe: '#2A3544',
   deletedTextMe: 'rgba(255,255,255,0.65)',
-  canvasColor: '#141820',
-  wallpaperKind: 'asset-image',
-  wallpaperBase: '#10151C',
-  wallpaperTint: 'rgba(255,255,255,0.015)',
-  wallpaperAsset: CHAT_THEME_IMAGE_ASSETS.night,
+  canvasColor: '#0E1621',
+  wallpaperKind: 'solid',
+  wallpaperBase: '#0E1621',
+  wallpaperTint: 'transparent',
   previewBadge: '×',
 };
 
@@ -197,7 +191,8 @@ export function getOutgoingReactionAccent(theme: ChatTheme): string {
   return theme.reactionMeAccent ?? theme.bubbleMeAccent;
 }
 
-function getChatWallpaperSource(theme: ChatTheme): ImageSourcePropType {
+function getChatWallpaperSource(theme: ChatTheme): ImageSourcePropType | null {
+  if (theme.wallpaperKind === 'solid') return null;
   return theme.wallpaperKind === 'default-image' ? DEFAULT_CHAT_BACKGROUND : theme.wallpaperAsset!;
 }
 
@@ -234,17 +229,19 @@ export function ChatWallpaper({
         style,
       ]}
     >
-      <Image
-        source={source}
-        contentFit="cover"
-        style={[
-          styles.wallpaperImageOverscan,
-          styles.wallpaperImage,
-          rounded && styles.wallpaperRounded,
-        ]}
-        cachePolicy="memory-disk"
-        transition={0}
-      />
+      {source ? (
+        <Image
+          source={source}
+          contentFit="cover"
+          style={[
+            styles.wallpaperImageOverscan,
+            styles.wallpaperImage,
+            rounded && styles.wallpaperRounded,
+          ]}
+          cachePolicy="memory-disk"
+          transition={0}
+        />
+      ) : null}
       <View style={[styles.overlay, { backgroundColor: tintColor }]} />
       {children}
     </View>
@@ -268,13 +265,23 @@ export const ChatThemePreview = React.memo(function ChatThemePreview({
     <View style={[styles.previewCard, selected && styles.previewCardSelected]}>
       <View style={styles.previewSurface}>
         <View style={styles.previewInner}>
-          <Image
-            source={source}
-            contentFit="cover"
-            style={[StyleSheet.absoluteFillObject, styles.previewInnerImage]}
-            cachePolicy="memory-disk"
-            transition={0}
-          />
+          {source ? (
+            <Image
+              source={source}
+              contentFit="cover"
+              style={[StyleSheet.absoluteFillObject, styles.previewInnerImage]}
+              cachePolicy="memory-disk"
+              transition={0}
+            />
+          ) : (
+            <View
+              style={[
+                StyleSheet.absoluteFillObject,
+                styles.previewInnerImage,
+                { backgroundColor: theme.wallpaperBase },
+              ]}
+            />
+          )}
           <View style={[styles.previewOverlay, { backgroundColor: 'rgba(255,255,255,0.01)' }]} />
           <View style={styles.previewGlassChip} />
           <View style={styles.previewBubbleOther} />

@@ -126,8 +126,7 @@ export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: 
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const winH = Dimensions.get('window').height;
-  const sheetLiftY = winH * 0.15;
-  const maxSheetH = Math.min(winH, winH * 0.92 + sheetLiftY);
+  const maxSheetH = winH * 0.92;
   const styles = useMemo(() => createStyles(colors, maxSheetH), [colors, maxSheetH]);
   const slide = useRef(new Animated.Value(0)).current;
   const [draft, setDraft] = useState('');
@@ -144,10 +143,9 @@ export function UsernameEditSheet({ visible, initialHandle, onClose, onApply }: 
       return;
     }
     const h = Dimensions.get('window').height;
-    const lift = h * 0.15;
     slide.setValue(h * 0.35);
     Animated.spring(slide, {
-      toValue: -lift,
+      toValue: 0,
       useNativeDriver: true,
       tension: 68,
       friction: 12,

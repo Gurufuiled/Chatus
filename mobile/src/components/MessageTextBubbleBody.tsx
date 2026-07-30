@@ -13,14 +13,14 @@ type MessageTextBubbleBodyProps = {
    * When false (plain text), the block shrink-wraps like Telegram.
    */
   fillWidth?: boolean;
-  /** @deprecated kept for call-site compatibility. */
+  /** Reserve a wider footer for channel view counters. */
   hasViews?: boolean;
 };
 
 /**
- * Text + time/status laid out like Telegram: a flex-wrap row where the meta sits at the end
- * of the last line when it fits, otherwise wraps to a new line pinned to the right
- * (`marginLeft: 'auto'`). Short messages keep the meta inline; long ones never overlap.
+ * Text + time/status laid out like Telegram: the text reserves space at the end
+ * of its final line and the metadata is pinned into that space. If the final line
+ * is full, the reserved spaces wrap and create a stable footer line.
  */
 export function MessageTextBubbleBody({
   text = '',
@@ -29,15 +29,26 @@ export function MessageTextBubbleBody({
   rowStyle,
   meta,
   fillWidth = false,
+  hasViews = false,
 }: MessageTextBubbleBodyProps) {
   const body = children ?? text;
+  const metaSpacer = hasViews
+    ? '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'
+    : '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0';
 
   return (
-    <View style={[fillWidth ? styles.containerFill : styles.containerShrink, rowStyle]}>
-      <View style={styles.textMetaRow}>
-        <Text style={[textStyle, styles.messageText]}>{body}</Text>
-        <View style={styles.metaWrap}>{meta}</View>
-      </View>
+    <View
+      style={[
+        fillWidth ? styles.containerFill : styles.containerShrink,
+        rowStyle,
+        styles.positionedContent,
+      ]}
+    >
+      <Text style={[textStyle, styles.messageText]}>
+        {body}
+        {metaSpacer}
+      </Text>
+      <View style={styles.metaWrap}>{meta}</View>
     </View>
   );
 }
@@ -51,20 +62,23 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     width: '100%',
   },
-  textMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-end',
+  positionedContent: {
+    position: 'relative',
+    flexDirection: 'column',
+    minHeight: 20,
   },
   messageText: {
     flexShrink: 1,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   metaWrap: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-end',
-    marginLeft: 'auto',
-    paddingLeft: 8,
-    flexShrink: 0,
+    justifyContent: 'center',
+    minHeight: 20,
   },
 });
