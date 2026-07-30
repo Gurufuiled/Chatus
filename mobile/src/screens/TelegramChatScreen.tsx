@@ -1682,14 +1682,6 @@ export function TelegramChatScreen() {
   const sendVideoNote = useCallback(
     async (result: VideoNoteRecordingResult) => {
       if (!Number.isFinite(chatId)) return;
-      let prepared: { uri: string; lengthPx: number };
-      try {
-        prepared = await ensureSquareVideoNoteFile(result.uri, result.durationMs);
-      } catch (prepErr) {
-        const message = prepErr instanceof Error ? prepErr.message : String(prepErr);
-        Alert.alert('Не удалось отправить видеосообщение', message);
-        return;
-      }
       const tempId = -Date.now();
       const activeReplyToMessageId = replyToMessageId;
       const optimistic: TelegramMessageRow = {
@@ -1701,15 +1693,43 @@ export function TelegramChatScreen() {
         dateMs: Date.now(),
         status: 'sending',
         replyToMessageId: activeReplyToMessageId,
-        mediaUri: prepared.uri,
+        mediaUri: result.uri,
         thumbnailUri: result.thumbnailUri,
         durationMs: result.durationMs,
-        width: prepared.lengthPx,
-        height: prepared.lengthPx,
       };
+      // Shown before the iOS square/H.264 export, which takes seconds: the recorder
+      // modal is already gone, so without this the chat looks like nothing happened.
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
       markOpenedChatRead();
+
+      const markOptimisticFailed = () => {
+        setMessages((prev) =>
+          prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)),
+        );
+      };
+
+      let prepared: { uri: string; lengthPx: number };
+      try {
+        prepared = await ensureSquareVideoNoteFile(result.uri, result.durationMs);
+      } catch (prepErr) {
+        const message = prepErr instanceof Error ? prepErr.message : String(prepErr);
+        markOptimisticFailed();
+        Alert.alert('Не удалось отправить видеосообщение', message);
+        return;
+      }
+      setMessages((prev) =>
+        prev.map((item) =>
+          item.id === optimistic.id
+            ? {
+                ...item,
+                mediaUri: prepared.uri,
+                width: prepared.lengthPx,
+                height: prepared.lengthPx,
+              }
+            : item,
+        ),
+      );
       try {
         const stableThumbnailUri = result.thumbnailUri
           ? await ensureLocalFileUri(
@@ -1729,10 +1749,25 @@ export function TelegramChatScreen() {
           reply_to: getInputReplyTo(activeReplyToMessageId),
           input_message_content: inputMessageContent,
         });
-        const rawContent = getNestedRecord(response.content);
-        const rawContentType =
-          typeof rawContent?.['@type'] === 'string' ? rawContent['@type'] : null;
-        if (rawContentType !== 'messageVideoNote') {
+        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
+        if (!mapped) {
+          throw new Error('Telegram не вернул отправленное сообщение.');
+        }
+        // Telegram may answer with `messageVideo` for a valid square note; the mapper
+        // already treats square short videos as notes, so trust it instead of the raw type.
+        if (mapped.kind !== 'video_note') {
+          const rawContent = getNestedRecord(response.content);
+          logTdlibEvent('video note rejected by Telegram', {
+            level: 'warn',
+            data: {
+              returnedType:
+                typeof rawContent?.['@type'] === 'string' ? rawContent['@type'] : null,
+              mappedKind: mapped.kind,
+              lengthPx: prepared.lengthPx,
+              durationMs: result.durationMs,
+            },
+            flushSoon: true,
+          });
           const sentId = typeof response.id === 'number' ? response.id : null;
           if (sentId != null) {
             await tdlibDeleteMessages(chatId, [sentId], true).catch(() => undefined);
@@ -1740,10 +1775,6 @@ export function TelegramChatScreen() {
           throw new Error(
             'Файл не подошёл для кружка (нужно квадратное видео). Запишите ещё раз: свайп вверх по кнопке микрофона → удержание → отпустите.',
           );
-        }
-        const mapped = await mapTdMessage(response, lastReadOutboxMessageIdRef.current);
-        if (!mapped) {
-          throw new Error('Telegram не вернул отправленное сообщение.');
         }
         setMessages((prev) =>
           upsertMessage(
@@ -1760,7 +1791,7 @@ export function TelegramChatScreen() {
         markOpenedChatRead();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
+        markOptimisticFailed();
         Alert.alert('Не удалось отправить видеосообщение', message);
       }
     },

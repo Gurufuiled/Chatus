@@ -94,13 +94,17 @@ export async function ensureSquareVideoNoteFile(
   const needsCrop = Platform.OS === 'ios' || !isSquareVideoDimensions(dims);
 
   if (needsCrop) {
+    const sourceSide = lengthPxFromDims(dims);
     localUri = await centerCropViaNative(localUri);
-    dims = await probeLocalVideoDimensionsWithRetry(localUri);
-    if (!dims || !isSquareVideoDimensions(dims)) {
+    const croppedDims = await probeLocalVideoDimensionsWithRetry(localUri);
+    if (croppedDims && !isSquareVideoDimensions(croppedDims)) {
       throw new Error(
         'Запись не квадратная — Telegram принимает только кружки. Запишите ещё раз через свайп вверх по микрофону.',
       );
     }
+    // The native exporter always renders a square frame, so a probe timeout
+    // (expo-video readiness race on iOS) must not fail an otherwise valid send.
+    dims = croppedDims ?? { width: sourceSide, height: sourceSide };
   }
 
   return {

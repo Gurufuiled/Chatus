@@ -2864,7 +2864,9 @@ export const ChatMessageList = React.memo(function ChatMessageList({
         onScrollToIndexFailed={onScrollToIndexFailed}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        removeClippedSubviews={Platform.OS === 'android' ? true : !activeVideoNoteVisible}
+        // iOS keeps clipping off permanently: toggling it detaches/reattaches cells, and
+        // doing that while a video-note AVPlayer is mounted crashes the app.
+        removeClippedSubviews={Platform.OS === 'android'}
         initialNumToRender={activeVideoNoteVisible ? 16 : 12}
         maxToRenderPerBatch={Platform.OS === 'android' ? 4 : (activeVideoNoteVisible ? 14 : 6)}
         updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : (activeVideoNoteVisible ? 24 : 55)}

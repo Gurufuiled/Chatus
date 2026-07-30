@@ -1999,18 +1999,23 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble(props: VideoN
   const normalizedUri = props.uri.trim();
   const registerPlaybackState = props.registerPlaybackState ?? true;
 
-  /** Latch expand mode once when opening a session — never re-derive from live snapshot. */
-  const [playerSession, setPlayerSession] = React.useState<null | { autoExpandOnMount: boolean }>(
-    () => {
-      if (!registerPlaybackState || !normalizedUri) {
-        return null;
-      }
-      if (!noteMatchesPlaybackSnapshot(noteId, normalizedUri)) {
-        return null;
-      }
-      return { autoExpandOnMount: false };
-    },
-  );
+  /**
+   * Latch expand mode and the source once when opening a session — never re-derive from
+   * the live snapshot. Peer-first chats keep resolving the same media (http → file://),
+   * and swapping the source under a live AVPlayer crashes iOS.
+   */
+  const [playerSession, setPlayerSession] = React.useState<null | {
+    autoExpandOnMount: boolean;
+    uri: string;
+  }>(() => {
+    if (!registerPlaybackState || !normalizedUri) {
+      return null;
+    }
+    if (!noteMatchesPlaybackSnapshot(noteId, normalizedUri)) {
+      return null;
+    }
+    return { autoExpandOnMount: false, uri: normalizedUri };
+  });
 
   React.useEffect(() => {
     if (!registerPlaybackState || !normalizedUri) {
@@ -2019,7 +2024,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble(props: VideoN
     if (!noteMatchesPlaybackSnapshot(noteId, normalizedUri)) {
       return;
     }
-    setPlayerSession((prev) => prev ?? { autoExpandOnMount: false });
+    setPlayerSession((prev) => prev ?? { autoExpandOnMount: false, uri: normalizedUri });
   }, [noteId, normalizedUri, registerPlaybackState]);
 
   const releasePlayerSession = React.useCallback(() => {
@@ -2027,13 +2032,14 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble(props: VideoN
   }, []);
 
   const activatePlayerSession = React.useCallback(() => {
-    setPlayerSession({ autoExpandOnMount: true });
-  }, []);
+    setPlayerSession({ autoExpandOnMount: true, uri: normalizedUri });
+  }, [normalizedUri]);
 
   if (playerSession) {
     return (
       <VideoNoteBubblePlayerSession
         {...props}
+        uri={playerSession.uri}
         noteId={noteId}
         onReleasePlayerSession={releasePlayerSession}
         autoExpandOnMount={playerSession.autoExpandOnMount}
