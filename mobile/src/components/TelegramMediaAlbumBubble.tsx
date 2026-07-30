@@ -85,21 +85,25 @@ export function TelegramMediaAlbumBubble({
     const showExtra = index === visibleMedia.length - 1 && extraCount > 0;
     const playbackUri =
       item.kind === 'video' ? item.mediaUri?.trim() || '' : uri;
-    const canOpen = onTilePress != null && playbackUri.length > 0;
+    const canOpen =
+      onTilePress != null &&
+      (playbackUri.length > 0 || item.mediaFullFileId != null);
     const tileBody = (
       <>
         {uri.length > 0 ? (
           <>
             <Image source={{ uri }} style={st.albumImage} contentFit="cover" />
-            {item.mediaFullFileId != null ? (
+            {item.kind === 'video' && item.mediaFullFileId != null ? (
               <View style={st.albumTileLoading}>
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Feather name="download" size={20} color="#FFFFFF" />
               </View>
             ) : null}
           </>
         ) : (
           <View style={st.albumTilePlaceholder}>
-            {item.mediaFullFileId != null ? (
+            {item.kind === 'video' && item.mediaFullFileId != null ? (
+              <Feather name="download" size={22} color="#8E99A8" />
+            ) : item.mediaFullFileId != null ? (
               <ActivityIndicator size="small" color="#8E99A8" />
             ) : (
               <Feather name="image" size={22} color="#8E99A8" />

@@ -1,4 +1,4 @@
-import { NativeModules } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 import { ensureLocalFileUri } from './ensureLocalFileUri';
 import {
@@ -88,7 +88,10 @@ export async function ensureSquareVideoNoteFile(
     );
   }
 
-  const needsCrop = !isSquareVideoDimensions(dims);
+  // Camera output on iOS can report square dimensions while still being MOV/HEVC.
+  // Telegram video notes require square MPEG4/H.264, so always pass iOS output
+  // through the native H.264/AAC exporter.
+  const needsCrop = Platform.OS === 'ios' || !isSquareVideoDimensions(dims);
 
   if (needsCrop) {
     localUri = await centerCropViaNative(localUri);

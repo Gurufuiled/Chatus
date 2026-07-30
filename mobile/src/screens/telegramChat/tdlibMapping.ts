@@ -151,7 +151,11 @@ export type ResolvedPhoto = {
   fullFileId?: number;
 };
 
+const scheduledTdlibFileDownloads = new Set<number>();
+
 export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
+  if (scheduledTdlibFileDownloads.has(fileId)) return;
+  scheduledTdlibFileDownloads.add(fileId);
   void tdlibClient
     .send({
       '@type': 'downloadFile',
@@ -161,7 +165,10 @@ export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
       limit: 0,
       synchronous: false,
     })
-    .catch(() => undefined);
+    .catch(() => undefined)
+    .finally(() => {
+      setTimeout(() => scheduledTdlibFileDownloads.delete(fileId), 15_000);
+    });
 }
 
 /** Voice notes are small — try a blocking download so incoming bubbles render without waiting for `updateFile`. */
@@ -244,17 +251,6 @@ async function resolvePhotoUri(
       return { uri: miniUri, width: displayWidth, height: displayHeight, fullFileId };
     }
     return { uri: null, width: displayWidth, height: displayHeight, fullFileId };
-  }
-
-  for (const { size, file } of sizesDesc) {
-    const uri = await resolveTdFileUri(file, false);
-    if (uri) {
-      return {
-        uri,
-        width: getNumber(size.width) ?? displayWidth,
-        height: getNumber(size.height) ?? displayHeight,
-      };
-    }
   }
 
   if (fullFileId != null) {
@@ -674,10 +670,9 @@ export async function mapTdMessage(
     const fileId = getTdFileId(file);
     const thumbnail = getNestedRecord(video?.thumbnail);
     const thumbnailFile = getNestedRecord(thumbnail?.file);
-    const [uri, thumbnailUri] = await Promise.all([
-      resolveTdFileUri(file, mediaLocalOnly),
-      resolveTdFileUri(thumbnailFile, mediaLocalOnly),
-    ]);
+    const uri = getTdFileLocalUri(file);
+    const thumbnailUri = getTdFileLocalUri(thumbnailFile);
+    const thumbnailFileId = thumbnailUri ? null : getTdFileId(thumbnailFile);
     const width = getNumber(video?.width);
     const height = getNumber(video?.height);
     const durationSec = getNumber(video?.duration) ?? 0;
@@ -702,6 +697,7 @@ export async function mapTdMessage(
         mediaUri: uri ?? undefined,
         mediaFullFileId: uri ? undefined : (fileId ?? undefined),
         thumbnailUri: thumbnailUri ?? undefined,
+        thumbnailFileId: thumbnailFileId ?? undefined,
         width,
         height,
         durationMs: durationSec * 1000,
@@ -714,6 +710,7 @@ export async function mapTdMessage(
       mediaUri: uri ?? undefined,
       mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       thumbnailUri: thumbnailUri ?? undefined,
+      thumbnailFileId: thumbnailFileId ?? undefined,
       width,
       height,
       durationMs: durationSec * 1000,
@@ -729,10 +726,9 @@ export async function mapTdMessage(
     const mini = getNestedRecord(videoNote?.minithumbnail);
     const miniData = typeof mini?.data === 'string' && mini.data.length > 8 ? mini.data : null;
     const miniUri = miniData ? `data:image/jpeg;base64,${miniData}` : null;
-    const [uri, thumbnailUri] = await Promise.all([
-      resolveTdFileUri(file, mediaLocalOnly),
-      resolveTdFileUri(thumbnailFile, mediaLocalOnly),
-    ]);
+    const uri = getTdFileLocalUri(file);
+    const thumbnailUri = getTdFileLocalUri(thumbnailFile);
+    const thumbnailFileId = thumbnailUri ? null : getTdFileId(thumbnailFile);
     const side = getNumber(videoNote?.length);
     return {
       ...base,
@@ -741,6 +737,7 @@ export async function mapTdMessage(
       mediaUri: uri ?? undefined,
       mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       thumbnailUri: thumbnailUri ?? miniUri ?? undefined,
+      thumbnailFileId: thumbnailFileId ?? undefined,
       width: side,
       height: side,
       durationMs: (getNumber(videoNote?.duration) ?? 0) * 1000,

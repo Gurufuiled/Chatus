@@ -18,6 +18,8 @@ export type TelegramAlbumMediaItem = {
   thumbnailUri?: string | null;
   /** TDLib file id for media still downloading (`updateFile` will refresh `mediaUri`). */
   mediaFullFileId?: number;
+  /** TDLib preview file id; full video is downloaded only after a tap. */
+  thumbnailFileId?: number;
   width?: number;
   height?: number;
   durationMs?: number;
@@ -48,6 +50,8 @@ export type TelegramMessageRow = {
   mediaUri?: string | null;
   /** TDLib file id for media still downloading while the row already renders as media. */
   mediaFullFileId?: number;
+  /** TDLib preview file id; patched independently from the full media file. */
+  thumbnailFileId?: number;
   thumbnailUri?: string | null;
   durationMs?: number;
   waveform?: number[];

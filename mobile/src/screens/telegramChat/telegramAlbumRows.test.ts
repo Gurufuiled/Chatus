@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { collapseTelegramAlbumRows, mergeTelegramFeedRows } from './telegramAlbumRows';
+import {
+  collapseTelegramAlbumRows,
+  mergeTelegramFeedRows,
+  normalizeTelegramFeedRows,
+} from './telegramAlbumRows';
 import type { TelegramMessageRow } from './types';
 
 function row(
@@ -62,5 +66,22 @@ assert.equal(paginatedAlbum.length, 1);
 assert.equal(paginatedAlbum[0]?.kind, 'album');
 assert.equal(paginatedAlbum[0]?.albumMedia?.length, 3);
 assert.equal(paginatedAlbum[0]?.albumMessageIds?.join(','), '103,104,105');
+
+const pendingOutgoing = {
+  ...row(-Date.now(), 'text'),
+  id: 'temp-outgoing',
+  dateMs: Date.now(),
+  status: 'sending' as const,
+};
+const pendingSorted = normalizeTelegramFeedRows([
+  row(500, 'text'),
+  pendingOutgoing,
+  row(499, 'text'),
+]);
+assert.equal(
+  pendingSorted[0]?.id,
+  pendingOutgoing.id,
+  'pending outgoing row must stay newest in an inverted list',
+);
 
 console.log('telegramAlbumRows.test.ts: ok');

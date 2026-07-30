@@ -1,4 +1,5 @@
 import type { TelegramAlbumMediaItem, TelegramMessageRow } from './types';
+import { compareTelegramRowsNewestFirst } from './telegramRowOrder';
 
 export function getTdMediaAlbumId(raw: Record<string, unknown>): number | undefined {
   const id = raw.media_album_id;
@@ -29,6 +30,7 @@ function rowToAlbumItem(row: TelegramMessageRow): TelegramAlbumMediaItem | null 
     kind: row.kind,
     mediaUri: row.mediaUri,
     mediaFullFileId: row.mediaFullFileId,
+    thumbnailFileId: row.thumbnailFileId,
     thumbnailUri: row.thumbnailUri,
     width: row.width,
     height: row.height,
@@ -113,7 +115,7 @@ export function collapseTelegramAlbumRows(rows: TelegramMessageRow[]): TelegramM
     }
   }
 
-  return [...standalone, ...collapsedAlbums].sort((a, b) => b.messageId - a.messageId);
+  return [...standalone, ...collapsedAlbums].sort(compareTelegramRowsNewestFirst);
 }
 
 function dropConfirmedOutgoingSendingTwins(rows: TelegramMessageRow[]): TelegramMessageRow[] {
@@ -141,7 +143,7 @@ function dropConfirmedOutgoingSendingTwins(rows: TelegramMessageRow[]): Telegram
 
 export function normalizeTelegramFeedRows(rows: TelegramMessageRow[]): TelegramMessageRow[] {
   return collapseTelegramAlbumRows(
-    dropConfirmedOutgoingSendingTwins([...rows].sort((a, b) => b.messageId - a.messageId)),
+    dropConfirmedOutgoingSendingTwins([...rows].sort(compareTelegramRowsNewestFirst)),
   );
 }
 

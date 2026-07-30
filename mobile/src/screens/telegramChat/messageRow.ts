@@ -1,6 +1,7 @@
 import type { Message } from '../../stores/types';
 import { CHAT_MSG_GROUP_TIME_GAP_MS } from '../../presentation/telegramChatUi';
 import type { TelegramMessageRow } from './types';
+import { compareTelegramRowsNewestFirst } from './telegramRowOrder';
 
 export function optimisticOutgoingMessage(
   text: string,
@@ -246,8 +247,9 @@ export function upsertMessage(
     if (isUnconfirmedOutgoingTwin(item, next)) return false;
     return true;
   });
-  return [next, ...withoutSame].sort((a, b) => b.messageId - a.messageId);
+  return [next, ...withoutSame].sort(compareTelegramRowsNewestFirst);
 }
+
 
 export function applyReadOutboxStatus(
   rows: TelegramMessageRow[],

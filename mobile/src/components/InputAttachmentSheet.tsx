@@ -3,6 +3,7 @@ import { GalleryPhotoPreview } from "./GalleryPhotoPreview";
 import {
   Dimensions,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -92,7 +93,7 @@ type InputAttachmentSheetProps = {
   onCaptionChange: (text: string) => void;
   /** Loads the next media-library page when the user approaches the grid end. */
   onLoadMoreGallery?: () => void;
-  onSendSelected: () => void;
+  onSendSelected: (itemsOverride?: GalleryItem[]) => void;
   onRunAttachmentAction: (action: () => Promise<void>) => void;
   /** Нижняя кнопка вместо дока режимов (например «Все фото…» для аватара). */
   bottomButton?: GallerySheetBottomButton;
@@ -806,13 +807,10 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
 
   const handlePreviewPhoto = React.useCallback(
     (item: GalleryItem) => {
-      if (!selectedById.has(item.id)) {
-        onToggleGalleryItem(item);
-      }
       const idx = galleryItems.findIndex((g) => g.id === item.id);
       if (idx >= 0) setPreviewIndex(idx);
     },
-    [galleryItems, onToggleGalleryItem, selectedById],
+    [galleryItems],
   );
 
   const closePreview = React.useCallback(() => setPreviewIndex(null), []);
@@ -869,7 +867,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
       ]}
       columnWrapperStyle={styles.galleryRow}
       showsVerticalScrollIndicator={false}
-      removeClippedSubviews
+      removeClippedSubviews={Platform.OS !== "ios"}
       overScrollMode="never"
       bounces={false}
       initialNumToRender={18}
@@ -890,7 +888,7 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
   return (
     <>
       <Modal
-        visible={visible}
+        visible={visible && previewIndex == null}
         transparent
         animationType="none"
         onRequestClose={onClose}
@@ -1010,7 +1008,10 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
                       style={styles.captionInput}
                       multiline
                     />
-                    <Pressable style={styles.sendBtn} onPress={onSendSelected}>
+                    <Pressable
+                      style={styles.sendBtn}
+                      onPress={() => onSendSelected()}
+                    >
                       <Feather
                         name="send"
                         size={20}
@@ -1089,9 +1090,11 @@ export const InputAttachmentSheet = React.memo(function InputAttachmentSheet({
         onCaptionChange={onCaptionChange}
         onClose={closePreview}
         onToggleSelect={onToggleGalleryItem}
-        onSend={() => {
+        onSend={(currentItem) => {
           closePreview();
-          onSendSelected();
+          onSendSelected(
+            selectedItems.length === 0 && currentItem ? [currentItem] : undefined,
+          );
         }}
       />
     </>

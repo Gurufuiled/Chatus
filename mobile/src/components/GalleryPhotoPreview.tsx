@@ -48,7 +48,7 @@ type GalleryPhotoPreviewProps = {
   onCaptionChange: (text: string) => void;
   onClose: () => void;
   onToggleSelect: (item: GalleryItem) => void;
-  onSend: () => void;
+  onSend: (currentItem: GalleryItem | undefined) => void;
   /** itemId → URI после обрезки/редактирования (для отправки в чат). */
   editedUris?: Map<string, string>;
   onEditedUriChange?: (itemId: string, uri: string) => void;
@@ -310,7 +310,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
                     { backgroundColor: colors.accent },
                     pressed && styles.captionSendBtnPressed,
                   ]}
-                  onPress={onSend}
+                  onPress={() => onSend(currentItem)}
                 >
                   <Feather name="arrow-up" size={22} color="#FFFFFF" />
                 </Pressable>
@@ -369,8 +369,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
                     pressed && styles.sendBtnPressed,
                   ]}
                   onPress={() => {
-                    if (currentItem && !isSelected) onToggleSelect(currentItem);
-                    onSend();
+                    onSend(currentItem);
                   }}
                 >
                   <Feather name="arrow-up" size={22} color="#FFFFFF" />

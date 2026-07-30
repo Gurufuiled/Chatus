@@ -955,31 +955,12 @@ export function InputBar({
       // скелетон висел 5–8 с. Показываем сетку сразу по uri из getAssetsAsync.
       setGalleryLoading(false);
 
-      // Уточняем file:// локальные пути для превью; без ожидания полной загрузки в UI.
-      const infos = await Promise.all(
-        mapped.map((item) =>
-          MediaLibrary.getAssetInfoAsync(item.id, {
-            shouldDownloadFromNetwork: false,
-          }).catch(() => null)
-        )
-      );
-      setGalleryItems((prev) => {
-        const next = [...prev];
-        infos.forEach((info, i) => {
-          if (!info) return;
-          const localUri = info.localUri?.trim() || info.uri?.trim();
-          if (!localUri) return;
-          if (i < next.length) {
-            next[i] = { ...next[i], localUri };
-          }
-        });
-        sharedAttachmentGalleryCache = next;
-        sharedAttachmentGalleryCachedAtMs = Date.now();
-        void writeAttachmentGalleryDiskCache(
-          next.slice(0, ATTACHMENT_GALLERY_PAGE_SIZE),
-        );
-        return next;
-      });
+      // asset.uri уже подходит для быстрой сетки. Десятки параллельных
+      // getAssetInfoAsync на iOS тормозили главный поток во время скролла.
+      // Локальный file:// путь получаем только у выбранного элемента перед отправкой.
+      sharedAttachmentGalleryCache = mapped;
+      sharedAttachmentGalleryCachedAtMs = Date.now();
+      void writeAttachmentGalleryDiskCache(mapped);
     } catch (err) {
       if (__DEV__) console.warn('[InputBar] loadGallery error:', err);
       setGalleryItems([]);
@@ -1125,10 +1106,10 @@ export function InputBar({
     []
   );
 
-  const handleSendSelectedGalleryItems = useCallback(async () => {
-    if (!onSendMedia || selectedGalleryItems.length === 0) return;
+  const handleSendSelectedGalleryItems = useCallback(async (itemsOverride?: GalleryItem[]) => {
+    const items = itemsOverride ?? selectedGalleryItems;
+    if (!onSendMedia || items.length === 0) return;
 
-    const items = selectedGalleryItems;
     const caption = galleryCaption.trim();
     setSelectedGalleryItems([]);
     setGalleryCaption('');
@@ -1994,8 +1975,8 @@ export function InputBar({
         }}
         editedUris={galleryEditedUris}
         onEditedUriChange={handleGalleryEditedUri}
-        onSendSelected={() => {
-          void handleSendSelectedGalleryItems();
+        onSendSelected={(itemsOverride) => {
+          void handleSendSelectedGalleryItems(itemsOverride);
         }}
         onRunAttachmentAction={runAttachmentAction}
       />
