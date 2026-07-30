@@ -1742,10 +1742,7 @@ export function InputBar({
                 }}
               />
             ) : (
-            <Reanimated.View
-              layout={COMPOSER_DOCK_LAYOUT}
-              style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}
-            >
+            <View style={[styles.composerShell, replyToMessage && styles.composerShellAttached]}>
               {showAttachmentButton ? (
                 stickerInLeadingCluster && chatusStickersComposer ? (
                   <View style={styles.leadingCluster} accessibilityRole="toolbar">
@@ -1910,7 +1907,7 @@ export function InputBar({
                   />
                 </RNAnimated.View>
               )}
-            </Reanimated.View>
+            </View>
             )}
           </View>
 
