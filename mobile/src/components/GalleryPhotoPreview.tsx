@@ -21,7 +21,6 @@ import {
 } from "react-native";
 import Feather from "@expo/vector-icons/Feather";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Reanimated, {
   useAnimatedKeyboard,
@@ -32,7 +31,6 @@ import { useTheme } from "../contexts/ThemeContext";
 import type { GalleryItem } from "./InputAttachmentSheet";
 import { useModalKeyboardHeight } from "../utils/useModalKeyboardHeight";
 import { CropOverlay } from "./CropOverlay";
-import { DrawingOverlay } from "./DrawingOverlay";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -50,15 +48,10 @@ type GalleryPhotoPreviewProps = {
   onCaptionChange: (text: string) => void;
   onClose: () => void;
   onToggleSelect: (item: GalleryItem) => void;
-  /** Sends the current photo directly, or the existing selection when omitted. */
-  onSend: (item?: GalleryItem) => void;
+  onSend: (currentItem: GalleryItem | undefined) => void;
   /** itemId → URI после обрезки/редактирования (для отправки в чат). */
   editedUris?: Map<string, string>;
-  onEditedUriChange?: (
-    itemId: string,
-    uri: string,
-    size?: { width: number; height: number },
-  ) => void;
+  onEditedUriChange?: (itemId: string, uri: string) => void;
 };
 
 /* ─── single slide ─── */
@@ -77,7 +70,7 @@ const PreviewSlide = React.memo(function PreviewSlide({
         source={{ uri }}
         style={styles.media}
         contentFit="contain"
-        cachePolicy="disk"
+        cachePolicy="memory-disk"
       />
     </View>
   );
@@ -103,7 +96,6 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
   const translateY = useRef(new Animated.Value(0)).current;
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [cropMode, setCropMode] = useState(false);
-  const [drawingMode, setDrawingMode] = useState(false);
   const editedUriMap = editedUris ?? EMPTY_EDITED_URIS;
 
   /* keyboard-aware bottom offset */
@@ -123,7 +115,6 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
     translateY.setValue(0);
     setCurrentIndex(initialIndex);
     setCropMode(false);
-    setDrawingMode(false);
     requestAnimationFrame(() => {
       listRef.current?.scrollToIndex({ index: initialIndex, animated: false });
     });
@@ -168,12 +159,10 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
         onStartShouldSetPanResponderCapture: () => false,
         onMoveShouldSetPanResponderCapture: (_, g) =>
           !cropMode &&
-          !drawingMode &&
           Math.abs(g.dy) > 8 &&
           Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
         onMoveShouldSetPanResponder: (_, g) =>
           !cropMode &&
-          !drawingMode &&
           Math.abs(g.dy) > 8 &&
           Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
         onPanResponderMove: (_, g) => {
@@ -189,7 +178,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
         onPanResponderTerminate: resetPosition,
         onPanResponderTerminationRequest: () => true,
       }),
-    [closeFromSwipe, cropMode, drawingMode, resetPosition, translateY],
+    [closeFromSwipe, cropMode, resetPosition, translateY],
   );
 
   const handleMomentumEnd = useCallback(
@@ -215,11 +204,6 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
   const totalSelected = selectedById.size;
   const hasSelection = totalSelected > 0;
 
-  const runToolAction = useCallback((action: () => void) => {
-    void Haptics.selectionAsync().catch(() => undefined);
-    action();
-  }, []);
-
   if (!visible || items.length === 0) return null;
 
   return (
@@ -230,8 +214,6 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
       onRequestClose={() => {
         if (cropMode) {
           setCropMode(false);
-        } else if (drawingMode) {
-          setDrawingMode(false);
         } else {
           onClose();
         }
@@ -272,7 +254,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
         </Animated.View>
 
         {/* ─── top bar: counter + selection circle ─── */}
-        {!cropMode && !drawingMode ? (
+        {!cropMode ? (
           <View
             style={[styles.topBar, { paddingTop: insets.top + 8 }]}
             pointerEvents="box-none"
@@ -299,7 +281,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
         ) : null}
 
         {/* ─── bottom area: caption bar + toolbar (keyboard-aware) ─── */}
-        {!cropMode && !drawingMode ? (
+        {!cropMode ? (
           <Reanimated.View
             style={[
               styles.bottomArea,
@@ -328,9 +310,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
                     { backgroundColor: colors.accent },
                     pressed && styles.captionSendBtnPressed,
                   ]}
-                  onPress={() => runToolAction(() => onSend())}
-                  accessibilityRole="button"
-                  accessibilityLabel="Отправить выбранные фото"
+                  onPress={() => onSend(currentItem)}
                 >
                   <Feather name="arrow-up" size={22} color="#FFFFFF" />
                 </Pressable>
@@ -338,72 +318,63 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
             ) : null}
 
             {/* toolbar row */}
-            <View style={styles.toolbarDock}>
-              <View style={styles.toolbarRow}>
-                {/* back button */}
+            <View style={styles.toolbarRow}>
+              {/* back button */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.toolBtn,
+                  pressed && styles.toolBtnPressed,
+                ]}
+                onPress={onClose}
+                hitSlop={6}
+              >
+                <Feather name="chevron-left" size={28} color="#FFFFFF" />
+              </Pressable>
+
+              {/* crop */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.toolBtn,
+                  pressed && styles.toolBtnPressed,
+                ]}
+                onPress={() => setCropMode(true)}
+                hitSlop={6}
+              >
+                <MaterialCommunityIcons name="crop" size={24} color="#FFFFFF" />
+              </Pressable>
+
+              {/* draw */}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.toolBtn,
+                  pressed && styles.toolBtnPressed,
+                ]}
+                onPress={() => {
+                  /* TODO: open draw */
+                }}
+                hitSlop={6}
+              >
+                <MaterialCommunityIcons name="draw" size={24} color="#FFFFFF" />
+              </Pressable>
+
+              {/* spacer */}
+              <View style={styles.toolSpacer} />
+
+              {/* send / select-and-send button (only if no caption bar visible) */}
+              {!hasSelection ? (
                 <Pressable
                   style={({ pressed }) => [
-                    styles.toolBtn,
-                    pressed && styles.toolBtnPressed,
+                    styles.sendBtn,
+                    { backgroundColor: colors.accent },
+                    pressed && styles.sendBtnPressed,
                   ]}
-                  onPress={() => runToolAction(onClose)}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel="Назад в галерею"
+                  onPress={() => {
+                    onSend(currentItem);
+                  }}
                 >
-                  <Feather name="chevron-left" size={28} color="#FFFFFF" />
+                  <Feather name="arrow-up" size={22} color="#FFFFFF" />
                 </Pressable>
-
-                {/* crop */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.toolBtn,
-                    pressed && styles.toolBtnPressed,
-                  ]}
-                  onPress={() => runToolAction(() => setCropMode(true))}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel="Обрезать фото"
-                >
-                  <MaterialCommunityIcons name="crop" size={24} color="#FFFFFF" />
-                </Pressable>
-
-                {/* draw */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.toolBtn,
-                    pressed && styles.toolBtnPressed,
-                  ]}
-                  onPress={() => runToolAction(() => setDrawingMode(true))}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel="Рисовать на фото"
-                >
-                  <MaterialCommunityIcons name="draw" size={24} color="#FFFFFF" />
-                </Pressable>
-
-                {/* spacer */}
-                <View style={styles.toolSpacer} />
-
-                {/* send / select-and-send button (only if no caption bar visible) */}
-                {!hasSelection ? (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.sendBtn,
-                      { backgroundColor: colors.accent },
-                      pressed && styles.sendBtnPressed,
-                    ]}
-                    onPress={() => {
-                      if (!currentItem) return;
-                      runToolAction(() => onSend(currentItem));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Отправить фото"
-                  >
-                    <Feather name="arrow-up" size={22} color="#FFFFFF" />
-                  </Pressable>
-                ) : null}
-              </View>
+              ) : null}
             </View>
           </Reanimated.View>
         ) : null}
@@ -416,26 +387,11 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
               currentItem.localUri ||
               currentItem.uri
             }
-            onConfirm={(croppedUri, size) => {
-              onEditedUriChange?.(currentItem.id, croppedUri, size);
+            onConfirm={(croppedUri) => {
+              onEditedUriChange?.(currentItem.id, croppedUri);
               setCropMode(false);
             }}
             onCancel={() => setCropMode(false)}
-          />
-        ) : null}
-
-        {drawingMode && currentItem ? (
-          <DrawingOverlay
-            uri={
-              editedUriMap.get(currentItem.id) ||
-              currentItem.localUri ||
-              currentItem.uri
-            }
-            onConfirm={(drawnUri, size) => {
-              onEditedUriChange?.(currentItem.id, drawnUri, size);
-              setDrawingMode(false);
-            }}
-            onCancel={() => setDrawingMode(false)}
           />
         ) : null}
       </Animated.View>
@@ -558,48 +514,30 @@ const styles = StyleSheet.create({
   toolbarRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    gap: 8,
-  },
-  toolbarDock: {
-    marginHorizontal: 8,
-    borderRadius: 30,
-    backgroundColor: "rgba(14,18,24,0.86)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.18)",
-    shadowColor: "#000000",
-    shadowOpacity: 0.32,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 10,
+    paddingHorizontal: 10,
+    gap: 12,
   },
   toolBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.13)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.16)",
   },
   toolBtnPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.94 }],
+    opacity: 0.6,
   },
   toolSpacer: {
     flex: 1,
   },
   sendBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
   sendBtnPressed: {
-    opacity: 0.86,
-    transform: [{ scale: 0.94 }],
+    opacity: 0.82,
   },
 });
