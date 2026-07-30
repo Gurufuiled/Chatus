@@ -1,7 +1,11 @@
 /** Payload helpers shared by composer sends (InputBar → TDLib). */
 
 export function fileUriToPath(uri: string): string {
-  return decodeURIComponent(uri.replace(/^file:\/\//, '')).replace(/\/+$/, '');
+  const path = decodeURIComponent(uri.trim().replace(/^file:\/\//, '')).replace(/\/+$/, '');
+  if (!path) {
+    throw new Error('TDLib media file path is empty');
+  }
+  return path;
 }
 
 export function getLocalInputFile(uri: string): Record<string, unknown> {
