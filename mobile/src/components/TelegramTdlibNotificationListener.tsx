@@ -94,9 +94,14 @@ export function TelegramTdlibNotificationListener() {
               break;
             case 'authorizationStateWaitCode':
             case 'authorizationStateWaitEmailCode':
-            case 'authorizationStateWaitOtherDeviceConfirmation':
               if (store.authStatus !== 'waiting_code') {
                 store.setAuthStatus('waiting_code');
+                scheduleAuthPersist();
+              }
+              break;
+            case 'authorizationStateWaitOtherDeviceConfirmation':
+              if (store.authStatus !== 'waiting_qr') {
+                store.setAuthStatus('waiting_qr');
                 scheduleAuthPersist();
               }
               break;

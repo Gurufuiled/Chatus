@@ -8,6 +8,8 @@ const WIZARD_STEPS: AuthWizardStep[] = ['phone', 'code', 'password'];
 export function resolveAuthWizardStep(status: TelegramAuthStatus): AuthWizardStep {
   if (status === 'waiting_password') return 'password';
   if (status === 'waiting_code') return 'code';
+  // QR has its own card on the phone step; never display the confirmation-code form.
+  if (status === 'waiting_qr') return 'phone';
   return 'phone';
 }
 
@@ -44,6 +46,13 @@ export function getTelegramSettingsConnectionMeta(
       return {
         subtitle: 'Введите код из Telegram',
         badge: 'Код',
+        badgeBg: '#3B82F622',
+        badgeText: '#2563EB',
+      };
+    case 'waiting_qr':
+      return {
+        subtitle: 'Подтвердите вход на другом устройстве',
+        badge: 'QR',
         badgeBg: '#3B82F622',
         badgeText: '#2563EB',
       };
