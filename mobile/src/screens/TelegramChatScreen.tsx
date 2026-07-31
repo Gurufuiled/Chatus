@@ -2743,12 +2743,16 @@ export function TelegramChatScreen() {
           ? ({ paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' as const } satisfies ViewStyle)
           : null;
 
+      const forwardBubblePad =
+        item.forwardInfo && discussionFooter == null ? { paddingTop: 10 } : null;
+
       const incomingTextBubbleSolidStyle = [
         styles.bubble,
         { alignSelf: 'flex-start' as const },
         textBubbleColorStyle,
         isChannel && styles.channelPostTextBubble,
         discussionFooterPaddingReset,
+        forwardBubblePad,
       ];
 
       const outgoingTextBubbleChromeStyle = [
@@ -2758,6 +2762,7 @@ export function TelegramChatScreen() {
         isChannel && styles.channelPostTextBubble,
         discussionFooterPaddingReset,
         !useViewportOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
+        forwardBubblePad,
       ];
 
       const metaNode = (
@@ -2813,7 +2818,13 @@ export function TelegramChatScreen() {
       const textBubbleBody = (
         <>
           {discussionFooter ? (
-            <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingTop: item.forwardInfo ? 10 : 8,
+                paddingBottom: 8,
+              }}
+            >
               {bubbleHeader}
               {webPageNode}
               {textBubbleContent}

@@ -113,7 +113,9 @@ const styles = StyleSheet.create({
   outer: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
-    marginBottom: 5,
+    marginTop: 1,
+    marginBottom: 6,
+    paddingTop: 1,
     paddingRight: 2,
   },
   outerCompact: {

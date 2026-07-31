@@ -19,6 +19,8 @@ type WebPagePreviewBubbleProps = {
   peerFirstLineId?: string | null;
 };
 
+const AVATAR_SIZE = 44;
+
 export function WebPagePreviewBubble({
   preview,
   variant = 'inline',
@@ -38,6 +40,14 @@ export function WebPagePreviewBubble({
     secondaryTextColor ?? (isCard ? 'rgba(17,24,39,0.55)' : 'rgba(255,255,255,0.7)');
   const siteNameColor = isCard ? 'rgba(17,24,39,0.45)' : accentColor;
 
+  const photoW = preview.photoWidth ?? 0;
+  const photoH = preview.photoHeight ?? 0;
+  /** Wide/banner previews stay full-width; square/portrait → avatar row like iOS. */
+  const useAvatarRow =
+    isCard &&
+    hasPhoto &&
+    (photoW <= 0 || photoH <= 0 || photoW / photoH < 1.35);
+
   useEffect(() => {
     setImageLoaded(false);
     if (photoUri.startsWith('data:')) {
@@ -52,6 +62,27 @@ export function WebPagePreviewBubble({
     }
   }, [preview.url]);
 
+  const siteNameNode = preview.siteName ? (
+    <Text
+      style={[styles.siteName, isCard && styles.siteNameCard, { color: siteNameColor }]}
+      numberOfLines={1}
+    >
+      {preview.siteName}
+    </Text>
+  ) : null;
+
+  const titleNode = preview.title ? (
+    <Text style={[styles.title, { color: resolvedTextColor }]} numberOfLines={2}>
+      {preview.title}
+    </Text>
+  ) : null;
+
+  const descriptionNode = preview.description ? (
+    <Text style={[styles.description, { color: resolvedSecondary }]} numberOfLines={3}>
+      {preview.description}
+    </Text>
+  ) : null;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -65,47 +96,54 @@ export function WebPagePreviewBubble({
     >
       {!isCard ? <View style={[styles.accent, { backgroundColor: accentColor }]} /> : null}
       <View style={[styles.content, isCard && styles.contentCard]}>
-        {preview.siteName ? (
-          <Text
-            style={[styles.siteName, isCard && styles.siteNameCard, { color: siteNameColor }]}
-            numberOfLines={1}
-          >
-            {preview.siteName}
-          </Text>
-        ) : null}
+        {siteNameNode}
 
-        {preview.title ? (
-          <Text style={[styles.title, { color: resolvedTextColor }]} numberOfLines={2}>
-            {preview.title}
-          </Text>
-        ) : null}
-
-        {preview.description ? (
-          <Text style={[styles.description, { color: resolvedSecondary }]} numberOfLines={3}>
-            {preview.description}
-          </Text>
-        ) : null}
-
-        {hasPhoto ? (
-          <View style={[styles.photoWrap, isCard && styles.photoWrapCard]}>
-            {!imageLoaded ? (
-              <View style={styles.photoLoader}>
-                <ActivityIndicator size="large" color={colors.iconMuted} />
-              </View>
-            ) : null}
-            {loadingFullQuality && imageLoaded ? (
-              <View style={styles.photoQualityLoader}>
-                <ActivityIndicator size="large" color="#FFFFFF" />
-              </View>
-            ) : null}
-            <Image
-              source={{ uri: photoUri }}
-              style={styles.photo}
-              contentFit="cover"
-              onLoad={() => setImageLoaded(true)}
-            />
+        {useAvatarRow ? (
+          <View style={styles.avatarRow}>
+            <View style={styles.avatarWrap}>
+              {!imageLoaded ? (
+                <View style={styles.avatarLoader}>
+                  <ActivityIndicator size="small" color={colors.iconMuted} />
+                </View>
+              ) : null}
+              <Image
+                source={{ uri: photoUri }}
+                style={styles.avatar}
+                contentFit="cover"
+                onLoad={() => setImageLoaded(true)}
+              />
+            </View>
+            <View style={styles.avatarTextCol}>
+              {titleNode}
+              {descriptionNode}
+            </View>
           </View>
-        ) : null}
+        ) : (
+          <>
+            {titleNode}
+            {descriptionNode}
+            {hasPhoto ? (
+              <View style={[styles.photoWrap, isCard && styles.photoWrapCard]}>
+                {!imageLoaded ? (
+                  <View style={styles.photoLoader}>
+                    <ActivityIndicator size="large" color={colors.iconMuted} />
+                  </View>
+                ) : null}
+                {loadingFullQuality && imageLoaded ? (
+                  <View style={styles.photoQualityLoader}>
+                    <ActivityIndicator size="large" color="#FFFFFF" />
+                  </View>
+                ) : null}
+                <Image
+                  source={{ uri: photoUri }}
+                  style={styles.photo}
+                  contentFit="cover"
+                  onLoad={() => setImageLoaded(true)}
+                />
+              </View>
+            ) : null}
+          </>
+        )}
       </View>
     </Pressable>
   );
@@ -114,7 +152,7 @@ export function WebPagePreviewBubble({
 const styles = StyleSheet.create({
   root: {
     flexDirection: 'row',
-    marginTop: 8,
+    marginTop: 6,
     borderRadius: 8,
     overflow: 'hidden',
   },
@@ -123,8 +161,9 @@ const styles = StyleSheet.create({
   },
   rootCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    marginBottom: 6,
+    borderRadius: 12,
+    marginTop: 4,
+    marginBottom: 4,
   },
   rootPressed: {
     opacity: 0.8,
@@ -144,7 +183,7 @@ const styles = StyleSheet.create({
   contentCard: {
     paddingLeft: 12,
     paddingRight: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
   },
   siteName: {
     fontSize: 13,
@@ -156,6 +195,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 15,
     fontWeight: '500',
+    marginBottom: 6,
   },
   title: {
     fontSize: 14,
@@ -166,7 +206,37 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 13,
     lineHeight: 17,
-    marginBottom: 4,
+    marginBottom: 0,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+  },
+  avatarWrap: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    overflow: 'hidden',
+    backgroundColor: '#E8EEF5',
+    flexShrink: 0,
+  },
+  avatar: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarLoader: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+    backgroundColor: '#E8EEF5',
+  },
+  avatarTextCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
   },
   photoWrap: {
     width: '100%',
