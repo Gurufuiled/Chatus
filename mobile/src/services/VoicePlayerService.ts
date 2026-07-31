@@ -6,6 +6,7 @@
 import { Audio } from 'expo-av';
 import type { AVPlaybackStatus } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 
 const PROGRESS_UPDATE_INTERVAL_MS = 100;
 /** Cap React store broadcasts during playback so ChatScreen / bubbles are not repainted 10×/s. */
@@ -116,9 +117,14 @@ class VoicePlayerServiceClass {
     }
   }
 
+  /** Force next playback path to re-acquire audio mode (after calls/recording). */
+  invalidateAudioMode(): void {
+    this.audioModeReady = false;
+  }
+
   /** Ensure audio mode allows playback (plays in silent mode on iOS). */
-  private async ensureAudioMode(): Promise<void> {
-    if (this.audioModeReady) return;
+  private async ensureAudioMode(force = false): Promise<void> {
+    if (!force && this.audioModeReady) return;
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
@@ -127,6 +133,14 @@ class VoicePlayerServiceClass {
       playThroughEarpieceAndroid: false,
     });
     this.audioModeReady = true;
+  }
+
+  private async preparePlaybackAudioMode(): Promise<void> {
+    // LiveKit / camera may still own the native session after calls.
+    if (!this.audioModeReady) {
+      await releaseMediaAudioSession();
+    }
+    await this.ensureAudioMode(true);
   }
 
   /** Stop and unload current sound if any. */
@@ -287,7 +301,7 @@ class VoicePlayerServiceClass {
       }
 
       await this.stopAndUnloadCurrent();
-      await this.ensureAudioMode();
+      await this.preparePlaybackAudioMode();
       if (/^https?:\/\//i.test(uri)) {
         const streamed = await this.tryPlayFromUriDirect(uri, positionMs);
         if (streamed) return;

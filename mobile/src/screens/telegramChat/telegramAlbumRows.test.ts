@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { collapseTelegramAlbumRows, mergeTelegramFeedRows } from './telegramAlbumRows';
+import {
+  collapseTelegramAlbumRows,
+  mergeTelegramFeedRows,
+  normalizeTelegramFeedRows,
+} from './telegramAlbumRows';
 import type { TelegramMessageRow } from './types';
 
 function row(
@@ -21,7 +25,13 @@ function row(
 }
 
 const twoPhotos = collapseTelegramAlbumRows([
-  row(102, 'image', 55),
+  {
+    ...row(102, 'image', 55),
+    forwardInfo: {
+      senderName: 'Лидер мнений среди удобрений',
+      avatarUri: 'file:///channel.jpg',
+    },
+  },
   row(101, 'image', 55),
 ]);
 
@@ -30,6 +40,7 @@ assert.equal(twoPhotos[0]?.kind, 'album');
 assert.equal(twoPhotos[0]?.albumMedia?.length, 2);
 assert.equal(twoPhotos[0]?.text, 'caption');
 assert.equal(twoPhotos[0]?.albumMessageIds?.join(','), '101,102');
+assert.equal(twoPhotos[0]?.forwardInfo?.senderName, 'Лидер мнений среди удобрений');
 
 const singleWithAlbumId = collapseTelegramAlbumRows([row(10, 'image', 7)]);
 assert.equal(singleWithAlbumId.length, 1);
@@ -62,5 +73,22 @@ assert.equal(paginatedAlbum.length, 1);
 assert.equal(paginatedAlbum[0]?.kind, 'album');
 assert.equal(paginatedAlbum[0]?.albumMedia?.length, 3);
 assert.equal(paginatedAlbum[0]?.albumMessageIds?.join(','), '103,104,105');
+
+const pendingOutgoing = {
+  ...row(-Date.now(), 'text'),
+  id: 'temp-outgoing',
+  dateMs: Date.now(),
+  status: 'sending' as const,
+};
+const pendingSorted = normalizeTelegramFeedRows([
+  row(500, 'text'),
+  pendingOutgoing,
+  row(499, 'text'),
+]);
+assert.equal(
+  pendingSorted[0]?.id,
+  pendingOutgoing.id,
+  'pending outgoing row must stay newest in an inverted list',
+);
 
 console.log('telegramAlbumRows.test.ts: ok');

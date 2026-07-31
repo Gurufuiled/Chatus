@@ -69,6 +69,12 @@ export function TelegramChatMenuPreviewBody({
   if (!row || (String(row.messageId) !== message.id && row.id !== message.id)) return <View />;
   const fixedWidthStyle = forcedWidth ? { width: forcedWidth, maxWidth: forcedWidth } : undefined;
   const isMe = row.outgoing;
+  const bubbleWidthStyle = forcedWidth
+    ? {
+        maxWidth: forcedWidth,
+        alignSelf: (isMe ? 'flex-end' : 'flex-start') as 'flex-end' | 'flex-start',
+      }
+    : null;
   const resolvedScheme = resolvedSchemeProp ?? 'light';
   const chatTheme =
     chatThemeProp ?? getChatTheme(DEFAULT_CHAT_THEME_ID, resolvedScheme);
@@ -141,7 +147,7 @@ export function TelegramChatMenuPreviewBody({
     if (!row.voiceUri) {
       return (
         <View style={fixedWidthStyle}>
-          <View style={[styles.bubble, textBubbleColorStyle]}>
+          <View style={[styles.bubble, textBubbleColorStyle, bubbleWidthStyle]}>
             {bubbleHeader}
             <Text style={outgoingMessageTextStyle}>Голосовое</Text>
             <MessageTimeStatus
@@ -182,7 +188,7 @@ export function TelegramChatMenuPreviewBody({
     if (!row.mediaUri) {
       return (
         <View style={fixedWidthStyle}>
-          <View style={[styles.bubble, textBubbleColorStyle]}>
+          <View style={[styles.bubble, textBubbleColorStyle, bubbleWidthStyle]}>
             {bubbleHeader}
             <Text style={outgoingMessageTextStyle}>Видеосообщение</Text>
             <MessageTimeStatus
@@ -286,7 +292,7 @@ export function TelegramChatMenuPreviewBody({
 
   if (row.kind === 'file') {
     return (
-      <View style={[styles.fileBubbleWrap, fixedWidthStyle]}>
+      <View style={[styles.fileBubbleWrap, fixedWidthStyle, bubbleWidthStyle]}>
         <FileBubble
           fileName={row.fileName ?? 'File'}
           fileSize={row.fileSize}
@@ -350,6 +356,7 @@ export function TelegramChatMenuPreviewBody({
             styles.bubble,
             { borderBottomRightRadius: 6 },
             !usePreviewOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
+            bubbleWidthStyle,
           ]}
         >
           {textBubbleBody}
@@ -360,7 +367,7 @@ export function TelegramChatMenuPreviewBody({
 
   return (
     <View style={fixedWidthStyle}>
-      <View style={[styles.bubble, textBubbleColorStyle]}>
+      <View style={[styles.bubble, textBubbleColorStyle, bubbleWidthStyle]}>
         {textBubbleBody}
       </View>
     </View>

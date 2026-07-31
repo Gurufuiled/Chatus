@@ -1,5 +1,7 @@
+import type { TelegramDialogRow } from '../../stores/telegramAccountStore';
 import type { TelegramMessageRow } from './types';
 import { getNestedRecord } from './tdlibMapping';
+import { setCachedUserAvatarUri } from '../../services/tdlib/userNameCache';
 
 export function getTdlibFileLocalUri(file: Record<string, unknown> | null): string | null {
   const local = getNestedRecord(file?.local);
@@ -36,6 +38,15 @@ export function patchMessagesWithTdlibFile(
       };
     }
 
+    if (row.thumbnailFileId === fileId) {
+      changed = true;
+      updated = {
+        ...updated,
+        thumbnailUri: uri,
+        thumbnailFileId: undefined,
+      };
+    }
+
     const preview = row.webPagePreview;
     if (preview?.photoFileId === fileId) {
       changed = true;
@@ -62,12 +73,30 @@ export function patchMessagesWithTdlibFile(
       };
     }
 
+    if (row.senderAvatarFileId === fileId) {
+      changed = true;
+      if (row.senderUserId != null) {
+        setCachedUserAvatarUri(row.senderUserId, uri);
+      }
+      updated = {
+        ...updated,
+        senderAvatarUri: uri,
+        senderAvatarFileId: undefined,
+      };
+    }
+
     if (row.kind === 'album' && row.albumMedia?.length) {
       let albumChanged = false;
       const albumMedia = row.albumMedia.map((item) => {
-        if (item.mediaFullFileId !== fileId) return item;
-        albumChanged = true;
-        return { ...item, mediaUri: uri, mediaFullFileId: undefined };
+        if (item.mediaFullFileId === fileId) {
+          albumChanged = true;
+          return { ...item, mediaUri: uri, mediaFullFileId: undefined };
+        }
+        if (item.thumbnailFileId === fileId) {
+          albumChanged = true;
+          return { ...item, thumbnailUri: uri, thumbnailFileId: undefined };
+        }
+        return item;
       });
       if (albumChanged) {
         changed = true;
@@ -81,15 +110,68 @@ export function patchMessagesWithTdlibFile(
   return changed ? next : rows;
 }
 
+/** Apply TDLib `updateFile` to dialog list avatars. */
+export function patchDialogsWithTdlibFile(
+  dialogs: TelegramDialogRow[],
+  file: Record<string, unknown>,
+): TelegramDialogRow[] {
+  const fileId = getTdlibFileId(file);
+  const uri = getTdlibFileLocalUri(file);
+  if (fileId == null || !uri) return dialogs;
+
+  let changed = false;
+  const next = dialogs.map((row) => {
+    if (row.avatarFileId !== fileId) return row;
+    changed = true;
+    return {
+      ...row,
+      avatarUri: uri,
+      avatarFileId: undefined,
+    };
+  });
+
+  return changed ? next : dialogs;
+}
+
 export function collectPendingTdlibFileIds(rows: TelegramMessageRow[]): number[] {
   const ids = new Set<number>();
   for (const row of rows) {
-    if (row.mediaFullFileId != null) ids.add(row.mediaFullFileId);
+    // TDLib downloads are asynchronous, so media keeps its thumbnail while the
+    // full file is prefetched in the background. A direct tap can still raise
+    // the same file to a higher priority.
+    if (row.mediaFullFileId != null) {
+      ids.add(row.mediaFullFileId);
+    }
+    if (row.thumbnailFileId != null) ids.add(row.thumbnailFileId);
     if (row.webPagePreview?.photoFileId != null) ids.add(row.webPagePreview.photoFileId);
     if (row.forwardInfo?.avatarFileId != null) ids.add(row.forwardInfo.avatarFileId);
+    if (row.senderAvatarFileId != null) ids.add(row.senderAvatarFileId);
     if (row.kind === 'album') {
       for (const item of row.albumMedia ?? []) {
-        if (item.mediaFullFileId != null) ids.add(item.mediaFullFileId);
+        if (item.mediaFullFileId != null) {
+          ids.add(item.mediaFullFileId);
+        }
+        if (item.thumbnailFileId != null) ids.add(item.thumbnailFileId);
+      }
+    }
+  }
+  return [...ids];
+}
+
+export function collectPendingTdlibVideoFileIds(rows: TelegramMessageRow[]): number[] {
+  const ids = new Set<number>();
+  for (const row of rows) {
+    if (
+      (row.kind === 'video' || row.kind === 'video_note') &&
+      row.mediaFullFileId != null
+    ) {
+      ids.add(row.mediaFullFileId);
+    }
+    if (row.kind === 'album') {
+      for (const item of row.albumMedia ?? []) {
+        if (item.kind === 'video' && item.mediaFullFileId != null) {
+          ids.add(item.mediaFullFileId);
+        }
       }
     }
   }

@@ -453,6 +453,16 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       overflow: 'hidden',
       backgroundColor: '#D8DEE7',
     },
+    albumGridClipStacked: {
+      borderRadius: 0,
+      overflow: 'hidden',
+      backgroundColor: '#D8DEE7',
+    },
+    albumHeaderWrap: {
+      paddingHorizontal: 10,
+      paddingTop: 7,
+      paddingBottom: 2,
+    },
     albumCaptionChannel: {
       paddingHorizontal: 12,
       paddingTop: 10,

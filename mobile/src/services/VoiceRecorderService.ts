@@ -6,6 +6,7 @@
 import { Audio } from 'expo-av';
 import { Platform } from 'react-native';
 
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 import { VoicePlayerService } from './VoicePlayerService';
 import { buildLiveWaveform, buildUiWaveform, dbToNormalized } from './waveformUtils';
 
@@ -70,13 +71,7 @@ class VoiceRecorderServiceClass {
 
   /** Restore regular playback mode after recording so voice playback can work on all devices. */
   private async restorePlaybackAudioMode(): Promise<void> {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
+    await releaseMediaAudioSession();
   }
 
   /** Start recording. Call stopRecording() to finish and get result. */
@@ -84,6 +79,10 @@ class VoiceRecorderServiceClass {
     if (this.recording) {
       throw new Error('Recording already in progress. Call stopRecording() first.');
     }
+
+    await VoicePlayerService.stop().catch(() => {});
+    VoicePlayerService.invalidateAudioMode();
+    await releaseMediaAudioSession();
 
     const granted = await this.requestPermissions();
     if (!granted) {
@@ -94,7 +93,6 @@ class VoiceRecorderServiceClass {
       );
     }
 
-    await VoicePlayerService.stop().catch(() => {});
     await this.ensureAudioMode();
     this.waveformSamples = [];
     this.emitLiveWaveform(Array(LIVE_WAVEFORM_SAMPLE_COUNT).fill(0.06));

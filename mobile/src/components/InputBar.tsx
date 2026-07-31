@@ -13,12 +13,19 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type TextLayoutEvent,
   type ViewStyle,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Feather from '@expo/vector-icons/Feather';
+import Reanimated, {
+  Easing as ReaEasing,
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+} from 'react-native-reanimated';
 import { composerPresentation } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
@@ -46,6 +53,12 @@ import type { SendChannelAnchorRect } from './SendChannelSelector';
 import { PlatformSourceIcon } from './PlatformSourceIcon';
 import type { ChatusStickerRef } from '../stickers/chatusStickerCatalog';
 import {
+  COMPOSER_INPUT_MAX_HEIGHT,
+  COMPOSER_INPUT_MIN_HEIGHT,
+  composerInputHeightForLineCount,
+  shouldScrollComposerInput,
+} from './composerSizing';
+import {
   friendStickerIdToEmoji,
   getFriendStickerIdForEmoji,
   encodeStickerPayload,
@@ -58,8 +71,16 @@ import type { StickerPanelTopTab } from '../stickers/stickerPanelPreferences';
 
 /** Ниже — кнопка стикеров уезжает к скрепке (фаза 3.2 журнала), чтобы не сжимать поле и микрофон. */
 const COMPOSER_NARROW_BREAKPOINT = 380;
-const COMPOSER_FIELD_MAX_HEIGHT = 140;
 
+/** Smooth height rise only — no spring bounce on the composer dock. */
+const REPLY_LAYOUT_MS = 180;
+const REPLY_STRIP_ENTERING = FadeInDown.duration(REPLY_LAYOUT_MS).easing(
+  ReaEasing.out(ReaEasing.cubic),
+);
+const REPLY_STRIP_EXITING = FadeOutUp.duration(140).easing(ReaEasing.in(ReaEasing.cubic));
+const COMPOSER_DOCK_LAYOUT = LinearTransition.duration(REPLY_LAYOUT_MS).easing(
+  ReaEasing.out(ReaEasing.cubic),
+);
 export interface MediaPickResult {
   kind: 'image' | 'video';
   uri: string;
@@ -257,7 +278,7 @@ export function InputBar({
   const [stickerSheetBootTab, setStickerSheetBootTab] = useState<StickerPanelTopTab | null>(null);
   const sendAnchorRef = useRef<View>(null);
   const [inputText, setInputText] = useState('');
-  const [composerContentHeight, setComposerContentHeight] = useState(MIN_TAP_TARGET);
+  const [composerInputHeight, setComposerInputHeight] = useState(COMPOSER_INPUT_MIN_HEIGHT);
   const [showVideoNoteRecorder, setShowVideoNoteRecorder] = useState(false);
   const [showAttachmentSheet, setShowAttachmentSheet] = useState(false);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
@@ -436,6 +457,7 @@ export function InputBar({
 
     if (selectedMedia) {
       setInputText('');
+      setComposerInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
       setPendingMedia(null);
       onCancelReply?.();
 
@@ -448,6 +470,7 @@ export function InputBar({
     }
 
     setInputText('');
+    setComposerInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
     onCancelReply?.();
     onInputChange?.('');
 
@@ -472,22 +495,22 @@ export function InputBar({
   const handleInputChange = useCallback(
     (text: string) => {
       setInputText(text);
-      if (!text) {
-        setComposerContentHeight(MIN_TAP_TARGET);
+      if (text.length === 0) {
+        setComposerInputHeight(COMPOSER_INPUT_MIN_HEIGHT);
       }
       onInputChange?.(text);
     },
     [onInputChange]
   );
 
-  const handleComposerContentSizeChange = useCallback(
-    (event: { nativeEvent: { contentSize: { height: number } } }) => {
-      const nextHeight = Math.min(
-        COMPOSER_FIELD_MAX_HEIGHT,
-        Math.max(MIN_TAP_TARGET, Math.ceil(event.nativeEvent.contentSize.height)),
+  const handleComposerTextLayout = useCallback(
+    (event: TextLayoutEvent) => {
+      const nextHeight = composerInputHeightForLineCount(
+        event.nativeEvent.lines.length,
+        typography.messageTextLineHeight,
       );
-      setComposerContentHeight((current) =>
-        current === nextHeight ? current : nextHeight,
+      setComposerInputHeight((currentHeight) =>
+        Math.abs(currentHeight - nextHeight) < 1 ? currentHeight : nextHeight,
       );
     },
     [],
@@ -871,8 +894,12 @@ export function InputBar({
       setGalleryLoading(true);
     }
     try {
-      const permission = await MediaLibrary.requestPermissionsAsync();
-      const granted = permission.granted || permission.accessPrivileges === 'limited';
+      let permission = await MediaLibrary.getPermissionsAsync();
+      let granted = permission.granted || permission.accessPrivileges === 'limited';
+      if (!granted && permission.canAskAgain) {
+        permission = await MediaLibrary.requestPermissionsAsync();
+        granted = permission.granted || permission.accessPrivileges === 'limited';
+      }
 
       if (!granted) {
         setGalleryDenied(true);
@@ -880,6 +907,8 @@ export function InputBar({
         sharedAttachmentGalleryCache = null;
         void clearAttachmentGalleryDiskCache();
         setGalleryLoading(false);
+        galleryEndCursorRef.current = undefined;
+        galleryHasNextPageRef.current = false;
         return;
       }
 
@@ -906,7 +935,11 @@ export function InputBar({
             : undefined,
         fileName: asset.filename,
       }));
-      setGalleryItems(mapped);
+      setGalleryItems((current) => {
+        if (!hydratedFromDisk) return mapped;
+        const firstPageIds = new Set(mapped.map((item) => item.id));
+        return [...mapped, ...current.filter((item) => !firstPageIds.has(item.id))];
+      });
       // Раньше loading держался до завершения всех getAssetInfoAsync (десятки вызовов подряд) —
       // скелетон висел 5–8 с. Показываем сетку сразу по uri из getAssetsAsync.
       setGalleryLoading(false);
@@ -931,7 +964,9 @@ export function InputBar({
         });
         sharedAttachmentGalleryCache = next;
         sharedAttachmentGalleryCachedAtMs = Date.now();
-        void writeAttachmentGalleryDiskCache(next);
+        void writeAttachmentGalleryDiskCache(
+          next.slice(0, ATTACHMENT_GALLERY_PAGE_SIZE),
+        );
         return next;
       });
     } catch (err) {
@@ -1664,7 +1699,8 @@ export function InputBar({
           </View>
         ) : null}
 
-        <View
+        <Reanimated.View
+          layout={COMPOSER_DOCK_LAYOUT}
           style={[
             styles.composerDock,
             replyToMessage && styles.composerDockReply,
@@ -1672,7 +1708,12 @@ export function InputBar({
           ]}
         >
           {replyToMessage ? (
-              <View style={styles.replyComposerWrap}>
+              <Reanimated.View
+                key="reply-strip"
+                entering={REPLY_STRIP_ENTERING}
+                exiting={REPLY_STRIP_EXITING}
+                style={styles.replyComposerWrap}
+              >
                 <View style={styles.replyComposerInline}>
                   <View style={styles.replyComposerAccent} />
                   {resolvedReplyThumbnailUri.trim() ? (
@@ -1701,7 +1742,7 @@ export function InputBar({
                     <Feather name="x" size={18} color={themeColors.iconMuted} />
                   </Pressable>
                 </View>
-              </View>
+              </Reanimated.View>
             ) : null}
 
             {isVoiceRecording ? (
@@ -1784,12 +1825,21 @@ export function InputBar({
               ) : null}
 
               <View style={styles.composerInputStickerCluster}>
+                <Text
+                  pointerEvents="none"
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                  style={styles.composerMeasureText}
+                  onTextLayout={handleComposerTextLayout}
+                >
+                  {`${inputText || ' '}\u200B`}
+                </Text>
                 <TextInput
                   ref={inputRef}
                   style={[
                     styles.input,
                     styles.inputComposerField,
-                    { height: composerContentHeight },
+                    { height: composerInputHeight },
                   ]}
                   placeholder={textRestriction ?? placeholder}
                   editable={!textRestriction}
@@ -1801,10 +1851,11 @@ export function InputBar({
                   placeholderTextColor={themeColors.placeholder}
                   value={inputText}
                   onChangeText={handleInputChange}
-                  onContentSizeChange={handleComposerContentSizeChange}
                   multiline
-                  scrollEnabled={composerContentHeight >= COMPOSER_FIELD_MAX_HEIGHT}
-                  textAlignVertical="top"
+                  scrollEnabled={shouldScrollComposerInput(composerInputHeight)}
+                  textAlignVertical={
+                    composerInputHeight === COMPOSER_INPUT_MIN_HEIGHT ? 'center' : 'top'
+                  }
                   maxLength={4096}
                 />
               </View>
@@ -1880,7 +1931,7 @@ export function InputBar({
               )}
             </View>
             )}
-          </View>
+          </Reanimated.View>
 
         {!canSend && !isChannelAdmin ? (
           voiceRestriction ? (
@@ -2169,7 +2220,7 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
     minWidth: 0,
     position: 'relative',
     justifyContent: 'flex-end',
-    alignSelf: 'stretch',
+    alignSelf: 'flex-end',
   },
   leadingAction: {
     width: MIN_TAP_TARGET,
@@ -2190,8 +2241,8 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
     marginBottom: 1,
   },
   input: {
-    minHeight: MIN_TAP_TARGET,
-    maxHeight: COMPOSER_FIELD_MAX_HEIGHT,
+    minHeight: COMPOSER_INPUT_MIN_HEIGHT,
+    maxHeight: COMPOSER_INPUT_MAX_HEIGHT,
     paddingHorizontal: 8,
     paddingTop: 11,
     paddingBottom: 10,
@@ -2200,9 +2251,17 @@ function createInputBarStyles(themeColors: ThemeColors, isDark: boolean) {
     color: themeColors.textPrimary,
   },
   inputComposerField: {
-    flex: 1,
     alignSelf: 'stretch',
     minWidth: 0,
+  },
+  composerMeasureText: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    top: 0,
+    opacity: 0,
+    fontSize: typography.messageText,
+    lineHeight: typography.messageTextLineHeight,
   },
   trailingAction: {
     width: MIN_TAP_TARGET,

@@ -122,7 +122,6 @@ import {
   getNestedRecord,
   getPinnedMessageIdFromChat,
   loadLastReadOutboxMessageId,
-  hydrateTelegramMediaRows,
   mapTdMessage,
   mapTdMessages,
   scheduleTdlibFileDownload,
@@ -130,6 +129,7 @@ import {
 } from './telegramChat/tdlibMapping';
 import {
   collectPendingTdlibFileIds,
+  collectPendingTdlibVideoFileIds,
   patchMessagesWithTdlibFile,
 } from './telegramChat/telegramFileUpdates';
 import {
@@ -234,6 +234,23 @@ export function TelegramChatScreen() {
   const isChannel = routeChatType === 'channel';
   const isGroupChat = routeChatType === 'group' || routeChatType === 'supergroup';
   const [messages, setMessages] = useState<TelegramMessageRow[]>([]);
+  const [downloadingMediaFileIds, setDownloadingMediaFileIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const schedulePendingMediaDownloads = useCallback((rows: TelegramMessageRow[]) => {
+    const videoIds = collectPendingTdlibVideoFileIds(rows);
+    if (videoIds.length > 0) {
+      setDownloadingMediaFileIds((current) => {
+        const next = new Set(current);
+        videoIds.forEach((fileId) => next.add(fileId));
+        return next;
+      });
+    }
+    const videoIdSet = new Set(videoIds);
+    for (const fileId of collectPendingTdlibFileIds(rows)) {
+      scheduleTdlibFileDownload(fileId, videoIdSet.has(fileId) ? 8 : 16);
+    }
+  }, []);
   const [loading, setLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -298,14 +315,31 @@ export function TelegramChatScreen() {
     lastMarkedIncomingIdRef.current = 0;
   }, [chatId]);
 
+  /** Clears dialog unread locally and asks TDLib to viewMessages (reply/send path too). */
+  const markOpenedChatRead = useCallback(
+    (messageIds?: number[]) => {
+      if (!Number.isFinite(chatId)) return;
+      clearTelegramDialogUnreadLocal(telegramChatId);
+      const ids =
+        messageIds && messageIds.length > 0
+          ? messageIds
+          : messagesRef.current
+              .filter((row) => !row.outgoing && row.messageId > 0)
+              .slice(0, 32)
+              .map((row) => row.messageId);
+      if (ids.length === 0) return;
+      void markTelegramChatMessagesRead(chatId, ids);
+    },
+    [chatId, telegramChatId],
+  );
+
   useEffect(() => {
     if (!isFocused || !Number.isFinite(chatId) || messages.length === 0) return;
     const latestIncoming = messages.find((row) => !row.outgoing && row.messageId > 0);
     if (!latestIncoming || latestIncoming.messageId <= lastMarkedIncomingIdRef.current) return;
     lastMarkedIncomingIdRef.current = latestIncoming.messageId;
-    clearTelegramDialogUnreadLocal(telegramChatId);
-    void markTelegramChatMessagesRead(chatId, [latestIncoming.messageId]);
-  }, [chatId, isFocused, messages, telegramChatId]);
+    markOpenedChatRead([latestIncoming.messageId]);
+  }, [chatId, isFocused, markOpenedChatRead, messages]);
 
   const handleMessagesListScroll = useCallback(
     (event: Parameters<typeof handleChatScroll>[0]) => {
@@ -1263,9 +1297,7 @@ export function TelegramChatScreen() {
             const cached = await loadTelegramMessagesFromCache(chatId, threadParam);
             if (mountedRef.current && cached.length > 0) {
               mergeMapped(cached);
-              for (const fileId of collectPendingTdlibFileIds(cached)) {
-                scheduleTdlibFileDownload(fileId);
-              }
+              schedulePendingMediaDownloads(cached);
               setLoading(false);
             }
           } catch {
@@ -1280,9 +1312,7 @@ export function TelegramChatScreen() {
             const localMapped = await fetchBatch(true);
             if (mountedRef.current && localMapped.length > 0) {
               mergeMapped(localMapped);
-              for (const fileId of collectPendingTdlibFileIds(localMapped)) {
-                scheduleTdlibFileDownload(fileId);
-              }
+              schedulePendingMediaDownloads(localMapped);
               setLoading(false);
             }
           } catch {
@@ -1292,18 +1322,8 @@ export function TelegramChatScreen() {
 
         let mapped = await fetchBatch(false);
         if (!mountedRef.current || isStaleLoad()) return;
-        if (!older && mapped.length > 0) {
-          mapped = await hydrateTelegramMediaRows(
-            chatId,
-            normalizeTelegramFeedRows(mapped),
-            lastReadOutboxMessageIdRef.current,
-          );
-          if (!mountedRef.current || isStaleLoad()) return;
-        }
         mergeMapped(mapped);
-        for (const fileId of collectPendingTdlibFileIds(mapped)) {
-          scheduleTdlibFileDownload(fileId);
-        }
+        schedulePendingMediaDownloads(mapped);
         if (!isStaleLoad()) setLastError(null);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1317,7 +1337,7 @@ export function TelegramChatScreen() {
         setLoadingOlder(false);
       }
     },
-    [chatId, ensureReady, messageThreadId],
+    [chatId, ensureReady, messageThreadId, schedulePendingMediaDownloads],
   );
 
   useFocusEffect(
@@ -1331,6 +1351,16 @@ export function TelegramChatScreen() {
             const file = getNestedRecord(update.file);
             if (!file) return;
             setMessages((prev) => patchMessagesWithTdlibFile(prev, file));
+            const fileId = typeof file.id === 'number' ? file.id : null;
+            const local = getNestedRecord(file.local);
+            if (fileId != null && local?.is_downloading_completed === true) {
+              setDownloadingMediaFileIds((current) => {
+                if (!current.has(fileId)) return current;
+                const next = new Set(current);
+                next.delete(fileId);
+                return next;
+              });
+            }
             return;
           }
 
@@ -1451,9 +1481,7 @@ export function TelegramChatScreen() {
           }).then((row) => {
             if (!row || !mountedRef.current) return;
             setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, row, oldMessageId)));
-            for (const fileId of collectPendingTdlibFileIds([row])) {
-              scheduleTdlibFileDownload(fileId);
-            }
+            schedulePendingMediaDownloads([row]);
             void persistTelegramMessages(chatId, threadParam, [row]).catch(() => {});
           });
         } catch {
@@ -1461,7 +1489,7 @@ export function TelegramChatScreen() {
         }
       });
       return unsubscribe;
-    }, [chatId, isGroupChat, loadHistory, messageThreadId]),
+    }, [chatId, isGroupChat, loadHistory, messageThreadId, schedulePendingMediaDownloads]),
   );
 
   const sendText = useCallback(
@@ -1484,6 +1512,7 @@ export function TelegramChatScreen() {
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
       patchTelegramDialogOutgoingPreview(chatId, trimmed, optimistic.dateMs);
+      markOpenedChatRead();
       try {
         await ensureReady();
         const response = (await tdlibClient.send({
@@ -1508,6 +1537,7 @@ export function TelegramChatScreen() {
               upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped),
             );
             patchTelegramDialogOutgoingPreview(chatId, trimmed, mapped.dateMs);
+            markOpenedChatRead();
           }
         }
       } catch (err) {
@@ -1516,7 +1546,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить', message);
       }
     },
-    [chatId, ensureReady, onComposerMessageSent, replyToMessageId],
+    [chatId, ensureReady, markOpenedChatRead, onComposerMessageSent, replyToMessageId],
   );
 
   const sendVoice = useCallback(
@@ -1540,6 +1570,7 @@ export function TelegramChatScreen() {
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      markOpenedChatRead();
       try {
         await ensureReady();
         const response = (await tdlibClient.send({
@@ -1563,6 +1594,8 @@ export function TelegramChatScreen() {
             voiceUri: mapped.voiceUri ?? result.uri,
             waveform: mapped.waveform && mapped.waveform.length > 0 ? mapped.waveform : result.waveform,
           }));
+          patchTelegramDialogOutgoingPreview(chatId, 'Голосовое', mapped.dateMs);
+          markOpenedChatRead();
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1570,7 +1603,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить голосовое', message);
       }
     },
-    [chatId, ensureReady, replyToMessageId],
+    [chatId, ensureReady, markOpenedChatRead, replyToMessageId],
   );
 
   const sendVideoNote = useCallback(
@@ -1607,6 +1640,7 @@ export function TelegramChatScreen() {
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      markOpenedChatRead();
       try {
         await ensureReady();
         const inputMessageContent = buildInputMessageVideoNoteContent({
@@ -1641,13 +1675,15 @@ export function TelegramChatScreen() {
           thumbnailUri: mapped.thumbnailUri ?? result.thumbnailUri,
           durationMs: mapped.durationMs ?? result.durationMs,
         }));
+        patchTelegramDialogOutgoingPreview(chatId, 'Видеосообщение', mapped.dateMs);
+        markOpenedChatRead();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
         Alert.alert('Не удалось отправить видеосообщение', message);
       }
     },
-    [chatId, ensureReady, replyToMessageId],
+    [chatId, ensureReady, markOpenedChatRead, replyToMessageId],
   );
 
   const sendInputMessageContent = useCallback(
@@ -1669,6 +1705,7 @@ export function TelegramChatScreen() {
       );
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
+      markOpenedChatRead();
       try {
         await ensureReady();
         const response = (await tdlibClient.send({
@@ -1685,6 +1722,8 @@ export function TelegramChatScreen() {
             setMessages((prev) =>
               upsertMessage(prev.filter((item) => item.id !== optimistic.id), mapped),
             );
+            patchTelegramDialogOutgoingPreview(chatId, optimisticText, mapped.dateMs);
+            markOpenedChatRead();
           }
         }
       } catch (err) {
@@ -1693,7 +1732,7 @@ export function TelegramChatScreen() {
         Alert.alert(failureTitle, message);
       }
     },
-    [chatId, ensureReady, replyToMessageId],
+    [chatId, ensureReady, markOpenedChatRead, replyToMessageId],
   );
 
   const sendMedia = useCallback(
@@ -1771,6 +1810,7 @@ export function TelegramChatScreen() {
       };
       setMessages((prev) => normalizeTelegramFeedRows(upsertMessage(prev, optimistic)));
       setReplyToMessageId(null);
+      markOpenedChatRead();
 
       const contents = items.map((item, index) => {
         const isLast = index === items.length - 1;
@@ -1820,6 +1860,10 @@ export function TelegramChatScreen() {
             mapped,
           ),
         );
+        const previewAt =
+          mapped.reduce((max, row) => Math.max(max, row.dateMs), 0) || Date.now();
+        patchTelegramDialogOutgoingPreview(chatId, caption || 'Альбом', previewAt);
+        markOpenedChatRead();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setMessages((prev) =>
@@ -1828,7 +1872,7 @@ export function TelegramChatScreen() {
         Alert.alert('Не удалось отправить альбом', message);
       }
     },
-    [chatId, ensureReady, replyToMessageId, sendMedia],
+    [chatId, ensureReady, markOpenedChatRead, replyToMessageId, sendMedia],
   );
 
   const sendFile = useCallback(
@@ -2260,6 +2304,10 @@ export function TelegramChatScreen() {
                   status={item.status}
                   header={bubbleHeader || undefined}
                   outgoingMetaColor={outgoingBubbleMetaColor}
+                  isDownloading={
+                    item.mediaFullFileId != null &&
+                    downloadingMediaFileIds.has(item.mediaFullFileId)
+                  }
                 />
               </View>
             </Pressable>,
@@ -2322,9 +2370,26 @@ export function TelegramChatScreen() {
             reactionsNode={reactionsNode}
             incomingChannelPost={channelIncoming}
             channelAlbumWidth={channelIncoming ? channelMediaClamp.maxWidth : undefined}
-            onTilePress={(messageId) =>
-              openTelegramAlbumViewer(item.albumMedia ?? [], messageId, item.text)
-            }
+            onTilePress={(messageId) => {
+              const albumMedia = item.albumMedia ?? [];
+              const mediaItem = albumMedia.find(
+                (candidate) => candidate.messageId === messageId,
+              );
+              if (
+                mediaItem?.kind === 'video' &&
+                !mediaItem.mediaUri &&
+                mediaItem.mediaFullFileId != null
+              ) {
+                setDownloadingMediaFileIds((current) => {
+                  const next = new Set(current);
+                  next.add(mediaItem.mediaFullFileId!);
+                  return next;
+                });
+                scheduleTdlibFileDownload(mediaItem.mediaFullFileId, 32);
+                return;
+              }
+              openTelegramAlbumViewer(albumMedia, messageId, item.text);
+            }}
           />
         );
 
@@ -2526,6 +2591,10 @@ export function TelegramChatScreen() {
               header={bubbleHeader}
               outgoingMetaColor={outgoingBubbleMetaColor}
               mediaClamp={channelPostMedia ? channelMediaClamp : undefined}
+              isDownloading={
+                item.mediaFullFileId != null &&
+                downloadingMediaFileIds.has(item.mediaFullFileId)
+              }
             />
           );
 

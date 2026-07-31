@@ -23,6 +23,7 @@ type CommonProps = {
   status?: string;
   header?: React.ReactNode;
   outgoingMetaColor?: string;
+  isDownloading?: boolean;
 };
 
 type PendingVideoProps = CommonProps & {
@@ -65,6 +66,7 @@ export function PendingVideoBubble({
   header,
   outgoingMetaColor,
   mediaClamp,
+  isDownloading = false,
 }: PendingVideoProps) {
   const { colors } = useTheme();
   const size = computeDisplaySize(width, height, mediaClamp);
@@ -84,8 +86,11 @@ export function PendingVideoBubble({
       <View style={styles.scrim} />
       {header ? <View style={styles.headerWrap}>{header}</View> : null}
       <View style={styles.centerBadge}>
-        <Feather name="play" size={22} color="#FFFFFF" style={styles.playIcon} />
-        <ActivityIndicator size="small" color="#FFFFFF" />
+        {isDownloading ? (
+          <ActivityIndicator size="small" color="#FFFFFF" />
+        ) : (
+          <Feather name="download" size={22} color="#FFFFFF" />
+        )}
       </View>
       {durationMs > 0 ? (
         <View style={styles.durationBadge}>
@@ -117,6 +122,7 @@ export function PendingVideoNoteBubble({
   status,
   header,
   outgoingMetaColor,
+  isDownloading = false,
 }: CommonProps) {
   const { colors } = useTheme();
   const metaColor = isMe ? outgoingMetaColor : 'rgba(255,255,255,0.9)';
@@ -135,8 +141,11 @@ export function PendingVideoNoteBubble({
         ) : null}
         <View style={styles.scrim} />
         <View style={styles.centerBadge}>
-          <Feather name="play" size={20} color="#FFFFFF" style={styles.playIcon} />
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          {isDownloading ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Feather name="download" size={20} color="#FFFFFF" />
+          )}
         </View>
         {durationMs > 0 ? (
           <View style={styles.videoNoteDuration}>

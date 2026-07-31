@@ -8,6 +8,7 @@ import {
 } from '../../services/tdlib/userNameCache';
 import { previewForUnsupported } from './composer';
 import { getTdMediaAlbumId, mergeTelegramFeedRows } from './telegramAlbumRows';
+import { classifyTelegramForwardOriginType } from './telegramForwardOrigin';
 import type {
   TelegramAlbumMediaItem,
   TelegramMessageRow,
@@ -151,7 +152,12 @@ export type ResolvedPhoto = {
   fullFileId?: number;
 };
 
+const scheduledTdlibFileDownloads = new Map<number, number>();
+
 export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
+  const scheduledPriority = scheduledTdlibFileDownloads.get(fileId) ?? 0;
+  if (scheduledPriority >= priority) return;
+  scheduledTdlibFileDownloads.set(fileId, priority);
   void tdlibClient
     .send({
       '@type': 'downloadFile',
@@ -161,7 +167,14 @@ export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
       limit: 0,
       synchronous: false,
     })
-    .catch(() => undefined);
+    .catch(() => undefined)
+    .finally(() => {
+      setTimeout(() => {
+        if (scheduledTdlibFileDownloads.get(fileId) === priority) {
+          scheduledTdlibFileDownloads.delete(fileId);
+        }
+      }, 15_000);
+    });
 }
 
 /** Voice notes are small — try a blocking download so incoming bubbles render without waiting for `updateFile`. */
@@ -174,23 +187,11 @@ async function resolveTdVoiceFileUri(
   if (mediaLocalOnly) return null;
 
   const fileId = getTdFileId(file);
-  if (fileId == null) return null;
-
-  try {
-    const downloaded = (await tdlibClient.send({
-      '@type': 'downloadFile',
-      file_id: fileId,
-      priority: 32,
-      offset: 0,
-      limit: 0,
-      synchronous: true,
-    })) as Record<string, unknown>;
-    throwIfTdError(downloaded);
-    return getTdFileLocalUri(downloaded) ?? getTdFileLocalUri(file);
-  } catch {
-    scheduleTdlibFileDownload(fileId);
-    return null;
+  if (fileId != null) {
+    // Non-blocking to avoid UI stalls/hangs when opening chats with many voice notes.
+    scheduleTdlibFileDownload(fileId, 32);
   }
+  return null;
 }
 
 function parseTdVoiceWaveform(voiceNote: Record<string, unknown> | null): number[] {
@@ -258,17 +259,6 @@ async function resolvePhotoUri(
     return { uri: null, width: displayWidth, height: displayHeight, fullFileId };
   }
 
-  for (const { size, file } of sizesDesc) {
-    const uri = await resolveTdFileUri(file, false);
-    if (uri) {
-      return {
-        uri,
-        width: getNumber(size.width) ?? displayWidth,
-        height: getNumber(size.height) ?? displayHeight,
-      };
-    }
-  }
-
   if (fullFileId != null) {
     scheduleTdlibFileDownload(fullFileId);
   }
@@ -294,21 +284,15 @@ export async function downloadTdlibFile(fileId: number): Promise<string | null> 
   return path ? `file://${path}` : null;
 }
 
-async function fetchTdlibUserProfilePhotoUri(user: Record<string, unknown>): Promise<string | null> {
-  const photo = getNestedRecord(user.profile_photo);
-  if (!photo) return null;
-  const big = getNestedRecord(photo.big);
-  const small = getNestedRecord(photo.small);
-  const file = small ?? big; // Use small for chat feed
-  const fid = typeof file?.id === 'number' ? file.id : null;
-  if (fid == null) return null;
-  return downloadTdlibFile(fid).catch(() => null);
-}
-
 async function resolveIncomingUserSender(
   raw: Record<string, unknown>,
   loadAvatar: boolean,
-): Promise<{ userId: number; name: string; avatarUri: string | null | undefined } | null> {
+): Promise<{
+  userId: number;
+  name: string;
+  avatarUri: string | null | undefined;
+  avatarFileId?: number;
+} | null> {
   if (raw.is_outgoing === true) return null;
   const sender = getNestedRecord(raw.sender_id);
   if (!sender || sender['@type'] !== 'messageSenderUser') return null;
@@ -341,13 +325,33 @@ async function resolveIncomingUserSender(
     setCachedUserName(userId, name);
 
     let avatarUri: string | null | undefined;
+    let avatarFileId: number | undefined;
     if (loadAvatar) {
-      const downloaded = await fetchTdlibUserProfilePhotoUri(user);
-      avatarUri = downloaded;
-      setCachedUserAvatarUri(userId, downloaded);
+      const photo = getNestedRecord(user.profile_photo);
+      const small = getNestedRecord(photo?.small);
+      const big = getNestedRecord(photo?.big);
+      const file = small ?? big;
+      const localUri = getTdFileLocalUri(file);
+      if (localUri) {
+        avatarUri = localUri;
+        setCachedUserAvatarUri(userId, localUri);
+      } else {
+        const fileId = typeof file?.id === 'number' ? file.id : null;
+        if (fileId != null) {
+          scheduleTdlibFileDownload(fileId);
+          avatarFileId = fileId;
+        }
+        avatarUri = null;
+        setCachedUserAvatarUri(userId, null);
+      }
     }
 
-    return { userId, name, avatarUri: loadAvatar ? avatarUri ?? null : undefined };
+    return {
+      userId,
+      name,
+      avatarUri: loadAvatar ? avatarUri ?? null : undefined,
+      avatarFileId,
+    };
   } catch {
     const fallbackName = cachedName ?? `User ${userId}`;
     return {
@@ -380,9 +384,9 @@ async function resolveForwardOrigin(
   const origin = getNestedRecord(forwardInfoRaw.origin);
   if (!origin) return null;
 
-  const type = origin['@type'];
+  const originKind = classifyTelegramForwardOriginType(origin['@type']);
   try {
-    if (type === 'messageForwardOriginUser') {
+    if (originKind === 'user') {
       const userId = typeof origin.sender_user_id === 'number' ? origin.sender_user_id : null;
       if (userId == null) return null;
       const cachedName = getCachedUserName(userId);
@@ -415,7 +419,7 @@ async function resolveForwardOrigin(
       return { senderName: name, avatarUri: null };
     }
     
-    if (type === 'messageForwardOriginChat' || type === 'messageForwardOriginChannel') {
+    if (originKind === 'chat' || originKind === 'channel') {
       const chatId = typeof origin.sender_chat_id === 'number' 
         ? origin.sender_chat_id 
         : typeof origin.chat_id === 'number' 
@@ -442,12 +446,12 @@ async function resolveForwardOrigin(
       return { senderName: name, avatarUri: null };
     }
 
-    if (type === 'messageForwardOriginMessageImport') {
+    if (originKind === 'import') {
       const name = typeof origin.sender_name === 'string' ? origin.sender_name.trim() : 'Imported';
       return { senderName: name, avatarUri: null };
     }
 
-    if (type === 'messageForwardOriginHiddenUser') {
+    if (originKind === 'hidden_user') {
       const name = typeof origin.sender_name === 'string' ? origin.sender_name.trim() : 'Hidden User';
       return { senderName: name, avatarUri: null };
     }
@@ -594,6 +598,8 @@ export async function mapTdMessage(
   const senderUserId = outgoing ? undefined : incomingSender?.userId;
   const senderAvatarUri =
     outgoing || !loadAvatar ? undefined : incomingSender?.avatarUri;
+  const senderAvatarFileId =
+    outgoing || !loadAvatar ? undefined : incomingSender?.avatarFileId;
   const viewCount = getTdViewCount(raw);
   const { discussionReplyCount, discussionChatId, messageThreadId } = getTdDiscussionFields(raw);
   const mediaAlbumId = getTdMediaAlbumId(raw);
@@ -610,6 +616,7 @@ export async function mapTdMessage(
     senderName: senderName ?? undefined,
     senderUserId,
     senderAvatarUri: senderAvatarUri !== undefined ? senderAvatarUri : undefined,
+    senderAvatarFileId,
     viewCount,
     discussionReplyCount,
     discussionChatId,
@@ -669,10 +676,9 @@ export async function mapTdMessage(
     const fileId = getTdFileId(file);
     const thumbnail = getNestedRecord(video?.thumbnail);
     const thumbnailFile = getNestedRecord(thumbnail?.file);
-    const [uri, thumbnailUri] = await Promise.all([
-      resolveTdFileUri(file, mediaLocalOnly),
-      resolveTdFileUri(thumbnailFile, mediaLocalOnly),
-    ]);
+    const uri = getTdFileLocalUri(file);
+    const thumbnailUri = getTdFileLocalUri(thumbnailFile);
+    const thumbnailFileId = thumbnailUri ? null : getTdFileId(thumbnailFile);
     const width = getNumber(video?.width);
     const height = getNumber(video?.height);
     const durationSec = getNumber(video?.duration) ?? 0;
@@ -697,6 +703,7 @@ export async function mapTdMessage(
         mediaUri: uri ?? undefined,
         mediaFullFileId: uri ? undefined : (fileId ?? undefined),
         thumbnailUri: thumbnailUri ?? undefined,
+        thumbnailFileId: thumbnailFileId ?? undefined,
         width,
         height,
         durationMs: durationSec * 1000,
@@ -709,6 +716,7 @@ export async function mapTdMessage(
       mediaUri: uri ?? undefined,
       mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       thumbnailUri: thumbnailUri ?? undefined,
+      thumbnailFileId: thumbnailFileId ?? undefined,
       width,
       height,
       durationMs: durationSec * 1000,
@@ -724,10 +732,9 @@ export async function mapTdMessage(
     const mini = getNestedRecord(videoNote?.minithumbnail);
     const miniData = typeof mini?.data === 'string' && mini.data.length > 8 ? mini.data : null;
     const miniUri = miniData ? `data:image/jpeg;base64,${miniData}` : null;
-    const [uri, thumbnailUri] = await Promise.all([
-      resolveTdFileUri(file, mediaLocalOnly),
-      resolveTdFileUri(thumbnailFile, mediaLocalOnly),
-    ]);
+    const uri = getTdFileLocalUri(file);
+    const thumbnailUri = getTdFileLocalUri(thumbnailFile);
+    const thumbnailFileId = thumbnailUri ? null : getTdFileId(thumbnailFile);
     const side = getNumber(videoNote?.length);
     return {
       ...base,
@@ -736,6 +743,7 @@ export async function mapTdMessage(
       mediaUri: uri ?? undefined,
       mediaFullFileId: uri ? undefined : (fileId ?? undefined),
       thumbnailUri: thumbnailUri ?? miniUri ?? undefined,
+      thumbnailFileId: thumbnailFileId ?? undefined,
       width: side,
       height: side,
       durationMs: (getNumber(videoNote?.duration) ?? 0) * 1000,

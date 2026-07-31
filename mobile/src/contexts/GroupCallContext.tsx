@@ -35,6 +35,7 @@ import {
 } from '../services/groupCallService';
 import { GroupCallOverlay } from '../components/group-call/GroupCallOverlay';
 import { WebSocketService } from '../services/WebSocketService';
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 
 export type GroupCallPhase =
   | 'idle'
@@ -368,6 +369,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       apiParticipantsByChatRef.current = next;
     }
     setState(initialState);
+    await releaseMediaAudioSession();
   }, [detachRoom]);
 
   const syncVideoTracksFromRoom = useCallback((room: Room) => {

@@ -18,6 +18,8 @@ export type TelegramAlbumMediaItem = {
   thumbnailUri?: string | null;
   /** TDLib file id for media still downloading (`updateFile` will refresh `mediaUri`). */
   mediaFullFileId?: number;
+  /** TDLib preview file id; full video is downloaded only after a tap. */
+  thumbnailFileId?: number;
   width?: number;
   height?: number;
   durationMs?: number;
@@ -48,6 +50,8 @@ export type TelegramMessageRow = {
   mediaUri?: string | null;
   /** TDLib file id for media still downloading while the row already renders as media. */
   mediaFullFileId?: number;
+  /** TDLib preview file id; patched independently from the full media file. */
+  thumbnailFileId?: number;
   thumbnailUri?: string | null;
   durationMs?: number;
   waveform?: number[];
@@ -67,6 +71,8 @@ export type TelegramMessageRow = {
   senderUserId?: number;
   /** Resolved profile photo URI for the sender when `loadSenderAvatar` was used while mapping. */
   senderAvatarUri?: string | null;
+  /** TDLib profile photo file id pending download (`updateFile` patches `senderAvatarUri`). */
+  senderAvatarFileId?: number;
   /** Post view count from TDLib `interaction_info.view_count` (channel posts). */
   viewCount?: number;
   /** Linked discussion chat id from TDLib `reply_in_chat_id` when present; иначе экран подставляет `linked_chat_id` канала из `getSupergroupFullInfo`. */

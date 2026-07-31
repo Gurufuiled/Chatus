@@ -225,12 +225,9 @@ export function ImageBubble({
   const hasCaption = (caption ?? '').trim().length > 0;
   const hasFooter = Boolean(footer);
   const mediaBottomRounded = !hasCaption && !hasFooter;
-  const awaitingFullQuality =
-    (loadingFullQuality && !isLocalFileUri) || (incomingChannelPost && isDataPreviewUri);
   const showInitialLoader = incomingChannelPost
     ? !hasUri && !loadError
-    : !hasUri || (!imageLoaded && !loadError);
-  const showQualityLoader = awaitingFullQuality && !loadError && hasUri;
+    : !hasUri || (!imageLoaded && !loadError && !isDataPreviewUri);
   const loaderBoxStyle = incomingChannelPost
     ? { width: '100%' as const, height: channelImageH }
     : { width: w, height: h };
@@ -279,11 +276,6 @@ export function ImageBubble({
                 {showInitialLoader ? (
                   <View pointerEvents="none" style={[styles.loadingOverlay, loaderBoxStyle]}>
                     <ActivityIndicator size="large" color={colors.iconMuted} />
-                  </View>
-                ) : null}
-                {showQualityLoader ? (
-                  <View pointerEvents="none" style={[styles.qualityLoadingOverlay, loaderBoxStyle]}>
-                    <ActivityIndicator size="large" color="#FFFFFF" />
                   </View>
                 ) : null}
                 {loadError ? (
@@ -509,13 +501,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(243, 244, 246, 0.92)',
     zIndex: 2,
-  },
-  qualityLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
-    zIndex: 3,
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,

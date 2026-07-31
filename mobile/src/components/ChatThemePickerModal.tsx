@@ -30,7 +30,7 @@ export function ChatThemePickerModal({
   onClose,
 }: ChatThemePickerModalProps) {
   const insets = useSafeAreaInsets();
-  const { resolvedScheme } = useTheme();
+  const { colors, resolvedScheme } = useTheme();
   const [section, setSection] = useState<'wallpaper' | 'colors'>('wallpaper');
 
   useEffect(() => {
@@ -39,9 +39,17 @@ export function ChatThemePickerModal({
 
   const isWallpaper = section === 'wallpaper';
   const selectedId = isWallpaper ? selectedWallpaperId : selectedThemeId;
+
   const resetDraft = () => {
-    onSelectTheme(DEFAULT_CHAT_THEME_ID);
     onSelectWallpaper(DEFAULT_CHAT_THEME_ID);
+    onSelectTheme(DEFAULT_CHAT_THEME_ID);
+  };
+
+  const selectWallpaper = (wallpaperId: ChatThemeId) => {
+    // A wallpaper starts with its designed bubble palette. The user can then
+    // override only the bubble color in the second section.
+    onSelectWallpaper(wallpaperId);
+    onSelectTheme(wallpaperId);
   };
 
   return (
@@ -49,19 +57,24 @@ export function ChatThemePickerModal({
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} />
 
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 18) }]}>
+        <View
+          style={[
+            styles.sheet,
+            {
+              paddingBottom: Math.max(insets.bottom, 18),
+              backgroundColor: colors.toolbar,
+            },
+          ]}
+        >
           <View style={styles.headerRow}>
             <Pressable hitSlop={10} onPress={onClose} style={styles.headerAction}>
-              <Text style={styles.headerActionText}>Назад</Text>
+              <Text style={[styles.headerActionText, { color: colors.accent }]}>Назад</Text>
             </Pressable>
-            <Text style={styles.title}>Выбрать тему</Text>
-            <View style={styles.headerActionPlaceholder} />
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Оформление чата</Text>
+            <Pressable onPress={resetDraft} hitSlop={10} style={styles.resetAction}>
+              <Text style={[styles.resetActionText, { color: colors.accent }]}>Сбросить</Text>
+            </Pressable>
           </View>
-
-          <Text pointerEvents="none" style={styles.titleOverlay}>Оформление чата</Text>
-          <Pressable onPress={resetDraft} style={styles.resetAction} hitSlop={10}>
-            <Text style={styles.resetActionText}>Сбросить</Text>
-          </Pressable>
 
           <View style={styles.livePreview}>
             <ChatThemePreview
@@ -70,28 +83,50 @@ export function ChatThemePickerModal({
               selected={false}
             />
             <View style={styles.previewCopy}>
-              <Text style={styles.previewTitle}>Предпросмотр</Text>
-              <Text style={styles.previewSubtitle}>Изменения появятся после применения</Text>
+              <Text style={[styles.previewTitle, { color: colors.textPrimary }]}>
+                Предпросмотр
+              </Text>
+              <Text style={[styles.previewSubtitle, { color: colors.textSecondary }]}>
+                Фон и цвет сообщений можно настроить отдельно
+              </Text>
             </View>
           </View>
 
-          <View style={styles.segmentedControl}>
+          <View style={[styles.segmentedControl, { backgroundColor: colors.inputBackground }]}>
             {([
               ['wallpaper', 'Обои'],
               ['colors', 'Цвет сообщений'],
-            ] as const).map(([value, label]) => (
-              <Pressable
-                key={value}
-                onPress={() => setSection(value)}
-                style={[styles.segment, section === value && styles.segmentActive]}
-              >
-                <Text style={[styles.segmentText, section === value && styles.segmentTextActive]}>{label}</Text>
-              </Pressable>
-            ))}
+            ] as const).map(([value, label]) => {
+              const active = section === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => setSection(value)}
+                  style={[
+                    styles.segment,
+                    active && {
+                      backgroundColor: colors.inputBackgroundSolid,
+                      borderColor: colors.separator,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      { color: active ? colors.accent : colors.textSecondary },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
-          <Text style={styles.sectionHint}>
-            {isWallpaper ? 'Обои меняют только фон чата.' : 'Цвет меняет пузыри сообщений и акцент.'}
+          <Text style={[styles.sectionHint, { color: colors.textSecondary }]}>
+            {isWallpaper
+              ? 'При выборе обоев сразу устанавливается подходящий цвет сообщений.'
+              : 'Здесь можно оставить фон и изменить только цвет своих сообщений.'}
           </Text>
 
           <ScrollView
@@ -102,7 +137,9 @@ export function ChatThemePickerModal({
             {CHAT_THEME_ORDER.map((themeId) => (
               <Pressable
                 key={themeId}
-                onPress={() => (isWallpaper ? onSelectWallpaper(themeId) : onSelectTheme(themeId))}
+                onPress={() =>
+                  isWallpaper ? selectWallpaper(themeId) : onSelectTheme(themeId)
+                }
                 style={styles.previewPressable}
               >
                 <ChatThemePreview
@@ -113,24 +150,32 @@ export function ChatThemePickerModal({
                 <Text
                   style={[
                     styles.previewLabel,
-                    selectedId === themeId && styles.previewLabelActive,
+                    {
+                      color:
+                        selectedId === themeId ? colors.accent : colors.textSecondary,
+                    },
                   ]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                 >
-                  {themeId === DEFAULT_CHAT_THEME_ID ? 'Без темы' : getChatTheme(themeId, resolvedScheme).name}
+                  {themeId === DEFAULT_CHAT_THEME_ID
+                    ? isWallpaper
+                      ? 'Без обоев'
+                      : 'По умолчанию'
+                    : getChatTheme(themeId, resolvedScheme).name}
                 </Text>
               </Pressable>
             ))}
           </ScrollView>
 
-
-
           <Pressable
             onPress={onApply}
-            style={({ pressed }) => [styles.applyButton, pressed && styles.applyButtonPressed]}
+            style={({ pressed }) => [
+              styles.applyButton,
+              { backgroundColor: colors.accent },
+              pressed && styles.applyButtonPressed,
+            ]}
           >
-            <Text pointerEvents="none" style={styles.applyButtonOverlay}>Применить оформление</Text>
-            <Text style={styles.applyButtonText}>Применить тему</Text>
+            <Text style={styles.applyButtonText}>Применить оформление</Text>
           </Pressable>
         </View>
       </View>
@@ -145,67 +190,49 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11, 18, 32, 0.24)',
-    zIndex: 0,
+    backgroundColor: 'rgba(5, 10, 20, 0.36)',
   },
   sheet: {
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.98)',
     paddingTop: 14,
     paddingHorizontal: 16,
-    zIndex: 2,
     elevation: 14,
   },
   headerRow: {
+    minHeight: 34,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 14,
   },
-  titleOverlay: {
-    position: 'absolute',
-    top: 14,
-    left: 80,
-    right: 80,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+  headerAction: {
+    width: 68,
+    justifyContent: 'center',
+  },
+  headerActionText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
   resetAction: {
-    position: 'absolute',
-    top: 14,
-    right: 16,
-    minHeight: 32,
+    width: 68,
+    alignItems: 'flex-end',
     justifyContent: 'center',
   },
   resetActionText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#2A8B53',
-  },
-  headerAction: {
-    minWidth: 52,
-  },
-  headerActionText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#2A8B53',
-  },
-  headerActionPlaceholder: {
-    minWidth: 52,
   },
   title: {
+    flex: 1,
+    textAlign: 'center',
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
-    opacity: 0,
   },
   livePreview: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     marginBottom: 14,
   },
   previewCopy: {
@@ -214,104 +241,67 @@ const styles = StyleSheet.create({
   previewTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#111827',
   },
   previewSubtitle: {
-    marginTop: 3,
+    marginTop: 4,
     fontSize: 12,
-    lineHeight: 16,
-    color: '#6B7280',
+    lineHeight: 17,
   },
   segmentedControl: {
     flexDirection: 'row',
     padding: 3,
     borderRadius: 14,
-    backgroundColor: '#EEF1F5',
     marginBottom: 9,
   },
   segment: {
     flex: 1,
-    minHeight: 34,
+    minHeight: 36,
     borderRadius: 11,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  segmentActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 1,
   },
   segmentText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#7A8494',
-  },
-  segmentTextActive: {
-    color: '#1D6E3B',
   },
   sectionHint: {
-    marginBottom: 12,
+    minHeight: 34,
+    marginBottom: 10,
     fontSize: 13,
-    color: '#6B7280',
+    lineHeight: 17,
   },
   previewRow: {
     gap: 14,
     paddingRight: 10,
+    paddingBottom: 4,
   },
   previewPressable: {
     width: 86,
     alignItems: 'center',
   },
   previewLabel: {
-    marginTop: 10,
+    minHeight: 32,
+    marginTop: 8,
     fontSize: 13,
     lineHeight: 15,
     fontWeight: '700',
-    color: '#6B7280',
     textAlign: 'center',
-  },
-  previewLabelActive: {
-    color: '#1D6E3B',
-  },
-  captionWrap: {
-    marginTop: 16,
-    marginBottom: 18,
-    paddingHorizontal: 4,
-  },
-  captionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  captionText: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#6B7280',
   },
   applyButton: {
     minHeight: 52,
-    borderRadius: 22,
-    backgroundColor: '#2AA04F',
+    marginTop: 14,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
   applyButtonPressed: {
-    opacity: 0.9,
+    opacity: 0.88,
   },
   applyButtonText: {
     fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
-    opacity: 0,
-  },
-  applyButtonOverlay: {
-    position: 'absolute',
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '700',
   },
 });

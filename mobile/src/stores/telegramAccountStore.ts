@@ -12,6 +12,7 @@ export type TelegramAuthStatus =
   | 'waiting_parameters'
   | 'waiting_phone'
   | 'waiting_code'
+  | 'waiting_qr'
   | 'waiting_password'
   | 'ready'
   | 'error';
@@ -35,6 +36,8 @@ export type TelegramDialogRow = {
   /** Подпись медиа accent-цветом («Фотография», «Видео»). */
   lastMessagePreviewAccent?: boolean;
   avatarUri?: string | null;
+  /** TDLib small photo file id while avatar is still downloading (`updateFile` patches `avatarUri`). */
+  avatarFileId?: number;
   lastMessageAt?: number | null;
   unreadCount?: number;
   /** TDLib internal chat id as string */

@@ -38,6 +38,7 @@ import { getWebRtcIceServers, resolveAvatarUrl } from '../config';
 import { TelegramGlyph, TELEGRAM_CALL_GLYPHS, type CallGlyph } from '../icons/telegram';
 import { SignalingService } from '../services/SignalingService';
 import { VoicePlayerService } from '../services/VoicePlayerService';
+import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
 import { chatStore } from '../stores/chatStore';
 import { colors, withAlpha } from '../theme/colors';
 
@@ -760,17 +761,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetAudioMode = useCallback(async () => {
-    try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
-    } catch {
-      // Ignore reset failures.
-    }
+    await releaseMediaAudioSession();
   }, []);
 
   const cleanupMedia = useCallback(async () => {
@@ -878,6 +869,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Microphone permission denied');
       }
 
+      await releaseMediaAudioSession();
       const desiredSpeakerOn = callStateRef.current?.isSpeakerOn ?? true;
       await Audio.setAudioModeAsync(buildCallAudioMode(desiredSpeakerOn));
 
@@ -1097,6 +1089,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
       try {
         await VoicePlayerService.stop();
+        await releaseMediaAudioSession();
         await SignalingService.whenConnected();
 
         setCallState({
@@ -1148,6 +1141,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
     try {
       await VoicePlayerService.stop();
+      await releaseMediaAudioSession();
       await SignalingService.whenConnected();
 
       setCallState({

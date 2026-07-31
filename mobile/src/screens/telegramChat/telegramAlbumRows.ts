@@ -1,4 +1,5 @@
 import type { TelegramAlbumMediaItem, TelegramMessageRow } from './types';
+import { compareTelegramRowsNewestFirst } from './telegramRowOrder';
 
 export function getTdMediaAlbumId(raw: Record<string, unknown>): number | undefined {
   const id = raw.media_album_id;
@@ -29,6 +30,7 @@ function rowToAlbumItem(row: TelegramMessageRow): TelegramAlbumMediaItem | null 
     kind: row.kind,
     mediaUri: row.mediaUri,
     mediaFullFileId: row.mediaFullFileId,
+    thumbnailFileId: row.thumbnailFileId,
     thumbnailUri: row.thumbnailUri,
     width: row.width,
     height: row.height,
@@ -48,6 +50,7 @@ function buildAlbumRow(parts: TelegramMessageRow[]): TelegramMessageRow | null {
   const anchor = sorted[sorted.length - 1]!;
   const captionRow =
     [...sorted].reverse().find((row) => (row.text ?? '').trim().length > 0) ?? anchor;
+  const forwardInfoRow = sorted.find((row) => row.forwardInfo != null);
   const albumMessageIds = sorted.map((row) => row.messageId);
   const mediaAlbumId = anchor.mediaAlbumId ?? sorted[0]?.mediaAlbumId;
 
@@ -57,6 +60,7 @@ function buildAlbumRow(parts: TelegramMessageRow[]): TelegramMessageRow | null {
     messageId: anchor.messageId,
     kind: 'album',
     text: captionRow.text ?? '',
+    forwardInfo: forwardInfoRow?.forwardInfo ?? anchor.forwardInfo,
     albumMedia: items,
     albumMessageIds,
     mediaAlbumId,
@@ -113,11 +117,36 @@ export function collapseTelegramAlbumRows(rows: TelegramMessageRow[]): TelegramM
     }
   }
 
-  return [...standalone, ...collapsedAlbums].sort((a, b) => b.messageId - a.messageId);
+  return [...standalone, ...collapsedAlbums].sort(compareTelegramRowsNewestFirst);
+}
+
+function dropConfirmedOutgoingSendingTwins(rows: TelegramMessageRow[]): TelegramMessageRow[] {
+  const confirmedOutgoing = rows.filter(
+    (row) =>
+      row.outgoing &&
+      row.messageId > 0 &&
+      row.status !== 'sending' &&
+      row.status !== 'failed',
+  );
+  if (confirmedOutgoing.length === 0) return rows;
+
+  return rows.filter((item) => {
+    if (!item.outgoing || item.status !== 'sending') return true;
+    return !confirmedOutgoing.some((next) => {
+      if (next.kind !== item.kind) return false;
+      if (Math.abs(item.dateMs - next.dateMs) >= 120_000) return false;
+      if (next.kind === 'text') {
+        return (item.text ?? '').trim() === (next.text ?? '').trim();
+      }
+      return true;
+    });
+  });
 }
 
 export function normalizeTelegramFeedRows(rows: TelegramMessageRow[]): TelegramMessageRow[] {
-  return collapseTelegramAlbumRows([...rows].sort((a, b) => b.messageId - a.messageId));
+  return collapseTelegramAlbumRows(
+    dropConfirmedOutgoingSendingTwins([...rows].sort(compareTelegramRowsNewestFirst)),
+  );
 }
 
 /** Merge history/updates into feed: replace overlapping album parts and re-collapse. */

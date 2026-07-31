@@ -1,6 +1,7 @@
 import type { Message } from '../../stores/types';
 import { CHAT_MSG_GROUP_TIME_GAP_MS } from '../../presentation/telegramChatUi';
 import type { TelegramMessageRow } from './types';
+import { compareTelegramRowsNewestFirst } from './telegramRowOrder';
 
 export function optimisticOutgoingMessage(
   text: string,
@@ -217,44 +218,38 @@ export function isSameGroup(
   );
 }
 
+function isUnconfirmedOutgoingTwin(
+  item: TelegramMessageRow,
+  next: TelegramMessageRow,
+): boolean {
+  if (!next.outgoing || next.messageId <= 0) return false;
+  if (next.status === 'sending' || next.status === 'failed') return false;
+  if (!item.outgoing || item.status !== 'sending') return false;
+  if (item.kind !== next.kind) return false;
+  if (Math.abs(item.dateMs - next.dateMs) >= 120_000) return false;
+
+  if (next.kind === 'text') {
+    return (item.text ?? '').trim() === (next.text ?? '').trim();
+  }
+  // voice / media / album: one recent sending bubble of the same kind is the twin
+  return true;
+}
+
 export function upsertMessage(
   rows: TelegramMessageRow[],
   next: TelegramMessageRow,
   oldMessageId?: number | null,
 ): TelegramMessageRow[] {
-  const withoutSame = rows.filter(
-    (item) =>
-      item.id !== next.id &&
-      item.messageId !== next.messageId &&
-      (oldMessageId == null || item.messageId !== oldMessageId) &&
-      !(oldMessageId != null && item.albumMessageIds?.includes(oldMessageId)),
-  );
-
-  const withoutStaleOptimistic =
-    next.outgoing
-      ? withoutSame.filter((item) => !shouldDropStaleOptimisticOutgoing(item, next, oldMessageId))
-      : withoutSame;
-
-  return [next, ...withoutStaleOptimistic].sort((a, b) => b.messageId - a.messageId);
+  const withoutSame = rows.filter((item) => {
+    if (item.id === next.id || item.messageId === next.messageId) return false;
+    if (oldMessageId != null && item.messageId === oldMessageId) return false;
+    if (oldMessageId != null && item.albumMessageIds?.includes(oldMessageId)) return false;
+    if (isUnconfirmedOutgoingTwin(item, next)) return false;
+    return true;
+  });
+  return [next, ...withoutSame].sort(compareTelegramRowsNewestFirst);
 }
 
-function shouldDropStaleOptimisticOutgoing(
-  item: TelegramMessageRow,
-  confirmed: TelegramMessageRow,
-  oldMessageId?: number | null,
-): boolean {
-  if (!item.outgoing || item.status !== 'sending') return false;
-  if (!item.id.startsWith('temp-') && item.messageId >= 0) return false;
-  if (oldMessageId != null && item.messageId === oldMessageId) return true;
-  if (item.kind !== confirmed.kind) return false;
-  const itemText = (item.text ?? '').trim();
-  const confirmedText = (confirmed.text ?? '').trim();
-  // Text sends: match by content. Media/sticker rows without text require oldMessageId match above.
-  if (!itemText && !confirmedText) return false;
-  if (itemText !== confirmedText) return false;
-  if (Math.abs(item.dateMs - confirmed.dateMs) > 120_000) return false;
-  return true;
-}
 
 export function applyReadOutboxStatus(
   rows: TelegramMessageRow[],
