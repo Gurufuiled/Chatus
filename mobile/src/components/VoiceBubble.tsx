@@ -278,102 +278,96 @@ export const VoiceBubble = React.memo(function VoiceBubble({
       ]}
     >
       {header}
-      {(() => {
-        const content = (
-          <View style={styles.mainRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={loading ? 'Voice message is loading' : isPlaying ? 'Pause voice message' : 'Play voice message'}
-              accessibilityState={{ selected: isPlaying }}
-              style={({ pressed }) => [
-                styles.playButton,
-                isMe ? styles.playButtonMe : styles.playButtonOther,
-                pressed && styles.playButtonPressed,
-              ]}
-              onPress={handlePress}
-              hitSlop={8}
-            >
-              {loading ? (
-                <ActivityIndicator
-                  size="small"
-                  color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
-                />
-              ) : (
-                <AnimatedPlayPauseIcon
-                  isPlaying={isPlaying}
-                  size={18}
-                  color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
-                />
-              )}
-            </Pressable>
+      <View style={styles.mainRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={loading ? 'Voice message is loading' : isPlaying ? 'Pause voice message' : 'Play voice message'}
+          accessibilityState={{ selected: isPlaying }}
+          style={({ pressed }) => [
+            styles.playButton,
+            isMe ? styles.playButtonMe : styles.playButtonOther,
+            pressed && styles.playButtonPressed,
+          ]}
+          onPress={handlePress}
+          hitSlop={8}
+        >
+          {loading ? (
+            <ActivityIndicator
+              size="small"
+              color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
+            />
+          ) : (
+            <AnimatedPlayPauseIcon
+              isPlaying={isPlaying}
+              size={18}
+              color={isMe ? (outgoingAccentColor ?? colors.accent) : '#FFFFFF'}
+            />
+          )}
+        </Pressable>
 
-            <View style={styles.contentColumn}>
-              <Pressable
-                onLayout={handleWaveformLayout}
-                onPress={(event) => {
-                  handleWaveformPress(event.nativeEvent.locationX);
-                }}
-                style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
-              >
-                {barHeights.map((barHeight, index) => {
-                  const isFilled = renderProgress > 0 && index / barCount <= renderProgress;
-                  return (
-                    <View
-                      key={index}
-                      style={[
-                        styles.bar,
-                        {
-                          height: barHeight,
-                          backgroundColor: isFilled
-                            ? isMe
-                              ? outgoingTextColor ?? '#FFFFFF'
-                              : '#4A8FF5'
-                            : isMe
-                              ? outgoingTextColor ? `${outgoingTextColor}66` : 'rgba(255, 255, 255, 0.4)'
-                              : '#D2D5DA',
-                        },
-                      ]}
-                    />
-                  );
-                })}
-              </Pressable>
-
-              <View style={styles.metaRow}>
-                <Text
+        <View style={styles.contentColumn}>
+          <Pressable
+            onLayout={handleWaveformLayout}
+            onPress={(event) => {
+              handleWaveformPress(event.nativeEvent.locationX);
+            }}
+            style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
+          >
+            {barHeights.map((barHeight, index) => {
+              const isFilled = renderProgress > 0 && index / barCount <= renderProgress;
+              return (
+                <View
+                  key={index}
                   style={[
-                    styles.duration,
-                    isMe && styles.durationMe,
-                    !isMe && incomingDurationColor ? { color: incomingDurationColor } : null,
+                    styles.bar,
+                    {
+                      height: barHeight,
+                      backgroundColor: isFilled
+                        ? isMe
+                          ? outgoingTextColor ?? '#FFFFFF'
+                          : '#4A8FF5'
+                        : isMe
+                          ? outgoingTextColor ? `${outgoingTextColor}66` : 'rgba(255, 255, 255, 0.4)'
+                          : '#D2D5DA',
+                    },
                   ]}
-                >
-                  {durationLabel}
-                </Text>
-                <View style={styles.metaRight}>
-                  {viewCount != null ? (
-                    <View style={styles.metricWrap}>
-                      <Feather name="eye" size={12} color="rgba(120, 126, 138, 0.9)" />
-                      <Text style={styles.metricText}>{viewCount}</Text>
-                    </View>
-                  ) : null}
-                  {time ? (
-                    <MessageTimeStatus
-                      time={time}
-                      status={messageStatus ?? 'sent'}
-                      isMe={isMe}
-                      compact
-                      timeColor={isMe ? outgoingMetaColor : undefined}
-                      iconColor={isMe ? outgoingMetaColor : undefined}
-                      source={source}
-                    />
-                  ) : null}
+                />
+              );
+            })}
+          </Pressable>
+
+          <View style={styles.metaRow}>
+            <Text
+              style={[
+                styles.duration,
+                isMe && styles.durationMe,
+                !isMe && incomingDurationColor ? { color: incomingDurationColor } : null,
+              ]}
+            >
+              {durationLabel}
+            </Text>
+            <View style={styles.metaRight}>
+              {viewCount != null ? (
+                <View style={styles.metricWrap}>
+                  <Feather name="eye" size={12} color="rgba(120, 126, 138, 0.9)" />
+                  <Text style={styles.metricText}>{viewCount}</Text>
                 </View>
-              </View>
+              ) : null}
+              {time ? (
+                <MessageTimeStatus
+                  time={time}
+                  status={messageStatus ?? 'sent'}
+                  isMe={isMe}
+                  compact
+                  timeColor={isMe ? outgoingMetaColor : undefined}
+                  iconColor={isMe ? outgoingMetaColor : undefined}
+                  source={source}
+                />
+              ) : null}
             </View>
           </View>
-        );
-
-        return content;
-      })()}
+        </View>
+      </View>
 
       {inlineReactions?.length ? (
         <MessageReactionInline

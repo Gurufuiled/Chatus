@@ -122,96 +122,88 @@ export function FileBubble({
     >
       {header}
 
-      {(() => {
-        const content = (
-          <>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={uri?.trim() ? 'Open file' : 'File'}
-              disabled={!uri?.trim()}
-              hitSlop={8}
-              onPress={handlePress}
-              style={({ pressed }) => [styles.card, pressed && uri?.trim() ? styles.cardPressed : null]}
-            >
-              <View
-                style={[
-                  styles.iconBadge,
-                  isMe ? styles.iconBadgeMe : styles.iconBadgeOther,
-                  isMe && outgoingAccentColor ? { backgroundColor: outgoingAccentColor } : null,
-                ]}
-              >
-                <View style={styles.documentIcon}>
-                  <View
-                    style={[
-                      styles.documentFold,
-                      isMe ? styles.documentFoldMe : styles.documentFoldOther,
-                      isMe && outgoingAccentColor ? { borderBottomColor: outgoingAccentColor } : null,
-                    ]}
-                  />
-                  <View style={styles.documentLine} />
-                  <View style={[styles.documentLine, styles.documentLineShort]} />
-                </View>
-              </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={uri?.trim() ? 'Open file' : 'File'}
+        disabled={!uri?.trim()}
+        hitSlop={8}
+        onPress={handlePress}
+        style={({ pressed }) => [styles.card, pressed && uri?.trim() ? styles.cardPressed : null]}
+      >
+        <View
+          style={[
+            styles.iconBadge,
+            isMe ? styles.iconBadgeMe : styles.iconBadgeOther,
+            isMe && outgoingAccentColor ? { backgroundColor: outgoingAccentColor } : null,
+          ]}
+        >
+          <View style={styles.documentIcon}>
+            <View
+              style={[
+                styles.documentFold,
+                isMe ? styles.documentFoldMe : styles.documentFoldOther,
+                isMe && outgoingAccentColor ? { borderBottomColor: outgoingAccentColor } : null,
+              ]}
+            />
+            <View style={styles.documentLine} />
+            <View style={[styles.documentLine, styles.documentLineShort]} />
+          </View>
+        </View>
 
-              <View style={styles.infoColumn}>
-                <Text
-                  style={[
-                    styles.fileName,
-                    isMe ? styles.fileNameMe : styles.fileNameOther,
-                    isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-                    !isMe && incomingFileNameColor ? { color: incomingFileNameColor } : null,
-                  ]}
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                >
-                  {fileName || 'Unnamed file'}
-                </Text>
+        <View style={styles.infoColumn}>
+          <Text
+            style={[
+              styles.fileName,
+              isMe ? styles.fileNameMe : styles.fileNameOther,
+              isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+              !isMe && incomingFileNameColor ? { color: incomingFileNameColor } : null,
+            ]}
+            numberOfLines={2}
+            ellipsizeMode="tail"
+          >
+            {fileName || 'Unnamed file'}
+          </Text>
 
-                {hasMetaRow ? (
-                  <View style={styles.metaRow}>
-                    <Text
-                      style={[
-                        styles.fileSize,
-                        isMe ? styles.fileSizeMe : styles.fileSizeOther,
-                        isMe && outgoingMetaColor ? { color: outgoingMetaColor } : null,
-                        !isMe && incomingSecondaryTextColor ? { color: incomingSecondaryTextColor } : null,
-                      ]}
-                    >
-                      {sizeText ?? ' '}
-                    </Text>
-                    {time ? (
-                      <MessageTimeStatus
-                        time={time}
-                        status={status ?? 'sent'}
-                        isMe={isMe}
-                        compact
-                        timeColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
-                        iconColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
-                        source={source}
-                      />
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            </Pressable>
-
-            {fileCaption ? (
+          {hasMetaRow ? (
+            <View style={styles.metaRow}>
               <Text
                 style={[
-                  styles.caption,
-                  isMe ? styles.captionMe : styles.captionOther,
-                  isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-                  !isMe && incomingCaptionColor ? { color: incomingCaptionColor } : null,
+                  styles.fileSize,
+                  isMe ? styles.fileSizeMe : styles.fileSizeOther,
+                  isMe && outgoingMetaColor ? { color: outgoingMetaColor } : null,
+                  !isMe && incomingSecondaryTextColor ? { color: incomingSecondaryTextColor } : null,
                 ]}
               >
-                {fileCaption}
+                {sizeText ?? ' '}
               </Text>
-            ) : null}
-          </>
-        );
+              {time ? (
+                <MessageTimeStatus
+                  time={time}
+                  status={status ?? 'sent'}
+                  isMe={isMe}
+                  compact
+                  timeColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
+                  iconColor={isMe ? outgoingMetaColor : incomingSecondaryTextColor}
+                  source={source}
+                />
+              ) : null}
+            </View>
+          ) : null}
+        </View>
+      </Pressable>
 
-        return content;
-      })()}
+      {fileCaption ? (
+        <Text
+          style={[
+            styles.caption,
+            isMe ? styles.captionMe : styles.captionOther,
+            isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+            !isMe && incomingCaptionColor ? { color: incomingCaptionColor } : null,
+          ]}
+        >
+          {fileCaption}
+        </Text>
+      ) : null}
 
       {inlineReactions?.length ? (
         <MessageReactionInline

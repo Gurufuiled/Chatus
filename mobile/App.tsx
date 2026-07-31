@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { appLinking } from './src/navigation/linking';
 import { StatusBar } from 'expo-status-bar';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
+import { View, Text, StyleSheet } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/contexts/AuthContext';
@@ -24,6 +24,11 @@ import { telegramAccountStore } from './src/stores/telegramAccountStore';
 import { TelegramTdlibNotificationListener } from './src/components/TelegramTdlibNotificationListener';
 import { ensureAndroidPushChannels } from './src/services/pushNotificationsService';
 import { prefetchMessageTimeFormat } from './src/utils/formatMessageTime';
+
+// Keep the native launch screen (solid color, no icon) while DB/session hydrate.
+// Avoids a second React-rendered splash with the Chatus icon square.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.setOptions({ duration: 220, fade: true });
 
 export default function App() {
   const [isReady, setIsReady] = useState(false);
@@ -52,19 +57,18 @@ export default function App() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!isReady) return;
+    const frame = requestAnimationFrame(() => {
+      void SplashScreen.hideAsync().catch(() => {
+        SplashScreen.hide();
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isReady]);
+
   if (!isReady) {
-    return (
-      <View style={styles.center}>
-        <Image
-          accessibilityIgnoresInvertColors
-          source={require('./assets/chatus_icon.png')}
-          style={styles.bootLogo}
-          contentFit="contain"
-        />
-        <ActivityIndicator size="large" color={colors.accent} style={styles.bootSpinner} />
-        <StatusBar style="auto" />
-      </View>
-    );
+    return null;
   }
 
   if (bootstrapError) {
@@ -112,18 +116,18 @@ export default function App() {
 }
 
 function ThemedNavigationContainer({ children }: { children: React.ReactNode }) {
-  const { colors, resolvedScheme } = useTheme();
+  const { colors: themeColors, resolvedScheme } = useTheme();
   const navTheme = React.useMemo(() => {
     const base = resolvedScheme === 'dark' ? DarkTheme : DefaultTheme;
     return {
       ...base,
       colors: {
         ...base.colors,
-        background: colors.chatBackground,
-        card: colors.chatBackground,
+        background: themeColors.chatBackground,
+        card: themeColors.chatBackground,
       },
     };
-  }, [colors.chatBackground, resolvedScheme]);
+  }, [themeColors.chatBackground, resolvedScheme]);
 
   return (
     <NavigationContainer linking={appLinking as never} theme={navTheme}>
@@ -138,20 +142,6 @@ function ThemedStatusBar() {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.chatBackground,
-  },
-  bootLogo: {
-    width: 96,
-    height: 96,
-    marginBottom: 20,
-  },
-  bootSpinner: {
-    marginTop: 4,
-  },
   errorWrap: {
     flex: 1,
     justifyContent: 'center',

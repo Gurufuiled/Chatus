@@ -1356,6 +1356,39 @@ export function ChatScreen() {
     });
   }, [menuAnim]);
 
+  const handleInteractiveBackPress = useCallback(() => {
+    if (menuState) {
+      closeMenu();
+      return true;
+    }
+    if (selectedMessageIds.length > 0) {
+      clearSelectionMode();
+      return true;
+    }
+    if (isSearchMode) {
+      handleCancelSearch();
+      return true;
+    }
+    if (isThemePickerVisible) {
+      setIsThemePickerVisible(false);
+      return true;
+    }
+    if (forwardSourceMessageIds.length > 0) {
+      setForwardSourceMessageIds([]);
+      return true;
+    }
+    return false;
+  }, [
+    clearSelectionMode,
+    closeMenu,
+    forwardSourceMessageIds.length,
+    handleCancelSearch,
+    isSearchMode,
+    isThemePickerVisible,
+    menuState,
+    selectedMessageIds.length,
+  ]);
+
   useEffect(() => {
     if (!menuState) {
       menuAnim.setValue(0);
@@ -2967,6 +3000,7 @@ export function ChatScreen() {
           !isThemePickerVisible &&
           !isSearchMode
         }
+        onBackPress={handleInteractiveBackPress}
       >
         {Platform.OS === 'android' ? (
           <CustomAndroidChatHeader

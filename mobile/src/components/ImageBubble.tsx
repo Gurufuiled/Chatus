@@ -251,127 +251,121 @@ export function ImageBubble({
           <View style={{ maxWidth: w, alignSelf: 'flex-start' }}>{header}</View>
         ) : null}
 
-        {(() => {
-          const content = (
-            <>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="View image fullscreen"
-                onPress={handlePress}
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View image fullscreen"
+            onPress={handlePress}
+            style={[
+              styles.imageWrapper,
+              incomingChannelPost
+                ? { width: '100%', height: channelImageH }
+                : { width: w, height: h },
+              isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
+              embedded && styles.imageWrapperEmbedded,
+              incomingChannelPost &&
+                (mediaBottomRounded ? styles.imageWrapperChannelSolo : styles.imageWrapperChannelStacked),
+            ]}
+          >
+            {showInitialLoader ? (
+              <View pointerEvents="none" style={[styles.loadingOverlay, loaderBoxStyle]}>
+                <ActivityIndicator size="large" color={colors.iconMuted} />
+              </View>
+            ) : null}
+            {loadError ? (
+              <View pointerEvents="none" style={[styles.errorOverlay, loaderBoxStyle]}>
+                <Feather name="image" size={28} color={colors.iconMuted} />
+              </View>
+            ) : null}
+            {hasUri ? (
+              <Image
+                key={normalizedUri}
+                source={{ uri: normalizedUri }}
+                transition={incomingChannelPost ? undefined : 150}
+                cachePolicy="memory-disk"
+                onError={() => {
+                  setLoadError(true);
+                  setImageLoaded(true);
+                }}
+                onLoad={(e) => {
+                  loadedImageUris.add(normalizedUri);
+                  if (!propWidth || !propHeight) {
+                    setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
+                  }
+                  setLoadError(false);
+                  setImageLoaded(true);
+                }}
                 style={[
-                  styles.imageWrapper,
+                  incomingChannelPost ? styles.imageChannel : styles.image,
                   incomingChannelPost
                     ? { width: '100%', height: channelImageH }
                     : { width: w, height: h },
-                  isMe ? styles.imageWrapperMe : styles.imageWrapperOther,
-                  embedded && styles.imageWrapperEmbedded,
-                  incomingChannelPost &&
-                    (mediaBottomRounded ? styles.imageWrapperChannelSolo : styles.imageWrapperChannelStacked),
                 ]}
-              >
-                {showInitialLoader ? (
-                  <View pointerEvents="none" style={[styles.loadingOverlay, loaderBoxStyle]}>
-                    <ActivityIndicator size="large" color={colors.iconMuted} />
+                contentFit={incomingChannelPost ? 'cover' : contentFit}
+              />
+            ) : null}
+
+            {!hasCaption && (time || viewCount != null) ? (
+              <View style={styles.overlayMeta}>
+                {viewCount != null ? (
+                  <View style={styles.overlayMetric}>
+                    <Feather name="eye" size={12} color="#FFFFFF" />
+                    <Text style={styles.overlayMetricText}>
+                      {viewCountShortLabel ?? String(viewCount)}
+                    </Text>
                   </View>
                 ) : null}
-                {loadError ? (
-                  <View pointerEvents="none" style={[styles.errorOverlay, loaderBoxStyle]}>
-                    <Feather name="image" size={28} color={colors.iconMuted} />
-                  </View>
-                ) : null}
-                {hasUri ? (
-                  <Image
-                    key={normalizedUri}
-                    source={{ uri: normalizedUri }}
-                    transition={incomingChannelPost ? undefined : 150}
-                    cachePolicy="memory-disk"
-                    onError={() => {
-                      setLoadError(true);
-                      setImageLoaded(true);
-                    }}
-                    onLoad={(e) => {
-                      loadedImageUris.add(normalizedUri);
-                      if (!propWidth || !propHeight) {
-                        setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
-                      }
-                      setLoadError(false);
-                      setImageLoaded(true);
-                    }}
-                    style={[
-                      incomingChannelPost ? styles.imageChannel : styles.image,
-                      incomingChannelPost
-                        ? { width: '100%', height: channelImageH }
-                        : { width: w, height: h },
-                    ]}
-                    contentFit={incomingChannelPost ? 'cover' : contentFit}
+                {time ? (
+                  <MessageTimeStatus
+                    time={time}
+                    status={status ?? 'sent'}
+                    isMe={isMe}
+                    compact
+                    timeColor="#FFFFFF"
+                    iconColor="#FFFFFF"
+                    source={source}
                   />
                 ) : null}
+              </View>
+            ) : null}
+          </Pressable>
 
-                {!hasCaption && (time || viewCount != null) ? (
-                  <View style={styles.overlayMeta}>
-                    {viewCount != null ? (
-                      <View style={styles.overlayMetric}>
-                        <Feather name="eye" size={12} color="#FFFFFF" />
-                        <Text style={styles.overlayMetricText}>
-                          {viewCountShortLabel ?? String(viewCount)}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {time ? (
-                      <MessageTimeStatus
-                        time={time}
-                        status={status ?? 'sent'}
-                        isMe={isMe}
-                        compact
-                        timeColor="#FFFFFF"
-                        iconColor="#FFFFFF"
-                        source={source}
-                      />
-                    ) : null}
-                  </View>
-                ) : null}
-              </Pressable>
-
-              {hasCaption ? (
-                <MessageTextBubbleBody
-                  fillWidth
-                  text={caption ?? ''}
-                  textStyle={[
-                    styles.caption,
-                    incomingChannelPost && styles.captionChannel,
-                    isMe && styles.captionMe,
-                    isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-                    !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
-                  ]}
-                  hasViews={viewCount != null}
-                  meta={
-                    <View style={styles.textMeta}>
-                      {viewCount != null ? (
-                        <View style={styles.textMetric}>
-                          <Feather name="eye" size={13} color={isMe ? 'rgba(255,255,255,0.7)' : colors.iconMuted} />
-                          <Text style={[styles.textMetricText, isMe ? { color: 'rgba(255,255,255,0.7)' } : null]}>
-                            {viewCountShortLabel ?? String(viewCount)}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {time ? (
-                        <MessageTimeStatus
-                          time={time}
-                          status={status ?? 'sent'}
-                          isMe={isMe}
-                          compact
-                          source={source}
-                        />
-                      ) : null}
+          {hasCaption ? (
+            <MessageTextBubbleBody
+              fillWidth
+              text={caption ?? ''}
+              textStyle={[
+                styles.caption,
+                incomingChannelPost && styles.captionChannel,
+                isMe && styles.captionMe,
+                isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+                !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
+              ]}
+              hasViews={viewCount != null}
+              meta={
+                <View style={styles.textMeta}>
+                  {viewCount != null ? (
+                    <View style={styles.textMetric}>
+                      <Feather name="eye" size={13} color={isMe ? 'rgba(255,255,255,0.7)' : colors.iconMuted} />
+                      <Text style={[styles.textMetricText, isMe ? { color: 'rgba(255,255,255,0.7)' } : null]}>
+                        {viewCountShortLabel ?? String(viewCount)}
+                      </Text>
                     </View>
-                  }
-                />
-              ) : null}
-            </>
-          );
-
-          return content;
-        })()}
+                  ) : null}
+                  {time ? (
+                    <MessageTimeStatus
+                      time={time}
+                      status={status ?? 'sent'}
+                      isMe={isMe}
+                      compact
+                      source={source}
+                    />
+                  ) : null}
+                </View>
+              }
+            />
+          ) : null}
+        </>
 
         {footer}
 

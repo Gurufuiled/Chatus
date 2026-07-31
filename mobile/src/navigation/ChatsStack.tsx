@@ -57,10 +57,10 @@ const CHAT_INTERACTIVE_BACK_STACK_OPTIONS = {
   contentStyle: { backgroundColor: 'transparent' },
   ...(Platform.OS === 'android'
     ? {
+        // Enter: slide. Exit via system/edge back is handled by InteractiveChatBackShell
+        // (native pop blanks expo-image wallpaper + message list during the transition).
         animation: 'slide_from_right' as const,
-        customAnimationOnSwipe: true,
-        gestureEnabled: true,
-        gestureDirection: 'horizontal' as const,
+        gestureEnabled: false,
       }
     : {}),
 } as const;

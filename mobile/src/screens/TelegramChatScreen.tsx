@@ -772,6 +772,34 @@ export function TelegramChatScreen() {
     Keyboard.dismiss();
   }, []);
 
+  const handleInteractiveBackPress = useCallback(() => {
+    if (menuState) {
+      closeMenu();
+      return true;
+    }
+    if (selectedTelegramMessageIds.length > 0) {
+      clearTelegramSelection();
+      return true;
+    }
+    if (isSearchMode) {
+      handleCancelSearch();
+      return true;
+    }
+    if (forwardMessageIds.length > 0) {
+      setForwardMessageIds([]);
+      return true;
+    }
+    return false;
+  }, [
+    clearTelegramSelection,
+    closeMenu,
+    forwardMessageIds.length,
+    handleCancelSearch,
+    isSearchMode,
+    menuState,
+    selectedTelegramMessageIds.length,
+  ]);
+
   const handleOpenSearch = useCallback(() => {
     setIsSearchMode(true);
     InteractionManager.runAfterInteractions(() => {
@@ -2915,6 +2943,7 @@ export function TelegramChatScreen() {
           forwardMessageIds.length === 0 &&
           !isSearchMode
         }
+        onBackPress={handleInteractiveBackPress}
       >
         {Platform.OS === 'android' ? (
           <CustomAndroidChatHeader

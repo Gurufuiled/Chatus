@@ -56,13 +56,12 @@
     ],
     "name": "Chatus",
     "slug": "chatus",
-    "version": "1.0.32",
+    "version": "1.0.33",
     "orientation": "portrait",
     "icon": "./assets/chatus_icon.png",
     "userInterfaceStyle": "light",
     "scheme": ["messenger", "chatus"],
     "splash": {
-      "image": "./assets/chatus_icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#E7EBF0"
     },
@@ -87,7 +86,7 @@
       }
     },
     "android": {
-      "versionCode": 2064630343,
+      "versionCode": 2064630344,
       "icon": "./assets/chatus_icon.png",
       "intentFilters": [
         {

@@ -2147,6 +2147,17 @@ export function ChannelFeedScreen() {
       <InteractiveChatBackShell
         navigation={navigation}
         gestureEnabled={!menuState && forwardSourceMessageIds.length === 0}
+        onBackPress={() => {
+          if (menuState) {
+            closeMenu();
+            return true;
+          }
+          if (forwardSourceMessageIds.length > 0) {
+            setForwardSourceMessageIds([]);
+            return true;
+          }
+          return false;
+        }}
       >
         {Platform.OS === 'android' ? (
           <CustomAndroidChatHeader

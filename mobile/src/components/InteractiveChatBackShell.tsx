@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo } from 'react';
-import { Dimensions, Platform, StyleSheet, View } from 'react-native';
+import React, { useCallback, useMemo, useRef } from 'react';
+import { BackHandler, Dimensions, Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import type { NavigationProp, ParamListBase } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -18,6 +18,11 @@ const BACK_GESTURE_EDGE_PX = 28;
 type Props = {
   navigation: NavigationProp<ParamListBase>;
   gestureEnabled: boolean;
+  /**
+   * Called first on Android hardware/system back while this screen is focused.
+   * Return true if the press was consumed (e.g. closed menu / selection / search).
+   */
+  onBackPress?: () => boolean;
   children: React.ReactNode;
 };
 
@@ -25,20 +30,95 @@ type Props = {
  * Telegram-style interactive pop: drag the whole chat layer to the right, then go back.
  * On iOS, native-stack fullScreenGesture handles this; this shell is Android-only so it
  * does not compete with the system gesture.
+ *
+ * System back on Android also routes through this shell: the native stack transition
+ * blanks expo-image wallpaper + FlatList, so we animate ourselves then pop with
+ * animation: 'none'.
  */
-export function InteractiveChatBackShell({ navigation, gestureEnabled, children }: Props) {
+export function InteractiveChatBackShell({
+  navigation,
+  gestureEnabled,
+  onBackPress,
+  children,
+}: Props) {
   const translateX = useSharedValue(0);
+  const dismissingRef = useRef(false);
+  const onBackPressRef = useRef(onBackPress);
+  onBackPressRef.current = onBackPress;
+
+  const clearDismissing = useCallback(() => {
+    dismissingRef.current = false;
+  }, []);
+
+  const snapBack = useCallback(() => {
+    dismissingRef.current = false;
+    translateX.value = withSpring(0, { damping: 26, stiffness: 280 });
+  }, [translateX]);
 
   const goBackSafe = useCallback(() => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
+    if (!navigation.canGoBack()) {
+      snapBack();
+      return;
     }
-  }, [navigation]);
+    // Screen is already off-screen via Reanimated; skip native pop animation that
+    // blanks wallpaper/FlatList on Android transparentModal screens.
+    if (Platform.OS === 'android') {
+      navigation.setOptions({ animation: 'none' } as never);
+      requestAnimationFrame(() => {
+        if (navigation.canGoBack()) {
+          dismissingRef.current = false;
+          navigation.goBack();
+        } else {
+          snapBack();
+        }
+      });
+      return;
+    }
+    dismissingRef.current = false;
+    navigation.goBack();
+  }, [navigation, snapBack]);
+
+  const beginDismiss = useCallback(() => {
+    if (dismissingRef.current) return;
+    if (!navigation.canGoBack()) {
+      snapBack();
+      return;
+    }
+    dismissingRef.current = true;
+    translateX.value = withTiming(SCREEN_WIDTH, { duration: 220 }, (finished) => {
+      if (finished) {
+        runOnJS(goBackSafe)();
+      } else {
+        runOnJS(clearDismissing)();
+      }
+    });
+  }, [clearDismissing, goBackSafe, navigation, snapBack, translateX]);
 
   useFocusEffect(
     useCallback(() => {
+      dismissingRef.current = false;
       translateX.value = 0;
-    }, [translateX]),
+
+      if (Platform.OS !== 'android') {
+        return undefined;
+      }
+
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (onBackPressRef.current?.()) {
+          return true;
+        }
+        if (!navigation.canGoBack()) {
+          return false;
+        }
+        // Never raw goBack(): native pop blanks wallpaper on transparentModal.
+        beginDismiss();
+        return true;
+      });
+
+      return () => {
+        sub.remove();
+      };
+    }, [beginDismiss, navigation, translateX]),
   );
 
   const pan = useMemo(
@@ -63,16 +143,12 @@ export function InteractiveChatBackShell({ navigation, gestureEnabled, children 
         .onEnd((e) => {
           const dismiss = translateX.value > SCREEN_WIDTH * 0.2 || e.velocityX > 900;
           if (dismiss) {
-            translateX.value = withTiming(SCREEN_WIDTH, { duration: 220 }, (finished) => {
-              if (finished) {
-                runOnJS(goBackSafe)();
-              }
-            });
+            runOnJS(beginDismiss)();
           } else {
             translateX.value = withSpring(0, { damping: 26, stiffness: 280 });
           }
         }),
-    [gestureEnabled, goBackSafe, translateX],
+    [beginDismiss, gestureEnabled, translateX],
   );
 
   const sheetStyle = useAnimatedStyle(() => ({

@@ -634,113 +634,107 @@ export function VideoBubble({
       >
         {header}
 
-        {(() => {
-          const content = (
-            <>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Open video"
-                onPress={handlePress}
-                style={[
-                  styles.videoWrapper,
-                  { width: w, height: h },
-                  isMe ? styles.videoWrapperMe : styles.videoWrapperOther,
-                  embedded && styles.videoWrapperEmbedded,
-                  incomingChannelPost &&
-                    (mediaBottomRounded ? styles.videoWrapperChannelSolo : styles.videoWrapperChannelStacked),
-                ]}
-              >
-                {posterUri ? (
-                  <Image 
-                    source={{ uri: posterUri }} 
-                    style={styles.poster} 
-                    contentFit="cover" 
-                    cachePolicy="memory-disk"
-                    onLoad={(e) => {
-                      if (!propWidth || !propHeight) {
-                        setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
-                      }
-                    }}
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open video"
+            onPress={handlePress}
+            style={[
+              styles.videoWrapper,
+              { width: w, height: h },
+              isMe ? styles.videoWrapperMe : styles.videoWrapperOther,
+              embedded && styles.videoWrapperEmbedded,
+              incomingChannelPost &&
+                (mediaBottomRounded ? styles.videoWrapperChannelSolo : styles.videoWrapperChannelStacked),
+            ]}
+          >
+            {posterUri ? (
+              <Image 
+                source={{ uri: posterUri }} 
+                style={styles.poster} 
+                contentFit="cover" 
+                cachePolicy="memory-disk"
+                onLoad={(e) => {
+                  if (!propWidth || !propHeight) {
+                    setDisplaySize(computeDisplaySize(e.source.width, e.source.height, maxW, maxH));
+                  }
+                }}
+              />
+            ) : (
+              <View style={styles.posterFallback} />
+            )}
+
+            <View pointerEvents="none" style={styles.playBadge}>
+              <Feather name="play" size={25} color="#FFFFFF" style={styles.playIcon} />
+            </View>
+
+            <View pointerEvents="none" style={styles.overlayMetaRow}>
+              <View style={styles.durationPill}>
+                <Text style={styles.durationText}>{formatMediaDuration(durationMs)}</Text>
+              </View>
+
+              {!hasCaption && time ? (
+                <View style={styles.timePill}>
+                  {viewCount != null ? (
+                    <View style={styles.timePillMetric}>
+                      <Feather name="eye" size={12} color="#FFFFFF" />
+                      <Text style={styles.timePillMetricText}>
+                        {viewCountShortLabel ?? String(viewCount)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <MessageTimeStatus
+                    time={time}
+                    status={status ?? 'sent'}
+                    isMe={isMe}
+                    compact
+                    timeColor="#FFFFFF"
+                    iconColor="#FFFFFF"
+                    source={source}
                   />
-                ) : (
-                  <View style={styles.posterFallback} />
-                )}
-
-                <View pointerEvents="none" style={styles.playBadge}>
-                  <Feather name="play" size={25} color="#FFFFFF" style={styles.playIcon} />
                 </View>
+              ) : null}
+            </View>
+          </Pressable>
 
-                <View pointerEvents="none" style={styles.overlayMetaRow}>
-                  <View style={styles.durationPill}>
-                    <Text style={styles.durationText}>{formatMediaDuration(durationMs)}</Text>
-                  </View>
-
-                  {!hasCaption && time ? (
-                    <View style={styles.timePill}>
-                      {viewCount != null ? (
-                        <View style={styles.timePillMetric}>
-                          <Feather name="eye" size={12} color="#FFFFFF" />
-                          <Text style={styles.timePillMetricText}>
-                            {viewCountShortLabel ?? String(viewCount)}
-                          </Text>
-                        </View>
-                      ) : null}
+          {hasCaption ? (
+            <MessageTextBubbleBody
+              fillWidth
+              text={caption ?? ''}
+              textStyle={[
+                styles.caption,
+                incomingChannelPost && styles.captionChannel,
+                isMe && styles.captionMe,
+                isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
+                !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
+              ]}
+              hasViews={viewCount != null}
+              meta={
+                time || viewCount != null ? (
+                  <View style={styles.textMeta}>
+                    {viewCount != null ? (
+                      <View style={styles.textMetric}>
+                        <Feather name="eye" size={13} color={isMe ? 'rgba(255,255,255,0.7)' : colors.iconMuted} />
+                        <Text style={[styles.textMetricText, isMe ? { color: 'rgba(255,255,255,0.7)' } : null]}>
+                          {viewCountShortLabel ?? String(viewCount)}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {time ? (
                       <MessageTimeStatus
                         time={time}
                         status={status ?? 'sent'}
                         isMe={isMe}
                         compact
-                        timeColor="#FFFFFF"
-                        iconColor="#FFFFFF"
                         source={source}
                       />
-                    </View>
-                  ) : null}
-                </View>
-              </Pressable>
-
-              {hasCaption ? (
-                <MessageTextBubbleBody
-                  fillWidth
-                  text={caption ?? ''}
-                  textStyle={[
-                    styles.caption,
-                    incomingChannelPost && styles.captionChannel,
-                    isMe && styles.captionMe,
-                    isMe && outgoingTextColor ? { color: outgoingTextColor } : null,
-                    !isMe && incomingCaptionTextColor ? { color: incomingCaptionTextColor } : null,
-                  ]}
-                  hasViews={viewCount != null}
-                  meta={
-                    time || viewCount != null ? (
-                      <View style={styles.textMeta}>
-                        {viewCount != null ? (
-                          <View style={styles.textMetric}>
-                            <Feather name="eye" size={13} color={isMe ? 'rgba(255,255,255,0.7)' : colors.iconMuted} />
-                            <Text style={[styles.textMetricText, isMe ? { color: 'rgba(255,255,255,0.7)' } : null]}>
-                              {viewCountShortLabel ?? String(viewCount)}
-                            </Text>
-                          </View>
-                        ) : null}
-                        {time ? (
-                          <MessageTimeStatus
-                            time={time}
-                            status={status ?? 'sent'}
-                            isMe={isMe}
-                            compact
-                            source={source}
-                          />
-                        ) : null}
-                      </View>
-                    ) : undefined
-                  }
-                />
-              ) : null}
-            </>
-          );
-
-          return content;
-        })()}
+                    ) : null}
+                  </View>
+                ) : undefined
+              }
+            />
+          ) : null}
+        </>
 
         {footer}
 
