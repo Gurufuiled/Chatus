@@ -28,8 +28,6 @@ export interface FileBubbleProps {
   incomingSecondaryTextColor?: string;
   incomingCaptionColor?: string;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
-  isForwarded?: boolean;
-  forwardAccentColor?: string;
   source?: MessageSource;
 }
 
@@ -89,8 +87,6 @@ export function FileBubble({
   incomingSecondaryTextColor,
   incomingCaptionColor,
   style,
-  isForwarded = false,
-  forwardAccentColor,
   source,
 }: FileBubbleProps) {
   const sizeText = formatFileSize(fileSize);
@@ -214,21 +210,6 @@ export function FileBubble({
           </>
         );
 
-        if (isForwarded) {
-          return (
-            <View
-              style={{
-                borderLeftWidth: 3,
-                borderLeftColor: forwardAccentColor || colors.accent,
-                paddingLeft: 8,
-                marginLeft: 2,
-                alignSelf: 'stretch',
-              }}
-            >
-              {content}
-            </View>
-          );
-        }
         return content;
       })()}
 

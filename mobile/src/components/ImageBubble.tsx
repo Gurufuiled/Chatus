@@ -63,8 +63,6 @@ export interface ImageBubbleProps {
   /** Full-resolution file still downloading (show centered loader over preview). */
   loadingFullQuality?: boolean;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
-  isForwarded?: boolean;
-  forwardAccentColor?: string;
   source?: MessageSource;
 }
 
@@ -133,8 +131,6 @@ export function ImageBubble({
   viewCountShortLabel,
   loadingFullQuality = false,
   style,
-  isForwarded = false,
-  forwardAccentColor,
   source,
 }: ImageBubbleProps) {
   const normalizedUri = uri.trim();
@@ -374,21 +370,6 @@ export function ImageBubble({
             </>
           );
 
-          if (isForwarded) {
-            return (
-              <View
-                style={{
-                  borderLeftWidth: 3,
-                  borderLeftColor: forwardAccentColor || colors.accent,
-                  paddingLeft: 8,
-                  marginLeft: 2,
-                  alignSelf: 'stretch',
-                }}
-              >
-                {content}
-              </View>
-            );
-          }
           return content;
         })()}
 

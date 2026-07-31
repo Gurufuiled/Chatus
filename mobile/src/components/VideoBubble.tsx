@@ -72,8 +72,6 @@ export interface VideoBubbleProps {
   footer?: React.ReactNode;
   viewCountShortLabel?: string;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
-  isForwarded?: boolean;
-  forwardAccentColor?: string;
   source?: MessageSource;
 }
 
@@ -522,8 +520,6 @@ export function VideoBubble({
   footer,
   viewCountShortLabel,
   style,
-  isForwarded = false,
-  forwardAccentColor,
   source,
 }: VideoBubbleProps) {
   const normalizedUri = uri.trim();
@@ -743,21 +739,6 @@ export function VideoBubble({
             </>
           );
 
-          if (isForwarded) {
-            return (
-              <View
-                style={{
-                  borderLeftWidth: 3,
-                  borderLeftColor: forwardAccentColor || colors.accent,
-                  paddingLeft: 8,
-                  marginLeft: 2,
-                  alignSelf: 'stretch',
-                }}
-              >
-                {content}
-              </View>
-            );
-          }
           return content;
         })()}
 

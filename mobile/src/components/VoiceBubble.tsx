@@ -44,8 +44,6 @@ export interface VoiceBubbleProps {
   incomingBubbleBorderColor?: string;
   incomingDurationColor?: string;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
-  isForwarded?: boolean;
-  forwardAccentColor?: string;
   source?: MessageSource;
   loading?: boolean;
 }
@@ -147,8 +145,6 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.inlineReactions === next.inlineReactions &&
     prev.allowMessageReactions === next.allowMessageReactions &&
     prev.onToggleInlineReaction === next.onToggleInlineReaction &&
-    prev.isForwarded === next.isForwarded &&
-    prev.forwardAccentColor === next.forwardAccentColor &&
     prev.loading === next.loading
   );
 }
@@ -175,8 +171,6 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   incomingBubbleBorderColor,
   incomingDurationColor,
   style,
-  isForwarded = false,
-  forwardAccentColor,
   source,
   loading = false,
 }: VoiceBubbleProps) {
@@ -378,21 +372,6 @@ export const VoiceBubble = React.memo(function VoiceBubble({
           </View>
         );
 
-        if (isForwarded) {
-          return (
-            <View
-              style={{
-                borderLeftWidth: 3,
-                borderLeftColor: forwardAccentColor || colors.accent,
-                paddingLeft: 8,
-                marginLeft: 2,
-                alignSelf: 'stretch',
-              }}
-            >
-              {content}
-            </View>
-          );
-        }
         return content;
       })()}
 

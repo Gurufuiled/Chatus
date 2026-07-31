@@ -1246,7 +1246,6 @@ const MessageRow = React.memo(function MessageRow({
     selectionMode || !effectiveAllowReactions || !(bodyItem.reactions?.length ?? 0)
       ? undefined
       : bodyItem.reactions;
-  const isForwarded = !!(bodyItem.forwarded_from_name || bodyItem.forwarded_from_message_id);
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
 
   React.useEffect(() => {
@@ -1822,8 +1821,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingDurationColor={!isMe ? themeColors.textSecondary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
         />
       );
 
@@ -2154,8 +2151,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
           onOpenFullscreen={() => onOpenAlbumMedia([media], 0)}
         />
       );
@@ -2274,8 +2269,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingBubbleBackground={!isMe ? themeColors.bubbleOther : undefined}
           incomingBubbleBorderColor={!isMe ? themeColors.bubbleOtherBorder : undefined}
           incomingCaptionTextColor={!isMe ? themeColors.textPrimary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
         />
       );
 
@@ -2390,8 +2383,6 @@ const MessageRow = React.memo(function MessageRow({
           incomingFileNameColor={!isMe ? themeColors.textPrimary : undefined}
           incomingSecondaryTextColor={!isMe ? themeColors.textSecondary : undefined}
           incomingCaptionColor={!isMe ? themeColors.textPrimary : undefined}
-          isForwarded={isForwarded}
-          forwardAccentColor={isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent}
         />
       );
 
