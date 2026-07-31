@@ -2745,6 +2745,11 @@ export function TelegramChatScreen() {
 
       const forwardBubblePad =
         item.forwardInfo && discussionFooter == null ? { paddingTop: 10 } : null;
+      /** Keep equal inset so nested link card never flushes to bubble edges (esp. Android). */
+      const webPreviewBubblePad =
+        item.webPagePreview && discussionFooter == null
+          ? { paddingHorizontal: 12 }
+          : null;
 
       const incomingTextBubbleSolidStyle = [
         styles.bubble,
@@ -2753,6 +2758,7 @@ export function TelegramChatScreen() {
         isChannel && styles.channelPostTextBubble,
         discussionFooterPaddingReset,
         forwardBubblePad,
+        webPreviewBubblePad,
       ];
 
       const outgoingTextBubbleChromeStyle = [
@@ -2763,6 +2769,7 @@ export function TelegramChatScreen() {
         discussionFooterPaddingReset,
         !useViewportOutgoingGradient ? outgoingBubbleSurfaceStyle : null,
         forwardBubblePad,
+        webPreviewBubblePad,
       ];
 
       const metaNode = (

@@ -40,14 +40,6 @@ export function WebPagePreviewBubble({
     secondaryTextColor ?? (isCard ? 'rgba(17,24,39,0.55)' : 'rgba(255,255,255,0.7)');
   const siteNameColor = isCard ? 'rgba(17,24,39,0.45)' : accentColor;
 
-  const photoW = preview.photoWidth ?? 0;
-  const photoH = preview.photoHeight ?? 0;
-  /** Wide/banner previews stay full-width; square/portrait → avatar row like iOS. */
-  const useAvatarRow =
-    isCard &&
-    hasPhoto &&
-    (photoW <= 0 || photoH <= 0 || photoW / photoH < 1.35);
-
   useEffect(() => {
     setImageLoaded(false);
     if (photoUri.startsWith('data:')) {
@@ -83,87 +75,107 @@ export function WebPagePreviewBubble({
     </Text>
   ) : null;
 
+  const cardBody = (
+    <>
+      {siteNameNode}
+      {hasPhoto ? (
+        <View style={styles.avatarRow}>
+          <View style={styles.avatarWrap}>
+            {!imageLoaded ? (
+              <View style={styles.avatarLoader}>
+                <ActivityIndicator size="small" color={colors.iconMuted} />
+              </View>
+            ) : null}
+            <Image
+              source={{ uri: photoUri }}
+              style={styles.avatar}
+              contentFit="cover"
+              onLoad={() => setImageLoaded(true)}
+            />
+          </View>
+          <View style={styles.avatarTextCol}>
+            {titleNode}
+            {descriptionNode}
+          </View>
+        </View>
+      ) : (
+        <>
+          {titleNode}
+          {descriptionNode}
+        </>
+      )}
+    </>
+  );
+
+  const inlineBody = (
+    <>
+      {siteNameNode}
+      {titleNode}
+      {descriptionNode}
+      {hasPhoto ? (
+        <View style={styles.photoWrap}>
+          {!imageLoaded ? (
+            <View style={styles.photoLoader}>
+              <ActivityIndicator size="large" color={colors.iconMuted} />
+            </View>
+          ) : null}
+          {loadingFullQuality && imageLoaded ? (
+            <View style={styles.photoQualityLoader}>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+            </View>
+          ) : null}
+          <Image
+            source={{ uri: photoUri }}
+            style={styles.photo}
+            contentFit="cover"
+            onLoad={() => setImageLoaded(true)}
+          />
+        </View>
+      ) : null}
+    </>
+  );
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Открыть ссылку ${preview.siteName || preview.title || preview.url}`}
       onPress={handlePress}
       style={({ pressed }) => [
-        styles.root,
         isCard ? styles.rootCard : styles.rootInline,
         pressed && styles.rootPressed,
       ]}
     >
-      {!isCard ? <View style={[styles.accent, { backgroundColor: accentColor }]} /> : null}
-      <View style={[styles.content, isCard && styles.contentCard]}>
-        {siteNameNode}
-
-        {useAvatarRow ? (
-          <View style={styles.avatarRow}>
-            <View style={styles.avatarWrap}>
-              {!imageLoaded ? (
-                <View style={styles.avatarLoader}>
-                  <ActivityIndicator size="small" color={colors.iconMuted} />
-                </View>
-              ) : null}
-              <Image
-                source={{ uri: photoUri }}
-                style={styles.avatar}
-                contentFit="cover"
-                onLoad={() => setImageLoaded(true)}
-              />
-            </View>
-            <View style={styles.avatarTextCol}>
-              {titleNode}
-              {descriptionNode}
-            </View>
-          </View>
-        ) : (
-          <>
-            {titleNode}
-            {descriptionNode}
-            {hasPhoto ? (
-              <View style={[styles.photoWrap, isCard && styles.photoWrapCard]}>
-                {!imageLoaded ? (
-                  <View style={styles.photoLoader}>
-                    <ActivityIndicator size="large" color={colors.iconMuted} />
-                  </View>
-                ) : null}
-                {loadingFullQuality && imageLoaded ? (
-                  <View style={styles.photoQualityLoader}>
-                    <ActivityIndicator size="large" color="#FFFFFF" />
-                  </View>
-                ) : null}
-                <Image
-                  source={{ uri: photoUri }}
-                  style={styles.photo}
-                  contentFit="cover"
-                  onLoad={() => setImageLoaded(true)}
-                />
-              </View>
-            ) : null}
-          </>
-        )}
-      </View>
+      {isCard ? (
+        <View style={styles.contentCard}>{cardBody}</View>
+      ) : (
+        <>
+          <View style={[styles.accent, { backgroundColor: accentColor }]} />
+          <View style={styles.contentInline}>{inlineBody}</View>
+        </>
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flexDirection: 'row',
-    marginTop: 6,
-    borderRadius: 8,
+  /** Column card — no row/flex:1 (Android overflow / flush-right bug). */
+  rootCard: {
+    alignSelf: 'stretch',
+    maxWidth: '100%',
+    marginTop: 4,
+    marginBottom: 4,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
   rootInline: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    maxWidth: '100%',
+    marginTop: 6,
+    borderRadius: 8,
+    overflow: 'hidden',
     backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  rootCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginTop: 4,
-    marginBottom: 4,
   },
   rootPressed: {
     opacity: 0.8,
@@ -174,8 +186,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 3,
     borderBottomLeftRadius: 3,
   },
-  content: {
-    flex: 1,
+  contentInline: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
     paddingLeft: 10,
     paddingRight: 10,
     paddingVertical: 6,
@@ -184,6 +198,7 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingRight: 12,
     paddingVertical: 9,
+    minWidth: 0,
   },
   siteName: {
     fontSize: 13,
@@ -234,7 +249,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8EEF5',
   },
   avatarTextCol: {
-    flex: 1,
+    flexShrink: 1,
+    flexGrow: 1,
     minWidth: 0,
     justifyContent: 'center',
   },
@@ -245,9 +261,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
     overflow: 'hidden',
     backgroundColor: 'rgba(243, 244, 246, 0.92)',
-  },
-  photoWrapCard: {
-    backgroundColor: '#F3F4F6',
   },
   photo: {
     width: '100%',
