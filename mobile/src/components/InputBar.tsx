@@ -20,6 +20,12 @@ import { Image } from 'expo-image';
 import * as MediaLibrary from 'expo-media-library';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import Feather from '@expo/vector-icons/Feather';
+import Reanimated, {
+  Easing as ReaEasing,
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+} from 'react-native-reanimated';
 import { composerPresentation } from '../presentation';
 import { useTheme } from '../contexts/ThemeContext';
 import type { ThemeColors } from '../theme/palettes';
@@ -65,6 +71,16 @@ import type { StickerPanelTopTab } from '../stickers/stickerPanelPreferences';
 
 /** Ниже — кнопка стикеров уезжает к скрепке (фаза 3.2 журнала), чтобы не сжимать поле и микрофон. */
 const COMPOSER_NARROW_BREAKPOINT = 380;
+
+/** Smooth height rise only — no spring bounce on the composer dock. */
+const REPLY_LAYOUT_MS = 180;
+const REPLY_STRIP_ENTERING = FadeInDown.duration(REPLY_LAYOUT_MS).easing(
+  ReaEasing.out(ReaEasing.cubic),
+);
+const REPLY_STRIP_EXITING = FadeOutUp.duration(140).easing(ReaEasing.in(ReaEasing.cubic));
+const COMPOSER_DOCK_LAYOUT = LinearTransition.duration(REPLY_LAYOUT_MS).easing(
+  ReaEasing.out(ReaEasing.cubic),
+);
 export interface MediaPickResult {
   kind: 'image' | 'video';
   uri: string;
@@ -1683,7 +1699,8 @@ export function InputBar({
           </View>
         ) : null}
 
-        <View
+        <Reanimated.View
+          layout={COMPOSER_DOCK_LAYOUT}
           style={[
             styles.composerDock,
             replyToMessage && styles.composerDockReply,
@@ -1691,7 +1708,12 @@ export function InputBar({
           ]}
         >
           {replyToMessage ? (
-              <View style={styles.replyComposerWrap}>
+              <Reanimated.View
+                key="reply-strip"
+                entering={REPLY_STRIP_ENTERING}
+                exiting={REPLY_STRIP_EXITING}
+                style={styles.replyComposerWrap}
+              >
                 <View style={styles.replyComposerInline}>
                   <View style={styles.replyComposerAccent} />
                   {resolvedReplyThumbnailUri.trim() ? (
@@ -1720,7 +1742,7 @@ export function InputBar({
                     <Feather name="x" size={18} color={themeColors.iconMuted} />
                   </Pressable>
                 </View>
-              </View>
+              </Reanimated.View>
             ) : null}
 
             {isVoiceRecording ? (
@@ -1909,7 +1931,7 @@ export function InputBar({
               )}
             </View>
             )}
-          </View>
+          </Reanimated.View>
 
         {!canSend && !isChannelAdmin ? (
           voiceRestriction ? (
