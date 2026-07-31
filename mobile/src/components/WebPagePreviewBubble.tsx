@@ -7,6 +7,11 @@ import { colors } from '../theme/colors';
 
 type WebPagePreviewBubbleProps = {
   preview: TelegramWebPagePreview;
+  /**
+   * `card` — белая вложенная карточка как на iOS (исходящие).
+   * `inline` — полупрозрачный блок с акцент-полосой (входящие).
+   */
+  variant?: 'card' | 'inline';
   accentColor?: string;
   textColor?: string;
   secondaryTextColor?: string;
@@ -16,9 +21,10 @@ type WebPagePreviewBubbleProps = {
 
 export function WebPagePreviewBubble({
   preview,
+  variant = 'inline',
   accentColor = '#F28C28',
-  textColor = '#FFFFFF',
-  secondaryTextColor = 'rgba(255,255,255,0.7)',
+  textColor,
+  secondaryTextColor,
   peerFirstLineId,
 }: WebPagePreviewBubbleProps) {
   const resolvedPhotoUri = usePeerFirstResolvedUri(peerFirstLineId, preview.photoUri);
@@ -26,6 +32,11 @@ export function WebPagePreviewBubble({
   const hasPhoto = photoUri.length > 0;
   const loadingFullQuality = preview.photoFileId != null;
   const [imageLoaded, setImageLoaded] = useState(false);
+  const isCard = variant === 'card';
+  const resolvedTextColor = textColor ?? (isCard ? '#111827' : '#FFFFFF');
+  const resolvedSecondary =
+    secondaryTextColor ?? (isCard ? 'rgba(17,24,39,0.55)' : 'rgba(255,255,255,0.7)');
+  const siteNameColor = isCard ? 'rgba(17,24,39,0.45)' : accentColor;
 
   useEffect(() => {
     setImageLoaded(false);
@@ -46,30 +57,37 @@ export function WebPagePreviewBubble({
       accessibilityRole="button"
       accessibilityLabel={`Открыть ссылку ${preview.siteName || preview.title || preview.url}`}
       onPress={handlePress}
-      style={({ pressed }) => [styles.root, pressed && styles.rootPressed]}
+      style={({ pressed }) => [
+        styles.root,
+        isCard ? styles.rootCard : styles.rootInline,
+        pressed && styles.rootPressed,
+      ]}
     >
-      <View style={[styles.accent, { backgroundColor: accentColor }]} />
-      <View style={styles.content}>
+      {!isCard ? <View style={[styles.accent, { backgroundColor: accentColor }]} /> : null}
+      <View style={[styles.content, isCard && styles.contentCard]}>
         {preview.siteName ? (
-          <Text style={[styles.siteName, { color: accentColor }]} numberOfLines={1}>
+          <Text
+            style={[styles.siteName, isCard && styles.siteNameCard, { color: siteNameColor }]}
+            numberOfLines={1}
+          >
             {preview.siteName}
           </Text>
         ) : null}
 
         {preview.title ? (
-          <Text style={[styles.title, { color: textColor }]} numberOfLines={2}>
+          <Text style={[styles.title, { color: resolvedTextColor }]} numberOfLines={2}>
             {preview.title}
           </Text>
         ) : null}
 
         {preview.description ? (
-          <Text style={[styles.description, { color: secondaryTextColor }]} numberOfLines={3}>
+          <Text style={[styles.description, { color: resolvedSecondary }]} numberOfLines={3}>
             {preview.description}
           </Text>
         ) : null}
 
         {hasPhoto ? (
-          <View style={styles.photoWrap}>
+          <View style={[styles.photoWrap, isCard && styles.photoWrapCard]}>
             {!imageLoaded ? (
               <View style={styles.photoLoader}>
                 <ActivityIndicator size="large" color={colors.iconMuted} />
@@ -99,7 +117,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderRadius: 8,
     overflow: 'hidden',
+  },
+  rootInline: {
     backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  rootCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    marginBottom: 6,
   },
   rootPressed: {
     opacity: 0.8,
@@ -116,22 +141,32 @@ const styles = StyleSheet.create({
     paddingRight: 10,
     paddingVertical: 6,
   },
+  contentCard: {
+    paddingLeft: 12,
+    paddingRight: 12,
+    paddingVertical: 8,
+  },
   siteName: {
     fontSize: 13,
     lineHeight: 16,
     fontWeight: '600',
     marginBottom: 2,
   },
+  siteNameCard: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '500',
+  },
   title: {
     fontSize: 14,
     lineHeight: 18,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   description: {
     fontSize: 13,
     lineHeight: 17,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   photoWrap: {
     width: '100%',
@@ -140,6 +175,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
     overflow: 'hidden',
     backgroundColor: 'rgba(243, 244, 246, 0.92)',
+  },
+  photoWrapCard: {
+    backgroundColor: '#F3F4F6',
   },
   photo: {
     width: '100%',

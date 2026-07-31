@@ -497,7 +497,6 @@ export function ChatScreen() {
     activeRoomByChatId,
     refreshActiveRoom,
     applyActiveRoomSnapshot,
-    startGroupCall,
     joinGroupCall,
     expand,
     isInCallForChat,
@@ -888,26 +887,6 @@ export function ChatScreen() {
     () => formatGroupCallParticipantNames(groupCallState.participants),
     [groupCallState.participants],
   );
-
-  const handleGroupVoicePress = useCallback(() => {
-    if (activeGroupCallRoom && !isUserInGroupCall) {
-      void joinGroupCall(activeGroupCallRoom.id, chatId, chatTitle);
-      return;
-    }
-    if (isUserInGroupCall) {
-      expand();
-      return;
-    }
-    void startGroupCall(chatId, chatTitle);
-  }, [
-    activeGroupCallRoom,
-    chatId,
-    expand,
-    isUserInGroupCall,
-    joinGroupCall,
-    chatTitle,
-    startGroupCall,
-  ]);
 
   const handleJoinActiveGroupCall = useCallback(() => {
     if (!activeGroupCallRoom) return;
@@ -2945,25 +2924,8 @@ export function ChatScreen() {
           accessibilityHint="Открывает профиль"
         />
       ),
-      headerRight: isGroupChat
-        ? () => null
-        : () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingRight: 6 }}>
-          <Pressable
-            onPress={() => setIsSearchMode(true)}
-            hitSlop={10}
-            style={({ pressed }) => ({
-              width: 40,
-              height: 40,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: pressed ? 0.65 : 1,
-            })}
-          >
-            <Feather name="search" size={22} color={themeColors.textPrimary} />
-          </Pressable>
-        </View>
-      ),
+      // Search/call live in GroupProfile / ChatProfile — keep pill header clean.
+      headerRight: () => null,
     });
   }, [
     avatarUrl,
@@ -2972,7 +2934,6 @@ export function ChatScreen() {
     peerId,
     selectionMode,
     subtitle,
-    themeColors.textPrimary,
     themeColors.toolbar,
     title,
   ]);
@@ -3017,9 +2978,6 @@ export function ChatScreen() {
             chatId={chatId}
             navigation={navigation}
             floating
-            showGroupCallButton={isGroupChat}
-            onGroupCallPress={isGroupChat ? handleGroupVoicePress : undefined}
-            onSearchPress={() => setIsSearchMode(true)}
           />
         ) : null}
 

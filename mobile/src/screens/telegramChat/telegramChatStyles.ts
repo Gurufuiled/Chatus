@@ -208,45 +208,6 @@ export function createTelegramChatStyles(colors: ThemeColors) {
       color: colors.accent,
       marginBottom: 2,
     },
-    forwardHeaderContainer: {
-      paddingVertical: 1,
-      paddingHorizontal: 2,
-      marginBottom: 5,
-    },
-    forwardPrefixText: {
-      fontSize: 11,
-      lineHeight: 13,
-      opacity: 0.76,
-      fontWeight: '500',
-    },
-    forwardAuthorRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: 2,
-      gap: 5,
-    },
-    forwardAvatar: {
-      width: 16,
-      height: 16,
-      borderRadius: 8,
-    },
-    forwardAvatarFallback: {
-      width: 16,
-      height: 16,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    forwardAvatarInitial: {
-      color: '#FFFFFF',
-      fontSize: 9,
-      fontWeight: '800',
-    },
-    forwardAuthorText: {
-      fontSize: 13,
-      fontWeight: '600',
-      lineHeight: 16,
-    },
     /** Incoming row in group/supergroup — avatar + bubble (aligned with Chatus group chat). */
     groupIncomingRow: {
       flexDirection: 'row',

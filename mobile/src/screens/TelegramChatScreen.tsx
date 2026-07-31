@@ -46,6 +46,7 @@ import { ImageBubble } from '../components/ImageBubble';
 import { InputBar, type FilePickResult, type MediaAlbumPickResult, type MediaPickResult } from '../components/InputBar';
 import { TelegramMediaAlbumBubble } from '../components/TelegramMediaAlbumBubble';
 import { MessageTextBubbleBody } from '../components/MessageTextBubbleBody';
+import { ForwardHeader } from '../components/ForwardHeader';
 import { MessageTimeStatus } from '../components/MessageTimeStatus';
 import { ReplySwipeWrapper } from '../components/ReplySwipeWrapper';
 import { ReplyPreview } from '../components/ReplyPreview';
@@ -68,7 +69,7 @@ import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { uiStore } from '../stores/uiStore';
 import { telegramUiStore } from '../stores/telegramUiStore';
-import { bubbleRadius } from '../theme/colors';
+import { bubbleRadius, withAlpha } from '../theme/colors';
 import { DEFAULT_CHAT_THEME_ID, getChatTheme } from '../theme/chatThemes';
 import { useInvertedChatScrollFab } from '../hooks/useInvertedChatScrollFab';
 import {
@@ -1969,30 +1970,13 @@ export function TelegramChatScreen() {
         ) : null;
 
       const forwardHeaderNode = item.forwardInfo ? (
-        <View style={styles.forwardHeaderContainer}>
-          <Text style={[styles.forwardPrefixText, { color: isMe ? chatTheme.replyAccentMe : colors.accent }]}>
-            Переслано от
-          </Text>
-          <View style={styles.forwardAuthorRow}>
-            {item.forwardInfo.avatarUri ? (
-              <Image
-                source={{ uri: item.forwardInfo.avatarUri }}
-                style={styles.forwardAvatar}
-                contentFit="cover"
-                cachePolicy="disk"
-              />
-            ) : (
-              <View style={[styles.forwardAvatarFallback, { backgroundColor: isMe ? chatTheme.replyAccentMe : colors.accent }]}>
-                <Text style={styles.forwardAvatarInitial}>
-                  {(item.forwardInfo.senderName?.[0] || '?').toUpperCase()}
-                </Text>
-              </View>
-            )}
-            <Text style={[styles.forwardAuthorText, { color: isMe ? chatTheme.replyAccentMe : colors.accent }]} numberOfLines={1}>
-              {item.forwardInfo.senderName}
-            </Text>
-          </View>
-        </View>
+        <ForwardHeader
+          isMe={isMe}
+          name={item.forwardInfo.senderName}
+          avatarUri={item.forwardInfo.avatarUri}
+          labelColor={isMe ? chatTheme.forwardHeaderMeSub : withAlpha(colors.accent, 0.72)}
+          titleColor={isMe ? chatTheme.forwardHeaderMe : colors.accent}
+        />
       ) : null;
 
       const bubbleHeader =
@@ -2818,8 +2802,10 @@ export function TelegramChatScreen() {
       const webPageNode = item.webPagePreview ? (
         <WebPagePreviewBubble
           preview={item.webPagePreview}
+          variant={isMe ? 'card' : 'inline'}
           accentColor={isMe ? chatTheme.bubbleMeAccent : colors.accent}
-          textColor={isMe ? chatTheme.bubbleMeText : colors.textPrimary}
+          textColor={isMe ? undefined : colors.textPrimary}
+          secondaryTextColor={isMe ? undefined : colors.textSecondary}
           peerFirstLineId={String(chatId)}
         />
       ) : null;
@@ -2829,15 +2815,15 @@ export function TelegramChatScreen() {
           {discussionFooter ? (
             <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
               {bubbleHeader}
-              {textBubbleContent}
               {webPageNode}
+              {textBubbleContent}
               {reactionsNode}
             </View>
           ) : (
             <>
               {bubbleHeader}
-              {textBubbleContent}
               {webPageNode}
+              {textBubbleContent}
               {reactionsNode}
             </>
           )}

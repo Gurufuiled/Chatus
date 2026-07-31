@@ -1247,12 +1247,6 @@ const MessageRow = React.memo(function MessageRow({
       ? undefined
       : bodyItem.reactions;
   const isForwarded = !!(bodyItem.forwarded_from_name || bodyItem.forwarded_from_message_id);
-  const forwardBorderStyle = isForwarded ? {
-    borderLeftWidth: 3,
-    borderLeftColor: isMe ? (chatTheme.replyAccentMe || '#FFFFFF') : themeColors.accent,
-    paddingLeft: 8,
-    marginLeft: 2,
-  } : null;
   const selectionProgress = useSharedValue(isSelected ? 1 : 0);
 
   React.useEffect(() => {
@@ -1715,7 +1709,7 @@ const MessageRow = React.memo(function MessageRow({
             <MessageTextBubbleBody
               text={searchHighlightQuery ? undefined : displayContent}
               textStyle={[styles.textContent, { color: themeColors.textPrimary }]}
-              rowStyle={[styles.bubbleContentRow, forwardBorderStyle]}
+              rowStyle={styles.bubbleContentRow}
               meta={
                 <MessageTimeStatus
                   time={formatTime(bodyItem.created_at)}
@@ -1768,7 +1762,7 @@ const MessageRow = React.memo(function MessageRow({
               styles.textContentMe,
               { color: chatTheme.bubbleMeText },
             ]}
-            rowStyle={[styles.bubbleContentRow, forwardBorderStyle]}
+            rowStyle={styles.bubbleContentRow}
             meta={
               <MessageTimeStatus
                 time={formatTime(bodyItem.created_at)}
