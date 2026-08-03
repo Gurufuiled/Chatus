@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { FlatList, RefreshControl, Text, View, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/types';
@@ -74,6 +74,13 @@ export function TelegramDialogsScreen() {
         data={filteredDialogs}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        // ⚡ Bolt: Configure explicit virtualization props to optimize memory footprint and rendering efficiency in large lists.
+        // removeClippedSubviews conditionally disabled on iOS to prevent list glitches when keyboard is open (search active)
+        removeClippedSubviews={Platform.OS === 'android' ? true : query.length === 0}
+        initialNumToRender={12}
+        maxToRenderPerBatch={Platform.OS === 'android' ? 5 : 8}
+        updateCellsBatchingPeriod={Platform.OS === 'android' ? 60 : 45}
+        windowSize={Platform.OS === 'android' ? 5 : 8}
         keyboardShouldPersistTaps="handled"
         ItemSeparatorComponent={renderItemSeparator}
         ListHeaderComponent={
