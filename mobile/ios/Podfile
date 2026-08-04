@@ -101,6 +101,34 @@ def ensure_hermes_framework_embed
   File.write(script_path, text)
 end
 
+# ITMS-90426: SwiftSupport missing — CocoaPods owns ALWAYS_EMBED via Pods-Chatus.xcconfig.
+# Individual pod targets must NOT embed their own Swift libs; the app target inherits YES
+# from the aggregate Pods xcconfig so App Store archives get a SwiftSupport folder.
+def ensure_swift_standard_libraries_settings(installer)
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |bc|
+      bc.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
+    end
+  end
+
+  require 'xcodeproj'
+  project_path = File.join(__dir__, 'Chatus.xcodeproj')
+  return unless File.exist?(project_path)
+
+  project = Xcodeproj::Project.open(project_path)
+  project.build_configurations.each do |bc|
+    bc.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'YES'
+  end
+  target = project.targets.find { |t| t.name == 'Chatus' }
+  if target
+    target.build_configurations.each do |bc|
+      # Do not hardcode NO — that overrides Pods-Chatus.*.xcconfig (usually YES when Swift pods exist).
+      bc.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = '$(inherited)'
+    end
+  end
+  project.save
+end
+
 target 'Chatus' do
   use_expo_modules!
   pod 'TdLib', :path => '../tdlib-ios'
@@ -149,6 +177,7 @@ target 'Chatus' do
         bc.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       end
     end
+    ensure_swift_standard_libraries_settings(installer)
     ensure_tdlib_embed_phase
     fix_hermes_cli_path
     ensure_hermes_framework_embed

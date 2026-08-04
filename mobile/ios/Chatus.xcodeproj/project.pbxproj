@@ -375,7 +375,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = B6413C0E382FC0E41D84122A /* Pods-Chatus.debug.xcconfig */;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "$(inherited)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Chatus/Chatus.entitlements;
@@ -420,7 +420,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = C12D519E6F9C8F12C246B264 /* Pods-Chatus.release.xcconfig */;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = "$(inherited)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = Chatus/Chatus.entitlements;
