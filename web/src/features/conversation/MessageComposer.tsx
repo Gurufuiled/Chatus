@@ -160,6 +160,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
               <div className="message-composer__row">
                 <IconButton
                   label="Стикеры"
+                  title="Стикеры"
                   className={`message-composer__icon${isStickerPickerOpen ? ' message-composer__icon--active' : ''}`}
                   disabled={isDisabled}
                   onClick={() => setStickerPickerOpen(!isStickerPickerOpen)}
@@ -188,6 +189,7 @@ export function MessageComposer({ chatId, disabled = false }: MessageComposerPro
                 />
                 <IconButton
                   label="Прикрепить файл"
+                  title="Прикрепить файл"
                   className="message-composer__icon"
                   disabled={isDisabled}
                   onClick={() => setAttachmentPickerOpen(true)}
