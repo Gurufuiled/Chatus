@@ -36,6 +36,7 @@ import {
 import { GroupCallOverlay } from '../components/group-call/GroupCallOverlay';
 import { WebSocketService } from '../services/WebSocketService';
 import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
+import { normalizeStartedAt, resolveCallStartedAt } from '../utils/groupCallCore';
 
 export type GroupCallPhase =
   | 'idle'
@@ -251,33 +252,6 @@ function buildParticipantsFromRoom(
   return [...local, ...remote];
 }
 
-function normalizeStartedAt(startedAt: number | string | undefined | null): number | undefined {
-  if (typeof startedAt === 'number' && Number.isFinite(startedAt) && startedAt > 0) {
-    return startedAt < 1_000_000_000_000 ? startedAt * 1000 : startedAt;
-  }
-  if (typeof startedAt === 'string') {
-    const trimmed = startedAt.trim();
-    if (!trimmed) return undefined;
-    const parsed = Date.parse(trimmed);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    const numeric = Number(trimmed);
-    if (Number.isFinite(numeric) && numeric > 0) {
-      return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
-    }
-  }
-  return undefined;
-}
-
-function resolveCallStartedAt(
-  ...candidates: Array<number | string | undefined | null>
-): number | undefined {
-  for (const candidate of candidates) {
-    const normalized = normalizeStartedAt(candidate);
-    if (normalized != null) return normalized;
-  }
-  return undefined;
-}
-
 function buildCallAudioMode(isSpeakerOn: boolean) {
   return {
     allowsRecordingIOS: true,
@@ -328,6 +302,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
   >({});
   const leavingIntentionallyRef = useRef(false);
   const videoToggleInFlightRef = useRef(false);
+  /** Идёт создание/вход в звонок: `stateRef` обновляется только после рендера, поэтому двойной тап проходил проверку фазы. */
+  const callActionInFlightRef = useRef(false);
   stateRef.current = state;
 
   const storeApiParticipantsSnapshot = useCallback(
@@ -527,6 +503,16 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     [activeRoomByChatId, detachRoom, resetCallState, syncVideoTracksFromRoom, syncParticipantsFromRoom],
   );
 
+  /** Выход из комнаты на сервере без ошибок (best-effort), например после неудачного подключения. */
+  const leaveServerRoomQuietly = useCallback(async (roomId: string | null) => {
+    if (!roomId) return;
+    try {
+      await leaveGroupCall(roomId);
+    } catch {
+      // сервер сам уберёт участника по таймауту; локальная очистка важнее
+    }
+  }, []);
+
   const refreshActiveRoom = useCallback(async (chatId: string) => {
     const room = await fetchActiveGroupCall(chatId);
     setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: room }));
@@ -603,6 +589,10 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         Alert.alert('Голосовой чат', 'Сначала выйдите из текущего голосового чата.');
         return;
       }
+      if (callActionInFlightRef.current) return;
+      callActionInFlightRef.current = true;
+      /** Комната уже создана на сервере (мы в ней участник) — при сбое подключения из неё нужно выйти. */
+      let serverRoomId: string | null = null;
       setState((prev) => ({
         ...prev,
         phase: 'creating',
@@ -611,6 +601,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       }));
       try {
         const response = await createGroupCall(chatId);
+        serverRoomId = response.room.id;
         setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: response.room }));
         const callStartedAt =
           resolveCallStartedAt(response.room.started_at) ?? Date.now();
@@ -631,14 +622,17 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           phase: 'creating',
         });
       } catch (err) {
+        await leaveServerRoomQuietly(serverRoomId);
         await resetCallState();
         Alert.alert(
           'Не удалось начать звонок',
           err instanceof Error ? err.message : String(err),
         );
+      } finally {
+        callActionInFlightRef.current = false;
       }
     },
-    [callState, connectToRoom, resetCallState],
+    [callState, connectToRoom, leaveServerRoomQuietly, resetCallState],
   );
 
   const joinGroupCallAction = useCallback(
@@ -654,6 +648,15 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
         Alert.alert('Голосовой чат', 'Сначала выйдите из текущего голосового чата.');
         return;
       }
+      // Уже в этом звонке: просто разворачиваем, а не подключаемся второй раз (второй Room и дубль участника).
+      if (stateRef.current.phase === 'minimized' && stateRef.current.roomId === roomId) {
+        setState((prev) => (prev.phase === 'minimized' ? { ...prev, phase: 'active' } : prev));
+        return;
+      }
+      if (stateRef.current.phase !== 'idle' && stateRef.current.roomId === roomId) return;
+      if (callActionInFlightRef.current) return;
+      callActionInFlightRef.current = true;
+      let joinedOnServer = false;
       const cachedStartedAt = normalizeStartedAt(activeRoomByChatId[chatId]?.started_at);
       setState((prev) => ({
         ...prev,
@@ -665,6 +668,7 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
       }));
       try {
         const response = await joinGroupCall(roomId);
+        joinedOnServer = true;
         setActiveRoomByChatId((prev) => ({ ...prev, [chatId]: response.room }));
         const currentUserId = authStore.getState().user?.id;
         const joinedStartedAt = resolveCallStartedAt(
@@ -689,6 +693,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           phase: 'joining',
         });
       } catch (err) {
+        // Сервер уже записал нас участником, а LiveKit не подключился — не оставляем «призрака» в комнате.
+        if (joinedOnServer) await leaveServerRoomQuietly(roomId);
         await resetCallState();
         const message = err instanceof Error ? err.message : String(err);
         if (isGroupCallUnavailableError(message)) {
@@ -697,9 +703,18 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         Alert.alert('Не удалось присоединиться', message);
+      } finally {
+        callActionInFlightRef.current = false;
       }
     },
-    [activeRoomByChatId, callState, connectToRoom, resetCallState, applyActiveRoomSnapshot],
+    [
+      activeRoomByChatId,
+      callState,
+      connectToRoom,
+      leaveServerRoomQuietly,
+      resetCallState,
+      applyActiveRoomSnapshot,
+    ],
   );
 
   const leaveGroupCallAction = useCallback(async () => {
@@ -739,6 +754,8 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
     try {
       await endGroupCallForAll(roomId);
     } catch (err) {
+      // Не вышли — флаг «выхожу сам» нельзя оставлять: иначе при следующем обрыве сервер не узнает о выходе.
+      leavingIntentionallyRef.current = false;
       Alert.alert(
         'Не удалось завершить звонок',
         err instanceof Error ? err.message : String(err),
@@ -891,11 +908,10 @@ export function GroupCallProvider({ children }: { children: React.ReactNode }) {
           : [];
         if (!chatId || !roomId) return;
         if (participants.length === 0) {
-          if (
-            stateRef.current.chatId === chatId &&
-            (stateRef.current.phase === 'creating' ||
-              stateRef.current.phase === 'joining')
-          ) {
+          // Мы сами в этом звонке (подключаемся или уже на связи): пустой список — это отставание
+          // серверных данных (вебхук LiveKit ещё не дошёл), а не конец звонка. Конец приходит
+          // отдельным `onGroupCallEnded`; иначе пользователя выкидывало бы из живого звонка.
+          if (stateRef.current.chatId === chatId && stateRef.current.phase !== 'idle') {
             return;
           }
           applyActiveRoomSnapshot(chatId, null);
