@@ -41,7 +41,7 @@ function VoiceSendIcon() {
 }
 
 function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean) {
-  const bubbleBg = isDark ? '#202B36' : 'rgba(255,255,255,0.94)';
+  const bubbleBg = isDark ? '#202B36' : '#FFFFFF';
   const bubbleBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
   const cancelTint = isDark ? 'rgba(255, 83, 83, 0.14)' : 'rgba(255,83,83,0.10)';
   const cancelText = isDark ? '#F7F8FA' : '#E05252';
@@ -107,6 +107,10 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean) {
       alignItems: 'center',
       flex: 1,
       minWidth: 0,
+    },
+    recordingLiveContentLocked: {
+      flex: 0,
+      flexGrow: 0,
     },
     recordingTimerRow: {
       flexDirection: 'row',
@@ -353,7 +357,13 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
               </Pressable>
             ) : null}
 
-            <RNAnimated.View style={[styles.recordingLiveContent, recordingLiveContentStyle]}>
+            <RNAnimated.View
+              style={[
+                styles.recordingLiveContent,
+                isLocked && styles.recordingLiveContentLocked,
+                recordingLiveContentStyle,
+              ]}
+            >
               <View style={styles.recordingTimerRow}>
                 <RNAnimated.View style={[styles.recordingDot, { opacity: recordingPulse }]} />
                 <Text style={styles.recordingTime}>{voiceElapsedLabel}</Text>
@@ -374,24 +384,27 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
               ) : null}
             </RNAnimated.View>
 
-            <RNAnimated.View
-              style={[styles.recordingWaveRow, recordingLiveContentStyle]}
-              pointerEvents="none"
-            >
-              {liveBarHeights.map((height, index) => (
-                <View
-                  key={`recording-bar-${index}`}
-                  style={[
-                    styles.recordingWaveBar,
-                    {
-                      height,
-                      opacity: 0.34 + (index / Math.max(liveBarHeights.length - 1, 1)) * 0.44,
-                      backgroundColor: height >= 14 ? waveColors.peak : waveColors.quiet,
-                    },
-                  ]}
-                />
-              ))}
-            </RNAnimated.View>
+            {isLocked ? (
+              <RNAnimated.View
+                testID="voice-recording-waveform"
+                style={[styles.recordingWaveRow, recordingLiveContentStyle]}
+                pointerEvents="none"
+              >
+                {liveBarHeights.map((height, index) => (
+                  <View
+                    key={`recording-bar-${index}`}
+                    style={[
+                      styles.recordingWaveBar,
+                      {
+                        height,
+                        opacity: 0.34 + (index / Math.max(liveBarHeights.length - 1, 1)) * 0.44,
+                        backgroundColor: height >= 14 ? waveColors.peak : waveColors.quiet,
+                      },
+                    ]}
+                  />
+                ))}
+              </RNAnimated.View>
+            ) : null}
 
             <RNAnimated.View
               pointerEvents="none"
