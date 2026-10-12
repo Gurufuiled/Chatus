@@ -382,9 +382,6 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
                   <MaterialCommunityIcons name="draw" size={24} color="#FFFFFF" />
                 </Pressable>
 
-                {/* spacer */}
-                <View style={styles.toolSpacer} />
-
                 {/* send / select-and-send button (only if no caption bar visible) */}
                 {!hasSelection ? (
                   <Pressable
@@ -547,6 +544,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
+    // капсула по ширине содержимого и по центру: кнопки рядом, без пустого промежутка
+    alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -587,9 +586,6 @@ const styles = StyleSheet.create({
   toolBtnPressed: {
     opacity: 0.72,
     transform: [{ scale: 0.94 }],
-  },
-  toolSpacer: {
-    flex: 1,
   },
   sendBtn: {
     width: 48,
