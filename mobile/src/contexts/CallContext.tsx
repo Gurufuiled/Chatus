@@ -39,11 +39,21 @@ import { TelegramGlyph, TELEGRAM_CALL_GLYPHS, type CallGlyph } from '../icons/te
 import { SignalingService } from '../services/SignalingService';
 import { VoicePlayerService } from '../services/VoicePlayerService';
 import { releaseMediaAudioSession } from '../utils/releaseMediaAudioSession';
+import {
+  buildInitial,
+  buildOfferOptions,
+  formatCallDuration,
+  getCallControlsLayout,
+  getCallKindFromOffer,
+  getPhaseCaption,
+  getStatusText,
+  type CallControlsLayout,
+  type CallKind,
+  type CallPhase,
+} from '../utils/callUiCore';
 import { chatStore } from '../stores/chatStore';
 import { colors, withAlpha } from '../theme/colors';
 
-type CallPhase = 'incoming' | 'outgoing' | 'connecting' | 'active';
-type CallKind = 'audio' | 'video';
 
 type CallUiState = {
   phase: CallPhase;
@@ -90,6 +100,13 @@ type PendingOffer = {
 };
 
 const OUTGOING_TIMEOUT_MS = 30000;
+/** Входящий без ответа: если звонящий пропал (нет связи) и `call_cancel` не дошёл, экран не должен звонить вечно. */
+export const INCOMING_TIMEOUT_MS = 60000;
+/**
+ * `disconnected` в WebRTC — обычно кратковременная потеря связи (смена сети, лифт), соединение часто
+ * восстанавливается само. Ждём столько, прежде чем считать звонок оборванным; `failed`/`closed` — сразу.
+ */
+export const DISCONNECT_GRACE_MS = 8000;
 
 /** Круглый превью своего видео (PiP): размер и отступы при перетаскивании. */
 const VIDEO_PIP_WIDTH = 110;
@@ -98,32 +115,7 @@ const VIDEO_PIP_MARGIN = 16;
 
 const CallContext = createContext<CallContextType | null>(null);
 
-function formatCallDuration(startedAt?: number, now = Date.now()) {
-  if (!startedAt) return 'Соединение установлено';
-  const totalSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function buildInitial(name: string) {
-  return (name.trim()[0] || '?').toUpperCase();
-}
-
 type CallActionTone = 'neutral' | 'accent' | 'success' | 'danger' | 'disabled';
-
-type CallControlsLayout = {
-  screenHorizontalPadding: number;
-  rowGap: number;
-  incomingGap: number;
-  incomingPaddingHorizontal: number;
-  buttonGap: number;
-  circleSize: number;
-  prominentCircleSize: number;
-  iconSize: number;
-  prominentIconSize: number;
-  labelFontSize: number;
-};
 
 function buildCallAudioMode(isSpeakerOn: boolean) {
   return {
@@ -133,98 +125,6 @@ function buildCallAudioMode(isSpeakerOn: boolean) {
     shouldDuckAndroid: true,
     playThroughEarpieceAndroid: !isSpeakerOn,
   } satisfies Parameters<typeof Audio.setAudioModeAsync>[0];
-}
-
-function buildOfferOptions(shouldReceiveVideo: boolean) {
-  return {
-    offerToReceiveAudio: true,
-    offerToReceiveVideo: shouldReceiveVideo,
-  };
-}
-
-function getCallControlsLayout(screenWidth: number): CallControlsLayout {
-  if (screenWidth <= 340) {
-    return {
-      screenHorizontalPadding: 14,
-      rowGap: 4,
-      incomingGap: 18,
-      incomingPaddingHorizontal: 6,
-      buttonGap: 7,
-      circleSize: 50,
-      prominentCircleSize: 58,
-      iconSize: 20,
-      prominentIconSize: 24,
-      labelFontSize: 11,
-    };
-  }
-
-  if (screenWidth <= 380) {
-    return {
-      screenHorizontalPadding: 18,
-      rowGap: 6,
-      incomingGap: 22,
-      incomingPaddingHorizontal: 8,
-      buttonGap: 8,
-      circleSize: 58,
-      prominentCircleSize: 66,
-      iconSize: 22,
-      prominentIconSize: 26,
-      labelFontSize: 12,
-    };
-  }
-
-  return {
-    screenHorizontalPadding: 24,
-    rowGap: 8,
-    incomingGap: 28,
-    incomingPaddingHorizontal: 12,
-    buttonGap: 10,
-    circleSize: 68,
-    prominentCircleSize: 78,
-    iconSize: 24,
-    prominentIconSize: 28,
-    labelFontSize: 13,
-  };
-}
-
-function getStatusText(callState: CallUiState | null, nowTick: number) {
-  if (!callState) return '';
-
-  switch (callState.phase) {
-    case 'incoming':
-      return 'Входящий звонок';
-    case 'outgoing':
-      return 'Вызываем...';
-    case 'connecting':
-      return 'Соединяем...';
-    case 'active':
-      return formatCallDuration(callState.startedAt, nowTick);
-    default:
-      return '';
-  }
-}
-
-function getPhaseCaption(callState: CallUiState | null) {
-  const phase = callState?.phase;
-  const isVideo = callState?.callKind === 'video';
-
-  switch (phase) {
-    case 'incoming':
-      return isVideo ? 'Видеозвонок' : 'Голосовой звонок';
-    case 'outgoing':
-      return isVideo ? 'Ожидаем ответа на видео' : 'Ожидаем ответа';
-    case 'connecting':
-      return isVideo ? 'Подключаем видео' : 'Подключаем аудио';
-    case 'active':
-      return isVideo ? 'Видеозвонок' : 'Голосовой разговор';
-    default:
-      return '';
-  }
-}
-
-function getCallKindFromOffer(callType: CallKind | undefined) {
-  if (callType === 'video') return 'video';
-  return 'audio';
 }
 
 function hasEnabledVideoTrack(stream: RTCMediaStream | null | undefined) {
@@ -734,7 +634,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const pendingOfferRef = useRef<PendingOffer | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const outgoingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callStateRef = useRef<CallUiState | null>(null);
+  /** Идёт запуск/принятие звонка: защита от двойного нажатия (state обновляется только после рендера). */
+  const callActionInFlightRef = useRef(false);
 
   useEffect(() => {
     callStateRef.current = callState;
@@ -757,6 +660,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     if (outgoingTimeoutRef.current) {
       clearTimeout(outgoingTimeoutRef.current);
       outgoingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearDisconnectTimer = useCallback(() => {
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
     }
   }, []);
 
@@ -797,8 +707,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     pendingIceCandidatesRef.current = [];
     pendingOfferRef.current = null;
     clearOutgoingTimeout();
+    clearDisconnectTimer();
     await resetAudioMode();
-  }, [clearOutgoingTimeout, resetAudioMode]);
+  }, [clearDisconnectTimer, clearOutgoingTimeout, resetAudioMode]);
 
   const cleanupCallSession = useCallback(async () => {
     await cleanupMedia();
@@ -923,6 +834,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         ontrack?: (event: { streams?: RTCMediaStream[]; track: MediaStreamTrack }) => void;
         onconnectionstatechange?: () => void;
       }).onicecandidate = (event) => {
+        // событие старого соединения (звонок уже завершён/перезапущен) не должно уходить собеседнику
+        if (pcRef.current !== pc) return;
         if (event.candidate) {
           SignalingService.sendIceCandidate(remoteUserId, event.candidate.toJSON());
         }
@@ -931,6 +844,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       (pc as RTCPeerConnection & {
         ontrack?: (event: { streams?: RTCMediaStream[]; track: MediaStreamTrack }) => void;
       }).ontrack = (event) => {
+        if (pcRef.current !== pc) return;
         const incomingStream = event.streams?.[0] ?? null;
         const existing = remoteStreamRef.current;
 
@@ -977,23 +891,46 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         });
       };
 
+      /** Связь потеряна безвозвратно: сообщаем собеседнику и закрываем звонок у себя. */
+      const endBecauseConnectionLost = () => {
+        // событие «старого» соединения не должно сбросить уже новый звонок
+        if (pcRef.current !== pc) return;
+        clearDisconnectTimer();
+        SignalingService.sendCallEnd(remoteUserId);
+        void cleanupCallSession();
+      };
+
+      /** Единая реакция на состояние соединения (connectionState и iceConnectionState). */
+      const handleLinkState = (linkState: string | undefined) => {
+        if (pcRef.current !== pc) return;
+
+        if (linkState === 'connected' || linkState === 'completed') {
+          clearDisconnectTimer();
+          promoteToActive();
+          return;
+        }
+
+        if (linkState === 'disconnected') {
+          // Временная потеря связи: даём шанс восстановиться, а не обрываем звонок сразу.
+          if (!disconnectTimerRef.current) {
+            disconnectTimerRef.current = setTimeout(() => {
+              disconnectTimerRef.current = null;
+              endBecauseConnectionLost();
+            }, DISCONNECT_GRACE_MS);
+          }
+          return;
+        }
+
+        if (linkState === 'failed' || linkState === 'closed') {
+          endBecauseConnectionLost();
+        }
+      };
+
       (pc as RTCPeerConnection & { onconnectionstatechange?: () => void }).onconnectionstatechange =
         () => {
-          const connectionState = (pc as RTCPeerConnection & { connectionState?: string })
-            .connectionState;
-
-          if (connectionState === 'connected') {
-            promoteToActive();
-            return;
-          }
-
-          if (
-            connectionState === 'failed' ||
-            connectionState === 'disconnected' ||
-            connectionState === 'closed'
-          ) {
-            void cleanupCallSession();
-          }
+          handleLinkState(
+            (pc as RTCPeerConnection & { connectionState?: string }).connectionState,
+          );
         };
 
       // Some devices / react-native-webrtc versions never flip
@@ -1002,35 +939,47 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       // "active" even if the PeerConnection-level event is late or missing.
       (pc as RTCPeerConnection & { oniceconnectionstatechange?: () => void }).oniceconnectionstatechange =
         () => {
-          const iceState = (pc as RTCPeerConnection & { iceConnectionState?: string })
-            .iceConnectionState;
-
-          if (iceState === 'connected' || iceState === 'completed') {
-            promoteToActive();
-            return;
-          }
-
-          if (iceState === 'failed' || iceState === 'closed') {
-            void cleanupCallSession();
-          }
+          handleLinkState(
+            (pc as RTCPeerConnection & { iceConnectionState?: string }).iceConnectionState,
+          );
         };
 
       pcRef.current = pc;
       return pc;
     },
-    [cleanupCallSession, clearOutgoingTimeout, ensureLocalMediaStream, updateRemoteStreamState]
+    [
+      cleanupCallSession,
+      clearDisconnectTimer,
+      clearOutgoingTimeout,
+      ensureLocalMediaStream,
+      updateRemoteStreamState,
+    ]
   );
 
   const startOutgoingTimeout = useCallback(
-    (displayName: string) => {
+    (displayName: string, remoteUserId: string) => {
       clearOutgoingTimeout();
       outgoingTimeoutRef.current = setTimeout(() => {
+        outgoingTimeoutRef.current = null;
+        // Не ответили — отменяем вызов и у собеседника, иначе его телефон будет звонить дальше.
+        SignalingService.sendCallCancel(remoteUserId);
         void cleanupCallSession();
         Alert.alert('Нет ответа', `${displayName} не ответил на звонок.`);
       }, OUTGOING_TIMEOUT_MS);
     },
     [cleanupCallSession, clearOutgoingTimeout]
   );
+
+  /** Входящий без ответа слишком долго: закрываем у себя (звонящий мог пропасть без `call_cancel`). */
+  const startIncomingTimeout = useCallback(() => {
+    clearOutgoingTimeout();
+    outgoingTimeoutRef.current = setTimeout(() => {
+      outgoingTimeoutRef.current = null;
+      if (callStateRef.current?.phase === 'incoming') {
+        void cleanupCallSession();
+      }
+    }, INCOMING_TIMEOUT_MS);
+  }, [cleanupCallSession, clearOutgoingTimeout]);
 
   const sendRenegotiationOffer = useCallback(async (nextCallKind: CallKind) => {
     const pc = pcRef.current;
@@ -1085,7 +1034,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const startCall = useCallback(
     async ({ userId, displayName, avatarUrl, chatId, callKind = 'audio' }: StartCallOptions) => {
-      if (callStateRef.current) return;
+      if (callStateRef.current || callActionInFlightRef.current) return;
+      callActionInFlightRef.current = true;
 
       try {
         await VoicePlayerService.stop();
@@ -1122,13 +1072,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           }, callKind);
         }
 
-        startOutgoingTimeout(displayName);
+        startOutgoingTimeout(displayName, userId);
       } catch (error) {
         await cleanupCallSession();
         Alert.alert(
           'Не удалось начать звонок',
           error instanceof Error ? error.message : 'Попробуй еще раз чуть позже.'
         );
+      } finally {
+        callActionInFlightRef.current = false;
       }
     },
     [cleanupCallSession, createPeerConnection, startOutgoingTimeout]
@@ -1137,7 +1089,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const acceptIncomingCall = useCallback(async () => {
     const pendingOffer = pendingOfferRef.current;
     const currentState = callStateRef.current;
-    if (!pendingOffer || !currentState) return;
+    // принимаем только входящий и только один раз (двойное нажатие создавало второе соединение)
+    if (!pendingOffer || !currentState || currentState.phase !== 'incoming') return;
+    if (callActionInFlightRef.current) return;
+    callActionInFlightRef.current = true;
+    clearOutgoingTimeout();
 
     try {
       await VoicePlayerService.stop();
@@ -1183,8 +1139,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         'Не удалось принять звонок',
         error instanceof Error ? error.message : 'Попробуй еще раз чуть позже.'
       );
+    } finally {
+      callActionInFlightRef.current = false;
     }
-  }, [cleanupCallSession, createPeerConnection, flushPendingIceCandidates]);
+  }, [cleanupCallSession, clearOutgoingTimeout, createPeerConnection, flushPendingIceCandidates]);
 
   const declineIncomingCall = useCallback(async () => {
     const currentState = callStateRef.current;
@@ -1316,7 +1274,22 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        if (currentState) {
+        // Повторный offer от того же звонящего, пока мы ещё не ответили (повторная доставка при
+        // переподключении, ретрай): обновляем предложение, а не отвечаем «занят» и не рвём его звонок.
+        if (
+          currentState &&
+          currentState.remoteUserId === fromUserId &&
+          currentState.phase === 'incoming' &&
+          !currentPc
+        ) {
+          pendingOfferRef.current = { fromUserId, sdp, callKind: nextCallKind };
+          if (currentState.callKind !== nextCallKind) {
+            setCallState((state) => (state ? { ...state, callKind: nextCallKind } : state));
+          }
+          return;
+        }
+
+        if (currentState || callActionInFlightRef.current) {
           SignalingService.sendCallBusy(fromUserId);
           return;
         }
@@ -1340,6 +1313,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           localStreamUrl: null,
           remoteStreamUrl: null,
         });
+        startIncomingTimeout();
       },
       onAnswer: async (fromUserId, sdp) => {
         const currentState = callStateRef.current;
@@ -1408,7 +1382,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     });
 
     return unsubscribe;
-  }, [cleanupCallSession, clearOutgoingTimeout, flushPendingIceCandidates]);
+  }, [cleanupCallSession, clearOutgoingTimeout, flushPendingIceCandidates, startIncomingTimeout]);
 
   const contextValue = useMemo(
     () => ({
