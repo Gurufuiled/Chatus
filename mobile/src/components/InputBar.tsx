@@ -315,6 +315,8 @@ export function InputBar({
   const voiceDragYAnimated = useRef(new RNAnimated.Value(0)).current;
   const voiceCancelProgressAnimated = useRef(new RNAnimated.Value(0)).current;
   const voiceLockProgressAnimated = useRef(new RNAnimated.Value(0)).current;
+  /** 0→1 после фиксации: замок-«кружок» плавно уходит в поле записи. */
+  const voiceLockSettleAnimated = useRef(new RNAnimated.Value(0)).current;
   const entryModeProgressAnimated = useRef(new RNAnimated.Value(0)).current;
 
   const hasText = inputText.trim().length > 0;
@@ -337,8 +339,12 @@ export function InputBar({
 
   const setVoiceRecordMode = useCallback((mode: VoiceRecordMode) => {
     voiceRecordModeRef.current = mode;
+    if (mode !== 'locked') {
+      voiceLockSettleAnimated.stopAnimation();
+      voiceLockSettleAnimated.setValue(0);
+    }
     setVoiceRecordModeState(mode);
-  }, []);
+  }, [voiceLockSettleAnimated]);
 
   const setRecordingEntryMode = useCallback((mode: RecordingEntryMode) => {
     recordingEntryModeRef.current = mode;
@@ -820,7 +826,17 @@ export function InputBar({
     setVoiceRecordMode('locked');
     voiceLockedSnapshotRef.current = true;
     animateVoiceGestureState(0, 0, 0, 1);
-  }, [animateVoiceGestureState, setVoiceRecordMode]);
+    voiceLockSettleAnimated.setValue(0);
+    RNAnimated.sequence([
+      RNAnimated.delay(110),
+      RNAnimated.timing(voiceLockSettleAnimated, {
+        toValue: 1,
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [animateVoiceGestureState, setVoiceRecordMode, voiceLockSettleAnimated]);
 
   const runAttachmentAction = useCallback(async (action: () => Promise<void>) => {
     setShowAttachmentSheet(false);
@@ -1458,7 +1474,7 @@ export function InputBar({
   const recordingLiveContentStyle = useMemo(
     () => ({
       opacity: voiceCancelProgressAnimated.interpolate({
-        inputRange: [0, 0.72],
+        inputRange: [0, 0.4],
         outputRange: [1, 0],
         extrapolate: 'clamp',
       }),
@@ -1478,7 +1494,7 @@ export function InputBar({
   const recordingCancelContentStyle = useMemo(
     () => ({
       opacity: voiceCancelProgressAnimated.interpolate({
-        inputRange: [0.18, 1],
+        inputRange: [0.5, 1],
         outputRange: [0, 1],
         extrapolate: 'clamp',
       }),
@@ -1497,42 +1513,57 @@ export function InputBar({
 
   const recordingLockStyle = useMemo(
     () => ({
-      opacity: voiceLockProgressAnimated.interpolate({
-        inputRange: [0, 0.72, 1],
-        outputRange: [1, 1, 0],
+      // пилюля сжимается в кружок по мере подъёма пальца вверх
+      height: voiceLockProgressAnimated.interpolate({
+        inputRange: [0, 1],
+        outputRange: [74, 42],
+        extrapolate: 'clamp',
+      }),
+      opacity: voiceLockSettleAnimated.interpolate({
+        inputRange: [0, 0.85, 1],
+        outputRange: [1, 0.6, 0],
       }),
       transform: [
         {
           translateY: RNAnimated.add(
-            RNAnimated.multiply(voiceDragYAnimated, 0.22),
-            voiceLockProgressAnimated.interpolate({
+            RNAnimated.multiply(voiceDragYAnimated, 0.12),
+            voiceLockSettleAnimated.interpolate({
               inputRange: [0, 1],
-              outputRange: [0, 12],
+              outputRange: [0, 22],
             })
           ),
         },
         {
-          scale: voiceLockProgressAnimated.interpolate({
-            inputRange: [0, 0.72, 1],
-            outputRange: [1, 1.06, 0.88],
-          }),
+          scale: RNAnimated.multiply(
+            voiceLockProgressAnimated.interpolate({
+              inputRange: [0, 0.8, 1],
+              outputRange: [1, 1.05, 1],
+              extrapolate: 'clamp',
+            }),
+            voiceLockSettleAnimated.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 0.55],
+            })
+          ),
         },
       ] as ViewStyle['transform'],
     }),
-    [voiceDragYAnimated, voiceLockProgressAnimated]
+    [voiceDragYAnimated, voiceLockProgressAnimated, voiceLockSettleAnimated]
   );
 
   const recordingUnlockIconStyle = useMemo(
     () => ({
       opacity: voiceLockProgressAnimated.interpolate({
-        inputRange: [0, 1],
+        inputRange: [0, 0.55],
         outputRange: [1, 0],
+        extrapolate: 'clamp',
       }),
       transform: [
         {
           scale: voiceLockProgressAnimated.interpolate({
-            inputRange: [0, 1],
-            outputRange: [1, 0.84],
+            inputRange: [0, 0.55],
+            outputRange: [1, 0.8],
+            extrapolate: 'clamp',
           }),
         },
       ] as ViewStyle['transform'],
@@ -1543,14 +1574,22 @@ export function InputBar({
   const recordingLockIconStyle = useMemo(
     () => ({
       opacity: voiceLockProgressAnimated.interpolate({
-        inputRange: [0, 1],
+        inputRange: [0.4, 0.9],
         outputRange: [0, 1],
+        extrapolate: 'clamp',
       }),
       transform: [
         {
           scale: voiceLockProgressAnimated.interpolate({
+            inputRange: [0.4, 0.9, 1],
+            outputRange: [0.8, 1.12, 1],
+            extrapolate: 'clamp',
+          }),
+        },
+        {
+          translateY: voiceLockProgressAnimated.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.84, 1],
+            outputRange: [0, -1],
           }),
         },
       ] as ViewStyle['transform'],
