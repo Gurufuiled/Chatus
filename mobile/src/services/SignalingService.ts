@@ -16,6 +16,12 @@ export type SignalingEventHandlers = {
   onError?: (error: string | Error) => void;
 };
 
+/** События завершения звонка нельзя терять при переподключении сокета — иначе собеседник продолжит звонить. */
+const CONTROL_EVENTS = new Set(['call_cancel', 'call_decline', 'call_end', 'call_busy']);
+/** Сколько ждём переподключения, чтобы отправить отложенное управляющее событие. */
+export const CONTROL_QUEUE_TTL_MS = 15000;
+const CONTROL_QUEUE_MAX = 8;
+
 const BACKOFF_BASE_MS = 1000;
 const BACKOFF_MAX_MS = 30000;
 const BACKOFF_MULTIPLIER = 2;
@@ -51,6 +57,8 @@ class SignalingServiceClass {
   private lineSyncDataChannelRawListeners = new Set<(raw: string) => void>();
   /** Fired when signaling socket closes (reconnect may follow). */
   private socketCloseListeners = new Set<() => void>();
+  /** Управляющие события звонка, отправленные при закрытом сокете: уйдут после переподключения. */
+  private pendingControl: Array<{ payload: string; expiresAt: number }> = [];
 
   setHandlers(handlers: SignalingEventHandlers): void {
     this.handlers = { ...this.handlers, ...handlers };
@@ -91,23 +99,33 @@ class SignalingServiceClass {
     this.socketCloseListeners.forEach((fn) => fn());
   }
 
+  /** Вызывает обработчик так, чтобы его исключение не мешало остальным слушателям и не падало в onmessage. */
+  private safeInvoke(handler: (...args: never[]) => unknown, args: unknown[]): void {
+    try {
+      const result = (handler as (...innerArgs: unknown[]) => unknown)(...args);
+      if (result && typeof (result as Promise<unknown>).catch === 'function') {
+        (result as Promise<unknown>).catch((error) => {
+          this.handlers.onError?.(error instanceof Error ? error : new Error(String(error)));
+        });
+      }
+    } catch (error) {
+      this.handlers.onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
   private emit<K extends keyof SignalingEventHandlers>(
     key: K,
     ...args: Parameters<NonNullable<SignalingEventHandlers[K]>>
   ): void {
     const primary = this.handlers[key];
     if (typeof primary === 'function') {
-      (primary as (...innerArgs: Parameters<NonNullable<SignalingEventHandlers[K]>>) => void)(
-        ...args
-      );
+      this.safeInvoke(primary as (...innerArgs: never[]) => unknown, args);
     }
 
     this.listeners.forEach((listener) => {
       const handler = listener[key];
       if (typeof handler === 'function') {
-        (handler as (...innerArgs: Parameters<NonNullable<SignalingEventHandlers[K]>>) => void)(
-          ...args
-        );
+        this.safeInvoke(handler as (...innerArgs: never[]) => unknown, args);
       }
     });
   }
@@ -167,29 +185,47 @@ class SignalingServiceClass {
     const baseUrl = getSignalingUrl();
     const sep = baseUrl.includes('?') ? '&' : '?';
     const url = baseUrl + sep + 'token=' + encodeURIComponent(token);
-    this.ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    // События «старого» сокета (после disconnect()/reconnect()) не должны трогать новый.
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.reconnectAttempt = 0;
       for (const resolve of this.whenConnectedResolvers) resolve();
       this.whenConnectedResolvers = [];
+      this.flushPendingControl();
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       this.handleMessage(event.data);
     };
 
-    this.ws.onclose = () => {
-      this.ws = null;
+    socket.onclose = () => {
+      const isCurrent = this.ws === socket;
+      if (isCurrent) this.ws = null;
       this.notifySocketClose();
-      if (!this.manualDisconnect && authStore.getState().accessToken) {
+      if (isCurrent && !this.manualDisconnect && authStore.getState().accessToken) {
         this.scheduleReconnect();
       }
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
       this.handlers.onError?.(new Error('Signaling WebSocket error'));
     };
+  }
+
+  private flushPendingControl(): void {
+    if (this.pendingControl.length === 0) return;
+    const now = Date.now();
+    const queue = this.pendingControl;
+    this.pendingControl = [];
+    for (const item of queue) {
+      if (item.expiresAt >= now && this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(item.payload);
+      }
+    }
   }
 
   private handleMessage(raw: string | Blob): void {
@@ -311,15 +347,25 @@ class SignalingServiceClass {
     }
 
     this.reconnectAttempt = 0;
+    this.pendingControl = [];
   }
 
-  private send(data: Record<string, unknown>): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify(data));
+  /** @returns `true`, если событие ушло в сокет сразу. Управляющие события звонка при закрытом сокете откладываются. */
+  private send(data: Record<string, unknown>): boolean {
+    const payload = JSON.stringify(data);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(payload);
+      return true;
+    }
+    if (typeof data.event === 'string' && CONTROL_EVENTS.has(data.event)) {
+      this.pendingControl.push({ payload, expiresAt: Date.now() + CONTROL_QUEUE_TTL_MS });
+      if (this.pendingControl.length > CONTROL_QUEUE_MAX) this.pendingControl.shift();
+    }
+    return false;
   }
 
-  private sendEvent(event: string, data: Record<string, unknown>): void {
-    this.send({ event, data });
+  private sendEvent(event: string, data: Record<string, unknown>): boolean {
+    return this.send({ event, data });
   }
 
   sendOffer(
