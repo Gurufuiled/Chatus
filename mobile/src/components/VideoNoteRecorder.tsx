@@ -22,6 +22,16 @@ import {
 } from '../services/VideoNoteRecorderService';
 
 import { VIDEO_NOTE_CAMERA_SIDE_PX } from '../constants/videoNote';
+import {
+  BAR_HEIGHT,
+  BAR_INSET,
+  BAR_RADIUS,
+  FLIP_BUTTON_SIZE,
+  RAIL_BOTTOM_GAP,
+  RAIL_WIDTH,
+  SEND_BUTTON_SIZE,
+  TIMER_PILL_HEIGHT,
+} from './videoNoteRecorderLayout';
 
 const CIRCLE_SIZE = VIDEO_NOTE_CAMERA_SIDE_PX;
 const CIRCLE_RADIUS = CIRCLE_SIZE / 2;
@@ -372,7 +382,7 @@ export function VideoNoteRecorder({
               ) : null}
             </Pressable>
 
-            <View style={styles.rightRail}>
+            <View testID="video-note-rail" style={styles.rightRail}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Переключить камеру"
@@ -396,53 +406,51 @@ export function VideoNoteRecorder({
             </View>
           </View>
 
-          <View style={styles.bottomBar}>
-            <View style={styles.controlsBarWrap}>
-              <BlurView
-                intensity={96}
-                tint="default"
-                blurMethod="dimezisBlurView"
-                blurReductionFactor={1}
-                {...blurProps}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.controlsBarWash} />
-              <View pointerEvents="none" style={styles.controlsBarTintLeft} />
-              <View pointerEvents="none" style={styles.controlsBarTintRight} />
-              <View style={styles.controlsBarContent}>
-                <View style={styles.timerPill}>
-                  <View style={styles.recordDot} />
-                  <Text style={styles.timerText}>{formatTimer(elapsedMs)}</Text>
-                </View>
-
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Отменить запись"
-                  onPress={handleCancel}
-                  style={({ pressed }) => [
-                    styles.cancelAction,
-                    pressed && styles.cancelActionPressed,
-                  ]}
-                >
-                  <Text style={styles.cancelActionLabel}>Отмена</Text>
-                </Pressable>
+          <View testID="video-note-controls-bar" style={styles.bottomBar}>
+            <BlurView
+              intensity={96}
+              tint="default"
+              blurMethod="dimezisBlurView"
+              blurReductionFactor={1}
+              {...blurProps}
+              style={StyleSheet.absoluteFill}
+            />
+            <View pointerEvents="none" style={styles.bottomBarWash} />
+            <View style={styles.controlsRow}>
+              <View style={styles.timerPill}>
+                <View style={styles.recordDot} />
+                <Text style={styles.timerText}>{formatTimer(elapsedMs)}</Text>
               </View>
-            </View>
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Отправить видеокружок"
-              disabled={!isRecording || isPreparing}
-              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-              onPress={handleSend}
-              style={({ pressed }) => [
-                styles.sendButton,
-                (!isRecording || isPreparing) && styles.sendButtonDisabled,
-                pressed && isRecording && !isPreparing && styles.sendButtonPressed,
-              ]}
-            >
-              <Feather name="arrow-up" size={28} color="#FFFFFF" />
-            </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Отменить запись"
+                onPress={handleCancel}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={({ pressed }) => [
+                  styles.cancelAction,
+                  pressed && styles.cancelActionPressed,
+                ]}
+              >
+                <Text style={styles.cancelActionLabel}>Отмена</Text>
+              </Pressable>
+
+              <Pressable
+                testID="video-note-send-button"
+                accessibilityRole="button"
+                accessibilityLabel="Отправить видеокружок"
+                disabled={!isRecording || isPreparing}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={handleSend}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  (!isRecording || isPreparing) && styles.sendButtonDisabled,
+                  pressed && isRecording && !isPreparing && styles.sendButtonPressed,
+                ]}
+              >
+                <Feather name="arrow-up" size={26} color="#FFFFFF" />
+              </Pressable>
+            </View>
           </View>
         </View>
       </View>
@@ -509,15 +517,17 @@ const styles = StyleSheet.create({
   },
   rightRail: {
     position: 'absolute',
-    right: 8,
-    bottom: 34,
+    // колонка шириной с кнопку отправки и тем же правым отступом: центры на одной вертикали
+    right: BAR_INSET,
+    bottom: RAIL_BOTTOM_GAP,
+    width: RAIL_WIDTH,
     gap: 10,
     alignItems: 'center',
   },
   railButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: FLIP_BUTTON_SIZE,
+    height: FLIP_BUTTON_SIZE,
+    borderRadius: FLIP_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.74)',
@@ -545,60 +555,35 @@ const styles = StyleSheet.create({
     color: '#17577C',
   },
   bottomBar: {
-    position: 'relative',
-    minHeight: 78,
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  controlsBarWrap: {
-    height: 42,
-    marginRight: 24,
-    borderRadius: 21,
+    height: BAR_HEIGHT,
+    borderRadius: BAR_RADIUS,
     overflow: 'hidden',
+    marginBottom: 2,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.52)',
+    borderColor: 'rgba(255,255,255,0.6)',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  controlsBarWash: {
+  // один ровный слой без цветных пятен слева/справа
+  bottomBarWash: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.32)',
   },
-  controlsBarTintLeft: {
-    position: 'absolute',
-    left: -18,
-    top: -6,
-    bottom: -6,
-    width: '44%',
-    borderRadius: 40,
-    backgroundColor: 'rgba(246, 177, 232, 0.22)',
-  },
-  controlsBarTintRight: {
-    position: 'absolute',
-    right: -22,
-    top: -8,
-    bottom: -8,
-    width: '48%',
-    borderRadius: 40,
-    backgroundColor: 'rgba(146, 241, 238, 0.2)',
-  },
-  controlsBarContent: {
+  controlsRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingLeft: 10,
-    paddingRight: 82,
+    paddingLeft: BAR_INSET + 6,
+    paddingRight: BAR_INSET - 1,
   },
   timerPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    height: 30,
-    paddingHorizontal: 11,
+    height: TIMER_PILL_HEIGHT,
+    paddingHorizontal: 12,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: 'rgba(255,255,255,0.86)',
   },
   recordDot: {
     width: 8,
@@ -613,8 +598,10 @@ const styles = StyleSheet.create({
     color: '#283547',
   },
   cancelAction: {
-    paddingHorizontal: 4,
-    paddingVertical: 4,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: BAR_HEIGHT - 2,
   },
   cancelActionPressed: {
     opacity: 0.7,
@@ -626,22 +613,12 @@ const styles = StyleSheet.create({
     color: '#5676FF',
   },
   sendButton: {
-    position: 'absolute',
-    right: -8,
-    top: -9,
-    width: 66,
-    height: 66,
-    borderRadius: 33,
+    width: SEND_BUTTON_SIZE,
+    height: SEND_BUTTON_SIZE,
+    borderRadius: SEND_BUTTON_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#5D72FF',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    shadowColor: '#5D72FF',
-    shadowOpacity: 0.22,
-    shadowRadius: 15,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 9,
   },
   sendButtonPressed: {
     transform: [{ scale: 0.98 }],
