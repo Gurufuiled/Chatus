@@ -42,6 +42,7 @@ import { ensureDiscussionMediaUploaded } from '../services/discussionMediaUpload
 import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
 import type { MediaTile } from '../components/ChatProfileMediaSection';
 import { buildChannelPostMediaTiles } from '../utils/channelPostMediaTiles';
+import { channelPostMediaTileId } from '../utils/channelPostMediaTileId';
 import { channelStore } from '../stores/channelStore';
 import { chatStore } from '../stores/chatStore';
 import { authStore } from '../stores/authStore';
@@ -613,6 +614,7 @@ function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDis
             viewCount={post.view_count ?? 0}
             contentFit="cover"
             onOpenFullscreen={openOriginalPostMediaViewer}
+            thumbId={channelPostMediaTileId(post.id, 0)}
           />
         ) : null}
         {post.msg_type === 'video' && media?.remote_url ? (
@@ -633,6 +635,7 @@ function OriginalPostHeader({ post, st }: { post: Message | null; st: ChannelDis
             status={post.status}
             viewCount={post.view_count ?? 0}
             onOpenFullscreen={openOriginalPostMediaViewer}
+            thumbId={channelPostMediaTileId(post.id, 0)}
           />
         ) : null}
         {post.msg_type === 'voice' && media ? (

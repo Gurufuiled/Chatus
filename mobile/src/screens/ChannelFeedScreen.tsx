@@ -67,6 +67,8 @@ import { withAlpha } from '../theme/stylePrimitives';
 import { ChatProfileMediaViewerModal } from '../components/ChatProfileMediaViewerModal';
 import type { MediaTile } from '../components/ChatProfileMediaSection';
 import { buildChannelPostMediaTiles, getVisualMediaKind } from '../utils/channelPostMediaTiles';
+import { channelPostMediaTileId } from '../utils/channelPostMediaTileId';
+import { MediaThumbPressable } from '../components/MediaThumbPressable';
 import {
   ChatBackgroundPattern,
   formatTime,
@@ -712,8 +714,9 @@ function renderChannelMediaAlbum(
 
     if (onTilePress) {
       return (
-        <Pressable
+        <MediaThumbPressable
           key={`${mediaItem.remote_url}-${index}`}
+          thumbId={channelPostMediaTileId(item.id, index)}
           onPress={() => onTilePress(index)}
           style={({ pressed }) => [
             st.channelAlbumTile,
@@ -722,7 +725,7 @@ function renderChannelMediaAlbum(
           ]}
         >
           {tileContent}
-        </Pressable>
+        </MediaThumbPressable>
       );
     }
 
@@ -1785,6 +1788,7 @@ export function ChannelFeedScreen() {
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
               contentFit="cover"
               onOpenFullscreen={() => openChannelFeedMediaViewer(item, 0)}
+              thumbId={channelPostMediaTileId(item.id, 0)}
               incomingBubbleBackground={c.bubbleOther}
               incomingBubbleBorderColor={c.bubbleOtherBorder}
               incomingCaptionTextColor={c.textPrimary}
@@ -1825,6 +1829,7 @@ export function ChannelFeedScreen() {
               status={item.status}
               viewCount={hasCaption ? undefined : item.view_count ?? 0}
               onOpenFullscreen={() => openChannelFeedMediaViewer(item, 0)}
+              thumbId={channelPostMediaTileId(item.id, 0)}
               incomingBubbleBackground={c.bubbleOther}
               incomingBubbleBorderColor={c.bubbleOtherBorder}
               incomingCaptionTextColor={c.textPrimary}

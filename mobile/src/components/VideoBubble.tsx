@@ -15,6 +15,17 @@ import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Reanimated from 'react-native-reanimated';
+import { useHeroDismiss } from '../hooks/useHeroDismiss';
+import { HeroOverlay } from './HeroOverlay';
+import {
+  measureThumbRef,
+  registerMediaThumb,
+  unregisterMediaThumb,
+  type MeasurableThumb,
+} from '../utils/mediaThumbRegistry';
+import type { Size } from '../utils/heroDismissCore';
 import { colors, bubbleRadius, typography } from '../theme/colors';
 import {
   formatMediaDuration,
@@ -60,6 +71,8 @@ export interface VideoBubbleProps {
   fixedSize?: boolean;
   /** Parent handles fullscreen (e.g. swipe-to-dismiss profile viewer). */
   onOpenFullscreen?: () => void;
+  /** id медиа во вьювере родителя: регистрирует превью, чтобы кадр «садился» на него при закрытии. */
+  thumbId?: string;
   inlineReactions?: InlineReactionItem[];
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
@@ -122,14 +135,31 @@ function FullscreenVideoModal({
   topInset,
   bottomInset,
   initialDurationMs,
+  sourceRef,
+  posterUri,
+  videoSize,
   onClose,
 }: {
   uri: string;
   topInset: number;
   bottomInset: number;
   initialDurationMs: number;
+  /** Миниатюра видео в сообщении: на неё «садится» кадр при закрытии свайпом. */
+  sourceRef: React.RefObject<MeasurableThumb | null>;
+  posterUri: string | null;
+  videoSize: Size | null;
   onClose: () => void;
 }) {
+  const getSourceRect = useCallback(() => measureThumbRef(sourceRef.current), [sourceRef]);
+  const getHeroImageUri = useCallback(() => posterUri || null, [posterUri]);
+  const getImageSize = useCallback(() => videoSize, [videoSize]);
+  const hero = useHeroDismiss({
+    visible: true,
+    getSourceRect,
+    getHeroImageUri,
+    getImageSize,
+    onDismiss: onClose,
+  });
   const [trackWidth, setTrackWidth] = useState(1);
   const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(1);
   const [isMuted, setIsMuted] = useState(false);
@@ -362,21 +392,42 @@ function FullscreenVideoModal({
   }, [isMuted, player]);
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.fullscreenBackdrop}>
-        <VideoView
-          player={player}
-          style={styles.fullscreenVideo}
-          nativeControls={false}
-          contentFit="contain"
-          surfaceType="textureView"
-          useExoShutter={false}
+    <Modal
+      visible
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={hero.requestClose}
+    >
+      <GestureHandlerRootView style={styles.fullscreenRoot}>
+        <Reanimated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.fullscreenBackdropFill, hero.backdropStyle]}
         />
-        <Pressable
-          style={styles.fullscreenTapLayer}
-          onPress={handleFullscreenTap}
-        />
+        <GestureDetector gesture={hero.gesture}>
+          <Reanimated.View style={[styles.fullscreenContent, hero.contentStyle]}>
+            <VideoView
+              player={player}
+              style={styles.fullscreenVideo}
+              nativeControls={false}
+              contentFit="contain"
+              surfaceType="textureView"
+              useExoShutter={false}
+            />
+            <Pressable
+              style={styles.fullscreenTapLayer}
+              onPress={handleFullscreenTap}
+            />
+          </Reanimated.View>
+        </GestureDetector>
 
+        <HeroOverlay hero={hero} />
+
+        {/* панели тают вместе с фоном при перетаскивании */}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, hero.chromeStyle]}
+          pointerEvents="box-none"
+        >
         {skipFeedback ? (
           <View pointerEvents="none" style={skipFeedback === 'back' ? styles.skipFeedbackLeft : styles.skipFeedbackRight}>
             <Feather name={skipFeedback === 'back' ? 'rotate-ccw' : 'rotate-cw'} size={22} color="#FFFFFF" />
@@ -387,7 +438,7 @@ function FullscreenVideoModal({
         {controlsVisible ? (
           <Pressable
             style={[styles.closeButton, { top: topInset + 12 }]}
-            onPress={onClose}
+            onPress={hero.requestClose}
             hitSlop={12}
             accessibilityRole="button"
             accessibilityLabel="Close video"
@@ -485,7 +536,8 @@ function FullscreenVideoModal({
           </View>
           </View>
         ) : null}
-      </View>
+        </Reanimated.View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -508,6 +560,7 @@ export function VideoBubble({
   viewCount,
   fixedSize = false,
   onOpenFullscreen,
+  thumbId,
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
@@ -536,6 +589,14 @@ export function VideoBubble({
   );
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const insets = useSafeAreaInsets();
+  /** Само превью видео в сообщении: сюда «садится» кадр при закрытии свайпом. */
+  const videoWrapperRef = useRef<View>(null);
+  useEffect(() => {
+    const node = videoWrapperRef.current;
+    if (!node || !thumbId) return;
+    registerMediaThumb(thumbId, node);
+    return () => unregisterMediaThumb(thumbId, node);
+  }, [thumbId]);
 
   useEffect(() => {
     if (fixedSize && propWidth && propHeight) {
@@ -636,6 +697,7 @@ export function VideoBubble({
 
         <>
           <Pressable
+            ref={videoWrapperRef}
             accessibilityRole="button"
             accessibilityLabel="Open video"
             onPress={handlePress}
@@ -755,6 +817,9 @@ export function VideoBubble({
           topInset={insets.top}
           bottomInset={insets.bottom}
           initialDurationMs={durationMs}
+          sourceRef={videoWrapperRef}
+          posterUri={posterUri || null}
+          videoSize={propWidth && propHeight ? { width: propWidth, height: propHeight } : null}
           onClose={handleClose}
         />
       ) : null}
@@ -926,9 +991,14 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     fontWeight: '600',
   },
-  fullscreenBackdrop: {
+  fullscreenRoot: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
+  },
+  fullscreenBackdropFill: {
+    backgroundColor: '#000000',
+  },
+  fullscreenContent: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
   },

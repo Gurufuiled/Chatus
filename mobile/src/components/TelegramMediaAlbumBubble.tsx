@@ -3,6 +3,7 @@ import { ActivityIndicator, Dimensions, Pressable, StyleSheet, Text, View } from
 import { Image } from 'expo-image';
 import Feather from '@expo/vector-icons/Feather';
 import { MessageTimeStatus } from './MessageTimeStatus';
+import { MediaThumbPressable } from './MediaThumbPressable';
 import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 import {
   MeBubbleChrome,
@@ -136,15 +137,18 @@ export function TelegramMediaAlbumBubble({
 
     if (canOpen) {
       return (
-        <Pressable
+        <MediaThumbPressable
           key={`${item.messageId}-${index}`}
+          // id совпадает с id плитки во вьювере (`buildTelegramAlbumViewerTiles`) —
+          // при закрытии свайпом фото «садится» на эту плитку
+          thumbId={`tg-${item.messageId}`}
           accessibilityRole="button"
           accessibilityLabel="Открыть медиа"
           onPress={() => onTilePress(item.messageId)}
           style={[st.albumTile, style]}
         >
           {tileBody}
-        </Pressable>
+        </MediaThumbPressable>
       );
     }
 
