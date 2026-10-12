@@ -41,6 +41,10 @@ import { formatMediaDuration } from "../utils/mediaDuration";
 import { useModalKeyboardHeight } from "../utils/useModalKeyboardHeight";
 import { GallerySkeletonGrid } from "./GallerySkeletonGrid";
 import {
+  registerMediaThumb,
+  unregisterMediaThumb,
+} from "../utils/mediaThumbRegistry";
+import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
 } from "../utils/videoThumbnail";
@@ -416,9 +420,19 @@ const GalleryCell = React.memo(function GalleryCell({
     item.kind === "video" ? thumbnailUri : item.localUri || item.uri;
   const isSelected = selectedIndex != null;
 
+  // миниатюра известна вьюверу фото: при закрытии свайпом оно «садится» на неё
+  const cellRef = React.useRef<View>(null);
+  React.useEffect(() => {
+    const node = cellRef.current;
+    if (!node) return;
+    registerMediaThumb(item.id, node);
+    return () => unregisterMediaThumb(item.id, node);
+  }, [item.id]);
+
   return (
     <View style={styles.galleryCellOuter}>
       <Pressable
+        ref={cellRef}
         style={styles.galleryCell}
         disabled={disabled}
         onPress={() => (onPreview ? onPreview(item) : onToggle(item))}

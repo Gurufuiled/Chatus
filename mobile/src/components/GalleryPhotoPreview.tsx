@@ -1,16 +1,13 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import {
-  Animated,
   Dimensions,
   FlatList,
   Modal,
-  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -23,6 +20,7 @@ import Feather from "@expo/vector-icons/Feather";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Reanimated, {
   useAnimatedKeyboard,
   useAnimatedStyle,
@@ -33,10 +31,12 @@ import type { GalleryItem } from "./InputAttachmentSheet";
 import { useModalKeyboardHeight } from "../utils/useModalKeyboardHeight";
 import { CropOverlay } from "./CropOverlay";
 import { DrawingOverlay } from "./DrawingOverlay";
+import { useHeroDismiss } from "../hooks/useHeroDismiss";
+import { HeroOverlay } from "./HeroOverlay";
+import { measureMediaThumb } from "../utils/mediaThumbRegistry";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
-const CLOSE_SWIPE_DISTANCE = 100;
 const EMPTY_EDITED_URIS = new Map<string, string>();
 
 type GalleryPhotoPreviewProps = {
@@ -100,8 +100,8 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const listRef = useRef<FlatList<GalleryItem> | null>(null);
-  const translateY = useRef(new Animated.Value(0)).current;
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const currentIndexRef = useRef(initialIndex);
   const [cropMode, setCropMode] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
   const editedUriMap = editedUris ?? EMPTY_EDITED_URIS;
@@ -120,82 +120,50 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
   /* reset when opening */
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(0);
+    currentIndexRef.current = initialIndex;
     setCurrentIndex(initialIndex);
     setCropMode(false);
     setDrawingMode(false);
     requestAnimationFrame(() => {
       listRef.current?.scrollToIndex({ index: initialIndex, animated: false });
     });
-  }, [visible, initialIndex, translateY]);
+  }, [visible, initialIndex]);
 
-  /* backdrop opacity driven by vertical drag */
-  const backdropOpacity = useMemo(
-    () =>
-      translateY.interpolate({
-        inputRange: [-200, 0, 200],
-        outputRange: [0.3, 1, 0.3],
-        extrapolate: "clamp",
-      }),
-    [translateY],
+  /* закрытие свайпом: фото возвращается на место миниатюры (как в Telegram) */
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const getSourceRect = useCallback(
+    () => measureMediaThumb(itemsRef.current[currentIndexRef.current]?.id),
+    [],
   );
-
-  const resetPosition = useCallback(() => {
-    Animated.spring(translateY, {
-      toValue: 0,
-      damping: 18,
-      stiffness: 220,
-      mass: 0.8,
-      useNativeDriver: true,
-    }).start();
-  }, [translateY]);
-
-  const closeFromSwipe = useCallback(
-    (direction: number) => {
-      Animated.timing(translateY, {
-        toValue: direction >= 0 ? SCREEN_HEIGHT : -SCREEN_HEIGHT,
-        duration: 160,
-        useNativeDriver: true,
-      }).start(onClose);
-    },
-    [onClose, translateY],
-  );
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponderCapture: (_, g) =>
-          !cropMode &&
-          !drawingMode &&
-          Math.abs(g.dy) > 8 &&
-          Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
-        onMoveShouldSetPanResponder: (_, g) =>
-          !cropMode &&
-          !drawingMode &&
-          Math.abs(g.dy) > 8 &&
-          Math.abs(g.dy) > Math.abs(g.dx) * 1.1,
-        onPanResponderMove: (_, g) => {
-          translateY.setValue(g.dy);
-        },
-        onPanResponderRelease: (_, g) => {
-          if (Math.abs(g.dy) > CLOSE_SWIPE_DISTANCE || Math.abs(g.vy) > 0.9) {
-            closeFromSwipe(g.dy || g.vy);
-            return;
-          }
-          resetPosition();
-        },
-        onPanResponderTerminate: resetPosition,
-        onPanResponderTerminationRequest: () => true,
-      }),
-    [closeFromSwipe, cropMode, drawingMode, resetPosition, translateY],
-  );
+  const editedUriMapRef = useRef(editedUriMap);
+  editedUriMapRef.current = editedUriMap;
+  const getHeroImageUri = useCallback(() => {
+    const current = itemsRef.current[currentIndexRef.current];
+    if (!current) return null;
+    return editedUriMapRef.current.get(current.id) || current.localUri || current.uri;
+  }, []);
+  const getImageSize = useCallback(() => {
+    const current = itemsRef.current[currentIndexRef.current];
+    if (!current?.width || !current?.height) return null;
+    return { width: current.width, height: current.height };
+  }, []);
+  const hero = useHeroDismiss({
+    visible,
+    enabled: !cropMode && !drawingMode,
+    getSourceRect,
+    getHeroImageUri,
+    getImageSize,
+    onDismiss: onClose,
+  });
 
   const handleMomentumEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const next = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-      if (next >= 0 && next < items.length) setCurrentIndex(next);
+      if (next >= 0 && next < items.length) {
+        currentIndexRef.current = next;
+        setCurrentIndex(next);
+      }
     },
     [items.length],
   );
@@ -226,23 +194,27 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="none"
+      statusBarTranslucent
       onRequestClose={() => {
         if (cropMode) {
           setCropMode(false);
         } else if (drawingMode) {
           setDrawingMode(false);
         } else {
-          onClose();
+          hero.requestClose();
         }
       }}
     >
-      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
+      <GestureHandlerRootView style={styles.backdrop}>
+        <Reanimated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.backdropFill, hero.backdropStyle]}
+        />
+
         {/* swipeable image area */}
-        <Animated.View
-          style={[styles.viewerRoot, { transform: [{ translateY }] }]}
-          {...panResponder.panHandlers}
-        >
+        <GestureDetector gesture={hero.gesture}>
+         <Reanimated.View style={[styles.viewerRoot, hero.contentStyle]}>
           <FlatList
             ref={listRef}
             data={items}
@@ -269,8 +241,16 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
             onMomentumScrollEnd={handleMomentumEnd}
             renderItem={renderItem}
           />
-        </Animated.View>
+         </Reanimated.View>
+        </GestureDetector>
 
+        <HeroOverlay hero={hero} />
+
+        {/* панели тают вместе с фоном при перетаскивании */}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, hero.chromeStyle]}
+          pointerEvents="box-none"
+        >
         {/* ─── top bar: counter + selection circle ─── */}
         {!cropMode && !drawingMode ? (
           <View
@@ -346,7 +326,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
                     styles.toolBtn,
                     pressed && styles.toolBtnPressed,
                   ]}
-                  onPress={() => runToolAction(onClose)}
+                  onPress={() => runToolAction(hero.requestClose)}
                   hitSlop={6}
                   accessibilityRole="button"
                   accessibilityLabel="Назад в галерею"
@@ -405,6 +385,8 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
           </Reanimated.View>
         ) : null}
 
+        </Reanimated.View>
+
         {/* ─── Crop overlay ─── */}
         {cropMode && currentItem ? (
           <CropOverlay
@@ -435,7 +417,7 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
             onCancel={() => setDrawingMode(false)}
           />
         ) : null}
-      </Animated.View>
+      </GestureHandlerRootView>
     </Modal>
   );
 });
@@ -444,6 +426,8 @@ export const GalleryPhotoPreview = React.memo(function GalleryPhotoPreview({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+  },
+  backdropFill: {
     backgroundColor: "#000000",
   },
   viewerRoot: {
@@ -544,8 +528,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    // капсула по ширине содержимого и по центру: кнопки рядом, без пустого промежутка
-    alignSelf: "center",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -562,6 +544,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toolbarDock: {
+    // капсула по ширине содержимого и по центру: кнопки рядом, без пустого промежутка
+    alignSelf: "center",
     marginHorizontal: 8,
     borderRadius: 30,
     backgroundColor: "rgba(14,18,24,0.86)",

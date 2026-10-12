@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { MediaThumbPressable } from '../MediaThumbPressable';
 import { Image } from 'expo-image';
 import {
   useVoicePlaybackForUri,
@@ -556,7 +557,8 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
       return (
         <View style={styles.mediaGrid}>
           {mediaItems.map((item, index) => (
-            <Pressable
+            <MediaThumbPressable
+              thumbId={item.id}
               key={item.id}
               onPress={() => onOpenMedia(index)}
               onLongPress={(event) => onOpenActionMenu(item.id, event)}
@@ -574,7 +576,7 @@ export const GroupProfileMediaContent = React.memo(function GroupProfileMediaCon
                   <Text style={styles.mediaBadgeText}>{formatMediaDuration(item.durationMs)}</Text>
                 </View>
               ) : null}
-            </Pressable>
+            </MediaThumbPressable>
           ))}
         </View>
       );

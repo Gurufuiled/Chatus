@@ -1,13 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   Modal,
-  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -18,6 +16,11 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Reanimated from 'react-native-reanimated';
+import { useHeroDismiss } from '../../hooks/useHeroDismiss';
+import { HeroOverlay } from '../HeroOverlay';
+import { measureMediaThumb } from '../../utils/mediaThumbRegistry';
 import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
@@ -27,8 +30,6 @@ import {
   useIosResolvableMediaLibraryUri,
 } from '../../utils/resolveIosPhotoLibraryUri';
 import type { GroupMediaItem } from './groupProfile.types';
-
-const CLOSE_SWIPE_DISTANCE = 84;
 
 function useViewerVideoPreviewUri(videoUri: string, preferredUri?: string) {
   const normalizedVideoUri = videoUri.trim();
@@ -75,13 +76,11 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
   item,
   viewportWidth,
   viewportHeight,
-  panHandlers,
   onOpenActionMenu,
 }: {
   item: GroupMediaItem;
   viewportWidth: number;
   viewportHeight: number;
-  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
   onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
   const resolved = useIosResolvableMediaLibraryUri(item.uri);
@@ -93,7 +92,6 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
       delayLongPress={220}
       android_disableSound
       style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}
-      {...panHandlers}
     >
       {ph && resolved === null ? (
         <ActivityIndicator color="#FFFFFF" size="large" />
@@ -118,14 +116,12 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
   isActive,
   viewportWidth,
   viewportHeight,
-  panHandlers,
   onOpenActionMenu,
 }: {
   item: GroupMediaItem;
   isActive: boolean;
   viewportWidth: number;
   viewportHeight: number;
-  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
   onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
   const [isPlayerMounted, setIsPlayerMounted] = useState(false);
@@ -187,7 +183,6 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
       delayLongPress={220}
       android_disableSound
       style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}
-      {...panHandlers}
     >
       {previewUri && (!isPlayerMounted || !hasRenderedFrame) ? (
         <Image
@@ -222,14 +217,12 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
   isActive,
   viewportWidth,
   viewportHeight,
-  panHandlers,
   onOpenActionMenu,
 }: {
   item: GroupMediaItem;
   isActive: boolean;
   viewportWidth: number;
   viewportHeight: number;
-  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
   onOpenActionMenu: (messageId: string, event: GestureResponderEvent) => void;
 }) {
   const resolved = useIosResolvableMediaLibraryUri(item.uri);
@@ -237,7 +230,7 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
 
   if (ph && resolved === null) {
     return (
-      <Pressable style={[styles.slide, { width: viewportWidth, height: viewportHeight }]} {...panHandlers}>
+      <Pressable style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}>
         <ActivityIndicator color="#FFFFFF" size="large" />
       </Pressable>
     );
@@ -245,7 +238,7 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
 
   if (ph && resolved === '') {
     return (
-      <Pressable style={[styles.slide, { width: viewportWidth, height: viewportHeight }]} {...panHandlers}>
+      <Pressable style={[styles.slide, { width: viewportWidth, height: viewportHeight }]}>
         <View style={styles.phErrorWrap}>
           <Feather name="video-off" size={48} color="rgba(255,255,255,0.45)" />
         </View>
@@ -260,7 +253,6 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
       isActive={isActive}
       viewportWidth={viewportWidth}
       viewportHeight={viewportHeight}
-      panHandlers={panHandlers}
       onOpenActionMenu={onOpenActionMenu}
     />
   );
@@ -287,68 +279,37 @@ export function GroupProfileMediaViewerModal({
 }: GroupProfileMediaViewerModalProps) {
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const listRef = useRef<FlatList<GroupMediaItem> | null>(null);
-  const translateY = useRef(new Animated.Value(0)).current;
-  const backdropOpacity = useMemo(
-    () =>
-      translateY.interpolate({
-        inputRange: [-180, 0, 180],
-        outputRange: [0.36, 1, 0.36],
-        extrapolate: 'clamp',
-      }),
-    [translateY]
-  );
 
   const safeIndex = Math.max(0, Math.min(selectedIndex ?? 0, Math.max(mediaItems.length - 1, 0)));
 
-  const resetPosition = useCallback(() => {
-    Animated.spring(translateY, {
-      toValue: 0,
-      damping: 18,
-      stiffness: 220,
-      mass: 0.8,
-      useNativeDriver: true,
-    }).start();
-  }, [translateY]);
-
-  const closeFromSwipe = useCallback((direction: number) => {
-    Animated.timing(translateY, {
-      toValue: direction >= 0 ? viewportHeight : -viewportHeight,
-      duration: 140,
-      useNativeDriver: true,
-    }).start(onClose);
-  }, [onClose, translateY, viewportHeight]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
-        onPanResponderMove: (_, gesture) => {
-          translateY.setValue(gesture.dy);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (Math.abs(gesture.dy) > CLOSE_SWIPE_DISTANCE || Math.abs(gesture.vy) > 0.92) {
-            closeFromSwipe(gesture.dy || gesture.vy);
-            return;
-          }
-
-          resetPosition();
-        },
-        onPanResponderTerminate: resetPosition,
-        onPanResponderTerminationRequest: () => true,
-      }),
-    [closeFromSwipe, resetPosition, translateY]
+  /* закрытие свайпом: фото возвращается на место миниатюры (как в Telegram) */
+  const mediaItemsRef = useRef(mediaItems);
+  mediaItemsRef.current = mediaItems;
+  const safeIndexRef = useRef(safeIndex);
+  safeIndexRef.current = safeIndex;
+  const getSourceRect = useCallback(
+    () => measureMediaThumb(mediaItemsRef.current[safeIndexRef.current]?.id),
+    []
   );
+  const getHeroImageUri = useCallback(() => {
+    const current = mediaItemsRef.current[safeIndexRef.current];
+    if (!current) return null;
+    if (current.kind !== 'video') return current.previewUri ?? current.uri;
+    return current.previewUri?.trim() || getCachedVideoThumbnailUri(current.uri) || null;
+  }, []);
+  const hero = useHeroDismiss({
+    visible,
+    getSourceRect,
+    getHeroImageUri,
+    onDismiss: onClose,
+  });
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(0);
     requestAnimationFrame(() => {
       listRef.current?.scrollToIndex({ index: safeIndex, animated: false });
     });
-  }, [safeIndex, translateY, visible]);
+  }, [safeIndex, visible]);
 
   const handleMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -368,7 +329,6 @@ export function GroupProfileMediaViewerModal({
           isActive={index === safeIndex}
           viewportWidth={viewportWidth}
           viewportHeight={viewportHeight}
-          panHandlers={panResponder.panHandlers}
           onOpenActionMenu={onOpenActionMenu}
         />
       ) : (
@@ -376,29 +336,35 @@ export function GroupProfileMediaViewerModal({
           item={item}
           viewportWidth={viewportWidth}
           viewportHeight={viewportHeight}
-          panHandlers={panResponder.panHandlers}
           onOpenActionMenu={onOpenActionMenu}
         />
       ),
-    [onOpenActionMenu, panResponder.panHandlers, safeIndex, viewportHeight, viewportWidth]
+    [onOpenActionMenu, safeIndex, viewportHeight, viewportWidth]
   );
 
   if (mediaItems.length === 0) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-        <Animated.View
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={hero.requestClose}
+    >
+      <GestureHandlerRootView style={styles.backdrop}>
+        <Reanimated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.backdropFill, hero.backdropStyle]}
+        />
+        <GestureDetector gesture={hero.gesture}>
+         <Reanimated.View
           style={[
             styles.viewerRoot,
-            {
-              width: viewportWidth,
-              height: viewportHeight,
-              transform: [{ translateY }],
-            },
+            { width: viewportWidth, height: viewportHeight },
+            hero.contentStyle,
           ]}
-          {...panResponder.panHandlers}
-        >
+         >
           <FlatList
             ref={listRef}
             style={{ width: viewportWidth, height: viewportHeight }}
@@ -426,12 +392,20 @@ export function GroupProfileMediaViewerModal({
             onMomentumScrollEnd={handleMomentumScrollEnd}
             renderItem={renderItem}
           />
-        </Animated.View>
+         </Reanimated.View>
+        </GestureDetector>
 
+        <HeroOverlay hero={hero} />
+
+        {/* панели тают вместе с фоном при перетаскивании */}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, hero.chromeStyle]}
+          pointerEvents="box-none"
+        >
         <View style={[styles.topBar, { top: topInset + 10 }]} pointerEvents="box-none">
           <Text style={styles.counter}>{safeIndex + 1} / {mediaItems.length}</Text>
           <Pressable
-            onPress={onClose}
+            onPress={hero.requestClose}
             style={styles.closeButton}
             hitSlop={16}
             accessibilityRole="button"
@@ -440,7 +414,8 @@ export function GroupProfileMediaViewerModal({
             <Feather name="x" size={22} color="#FFFFFF" />
           </Pressable>
         </View>
-      </Animated.View>
+        </Reanimated.View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -448,6 +423,8 @@ export function GroupProfileMediaViewerModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+  },
+  backdropFill: {
     backgroundColor: '#000000',
   },
   viewerRoot: {

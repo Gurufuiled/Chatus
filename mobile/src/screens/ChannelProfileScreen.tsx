@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { MediaThumbPressable } from '../components/MediaThumbPressable';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -751,7 +752,8 @@ export function ChannelProfileScreen() {
           ) : (
             <View style={styles.mediaGrid}>
               {channelMediaItems.map((item, index) => (
-                <Pressable
+                <MediaThumbPressable
+              thumbId={item.id}
                   key={item.id}
                   onPress={() => setSelectedMediaIndex(index)}
                   style={({ pressed }) => [styles.mediaTile, pressed && styles.mediaTilePressed]}
@@ -769,7 +771,7 @@ export function ChannelProfileScreen() {
                       </Text>
                     </View>
                   ) : null}
-                </Pressable>
+                </MediaThumbPressable>
               ))}
             </View>
           )}

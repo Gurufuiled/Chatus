@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useEvent } from 'expo';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { BlurView } from 'expo-blur';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Reanimated from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import {
   ActivityIndicator,
@@ -10,7 +12,6 @@ import {
   Dimensions,
   FlatList,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -21,6 +22,9 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import type { MediaTile } from './ChatProfileMediaSection';
+import { useHeroDismiss } from '../hooks/useHeroDismiss';
+import { HeroOverlay } from './HeroOverlay';
+import { measureMediaThumb } from '../utils/mediaThumbRegistry';
 import {
   ensureVideoThumbnailUri,
   getCachedVideoThumbnailUri,
@@ -32,7 +36,6 @@ import {
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const CLOSE_SWIPE_DISTANCE = 84;
 /** Сдвиг панели подписи при открытии (без затемнения фото сверху) */
 const CAPTION_PANEL_SLIDE = Math.min(SCREEN_HEIGHT * 0.55, 520);
 
@@ -79,11 +82,9 @@ function useViewerVideoPreviewUri(videoUri: string, preferredUri?: string) {
 
 const ImageViewerSlide = React.memo(function ImageViewerSlide({
   item,
-  panHandlers,
   onTap,
 }: {
   item: MediaTile;
-  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
   onTap?: () => void;
 }) {
   const resolved = useIosResolvableMediaLibraryUri(item.uri);
@@ -96,7 +97,6 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
       onPress={onTap}
       style={styles.slide}
       android_disableSound
-      {...panHandlers}
     >
       {ph && resolved === null ? (
         <ActivityIndicator color="#FFFFFF" size="large" />
@@ -128,11 +128,9 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
 const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
   item,
   isActive,
-  panHandlers,
 }: {
   item: MediaTile;
   isActive: boolean;
-  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
 }) {
   const [isPlayerMounted, setIsPlayerMounted] = useState(false);
   const [hasRenderedFrame, setHasRenderedFrame] = useState(false);
@@ -190,7 +188,7 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
   }, [isPlayerMounted, isPlaying, player, isDownloaded]);
 
   return (
-    <Pressable onPress={handlePress} style={styles.slide} {...panHandlers}>
+    <Pressable onPress={handlePress} style={styles.slide}>
       {previewUri && (!isPlayerMounted || !hasRenderedFrame) ? (
         <Image
           key={previewUri}
@@ -228,18 +226,16 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
 const VideoViewerSlide = React.memo(function VideoViewerSlide({
   item,
   isActive,
-  panHandlers,
 }: {
   item: MediaTile;
   isActive: boolean;
-  panHandlers: ReturnType<typeof PanResponder.create>['panHandlers'];
 }) {
   const resolved = useIosResolvableMediaLibraryUri(item.uri);
   const ph = isIosPhAssetUri(item.uri);
 
   if (ph && resolved === null) {
     return (
-      <Pressable style={styles.slide} {...panHandlers}>
+      <Pressable style={styles.slide}>
         <ActivityIndicator color="#FFFFFF" size="large" />
       </Pressable>
     );
@@ -247,7 +243,7 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
 
   if (ph && resolved === '') {
     return (
-      <Pressable style={styles.slide} {...panHandlers}>
+      <Pressable style={styles.slide}>
         <View style={styles.phErrorWrap}>
           <Feather name="video-off" size={48} color="rgba(255,255,255,0.45)" />
         </View>
@@ -260,7 +256,6 @@ const VideoViewerSlide = React.memo(function VideoViewerSlide({
     <VideoViewerSlideLoaded
       item={{ ...item, uri: playable }}
       isActive={isActive}
-      panHandlers={panHandlers}
     />
   );
 });
@@ -281,22 +276,8 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
   onClose,
 }: ChatProfileMediaViewerModalProps) {
   const listRef = useRef<FlatList<MediaTile> | null>(null);
-  const translateY = useRef(new Animated.Value(0)).current;
   const [captionOpen, setCaptionOpen] = useState(false);
-  const captionOpenRef = useRef(false);
-  useEffect(() => {
-    captionOpenRef.current = captionOpen;
-  }, [captionOpen]);
   const captionAnim = useRef(new Animated.Value(0)).current;
-  const backdropOpacity = useMemo(
-    () =>
-      translateY.interpolate({
-        inputRange: [-180, 0, 180],
-        outputRange: [0.36, 1, 0.36],
-        extrapolate: 'clamp',
-      }),
-    [translateY]
-  );
 
   const safeIndex = Math.max(0, Math.min(selectedIndex, Math.max(items.length - 1, 0)));
   const currentCaption = items[safeIndex]?.caption?.trim() ?? '';
@@ -323,59 +304,36 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
     setCaptionOpen((prev) => !prev);
   }, [hasCaption]);
 
-  const resetPosition = useCallback(() => {
-    Animated.spring(translateY, {
-      toValue: 0,
-      damping: 18,
-      stiffness: 220,
-      mass: 0.8,
-      useNativeDriver: true,
-    }).start();
-  }, [translateY]);
-
-  const closeFromSwipe = useCallback((direction: number) => {
-    Animated.timing(translateY, {
-      toValue: direction >= 0 ? SCREEN_HEIGHT : -SCREEN_HEIGHT,
-      duration: 140,
-      useNativeDriver: true,
-    }).start(onClose);
-  }, [onClose, translateY]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          !captionOpenRef.current &&
-          Math.abs(gesture.dy) > 6 &&
-          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          !captionOpenRef.current &&
-          Math.abs(gesture.dy) > 6 &&
-          Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.04,
-        onPanResponderMove: (_, gesture) => {
-          translateY.setValue(gesture.dy);
-        },
-        onPanResponderRelease: (_, gesture) => {
-          if (Math.abs(gesture.dy) > CLOSE_SWIPE_DISTANCE || Math.abs(gesture.vy) > 0.92) {
-            closeFromSwipe(gesture.dy || gesture.vy);
-            return;
-          }
-
-          resetPosition();
-        },
-        onPanResponderTerminate: resetPosition,
-        onPanResponderTerminationRequest: () => true,
-      }),
-    [closeFromSwipe, resetPosition, translateY]
+  /* закрытие свайпом: фото возвращается на место миниатюры (как в Telegram) */
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const safeIndexRef = useRef(safeIndex);
+  safeIndexRef.current = safeIndex;
+  const getSourceRect = useCallback(
+    () => measureMediaThumb(itemsRef.current[safeIndexRef.current]?.id),
+    []
   );
+  const getHeroImageUri = useCallback(() => {
+    const current = itemsRef.current[safeIndexRef.current];
+    if (!current) return null;
+    // для видео в рамке — кадр-превью, для фото — само фото
+    if (current.kind !== 'video') return current.uri;
+    return current.previewUri?.trim() || getCachedVideoThumbnailUri(current.uri) || null;
+  }, []);
+  const hero = useHeroDismiss({
+    visible,
+    enabled: !captionOpen,
+    getSourceRect,
+    getHeroImageUri,
+    onDismiss: onClose,
+  });
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(0);
     requestAnimationFrame(() => {
       listRef.current?.scrollToIndex({ index: safeIndex, animated: false });
     });
-  }, [safeIndex, translateY, visible]);
+  }, [safeIndex, visible]);
 
   const handleMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -393,27 +351,33 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
         <VideoViewerSlide
           item={item}
           isActive={index === safeIndex}
-          panHandlers={panResponder.panHandlers}
         />
       ) : (
         <ImageViewerSlide
           item={item}
-          panHandlers={panResponder.panHandlers}
           onTap={toggleCaption}
         />
       ),
-    [panResponder.panHandlers, safeIndex, toggleCaption]
+    [safeIndex, toggleCaption]
   );
 
   if (items.length === 0) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-        <Animated.View
-          style={[styles.viewerRoot, { transform: [{ translateY }] }]}
-          {...panResponder.panHandlers}
-        >
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={hero.requestClose}
+    >
+      <GestureHandlerRootView style={styles.backdrop}>
+        <Reanimated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.backdropFill, hero.backdropStyle]}
+        />
+        <GestureDetector gesture={hero.gesture}>
+         <Reanimated.View style={[styles.viewerRoot, hero.contentStyle]}>
           <FlatList
             ref={listRef}
             data={items}
@@ -440,12 +404,21 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
             onMomentumScrollEnd={handleMomentumScrollEnd}
             renderItem={renderItem}
           />
-        </Animated.View>
+         </Reanimated.View>
+        </GestureDetector>
+
+        <HeroOverlay hero={hero} />
+
+        {/* панели тают вместе с фоном при перетаскивании */}
+        <Reanimated.View
+          style={[StyleSheet.absoluteFill, hero.chromeStyle]}
+          pointerEvents="box-none"
+        >
 
         <View style={styles.topBar} pointerEvents="box-none">
           <Text style={styles.counter}>{safeIndex + 1} / {items.length}</Text>
           <Pressable
-            onPress={onClose}
+            onPress={hero.requestClose}
             style={styles.closeButton}
             hitSlop={16}
             accessibilityRole="button"
@@ -519,7 +492,8 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
             </Animated.View>
           </View>
         ) : null}
-      </Animated.View>
+        </Reanimated.View>
+      </GestureHandlerRootView>
     </Modal>
   );
 });
@@ -527,6 +501,8 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+  },
+  backdropFill: {
     backgroundColor: '#000000',
   },
   viewerRoot: {
