@@ -1,6 +1,7 @@
 import type { Message } from '../stores/types';
 import { resolveMediaUrl } from '../config';
 import type { MediaTile } from '../components/ChatProfileMediaSection';
+import { channelPostMediaTileId } from './channelPostMediaTileId';
 
 type VisualMediaItem = NonNullable<Message['media']>[number];
 
@@ -22,7 +23,7 @@ export function buildChannelPostMediaTiles(message: Message): MediaTile[] {
     const thumb = m.thumbnail_url?.trim() || undefined;
     const preview = kind === 'video' ? thumb : thumb ?? uri;
     return {
-      id: `${message.id}-m${i}`,
+      id: channelPostMediaTileId(message.id, i),
       kind,
       uri,
       previewUri: preview,
