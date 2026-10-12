@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Dimensions,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -11,11 +10,12 @@ import {
 } from 'react-native';
 import { Image, ImageContentFit } from 'expo-image';
 import { colors, bubbleRadius, typography } from '../theme/colors';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageReactionInline, type InlineReactionItem } from './MessageReactionInline';
 import { MessageTimeStatus } from './MessageTimeStatus';
 import type { MessageSource } from '../stores/types';
 import { MessageTextBubbleBody } from './MessageTextBubbleBody';
+import { SingleImageViewerModal } from './SingleImageViewerModal';
+import { registerMediaThumb, unregisterMediaThumb } from '../utils/mediaThumbRegistry';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -47,6 +47,8 @@ export interface ImageBubbleProps {
   fixedSize?: boolean;
   /** Parent handles fullscreen (e.g. swipe-to-dismiss profile viewer). */
   onOpenFullscreen?: () => void;
+  /** id медиа во вьювере родителя: регистрирует фото, чтобы при закрытии свайпом оно «садилось» сюда. */
+  thumbId?: string;
   inlineReactions?: InlineReactionItem[];
   allowMessageReactions?: boolean;
   onToggleInlineReaction?: (emoji: string) => void;
@@ -118,6 +120,7 @@ export function ImageBubble({
   contentFit = 'cover',
   fixedSize = false,
   onOpenFullscreen,
+  thumbId,
   inlineReactions,
   allowMessageReactions,
   onToggleInlineReaction,
@@ -146,7 +149,6 @@ export function ImageBubble({
   );
   const [loadError, setLoadError] = useState(false);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     setLoadError(false);
@@ -212,6 +214,15 @@ export function ImageBubble({
     setFullscreenVisible(false);
   }, []);
 
+  /** Само фото в сообщении: сюда «садится» полноэкранное при закрытии свайпом. */
+  const imageWrapperRef = useRef<View>(null);
+  useEffect(() => {
+    const node = imageWrapperRef.current;
+    if (!node || !thumbId) return;
+    registerMediaThumb(thumbId, node);
+    return () => unregisterMediaThumb(thumbId, node);
+  }, [thumbId]);
+
   const w = displaySize?.width ?? Math.min(maxW, DEFAULT_PLACEHOLDER_SIZE.width);
   const h = displaySize?.height ?? Math.min(maxH, DEFAULT_PLACEHOLDER_SIZE.height);
   // Для канальных постов: ширина фото = вся карточка, высота вычисляется из аспекта (как в Telegram).
@@ -253,6 +264,7 @@ export function ImageBubble({
 
         <>
           <Pressable
+            ref={imageWrapperRef}
             accessibilityRole="button"
             accessibilityLabel="View image fullscreen"
             onPress={handlePress}
@@ -381,32 +393,13 @@ export function ImageBubble({
       </View>
 
       {!onOpenFullscreen ? (
-        <Modal
+        <SingleImageViewerModal
           visible={fullscreenVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={handleClose}
-        >
-          <Pressable style={styles.fullscreenBackdrop} onPress={handleClose}>
-            <View style={styles.fullscreenContent}>
-              <Image
-                source={{ uri: normalizedUri }}
-                style={styles.fullscreenImage}
-                contentFit="contain"
-                cachePolicy="disk"
-              />
-              <Pressable
-                style={[styles.closeButton, { top: insets.top + 12 }]}
-                onPress={handleClose}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Close fullscreen"
-              >
-                <Text style={styles.closeButtonText}>x</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Modal>
+          uri={normalizedUri}
+          sourceRef={imageWrapperRef}
+          imageSize={propWidth && propHeight ? { width: propWidth, height: propHeight } : null}
+          onClose={handleClose}
+        />
       ) : null}
     </>
   );
@@ -549,37 +542,6 @@ const styles = StyleSheet.create({
     color: colors.iconMuted,
     fontSize: typography.timeStatus,
     lineHeight: 14,
-    fontWeight: '600',
-  },
-  fullscreenBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullscreenContent: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullscreenImage: {
-    width: '100%',
-    height: '100%',
-  },
-  closeButton: {
-    position: 'absolute',
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeButtonText: {
-    fontSize: 20,
-    color: '#fff',
     fontWeight: '600',
   },
 });
