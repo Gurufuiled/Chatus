@@ -181,6 +181,20 @@ export function ImageBubble({
   const isDataPreviewUri = normalizedUri.startsWith('data:');
   const isLocalFileUri = normalizedUri.startsWith('file://');
   const hasUri = normalizedUri.length > 0;
+  /**
+   * Мини-превью (data:), которое уже было на экране до полного фото. Когда адрес меняется на файл, оно остаётся
+   * плейсхолдером и плавно переходит в полное фото. Раньше картинка пересоздавалась: мини-превью пропадало, на
+   * секунду появлялся спиннер, и фото «долго прогружалось».
+   */
+  const lastPreviewUriRef = useRef('');
+  const placeholderUri = !isDataPreviewUri && hasUri ? lastPreviewUriRef.current : '';
+  useEffect(() => {
+    if (isDataPreviewUri) {
+      lastPreviewUriRef.current = normalizedUri;
+    } else if (!normalizedUri) {
+      lastPreviewUriRef.current = '';
+    }
+  }, [isDataPreviewUri, normalizedUri]);
   useEffect(() => {
     if (!isDataPreviewUri || incomingChannelPost || loadingFullQuality) return;
     const t = setTimeout(() => setImageLoaded(true), 80);
@@ -234,7 +248,7 @@ export function ImageBubble({
   const mediaBottomRounded = !hasCaption && !hasFooter;
   const showInitialLoader = incomingChannelPost
     ? !hasUri && !loadError
-    : !hasUri || (!imageLoaded && !loadError && !isDataPreviewUri);
+    : !hasUri || (!imageLoaded && !loadError && !isDataPreviewUri && !placeholderUri);
   const loaderBoxStyle = incomingChannelPost
     ? { width: '100%' as const, height: channelImageH }
     : { width: w, height: h };
@@ -293,7 +307,9 @@ export function ImageBubble({
               <Image
                 key={normalizedUri}
                 source={{ uri: normalizedUri }}
-                transition={incomingChannelPost ? undefined : 150}
+                placeholder={placeholderUri ? { uri: placeholderUri } : undefined}
+                placeholderContentFit="cover"
+                transition={incomingChannelPost && !placeholderUri ? undefined : 150}
                 cachePolicy="memory-disk"
                 onError={() => {
                   setLoadError(true);

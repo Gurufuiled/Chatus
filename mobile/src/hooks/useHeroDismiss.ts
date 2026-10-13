@@ -54,6 +54,11 @@ export type UseHeroDismissOptions = {
   getHeroImageUri?: () => string | null;
   /** Натуральный размер текущего фото, если известен (точнее посадка). */
   getImageSize?: () => Size | null;
+  /**
+   * Сколько мс рамка остаётся поверх настоящего содержимого после посадки при открытии, прежде чем растаять.
+   * Для видео стоит ставить больше: первому кадру плеера нужно время, иначе под рамкой будет пусто.
+   */
+  frameHoldMs?: number;
   /** Окончательно закрыть вьювер (setState родителя). Вызывается после анимации. */
   onDismiss: () => void;
 };
@@ -61,10 +66,35 @@ export type UseHeroDismissOptions = {
 const SPRING_BACK = { damping: 24, stiffness: 280, mass: 0.9 } as const;
 const OPEN_EASING = Easing.out(Easing.cubic);
 const CLOSE_EASING = Easing.out(Easing.cubic);
-/** Сколько ждём натуральный размер фото, если родитель его не знает. */
-const IMAGE_SIZE_TIMEOUT_MS = 90;
+/** Сколько ждём натуральный размер фото при открытии, если родитель его не знает (дальше — без «подгонки»). */
+const IMAGE_SIZE_OPEN_TIMEOUT_MS = 220;
+/** При закрытии размер уже известен из кэша; если нет — ждём совсем недолго. */
+const IMAGE_SIZE_CLOSE_TIMEOUT_MS = 60;
+/** Пауза перед растворением рамки после посадки (мс) по умолчанию. */
+const DEFAULT_FRAME_HOLD_MS = 60;
+
+/** Размеры уже виденных фото: после открытия закрытие не тратит время на повторное измерение. */
+const imageSizeCache = new Map<string, Size>();
+const IMAGE_SIZE_CACHE_MAX = 200;
+
+/** Запомнить натуральный размер фото (например, из `onLoad` картинки). */
+export function rememberHeroImageSize(uri: string, size: Size): void {
+  if (!uri || !(size.width > 0) || !(size.height > 0)) return;
+  if (imageSizeCache.size >= IMAGE_SIZE_CACHE_MAX) {
+    const oldest = imageSizeCache.keys().next().value;
+    if (oldest !== undefined) imageSizeCache.delete(oldest);
+  }
+  imageSizeCache.set(uri, { width: size.width, height: size.height });
+}
+
+/** Только для тестов. */
+export function __clearHeroImageSizeCacheForTests(): void {
+  imageSizeCache.clear();
+}
 
 function resolveImageSize(uri: string, timeoutMs: number): Promise<Size | null> {
+  const cached = imageSizeCache.get(uri);
+  if (cached) return Promise.resolve(cached);
   return new Promise((resolve) => {
     let settled = false;
     const done = (value: Size | null) => {
@@ -77,7 +107,10 @@ function resolveImageSize(uri: string, timeoutMs: number): Promise<Size | null> 
     try {
       RNImage.getSize(
         uri,
-        (width, height) => done(width > 0 && height > 0 ? { width, height } : null),
+        (width, height) => {
+          if (width > 0 && height > 0) rememberHeroImageSize(uri, { width, height });
+          done(width > 0 && height > 0 ? { width, height } : null);
+        },
         () => done(null),
       );
     } catch {
@@ -92,6 +125,7 @@ export function useHeroDismiss({
   getSourceRect,
   getHeroImageUri,
   getImageSize,
+  frameHoldMs = DEFAULT_FRAME_HOLD_MS,
   onDismiss,
 }: UseHeroDismissOptions) {
   const translateX = useSharedValue(0);
@@ -116,8 +150,8 @@ export function useHeroDismiss({
   const sourceRectRef = useRef<Rect | null>(null);
   const imageSizeRef = useRef<Size | null>(null);
   const closingRef = useRef(false);
-  const latest = useRef({ getSourceRect, getHeroImageUri, getImageSize, onDismiss });
-  latest.current = { getSourceRect, getHeroImageUri, getImageSize, onDismiss };
+  const latest = useRef({ getSourceRect, getHeroImageUri, getImageSize, onDismiss, frameHoldMs });
+  latest.current = { getSourceRect, getHeroImageUri, getImageSize, onDismiss, frameHoldMs };
 
   const getScreen = useCallback((): Size => {
     const { width, height } = Dimensions.get('window');
@@ -134,14 +168,15 @@ export function useHeroDismiss({
   }, [backdrop, contentOpacity, frameOpacity, scale, translateX, translateY]);
 
   /** Подготовить рамку: uri, размер фото и миниатюру-цель. Вызывается заранее (при открытии и в начале жеста). */
-  const prepareHero = useCallback(async () => {
+  const prepareHero = useCallback(async (sizeTimeoutMs: number = IMAGE_SIZE_CLOSE_TIMEOUT_MS) => {
     const [rect, uri] = await Promise.all([
       latest.current.getSourceRect(),
       Promise.resolve(latest.current.getHeroImageUri?.() ?? null),
     ]);
     sourceRectRef.current = rect;
     let size = latest.current.getImageSize?.() ?? null;
-    if (!size && uri) size = await resolveImageSize(uri, IMAGE_SIZE_TIMEOUT_MS);
+    if (!size && uri) size = await resolveImageSize(uri, sizeTimeoutMs);
+    if (size && uri) rememberHeroImageSize(uri, size);
     imageSizeRef.current = size;
     setOverlayUri(uri);
     setOverlayFit(heroFrameContentFit(size));
@@ -162,14 +197,15 @@ export function useHeroDismiss({
     let cancelled = false;
     resetHidden();
 
-    void prepareHero().then(({ rect, uri, size }) => {
+    void prepareHero(IMAGE_SIZE_OPEN_TIMEOUT_MS).then(({ rect, uri, size }) => {
       if (cancelled) return;
       const screen = getScreen();
       const fit = containFitRect(size, screen);
       if (uri && isUsableSourceRect(rect, screen)) {
         const timing = { duration: HERO_DURATION_MS, easing: OPEN_EASING };
-        // под рамкой уже стоит настоящий контент, рамка летит поверх и в конце тает
-        contentOpacity.value = 1;
+        // Настоящее фото скрыто, пока рамка не села на место: иначе оно было бы видно на весь экран
+        // ещё до того, как «вырастет» из миниатюры. После посадки включаем его и только потом гасим рамку.
+        contentOpacity.value = 0;
         frameLeft.value = rect.x;
         frameTop.value = rect.y;
         frameWidth.value = rect.width;
@@ -178,12 +214,15 @@ export function useHeroDismiss({
         frameOpacity.value = 1;
         frameLeft.value = withTiming(fit.x, timing);
         frameTop.value = withTiming(fit.y, timing);
-        frameWidth.value = withTiming(fit.width, timing);
         frameHeight.value = withTiming(fit.height, timing);
         frameRadius.value = withTiming(0, timing);
+        frameWidth.value = withTiming(fit.width, timing, (finished) => {
+          'worklet';
+          if (finished) contentOpacity.value = 1;
+        });
         frameOpacity.value = withDelay(
-          HERO_DURATION_MS - 20,
-          withTiming(0, { duration: 140 }),
+          HERO_DURATION_MS + latest.current.frameHoldMs,
+          withTiming(0, { duration: 120 }),
         );
       } else {
         scale.value = 0.94;
@@ -376,6 +415,8 @@ export function useHeroDismiss({
     overlayUri,
     overlayFit,
     requestClose,
+    /** Запомнить размер фото, когда его сообщила сама картинка (`onLoad`). */
+    onOverlayImageLoad: rememberHeroImageSize,
     /** Порог, чтобы UI мог подсветить «потянули достаточно» при необходимости. */
     dismissDistance: DISMISS_DISTANCE,
   };

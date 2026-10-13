@@ -40,6 +40,9 @@ export type MediaTile = {
   durationMs?: number;
   /** Текстовая подпись к медиа (пост канала). При наличии в вьювере появляется кнопка показа текста. */
   caption?: string;
+  /** Натуральный размер, если известен: рамка при закрытии свайпом садится на миниатюру без «подгонки». */
+  width?: number;
+  height?: number;
 };
 
 export type FileItem = {
@@ -224,8 +227,11 @@ export const MediaTilePreview = React.memo(function MediaTilePreview({
     [themeColors],
   );
   const isVideo = item.kind === 'video';
-  /** Peer-first только для явного thumbnail URL; иначе извлечение кадра из `item.uri` через useVideoPreviewUri. */
-  const thumbUrlForPeer = isVideo ? item.previewUri?.trim() ?? '' : item.uri;
+  /**
+   * Peer-first только для явного thumbnail URL; иначе извлечение кадра из `item.uri` через useVideoPreviewUri.
+   * Для фото плитка берёт миниатюру (`previewUri`), а полный `uri` — только если миниатюры нет.
+   */
+  const thumbUrlForPeer = isVideo ? item.previewUri?.trim() ?? '' : item.previewUri?.trim() || item.uri;
   const peerResolvedThumb = usePeerFirstResolvedUri(peerFirstLineId, thumbUrlForPeer || null);
   const generatedPreviewUri = useVideoPreviewUri(
     isVideo ? item.uri : null,

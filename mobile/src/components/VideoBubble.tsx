@@ -158,6 +158,8 @@ function FullscreenVideoModal({
     getSourceRect,
     getHeroImageUri,
     getImageSize,
+    // первому кадру плеера нужно время: постер в рамке держится дольше, иначе под ним мелькнёт пустота
+    frameHoldMs: 450,
     onDismiss: onClose,
   });
   const [trackWidth, setTrackWidth] = useState(1);

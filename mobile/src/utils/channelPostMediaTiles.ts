@@ -29,6 +29,8 @@ export function buildChannelPostMediaTiles(message: Message): MediaTile[] {
       previewUri: preview,
       durationMs: kind === 'video' ? m.duration_ms ?? undefined : undefined,
       caption: i === 0 ? caption : undefined,
+      width: m.width ?? undefined,
+      height: m.height ?? undefined,
     } satisfies MediaTile;
   });
 }

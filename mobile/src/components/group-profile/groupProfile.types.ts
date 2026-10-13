@@ -15,6 +15,9 @@ export type GroupMediaItem = {
   uri: string;
   previewUri?: string;
   durationMs?: number;
+  /** Натуральный размер, если известен (для посадки фото на миниатюру при закрытии свайпом). */
+  width?: number;
+  height?: number;
 };
 
 export type GroupFileItem = {

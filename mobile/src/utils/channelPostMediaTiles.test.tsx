@@ -58,4 +58,16 @@ describe('buildChannelPostMediaTiles ↔ thumbId миниатюр', () => {
   it('пост без медиа даёт пустой список', () => {
     expect(buildChannelPostMediaTiles(message([]))).toEqual([]);
   });
+
+  it('размер медиа передаётся в плитки (для посадки фото на миниатюру без «подгонки»)', () => {
+    const tiles = buildChannelPostMediaTiles(
+      message([
+        { remote_url: 'https://x/a.jpg', media_type: 'image', width: 1200, height: 800 },
+        { remote_url: 'https://x/b.jpg', media_type: 'image' },
+      ]),
+    );
+    expect(tiles[0]).toMatchObject({ width: 1200, height: 800 });
+    expect(tiles[1].width).toBeUndefined();
+    expect(tiles[1].height).toBeUndefined();
+  });
 });

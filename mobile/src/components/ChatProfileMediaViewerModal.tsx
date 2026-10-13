@@ -111,7 +111,7 @@ const ImageViewerSlide = React.memo(function ImageViewerSlide({
             source={{ uri: targetUri }}
             style={styles.media}
             contentFit="contain"
-            transition={250}
+            transition={0}
             cachePolicy="memory-disk"
           />
           {isBase64Thumbnail ? (
@@ -195,7 +195,7 @@ const VideoViewerSlideLoaded = React.memo(function VideoViewerSlideLoaded({
           source={{ uri: previewUri }}
           style={styles.media}
           contentFit="contain"
-          transition={250}
+          transition={0}
           cachePolicy="memory-disk"
         />
       ) : null}
@@ -320,11 +320,18 @@ export const ChatProfileMediaViewerModal = React.memo(function ChatProfileMediaV
     if (current.kind !== 'video') return current.uri;
     return current.previewUri?.trim() || getCachedVideoThumbnailUri(current.uri) || null;
   }, []);
+  const getImageSize = useCallback(() => {
+    const current = itemsRef.current[safeIndexRef.current];
+    return current?.width && current?.height
+      ? { width: current.width, height: current.height }
+      : null;
+  }, []);
   const hero = useHeroDismiss({
     visible,
     enabled: !captionOpen,
     getSourceRect,
     getHeroImageUri,
+    getImageSize,
     onDismiss: onClose,
   });
 

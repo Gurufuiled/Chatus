@@ -18,6 +18,8 @@ export function buildTelegramAlbumViewerTiles(
         kind: 'image',
         uri,
         caption: tiles.length === 0 ? trimmedCaption : undefined,
+        width: item.width,
+        height: item.height,
       });
       continue;
     }
@@ -32,6 +34,8 @@ export function buildTelegramAlbumViewerTiles(
       previewUri: preview,
       durationMs: item.durationMs,
       caption: tiles.length === 0 ? trimmedCaption : undefined,
+      width: item.width,
+      height: item.height,
     });
   }
 

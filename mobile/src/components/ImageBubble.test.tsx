@@ -1,4 +1,6 @@
 import React from 'react';
+import { ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { ImageBubble } from './ImageBubble';
 import { registerMediaThumb, unregisterMediaThumb } from '../utils/mediaThumbRegistry';
@@ -80,5 +82,47 @@ describe('ImageBubble: полноэкранный просмотр', () => {
     (registerMediaThumb as jest.Mock).mockClear();
     render(<ImageBubble uri="file:///photo.jpg" isMe={false} />);
     expect(registerMediaThumb).not.toHaveBeenCalled();
+  });
+
+});
+
+describe('ImageBubble: мини-превью → полное фото (регрессия: пропадало и мелькал спиннер)', () => {
+  const MINI = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD';
+
+  it('когда data:-превью меняется на файл, оно остаётся плейсхолдером и спиннера нет', () => {
+    const { rerender, UNSAFE_getAllByType, UNSAFE_queryAllByType } = render(
+      <ImageBubble uri={MINI} isMe={false} width={800} height={600} />,
+    );
+    rerender(<ImageBubble uri="file:///full.jpg" isMe={false} width={800} height={600} />);
+
+    const image = UNSAFE_getAllByType(Image)[0];
+    expect(image.props.source).toEqual({ uri: 'file:///full.jpg' });
+    expect(image.props.placeholder).toEqual({ uri: MINI });
+    expect(UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(0);
+  });
+
+  it('без предшествующего превью (сразу файл) плейсхолдера нет, а спиннер показывается до загрузки', () => {
+    const { UNSAFE_getAllByType, UNSAFE_queryAllByType } = render(
+      <ImageBubble uri="file:///full.jpg" isMe={false} width={800} height={600} />,
+    );
+    expect(UNSAFE_getAllByType(Image)[0].props.placeholder).toBeUndefined();
+    expect(UNSAFE_queryAllByType(ActivityIndicator).length).toBeGreaterThan(0);
+  });
+
+  it('само превью (data:) показывается без плейсхолдера и без спиннера', () => {
+    const { UNSAFE_getAllByType, UNSAFE_queryAllByType } = render(
+      <ImageBubble uri={MINI} isMe={false} width={800} height={600} />,
+    );
+    expect(UNSAFE_getAllByType(Image)[0].props.placeholder).toBeUndefined();
+    expect(UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(0);
+  });
+
+  it('пустой адрес сбрасывает запомненное превью: следующий файл — без чужого плейсхолдера', () => {
+    const { rerender, UNSAFE_getAllByType } = render(
+      <ImageBubble uri={MINI} isMe={false} width={800} height={600} />,
+    );
+    rerender(<ImageBubble uri="" isMe={false} width={800} height={600} />);
+    rerender(<ImageBubble uri="file:///other.jpg" isMe={false} width={800} height={600} />);
+    expect(UNSAFE_getAllByType(Image)[0].props.placeholder).toBeUndefined();
   });
 });

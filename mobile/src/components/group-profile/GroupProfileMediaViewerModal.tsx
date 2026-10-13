@@ -297,10 +297,17 @@ export function GroupProfileMediaViewerModal({
     if (current.kind !== 'video') return current.previewUri ?? current.uri;
     return current.previewUri?.trim() || getCachedVideoThumbnailUri(current.uri) || null;
   }, []);
+  const getImageSize = useCallback(() => {
+    const current = mediaItemsRef.current[safeIndexRef.current];
+    return current?.width && current?.height
+      ? { width: current.width, height: current.height }
+      : null;
+  }, []);
   const hero = useHeroDismiss({
     visible,
     getSourceRect,
     getHeroImageUri,
+    getImageSize,
     onDismiss: onClose,
   });
 
