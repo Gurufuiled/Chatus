@@ -1,6 +1,8 @@
 import React from 'react';
 import { Animated, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
+import { composerPresentation } from '../presentation';
 import { InputVoiceRecordingStage } from './InputVoiceRecordingStage';
 
 jest.mock('../contexts/ThemeContext', () => ({
@@ -10,6 +12,7 @@ jest.mock('../contexts/ThemeContext', () => ({
   }),
 }));
 
+jest.mock('@expo/vector-icons/Feather', () => () => null);
 jest.mock('../services/VoiceRecorderService', () => ({
   VoiceRecorderService: { subscribeToLiveWaveform: jest.fn(() => () => undefined) },
 }));
@@ -58,5 +61,20 @@ describe('InputVoiceRecordingStage', () => {
   it('надпись «ОТМЕНА» всегда в дереве, но прозрачна в начале жеста (кроссфейд управляется стилем)', () => {
     const { getByText } = render(<InputVoiceRecordingStage {...makeProps()} isLocked={false} />);
     expect(getByText('ОТМЕНА')).toBeTruthy();
+  });
+
+  it('регрессия: высота панели записи ровно равна высоте обычной панели ввода (нет рывка списка при старте записи)', () => {
+    for (const isLocked of [false, true]) {
+      const { getByTestId, unmount } = render(
+        <InputVoiceRecordingStage {...makeProps()} isLocked={isLocked} />,
+      );
+      const stage = StyleSheet.flatten(getByTestId('voice-recording-stage').props.style) as {
+        height?: number;
+        minHeight?: number;
+      };
+      // фиксированная высота, а не minHeight: кнопка записи (58) выше панели (54) и не должна её растягивать
+      expect(stage.height).toBe(composerPresentation.shellMinHeight);
+      unmount();
+    }
   });
 });

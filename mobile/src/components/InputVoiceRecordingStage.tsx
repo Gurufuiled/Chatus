@@ -48,10 +48,13 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean) {
   const mutedCancelText = isDark ? 'rgba(247,248,250,0.82)' : 'rgba(35,47,62,0.72)';
 
   return StyleSheet.create({
+    // Высота панели записи ровно равна высоте обычной панели ввода. Раньше кнопка записи (58) была выше
+    // панели (54): в момент старта композер «подрастал» на 4px, список чата сжимался мгновенно, а
+    // анимация дока двигала только сам док — отсюда рывок. Кнопка и ореол просто выступают за границы.
     recordingStage: {
       position: 'relative',
       alignSelf: 'stretch',
-      minHeight: composerPresentation.shellMinHeight,
+      height: composerPresentation.shellMinHeight,
       zIndex: 5,
       overflow: 'visible',
     },
@@ -61,14 +64,14 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean) {
       zIndex: 8,
     },
     recordingTopLayer: {
-      minHeight: composerPresentation.shellMinHeight,
+      height: composerPresentation.shellMinHeight,
       justifyContent: 'center',
       overflow: 'visible',
     },
     recordingRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      minHeight: composerPresentation.shellMinHeight,
+      height: composerPresentation.shellMinHeight,
       position: 'relative',
     },
     recordingBubble: {
@@ -78,7 +81,7 @@ function createVoiceRecordingStyles(c: ThemeColors, isDark: boolean) {
       paddingLeft: 14,
       paddingRight: 40,
       paddingVertical: 0,
-      minHeight: composerPresentation.shellMinHeight,
+      height: composerPresentation.shellMinHeight,
       backgroundColor: bubbleBg,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: bubbleBorder,
@@ -328,7 +331,7 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
   );
 
   return (
-    <View style={styles.recordingStage}>
+    <View testID="voice-recording-stage" style={styles.recordingStage}>
       {voiceTouchTracking && !isLocked ? (
         <View style={styles.recordingGestureLayer} {...panHandlers} />
       ) : null}
