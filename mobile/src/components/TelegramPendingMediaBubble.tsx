@@ -1,6 +1,14 @@
 import React from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { ActivityIndicator, Dimensions, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type GestureResponderEvent,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatMediaDuration } from '../utils/mediaDuration';
@@ -31,6 +39,12 @@ type PendingVideoProps = CommonProps & {
   height?: number;
   caption?: string;
   mediaClamp?: { maxWidth: number; maxHeight: number };
+  /** Размер файла для подписи на кнопке «скачать» (например «48.0 МБ»). */
+  sizeLabel?: string;
+  /** Нажатие на плашку: начать загрузку или отменить идущую. */
+  onPress?: () => void;
+  /** Долгое нажатие должно открывать меню сообщения, как у остальных пузырей. */
+  onLongPress?: (event: GestureResponderEvent) => void;
 };
 
 function computeDisplaySize(
@@ -67,13 +81,22 @@ export function PendingVideoBubble({
   outgoingMetaColor,
   mediaClamp,
   isDownloading = false,
+  sizeLabel,
+  onPress,
+  onLongPress,
 }: PendingVideoProps) {
   const { colors } = useTheme();
   const size = computeDisplaySize(width, height, mediaClamp);
   const metaColor = isMe ? outgoingMetaColor : 'rgba(255,255,255,0.9)';
 
   return (
-    <View
+    <Pressable
+      testID="telegram-pending-video"
+      accessibilityRole="button"
+      accessibilityLabel={isDownloading ? 'Отменить загрузку видео' : 'Скачать видео'}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={260}
       style={[
         styles.videoRoot,
         size,
@@ -89,7 +112,14 @@ export function PendingVideoBubble({
         {isDownloading ? (
           <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
-          <Feather name="download" size={22} color="#FFFFFF" />
+          <>
+            <Feather name="download" size={22} color="#FFFFFF" />
+            {sizeLabel ? (
+              <Text testID="telegram-pending-video-size" style={styles.sizeText}>
+                {sizeLabel}
+              </Text>
+            ) : null}
+          </>
         )}
       </View>
       {durationMs > 0 ? (
@@ -110,7 +140,7 @@ export function PendingVideoBubble({
           />
         </View>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
@@ -200,6 +230,11 @@ const styles = StyleSheet.create({
   },
   playIcon: {
     marginLeft: 2,
+  },
+  sizeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   durationBadge: {
     position: 'absolute',

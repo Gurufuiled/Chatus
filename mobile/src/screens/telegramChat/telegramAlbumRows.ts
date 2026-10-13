@@ -30,6 +30,7 @@ function rowToAlbumItem(row: TelegramMessageRow): TelegramAlbumMediaItem | null 
     kind: row.kind,
     mediaUri: row.mediaUri,
     mediaFullFileId: row.mediaFullFileId,
+    mediaFullFileSize: row.mediaFullFileSize,
     thumbnailFileId: row.thumbnailFileId,
     thumbnailUri: row.thumbnailUri,
     width: row.width,

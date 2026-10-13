@@ -1,6 +1,7 @@
 import type { TelegramDialogRow } from '../../stores/telegramAccountStore';
 import type { TelegramMessageRow } from './types';
 import { getNestedRecord } from './tdlibMapping';
+import { shouldAutoDownloadVideo } from './telegramMediaDownloadPlan';
 import { setCachedUserAvatarUri } from '../../services/tdlib/userNameCache';
 
 export function getTdlibFileLocalUri(file: Record<string, unknown> | null): string | null {
@@ -35,6 +36,7 @@ export function patchMessagesWithTdlibFile(
         mediaUri: uri,
         voiceUri: row.kind === 'voice' ? uri : updated.voiceUri,
         mediaFullFileId: undefined,
+        mediaFullFileSize: undefined,
       };
     }
 
@@ -90,7 +92,7 @@ export function patchMessagesWithTdlibFile(
       const albumMedia = row.albumMedia.map((item) => {
         if (item.mediaFullFileId === fileId) {
           albumChanged = true;
-          return { ...item, mediaUri: uri, mediaFullFileId: undefined };
+          return { ...item, mediaUri: uri, mediaFullFileId: undefined, mediaFullFileSize: undefined };
         }
         if (item.thumbnailFileId === fileId) {
           albumChanged = true;
@@ -108,6 +110,33 @@ export function patchMessagesWithTdlibFile(
   });
 
   return changed ? next : rows;
+}
+
+/**
+ * Применить пачку `updateFile` одним проходом. Если ни одно обновление ничего не меняет, возвращается тот же
+ * массив (React не перерисует чат).
+ */
+export function patchMessagesWithTdlibFiles(
+  rows: TelegramMessageRow[],
+  files: ReadonlyArray<Record<string, unknown>>,
+): TelegramMessageRow[] {
+  let current = rows;
+  for (const file of files) {
+    current = patchMessagesWithTdlibFile(current, file);
+  }
+  return current;
+}
+
+/** id файлов из пачки `updateFile`, которые скачаны полностью. */
+export function completedTdlibFileIds(files: ReadonlyArray<Record<string, unknown>>): number[] {
+  const ids: number[] = [];
+  for (const file of files) {
+    const id = getTdlibFileId(file);
+    if (id != null && getNestedRecord(file.local)?.is_downloading_completed === true) {
+      ids.push(id);
+    }
+  }
+  return ids;
 }
 
 /** Apply TDLib `updateFile` to dialog list avatars. */
@@ -131,6 +160,22 @@ export function patchDialogsWithTdlibFile(
   });
 
   return changed ? next : dialogs;
+}
+
+/**
+ * Пачка `updateFile` для списка диалогов. Тот же тождественный возврат, если ничего не изменилось.
+ * (`patchDialogsWithTdlibFile` раньше нигде не вызывалась: аватарки в списке появлялись только после
+ * следующего обновления списка.)
+ */
+export function patchDialogsWithTdlibFiles(
+  dialogs: TelegramDialogRow[],
+  files: ReadonlyArray<Record<string, unknown>>,
+): TelegramDialogRow[] {
+  let current = dialogs;
+  for (const file of files) {
+    current = patchDialogsWithTdlibFile(current, file);
+  }
+  return current;
 }
 
 export function collectPendingTdlibFileIds(rows: TelegramMessageRow[]): number[] {
@@ -158,18 +203,25 @@ export function collectPendingTdlibFileIds(rows: TelegramMessageRow[]): number[]
   return [...ids];
 }
 
+/**
+ * Видео, которые качаются сами (на плашке крутится индикатор). Большие видео сюда не попадают: они ждут
+ * нажатия на кнопку «скачать» (см. `shouldAutoDownloadVideo`). Кружки — маленькие, качаются всегда.
+ */
 export function collectPendingTdlibVideoFileIds(rows: TelegramMessageRow[]): number[] {
   const ids = new Set<number>();
   for (const row of rows) {
-    if (
-      (row.kind === 'video' || row.kind === 'video_note') &&
-      row.mediaFullFileId != null
-    ) {
-      ids.add(row.mediaFullFileId);
+    if (row.mediaFullFileId != null) {
+      if (row.kind === 'video_note' || (row.kind === 'video' && shouldAutoDownloadVideo(row.mediaFullFileSize))) {
+        ids.add(row.mediaFullFileId);
+      }
     }
     if (row.kind === 'album') {
       for (const item of row.albumMedia ?? []) {
-        if (item.kind === 'video' && item.mediaFullFileId != null) {
+        if (
+          item.kind === 'video' &&
+          item.mediaFullFileId != null &&
+          shouldAutoDownloadVideo(item.mediaFullFileSize)
+        ) {
           ids.add(item.mediaFullFileId);
         }
       }

@@ -49,7 +49,12 @@ import {
   getNestedRecord,
   loadLastReadOutboxMessageId,
   mapTdMessages,
+  scheduleTdlibFileDownload,
 } from './telegramChat/tdlibMapping';
+import {
+  planProfileMediaDownloads,
+  planProfileViewerDownloads,
+} from './telegramChat/telegramMediaDownloadPlan';
 import {
   tdlibBlockUser,
   tdlibDeleteChat,
@@ -67,7 +72,8 @@ import {
 } from './telegramChat/tdlibUserProfile';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { telegramRowsToProfileBuckets } from './telegramChat/telegramProfileMedia';
-import { patchMessagesWithTdlibFile } from './telegramChat/telegramFileUpdates';
+import { patchMessagesWithTdlibFiles } from './telegramChat/telegramFileUpdates';
+import { createCoalesceQueue } from '../utils/coalesceQueue';
 import type { TelegramMessageRow } from './telegramChat/types';
 
 if (Platform.OS === 'android') {
@@ -360,11 +366,18 @@ export function TelegramChatProfileScreen() {
           }
 
           const rawMerged = Array.from(allRawMap.values());
+          // Профилю не нужны полные файлы: плитки берут миниатюры (~320 px), документы и полные фото/видео
+          // качаются только по нажатию. Раньше для каждого из ~400 сообщений качался полный файл.
           const mapped = await mapTdMessages(
             rawMerged.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
             lastRead,
+            4,
+            { mediaLocalOnly: true, photoGridThumbnail: true },
           );
           mapped.sort((a, b) => b.dateMs - a.dateMs);
+          for (const { fileId, priority } of planProfileMediaDownloads(mapped)) {
+            scheduleTdlibFileDownload(fileId, priority);
+          }
           return mapped;
         };
 
@@ -510,13 +523,19 @@ export function TelegramChatProfileScreen() {
     return () => scrollY.removeListener(id);
   }, [isHeroExpanded, scrollY]);
   useEffect(() => {
+    // Файлы докачиваются по одному; применяем пачкой, чтобы сетка медиа не пересобиралась на каждый файл.
+    const fileUpdates = createCoalesceQueue<Record<string, unknown>>((files) => {
+      setHistoryRows((prev) => patchMessagesWithTdlibFiles(prev, files));
+    }, 60);
     const unsubscribe = tdlibClient.subscribe((update) => {
       try {
         const type = update['@type'];
         if (type === 'updateFile') {
           const file = getNestedRecord(update.file);
           if (!file) return;
-          setHistoryRows((prev) => patchMessagesWithTdlibFile(prev, file));
+          if (getNestedRecord(file.local)?.is_downloading_completed === true) {
+            fileUpdates.push(file);
+          }
         }
       } catch (e) {
         // ignore
@@ -525,6 +544,7 @@ export function TelegramChatProfileScreen() {
 
     return () => {
       unsubscribe();
+      fileUpdates.flush();
     };
   }, []);
 
@@ -532,6 +552,20 @@ export function TelegramChatProfileScreen() {
     () => telegramRowsToProfileBuckets(historyRows, displayName),
     [historyRows, displayName],
   );
+
+  // Открыли медиа — докачиваем полный размер (фото по соседству тоже, чтобы листание было мгновенным).
+  // Плитки сетки обходятся миниатюрами, поэтому полные файлы без этого не качаются вовсе.
+  const historyRowsRef = useRef(historyRows);
+  historyRowsRef.current = historyRows;
+  useEffect(() => {
+    if (selectedMediaIndex == null) return;
+    for (const { fileId, priority } of planProfileViewerDownloads(
+      historyRowsRef.current,
+      selectedMediaIndex,
+    )) {
+      scheduleTdlibFileDownload(fileId, priority);
+    }
+  }, [selectedMediaIndex]);
 
   useEffect(() => {
     if (!actionMenu) return;

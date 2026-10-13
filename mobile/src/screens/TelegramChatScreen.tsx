@@ -125,14 +125,22 @@ import {
   loadLastReadOutboxMessageId,
   mapTdMessage,
   mapTdMessages,
+  cancelTdlibFileDownload,
   scheduleTdlibFileDownload,
   getTdMessageReactions,
 } from './telegramChat/tdlibMapping';
 import {
-  collectPendingTdlibFileIds,
   collectPendingTdlibVideoFileIds,
-  patchMessagesWithTdlibFile,
+  completedTdlibFileIds,
+  patchMessagesWithTdlibFiles,
 } from './telegramChat/telegramFileUpdates';
+import {
+  PRIORITY_USER_REQUEST,
+  planMediaDownloads,
+} from './telegramChat/telegramMediaDownloadPlan';
+import { createCoalesceQueue } from '../utils/coalesceQueue';
+import { formatFileSize } from '../utils/formatFileSize';
+import { createHistoryLoadGuard } from './telegramChat/historyLoadGuard';
 import {
   getTelegramRowTdMessageIds,
   findTelegramRowIndexByTdMessageId,
@@ -247,11 +255,32 @@ export function TelegramChatScreen() {
         return next;
       });
     }
-    const videoIdSet = new Set(videoIds);
-    for (const fileId of collectPendingTdlibFileIds(rows)) {
-      scheduleTdlibFileDownload(fileId, videoIdSet.has(fileId) ? 8 : 16);
+    // Приоритет по «свежести» сообщения: фото в нижней части чата (то, что видно) качаются первыми, а старые
+    // сообщения, целые видео и документы — позже и не мешают им. Раньше всё шло одним приоритетом по порядку.
+    for (const { fileId, priority } of planMediaDownloads(rows)) {
+      scheduleTdlibFileDownload(fileId, priority);
     }
   }, []);
+  /**
+   * Кнопка «скачать» на плашке видео: большие видео сами не качаются. Нажатие ставит загрузку с высшим
+   * приоритетом, повторное нажатие во время загрузки отменяет её (и снимает зависший индикатор).
+   */
+  const toggleVideoDownload = useCallback(
+    (fileId: number) => {
+      if (downloadingMediaFileIds.has(fileId)) {
+        cancelTdlibFileDownload(fileId);
+        setDownloadingMediaFileIds((current) => {
+          const next = new Set(current);
+          next.delete(fileId);
+          return next;
+        });
+        return;
+      }
+      setDownloadingMediaFileIds((current) => new Set(current).add(fileId));
+      scheduleTdlibFileDownload(fileId, PRIORITY_USER_REQUEST);
+    },
+    [downloadingMediaFileIds],
+  );
   const [loading, setLoading] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -273,8 +302,8 @@ export function TelegramChatScreen() {
   } | null>(null);
   const oldestMessageIdRef = useRef<number>(0);
   const lastReadOutboxMessageIdRef = useRef<number>(0);
-  const loadingOlderRef = useRef(false);
-  const historyLoadGenerationRef = useRef(0);
+  /** Поколение загрузки и флаг «идёт подгрузка старых» — см. `historyLoadGuard.ts`. */
+  const historyGuard = useRef(createHistoryLoadGuard()).current;
   const mountedRef = useRef(true);
   const messagesRef = useRef<TelegramMessageRow[]>([]);
   const listRef = useRef<FlatList<TelegramMessageRow>>(null);
@@ -1156,13 +1185,14 @@ export function TelegramChatScreen() {
   }, []);
 
   useEffect(() => {
-    historyLoadGenerationRef.current += 1;
+    historyGuard.reset();
+    setLoadingOlder(false);
     setMessages([]);
     oldestMessageIdRef.current = 0;
     lastReadOutboxMessageIdRef.current = 0;
     setLoading(true);
     setLastError(null);
-  }, [chatId, messageThreadId]);
+  }, [chatId, historyGuard, messageThreadId]);
 
   useEffect(() => {
     if (!isFocused || telegramDialogs.length === 0) return;
@@ -1258,12 +1288,11 @@ export function TelegramChatScreen() {
   const loadHistory = useCallback(
     async (older = false) => {
       if (!Number.isFinite(chatId)) return;
-      const loadGeneration = historyLoadGenerationRef.current;
-      const isStaleLoad = () => loadGeneration !== historyLoadGenerationRef.current;
+      const loadGeneration = historyGuard.generation();
+      const isStaleLoad = () => historyGuard.isStale(loadGeneration);
 
       if (older) {
-        if (loadingOlderRef.current || oldestMessageIdRef.current === 0) return;
-        loadingOlderRef.current = true;
+        if (oldestMessageIdRef.current === 0 || !historyGuard.tryBeginOlder()) return;
         setLoadingOlder(true);
       } else {
         setLoading(true);
@@ -1360,35 +1389,43 @@ export function TelegramChatScreen() {
         setLastError(message);
         if (!older) Alert.alert('Telegram', message);
       } finally {
+        // Устаревшая загрузка (чат уже сменили) чужой флаг не трогает: его сбросил `historyGuard.reset()`.
+        if (older) historyGuard.endOlder(loadGeneration);
         if (!mountedRef.current || isStaleLoad()) return;
         setLoading(false);
-        loadingOlderRef.current = false;
         setLoadingOlder(false);
       }
     },
-    [chatId, ensureReady, messageThreadId, schedulePendingMediaDownloads],
+    [chatId, ensureReady, historyGuard, messageThreadId, schedulePendingMediaDownloads],
   );
 
   useFocusEffect(
     useCallback(() => {
       void loadHistory(false);
-      const unsubscribe = tdlibClient.subscribe((update) => {
+      // TDLib шлёт `updateFile` по одному на каждый скачанный файл; применяем пачкой раз в ~40 мс, чтобы чат
+      // с десятками фото не перерисовывался десятки раз подряд.
+      const fileUpdates = createCoalesceQueue<Record<string, unknown>>((files) => {
+        setMessages((prev) => patchMessagesWithTdlibFiles(prev, files));
+        const doneIds = completedTdlibFileIds(files);
+        if (doneIds.length > 0) {
+          setDownloadingMediaFileIds((current) => {
+            if (!doneIds.some((id) => current.has(id))) return current;
+            const next = new Set(current);
+            doneIds.forEach((id) => next.delete(id));
+            return next;
+          });
+        }
+      }, 40);
+      const unsubscribeTdlib = tdlibClient.subscribe((update) => {
         try {
           const type = update['@type'];
 
           if (type === 'updateFile') {
             const file = getNestedRecord(update.file);
             if (!file) return;
-            setMessages((prev) => patchMessagesWithTdlibFile(prev, file));
-            const fileId = typeof file.id === 'number' ? file.id : null;
-            const local = getNestedRecord(file.local);
-            if (fileId != null && local?.is_downloading_completed === true) {
-              setDownloadingMediaFileIds((current) => {
-                if (!current.has(fileId)) return current;
-                const next = new Set(current);
-                next.delete(fileId);
-                return next;
-              });
+            // промежуточные обновления прогресса ничего не меняют в строках — в очередь только завершённые
+            if (getNestedRecord(file.local)?.is_downloading_completed === true) {
+              fileUpdates.push(file);
             }
             return;
           }
@@ -1517,7 +1554,10 @@ export function TelegramChatScreen() {
           /* ignore malformed TDLib updates */
         }
       });
-      return unsubscribe;
+      return () => {
+        unsubscribeTdlib();
+        fileUpdates.flush();
+      };
     }, [chatId, isGroupChat, loadHistory, messageThreadId, schedulePendingMediaDownloads]),
   );
 
@@ -2607,6 +2647,15 @@ export function TelegramChatScreen() {
                 item.mediaFullFileId != null &&
                 downloadingMediaFileIds.has(item.mediaFullFileId)
               }
+              sizeLabel={formatFileSize(item.mediaFullFileSize)}
+              onPress={() => {
+                if (telegramSelectionMode) {
+                  toggleTelegramSelection(item.id);
+                } else if (item.mediaFullFileId != null) {
+                  toggleVideoDownload(item.mediaFullFileId);
+                }
+              }}
+              onLongPress={telegramSelectionMode ? undefined : handleOpenMessageMenu}
             />
           );
 
@@ -3206,6 +3255,8 @@ export function TelegramChatScreen() {
                     setIsVoiceRecording(active);
                   }}
                   isScreenFocused={isFocused}
+                  // без цели размытия окно записи кружка получает плоскую заливку вместо блюра, как в обычных чатах
+                  blurTargetRef={blurTargetRef}
                   placeholder="Сообщение"
                   isChannelAdmin={isChannel}
                   channelSilentMode={false} // Placeholder for actual silent mode state

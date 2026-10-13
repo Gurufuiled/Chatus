@@ -25,7 +25,12 @@ export type FetchTelegramHistoryParams = {
   isGroupChat?: boolean;
   lastReadOutboxMessageId?: number;
   limit?: number;
+  /** Приоритет загрузок TDLib при маппинге; фоновая подгрузка соседних чатов ставит минимальный. */
+  downloadPriority?: number;
 };
+
+/** Фоновая подгрузка чатов не должна отнимать канал у открытого чата: самый низкий приоритет TDLib. */
+export const PRELOAD_DOWNLOAD_PRIORITY = 1;
 
 export async function ensureTelegramTdlibReady(): Promise<boolean> {
   await applyTdlibParameters();
@@ -64,9 +69,11 @@ export async function fetchTelegramHistoryBatch(
   ]);
   throwIfTdError(response);
   const rawMessages = Array.isArray(response.messages) ? response.messages : [];
-  const mapOptions = onlyLocal
-    ? { ...MAP_HISTORY_LOCAL_OPTIONS_BASE, loadSenderAvatar: params.isGroupChat === true }
-    : { ...MAP_HISTORY_REMOTE_OPTIONS_BASE, loadSenderAvatar: params.isGroupChat === true };
+  const mapOptions = {
+    ...(onlyLocal ? MAP_HISTORY_LOCAL_OPTIONS_BASE : MAP_HISTORY_REMOTE_OPTIONS_BASE),
+    loadSenderAvatar: params.isGroupChat === true,
+    ...(params.downloadPriority != null ? { downloadPriority: params.downloadPriority } : {}),
+  };
   const rows = await mapTdMessages(
     rawMessages.filter((item): item is Record<string, unknown> => item != null && typeof item === 'object'),
     lastReadOutboxMessageId,
@@ -92,6 +99,7 @@ export async function preloadTelegramChatHistory(
       chatId,
       onlyLocal: true,
       isGroupChat,
+      downloadPriority: PRELOAD_DOWNLOAD_PRIORITY,
     });
     lastRead = local.lastReadOutboxMessageId;
     localRows = local.rows;
@@ -105,6 +113,7 @@ export async function preloadTelegramChatHistory(
       onlyLocal: false,
       isGroupChat,
       lastReadOutboxMessageId: lastRead,
+      downloadPriority: PRELOAD_DOWNLOAD_PRIORITY,
     });
     return remote.rows.length > 0 ? remote.rows : localRows;
   } catch {

@@ -4,6 +4,7 @@ import type {
   MediaTile,
   VoiceItem,
 } from '../../components/ChatProfileMediaSection';
+import { formatFileSize } from '../../utils/formatFileSize';
 import type { TelegramMessageRow } from './types';
 
 function formatMessageDate(ms: number): string {
@@ -11,14 +12,6 @@ function formatMessageDate(ms: number): string {
     day: 'numeric',
     month: 'short',
   });
-}
-
-function formatFileSize(bytes?: number): string {
-  if (!bytes || bytes <= 0) return '';
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} ГБ`;
 }
 
 function getFileExtension(fileName: string | undefined): string {
@@ -49,8 +42,11 @@ export function telegramRowsToProfileBuckets(
         id: row.id,
         kind: 'image',
         uri: row.mediaUri ?? '',
-        previewUri: row.mediaUri ?? undefined,
+        // плитка сетки берёт миниатюру, а не полное фото (иначе декодируются десятки больших картинок)
+        previewUri: row.thumbnailUri ?? row.mediaUri ?? undefined,
         caption: row.text?.trim() ? row.text : undefined,
+        width: row.width,
+        height: row.height,
       });
     }
     if (row.kind === 'video') {
@@ -61,6 +57,8 @@ export function telegramRowsToProfileBuckets(
         previewUri: row.thumbnailUri ?? row.mediaUri ?? undefined,
         durationMs: row.durationMs,
         caption: row.text?.trim() ? row.text : undefined,
+        width: row.width,
+        height: row.height,
       });
     }
     if (row.kind === 'file') {

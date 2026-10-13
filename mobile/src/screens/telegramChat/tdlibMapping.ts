@@ -9,6 +9,7 @@ import {
 import { previewForUnsupported } from './composer';
 import { getTdMediaAlbumId, mergeTelegramFeedRows } from './telegramAlbumRows';
 import { classifyTelegramForwardOriginType } from './telegramForwardOrigin';
+import { planGridPhoto, planPhotoDisplay, type PhotoSizeCandidate } from './tdlibPhotoSize';
 import type {
   TelegramAlbumMediaItem,
   TelegramMessageRow,
@@ -21,7 +22,21 @@ export type MapTdMessageOptions = {
   loadSenderAvatar?: boolean;
   /** History list: use only TDLib local paths, do not block on `downloadFile`. */
   mediaLocalOnly?: boolean;
+  /**
+   * Базовый приоритет загрузок TDLib, которые ставит сам маппинг (фото, голосовые, документы). Экран затем
+   * повышает приоритет свежих сообщений (`planMediaDownloads`), а фоновая подгрузка соседних чатов ставит
+   * самый низкий, чтобы не отнимать канал у открытого чата.
+   */
+  downloadPriority?: number;
+  /**
+   * Профиль чата: у фото в строке отдельно миниатюра для плитки (`thumbnailUri`/`thumbnailFileId`, ~320 px) и
+   * полный размер (`mediaUri`/`mediaFullFileId`). Ничего не качается при маппинге — очередь строит экран.
+   */
+  photoGridThumbnail?: boolean;
 };
+
+/** Приоритет по умолчанию для загрузок, поставленных при маппинге (нижняя ступень «свежести»). */
+export const DEFAULT_MAP_DOWNLOAD_PRIORITY = 8;
 
 export function getNestedRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
@@ -94,9 +109,18 @@ function getTdFileId(file: Record<string, unknown> | null): number | null {
   return typeof id === 'number' && Number.isFinite(id) ? id : null;
 }
 
+/** Размер файла в байтах: точный `size` или оценка `expected_size` (TDLib отдаёт 0, если неизвестен). */
+function getTdFileSize(file: Record<string, unknown> | null): number | undefined {
+  const size = getNumber(file?.size);
+  if (size != null && size > 0) return size;
+  const expected = getNumber(file?.expected_size);
+  return expected != null && expected > 0 ? expected : undefined;
+}
+
 async function resolveTdFileUri(
   file: Record<string, unknown> | null,
   mediaLocalOnly = false,
+  downloadPriority = DEFAULT_MAP_DOWNLOAD_PRIORITY,
 ): Promise<string | null> {
   const localUri = getTdFileLocalUri(file);
   if (localUri) return localUri;
@@ -104,7 +128,7 @@ async function resolveTdFileUri(
 
   const fileId = getTdFileId(file);
   if (fileId != null) {
-    scheduleTdlibFileDownload(fileId);
+    scheduleTdlibFileDownload(fileId, downloadPriority);
   }
   return null;
 }
@@ -177,10 +201,22 @@ export function scheduleTdlibFileDownload(fileId: number, priority = 16): void {
     });
 }
 
+/**
+ * Отмена загрузки по нажатию на плашку. Запись о постановке в очередь снимаем, иначе повторное нажатие в
+ * течение 15 с было бы отброшено как «уже поставлено».
+ */
+export function cancelTdlibFileDownload(fileId: number): void {
+  scheduledTdlibFileDownloads.delete(fileId);
+  void tdlibClient
+    .send({ '@type': 'cancelDownloadFile', file_id: fileId, only_if_pending: false })
+    .catch(() => undefined);
+}
+
 /** Voice notes are small — try a blocking download so incoming bubbles render without waiting for `updateFile`. */
 async function resolveTdVoiceFileUri(
   file: Record<string, unknown> | null,
   mediaLocalOnly: boolean,
+  downloadPriority = DEFAULT_MAP_DOWNLOAD_PRIORITY,
 ): Promise<string | null> {
   const localUri = getTdFileLocalUri(file);
   if (localUri) return localUri;
@@ -189,7 +225,8 @@ async function resolveTdVoiceFileUri(
   const fileId = getTdFileId(file);
   if (fileId != null) {
     // Non-blocking to avoid UI stalls/hangs when opening chats with many voice notes.
-    scheduleTdlibFileDownload(fileId, 32);
+    // Приоритет не максимальный: иначе все старые голосовые обгоняли видимые фото. Свежие экран поднимет сам.
+    scheduleTdlibFileDownload(fileId, downloadPriority);
   }
   return null;
 }
@@ -217,56 +254,73 @@ function parseTdVoiceWaveform(voiceNote: Record<string, unknown> | null): number
   return [];
 }
 
-/** Largest cached file first; preview + async full download when only mini is available. */
+/**
+ * Фото для ленты: показываем лучший из скачанных размеров, а докачиваем не самый большой оригинал, а размер для
+ * ленты (~1280 px, как в Telegram) — см. `planPhotoDisplay`. Пока ничего нет — мини-превью.
+ */
 async function resolvePhotoUri(
   photo: Record<string, unknown> | null,
   mediaLocalOnly: boolean,
+  downloadPriority = DEFAULT_MAP_DOWNLOAD_PRIORITY,
 ): Promise<ResolvedPhoto> {
-  const sizesDesc = listPhotoSizes(photo).sort((a, b) => b.area - a.area);
-  const largest = sizesDesc[0];
-  const displayWidth = largest ? getNumber(largest.size.width) : undefined;
-  const displayHeight = largest ? getNumber(largest.size.height) : undefined;
-  const fullFileId = largest ? getTdFileId(largest.file) ?? undefined : undefined;
+  const candidates: PhotoSizeCandidate[] = listPhotoSizes(photo).map(({ size, file }) => ({
+    width: getNumber(size.width) ?? 0,
+    height: getNumber(size.height) ?? 0,
+    fileId: getTdFileId(file),
+    localUri: getTdFileLocalUri(file),
+  }));
+  const plan = planPhotoDisplay(candidates, mediaLocalOnly);
 
-  for (const { size, file } of sizesDesc) {
-    const localUri = getTdFileLocalUri(file);
-    if (localUri) {
-      const localFileId = getTdFileId(file);
-      const isLargest = localFileId != null && localFileId === fullFileId;
-      if (!isLargest && fullFileId != null && !mediaLocalOnly) {
-        scheduleTdlibFileDownload(fullFileId);
-        return {
-          uri: localUri,
-          width: getNumber(size.width) ?? displayWidth,
-          height: getNumber(size.height) ?? displayHeight,
-          fullFileId,
-        };
-      }
-      return {
-        uri: localUri,
-        width: getNumber(size.width) ?? displayWidth,
-        height: getNumber(size.height) ?? displayHeight,
-      };
-    }
+  if (plan.shouldScheduleDownload && plan.pendingFileId != null) {
+    scheduleTdlibFileDownload(plan.pendingFileId, downloadPriority);
   }
 
-  const miniUri = minithumbnailDataUri(photo);
-
-  if (mediaLocalOnly) {
-    if (miniUri) {
-      return { uri: miniUri, width: displayWidth, height: displayHeight, fullFileId };
-    }
-    return { uri: null, width: displayWidth, height: displayHeight, fullFileId };
+  const fullFileId = plan.pendingFileId ?? undefined;
+  if (plan.show) {
+    return { uri: plan.show.uri, width: plan.show.width, height: plan.show.height, fullFileId };
   }
 
-  if (fullFileId != null) {
-    scheduleTdlibFileDownload(fullFileId);
-  }
-  if (miniUri) {
-    return { uri: miniUri, width: displayWidth, height: displayHeight, fullFileId };
-  }
+  return {
+    uri: minithumbnailDataUri(photo),
+    width: plan.display?.width || undefined,
+    height: plan.display?.height || undefined,
+    fullFileId,
+  };
+}
 
-  return { uri: null, width: displayWidth, height: displayHeight, fullFileId };
+export type ResolvedGridPhoto = {
+  /** Что открывать на весь экран: лучший скачанный размер, пока ничего нет — мини-превью. */
+  mediaUri: string | null;
+  /** Файл «полного» размера (для просмотра): НЕ ставится в очередь, его качает экран по нажатию. */
+  mediaFullFileId?: number;
+  /** Миниатюра плитки сетки. */
+  thumbnailUri: string | null;
+  thumbnailFileId?: number;
+  width?: number;
+  height?: number;
+};
+
+/**
+ * Фото для сетки медиа профиля: плитка берёт миниатюру ~320 px, а полный размер ленты докачивается только при
+ * открытии. Ничего не ставит в очередь — id файлов отдаёт строке, очередь строит `planProfileMediaDownloads`.
+ */
+function resolveGridPhoto(photo: Record<string, unknown> | null): ResolvedGridPhoto {
+  const candidates: PhotoSizeCandidate[] = listPhotoSizes(photo).map(({ size, file }) => ({
+    width: getNumber(size.width) ?? 0,
+    height: getNumber(size.height) ?? 0,
+    fileId: getTdFileId(file),
+    localUri: getTdFileLocalUri(file),
+  }));
+  const grid = planGridPhoto(candidates);
+  const full = planPhotoDisplay(candidates, true);
+  return {
+    mediaUri: full.show?.uri ?? minithumbnailDataUri(photo),
+    mediaFullFileId: full.pendingFileId ?? undefined,
+    thumbnailUri: grid.show?.uri ?? null,
+    thumbnailFileId: grid.pendingFileId ?? undefined,
+    width: full.display?.width || undefined,
+    height: full.display?.height || undefined,
+  };
 }
 
 export async function downloadTdlibFile(fileId: number): Promise<string | null> {
@@ -593,6 +647,7 @@ export async function mapTdMessage(
   const caption = getFormattedText(content?.caption);
   const loadAvatar = options?.loadSenderAvatar === true;
   const mediaLocalOnly = options?.mediaLocalOnly === true;
+  const downloadPriority = options?.downloadPriority ?? DEFAULT_MAP_DOWNLOAD_PRIORITY;
   const incomingSender = await resolveIncomingUserSender(raw, loadAvatar);
   const senderName = outgoing ? undefined : incomingSender?.name;
   const senderUserId = outgoing ? undefined : incomingSender?.userId;
@@ -641,7 +696,7 @@ export async function mapTdMessage(
     const voiceNote = getNestedRecord(content.voice_note);
     const voice = getNestedRecord(voiceNote?.voice);
     const fileId = getTdFileId(voice);
-    const uri = await resolveTdVoiceFileUri(voice, mediaLocalOnly);
+    const uri = await resolveTdVoiceFileUri(voice, mediaLocalOnly, downloadPriority);
     const duration = typeof voiceNote?.duration === 'number' ? voiceNote.duration * 1000 : 0;
     return {
       ...base,
@@ -654,9 +709,25 @@ export async function mapTdMessage(
     };
   }
 
+  if (kind === 'messagePhoto' && options?.photoGridThumbnail === true) {
+    const photo = getNestedRecord(content.photo);
+    const grid = resolveGridPhoto(photo);
+    return {
+      ...base,
+      kind: 'image',
+      text: caption || (grid.mediaUri ? '' : 'Фото'),
+      mediaUri: grid.mediaUri ?? undefined,
+      mediaFullFileId: grid.mediaFullFileId,
+      thumbnailUri: grid.thumbnailUri ?? undefined,
+      thumbnailFileId: grid.thumbnailFileId,
+      width: grid.width,
+      height: grid.height,
+    };
+  }
+
   if (kind === 'messagePhoto') {
     const photo = getNestedRecord(content.photo);
-    const resolved = await resolvePhotoUri(photo, mediaLocalOnly);
+    const resolved = await resolvePhotoUri(photo, mediaLocalOnly, downloadPriority);
     const uri = resolved.uri;
     const hasLocalFile = typeof uri === 'string' && uri.startsWith('file://');
     return {
@@ -715,6 +786,7 @@ export async function mapTdMessage(
       text: caption,
       mediaUri: uri ?? undefined,
       mediaFullFileId: uri ? undefined : (fileId ?? undefined),
+      mediaFullFileSize: uri ? undefined : getTdFileSize(file),
       thumbnailUri: thumbnailUri ?? undefined,
       thumbnailFileId: thumbnailFileId ?? undefined,
       width,
@@ -753,12 +825,15 @@ export async function mapTdMessage(
   if (kind === 'messageDocument') {
     const document = getNestedRecord(content.document);
     const file = getNestedRecord(document?.document);
-    const uri = await resolveTdFileUri(file, mediaLocalOnly);
+    const uri = await resolveTdFileUri(file, mediaLocalOnly, downloadPriority);
+    const documentFileId = getTdFileId(file);
     return {
       ...base,
       kind: 'file',
       text: caption,
       mediaUri: uri,
+      // Без id файла строка не получала `updateFile` и показывала документ скачанным только после перезагрузки чата.
+      mediaFullFileId: uri ? undefined : (documentFileId ?? undefined),
       fileName: typeof document?.file_name === 'string' ? document.file_name : 'File',
       fileSize: getNumber(file?.size) ?? getNumber(file?.expected_size),
     };
