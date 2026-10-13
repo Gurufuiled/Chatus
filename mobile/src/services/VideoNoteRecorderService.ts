@@ -3,6 +3,9 @@
  * Outputs MP4 format with first-frame thumbnail.
  */
 
+import * as FileSystem from 'expo-file-system/legacy';
+import { getThumbnailAsync } from 'expo-video-thumbnails';
+
 export interface VideoNoteRecordingResult {
   uri: string;
   durationMs: number;
@@ -70,7 +73,6 @@ class VideoNoteRecorderServiceClass {
 
     let thumbnailUri = '';
     try {
-      const { getThumbnailAsync } = await import('expo-video-thumbnails');
       const thumb = await getThumbnailAsync(result.uri, { time: 0 });
       thumbnailUri = thumb?.uri ?? '';
     } catch {
@@ -82,6 +84,35 @@ class VideoNoteRecorderServiceClass {
       durationMs,
       thumbnailUri,
     };
+  }
+
+  /**
+   * Отменить запись и выбросить результат — без ожидания.
+   *
+   * Раньше отмена шла через `stopRecording()`: ждала, пока камера допишет и закроет файл, и ещё строила превью
+   * (`getThumbnailAsync`), хотя результат никому не нужен — отсюда долгий спиннер при отмене. Теперь сигнал остановки
+   * отправляется сразу, метод возвращается мгновенно, а недописанный файл удаляется в фоне, когда камера его закроет.
+   */
+  cancelRecording(): void {
+    const ref = this.cameraRef;
+    const promise = this.recordPromise;
+    this.recordPromise = null;
+    if (!promise) return;
+
+    try {
+      ref?.stopRecording();
+    } catch {
+      // камера уже останавливается или размонтирована
+    }
+
+    void promise.then(
+      async (result) => {
+        if (result?.uri) {
+          await FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(() => undefined);
+        }
+      },
+      () => undefined,
+    );
   }
 
   /** Check if currently recording. */

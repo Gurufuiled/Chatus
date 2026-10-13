@@ -126,15 +126,6 @@ export function VideoNoteRecorder({
     requestMicrophonePermission,
   ]);
 
-  const stopRecordingSilently = useCallback(async () => {
-    if (!VideoNoteRecorderService.isRecording()) return;
-
-    try {
-      await VideoNoteRecorderService.stopRecording();
-    } catch {
-      // Recording can already be stopping while modal is dismissed.
-    }
-  }, []);
 
   const startRecording = useCallback(async () => {
     if (startAttemptedRef.current || !cameraReady || !hasAllPermissions) {
@@ -147,12 +138,15 @@ export function VideoNoteRecorder({
     try {
       await VideoNoteRecorderService.startRecording();
       if (cancelledRef.current) {
-        await stopRecordingSilently();
+        // отменили, пока камера стартовала: останавливаем без ожидания и без превью
+        VideoNoteRecorderService.cancelRecording();
         return;
       }
       setIsRecording(true);
       startTimer();
     } catch (err) {
+      // Пользователь уже отменил запись — ошибка старта не должна всплывать окном «Не удалось начать».
+      if (cancelledRef.current) return;
       if (__DEV__) {
         console.warn('[VideoNoteRecorder] start recording error:', err);
       }
@@ -161,15 +155,16 @@ export function VideoNoteRecorder({
     } finally {
       setIsPreparing(false);
     }
-  }, [cameraReady, hasAllPermissions, onCancel, startTimer, stopRecordingSilently]);
+  }, [cameraReady, hasAllPermissions, onCancel, startTimer]);
 
+  /** Остановить запись и отправить результат. Отмена сюда не попадает: она мгновенная (`handleCancel`). */
   const finalizeRecording = useCallback(
-    async (discard: boolean) => {
+    async () => {
       if (finishingRef.current) {
         return;
       }
 
-      cancelledRef.current = discard;
+      cancelledRef.current = false;
       finishingRef.current = true;
       setIsPreparing(true);
 
@@ -178,19 +173,10 @@ export function VideoNoteRecorder({
         stopTimer();
         setIsRecording(false);
 
-        if (discard) {
-          onCancel();
-          return;
-        }
-
         await onComplete(result);
       } catch (err) {
         stopTimer();
         setIsRecording(false);
-        if (discard) {
-          onCancel();
-          return;
-        }
         if (__DEV__) {
           console.warn('[VideoNoteRecorder] stop recording error:', err);
         }
@@ -203,25 +189,27 @@ export function VideoNoteRecorder({
         setIsPreparing(false);
       }
     },
-    [onCancel, onComplete, stopTimer]
+    [onComplete, stopTimer]
   );
 
   const handleCancel = useCallback(() => {
     if (!visible) return;
+    // идёт отправка (запись уже остановлена и сохраняется) — отменять поздно, не мешаем
+    if (finishingRef.current) return;
 
-    if (VideoNoteRecorderService.isRecording()) {
-      void finalizeRecording(true);
-      return;
-    }
-
+    // Отмена мгновенная: окно закрывается сразу, без спиннера. Недописанный файл камера закроет и мы удалим
+    // в фоне; раньше отмена ждала завершения кодирования и построения превью.
     cancelledRef.current = true;
+    VideoNoteRecorderService.cancelRecording();
     stopTimer();
+    setIsRecording(false);
+    setIsPreparing(false);
     onCancel();
-  }, [finalizeRecording, onCancel, stopTimer, visible]);
+  }, [onCancel, stopTimer, visible]);
 
   const handleSend = useCallback(() => {
     if (!VideoNoteRecorderService.isRecording()) return;
-    void finalizeRecording(false);
+    void finalizeRecording();
   }, [finalizeRecording]);
 
   const handleFlipCamera = useCallback(() => {
@@ -233,6 +221,10 @@ export function VideoNoteRecorder({
 
   useEffect(() => {
     if (!visible) {
+      // окно закрыли, пока шла запись (например, экран ушёл из фокуса): останавливаем и выбрасываем её
+      if (VideoNoteRecorderService.isRecording() && !finishingRef.current) {
+        VideoNoteRecorderService.cancelRecording();
+      }
       cancelledRef.current = false;
       startAttemptedRef.current = false;
       setCameraReady(false);
@@ -272,12 +264,16 @@ export function VideoNoteRecorder({
       return;
     }
 
-    void finalizeRecording(false);
+    void finalizeRecording();
   }, [elapsedMs, finalizeRecording, isRecording, visible]);
 
   useEffect(() => {
     return () => {
       stopTimer();
+      // экран закрыт посреди записи — не оставляем камеру записывать в пустоту
+      if (VideoNoteRecorderService.isRecording() && !finishingRef.current) {
+        VideoNoteRecorderService.cancelRecording();
+      }
       VideoNoteRecorderService.setCameraRef(null);
     };
   }, [stopTimer]);
@@ -487,7 +483,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.22,
     shadowRadius: 26,
     shadowOffset: { width: 0, height: 16 },
-    elevation: 16,
+    // Без Android-elevation: у круглого вью с overflow hidden OEM-прошивки (MIUI) рисуют под ним
+    // прямоугольную тень — «квадратную маску» вокруг кружка. Тень оставлена только на iOS.
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.2)',
   },

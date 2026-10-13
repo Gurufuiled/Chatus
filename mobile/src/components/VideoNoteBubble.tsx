@@ -5,6 +5,11 @@ import { getThumbnailAsync } from 'expo-video-thumbnails';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
+  applyScrubPlayerMode,
+  createScrubSeekScheduler,
+  scrubPositionMs,
+} from './videoNoteScrub';
+import {
   Dimensions,
   type ImageStyle,
   Platform,
@@ -391,7 +396,6 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const isMountedRef = React.useRef(true);
   const suppressPressUntilRef = React.useRef(0);
   const scrubProgressRef = React.useRef<number | null>(null);
-  const scrubSeekThrottleRef = React.useRef(0);
   const playbackControllerRef = React.useRef<ActiveVideoNoteController>(null);
   const didActivateThumbScrub = useSharedValue(false);
   const isPlayingUI = useSharedValue(false);
@@ -1182,6 +1186,9 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
   const scrubThumbAnimatedStyle = useAnimatedStyle(() => {
     const angle = clampUnit(playbackProgress.value) * Math.PI * 2 - Math.PI / 2;
     return {
+      // Ползунок всегда смонтирован и сразу стоит на своём месте кольца; на паузе он лишь проявляется.
+      // Раньше он создавался в момент паузы: на кадр-другой оказывался в центре (под кнопкой) и «уезжал».
+      opacity: badgeOpacity.value,
       transform: [
         { translateX: Math.cos(angle) * scrubRingRadius },
         { translateY: Math.sin(angle) * scrubRingRadius },
@@ -1205,6 +1212,31 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     syncWallClockMs.value = Date.now();
   }, [effectiveDurationMs, player, syncReportedMs, syncWallClockMs]);
 
+  /** Перемотка плеера во время перетаскивания (вызывается планировщиком не чаще ~25 раз в секунду). */
+  const seekDuringScrub = React.useCallback(
+    (positionMs: number) => {
+      try {
+        player.currentTime = positionMs / 1000;
+      } catch {
+        // Ignore seek races while dragging (matches Telegram ~100ms seeks during round scrub).
+      }
+      reportedPositionMsRef.current = positionMs;
+      syncReportedMs.value = positionMs;
+      syncWallClockMs.value = Date.now();
+    },
+    [player, syncReportedMs, syncWallClockMs]
+  );
+  const scrubScheduler = React.useMemo(
+    () => createScrubSeekScheduler({ seek: seekDuringScrub }),
+    [seekDuringScrub]
+  );
+
+  /** Начало перетаскивания: быстрый режим плеера (скраббинг + допуск), чтобы кадры менялись плавно. */
+  const beginThumbScrub = React.useCallback(() => {
+    setIsThumbScrubbing(true);
+    applyScrubPlayerMode(player, true);
+  }, [player]);
+
   const updateScrubProgress = React.useCallback(
     (nextProgress: number) => {
       suppressPressUntilRef.current = Date.now() + 220;
@@ -1212,23 +1244,9 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
       if (effectiveDurationMs <= 0) {
         return;
       }
-      const now = Date.now();
-      if (now - scrubSeekThrottleRef.current < 90) {
-        return;
-      }
-      scrubSeekThrottleRef.current = now;
-      const p = Math.max(0, Math.min(1, nextProgress));
-      const nextMs = Math.round(p * effectiveDurationMs);
-      try {
-        player.currentTime = nextMs / 1000;
-      } catch {
-        // Ignore seek races while dragging (matches Telegram ~100ms seeks during round scrub).
-      }
-      reportedPositionMsRef.current = nextMs;
-      syncReportedMs.value = nextMs;
-      syncWallClockMs.value = Date.now();
+      scrubScheduler.push(scrubPositionMs(nextProgress, effectiveDurationMs));
     },
-    [effectiveDurationMs, player, setScrubProgressValue, syncReportedMs, syncWallClockMs]
+    [effectiveDurationMs, scrubScheduler, setScrubProgressValue]
   );
 
   const finalizeThumbScrub = React.useCallback((didActivate: boolean) => {
@@ -1237,9 +1255,20 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
     if (!didActivate) {
       return;
     }
+    // Отпустили: отбрасываем отложенное, возвращаем точный режим и делаем одну точную перемотку.
+    scrubScheduler.cancel();
+    applyScrubPlayerMode(player, false);
     void commitScrubProgress();
     suppressPressUntilRef.current = Date.now() + 220;
-  }, [commitScrubProgress]);
+  }, [commitScrubProgress, player, scrubScheduler]);
+
+  // Если кружок исчез посреди перетаскивания — не оставляем плеер в режиме скраббинга.
+  React.useEffect(() => {
+    return () => {
+      scrubScheduler.cancel();
+      applyScrubPlayerMode(player, false);
+    };
+  }, [player, scrubScheduler]);
 
   const scrubGesture = React.useMemo(
     () =>
@@ -1285,7 +1314,7 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
         })
         .onStart((event) => {
           didActivateThumbScrub.value = true;
-          runOnJS(setIsThumbScrubbing)(true);
+          runOnJS(beginThumbScrub)();
           runOnJS(updateScrubProgress)(
             progressForScrubPoint(event.x, event.y, scrubRingCenter)
           );
@@ -1300,7 +1329,15 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
           didActivateThumbScrub.value = false;
           runOnJS(finalizeThumbScrub)(didActivate);
         }),
-    [didActivateThumbScrub, finalizeThumbScrub, scrubRingCenter, scrubRingRadius, showPausedPlayOverlay, updateScrubProgress]
+    [
+      beginThumbScrub,
+      didActivateThumbScrub,
+      finalizeThumbScrub,
+      scrubRingCenter,
+      scrubRingRadius,
+      showPausedPlayOverlay,
+      updateScrubProgress,
+    ]
   );
 
   const playbackTapGesture = React.useMemo(
@@ -1409,11 +1446,12 @@ export const VideoNoteBubble = React.memo(function VideoNoteBubble({
               originY={scrubRingSize / 2}
             />
           </Svg>
-          {showPausedPlayOverlay ? (
-            <Reanimated.View style={[styles.scrubThumb, scrubThumbAnimatedStyle]}>
-              <View style={styles.scrubThumbDot} />
-            </Reanimated.View>
-          ) : null}
+          <Reanimated.View
+            testID="video-note-scrub-thumb"
+            style={[styles.scrubThumb, scrubThumbAnimatedStyle]}
+          >
+            <View style={styles.scrubThumbDot} />
+          </Reanimated.View>
         </View>
       ) : null}
     </>
