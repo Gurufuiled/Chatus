@@ -39,6 +39,26 @@ export interface AuthSession {
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 min
 
+/** Сколько ждать ответа на обновление токена: без лимита при блокировке сети экран висел белым минутами. */
+export const REFRESH_TOKEN_TIMEOUT_MS = 8000;
+
+/**
+ * Сервер явно отказал в обновлении токена (сессия недействительна) — только в этом случае локальную сессию
+ * можно стирать. Сетевая ошибка или таймаут к такому отказу не относятся: тогда сессию оставляем.
+ */
+export class RefreshRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RefreshRejectedError';
+  }
+}
+
+/** Нужно ли стереть сессию после неудачного обновления токена. */
+export function shouldClearSessionAfterRefreshError(error: unknown): boolean {
+  if (error instanceof RefreshRejectedError) return true;
+  return error instanceof Error && error.message === 'No refresh token';
+}
+
 export function apiUserToUserRow(u: ApiUser): UserRow {
   return {
     id: u.id,
@@ -192,15 +212,28 @@ export class AuthService {
       throw new Error('No refresh token');
     }
 
-    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: session.refresh_token }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REFRESH_TOKEN_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: session.refresh_token }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))) as { message?: string };
-      throw new Error(err.message || `Refresh failed: ${res.status}`);
+      const message = err.message || `Refresh failed: ${res.status}`;
+      // 400/401/403 — токен отозван или недействителен; 5xx и прочее — временные проблемы сервера
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        throw new RefreshRejectedError(message);
+      }
+      throw new Error(message);
     }
 
     const data = (await res.json()) as {
@@ -287,9 +320,14 @@ export class AuthService {
         const user = await this.getUserFromLocal(updated.user_id);
         if (!user) return null;
         return { user, accessToken: newToken };
-      } catch {
-        await this.authSessionDao.clear();
-        return null;
+      } catch (e) {
+        if (shouldClearSessionAfterRefreshError(e)) {
+          await this.authSessionDao.clear();
+          return null;
+        }
+        // Нет связи с сервером: входим по сохранённой сессии, токен обновится позже
+        const staleUser = await this.getUserFromLocal(session.user_id);
+        return staleUser ? { user: staleUser, accessToken: session.access_token } : null;
       }
     }
 

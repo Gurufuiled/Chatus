@@ -7,8 +7,9 @@
 
 import { API_BASE_URL, USE_MOCKS } from '../config';
 import { authStore } from '../stores/authStore';
-import { authService } from './AuthService';
+import { authService, shouldClearSessionAfterRefreshError } from './AuthService';
 import { mockApiGet, mockApiPost, mockApiPatch, mockApiDelete } from './apiMocks';
+import { serverTimeoutMessage } from '../utils/apiErrorMessage';
 
 const FETCH_TIMEOUT_MS = 15000;
 /** По умолчанию для фото/голоса/мелких файлов. */
@@ -57,7 +58,7 @@ export async function apiFetch(
     } catch (err) {
       const msg =
         err instanceof Error && err.name === 'AbortError'
-          ? `Сервер не отвечает. Проверьте, что телефон и ПК в одной сети, API: ${API_BASE_URL}`
+          ? serverTimeoutMessage(API_BASE_URL, __DEV__)
           : err instanceof Error
             ? err.message
             : String(err);
@@ -74,7 +75,9 @@ export async function apiFetch(
       await authService.refreshToken();
       await authStore.getState().restoreSession();
       return doFetch();
-    } catch {
+    } catch (e) {
+      // Нет сети — не разлогиниваем: сессия остаётся, запрос просто вернёт 401
+      if (!shouldClearSessionAfterRefreshError(e)) return res;
       authStore.getState().clearSession();
       try {
         await authService.logout();
