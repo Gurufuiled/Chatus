@@ -5,6 +5,8 @@ import Feather from '@expo/vector-icons/Feather';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Modal,
   Pressable,
   StyleSheet,
@@ -37,6 +39,10 @@ const CIRCLE_SIZE = VIDEO_NOTE_CAMERA_SIDE_PX;
 const CIRCLE_RADIUS = CIRCLE_SIZE / 2;
 const MAX_DURATION_MS = MAX_DURATION_SECONDS * 1000;
 const VIDEO_NOTE_BITRATE = 850_000;
+/** Плавное появление окна записи: вместо fade у Modal, чтобы закрытие было мгновенным. */
+const STAGE_FADE_IN_MS = 140;
+/** Камера проявляется, когда превью уже запущено: до этого native-слой камеры мог мелькнуть квадратом. */
+const CAMERA_FADE_IN_MS = 120;
 
 function formatTimer(ms: number): string {
   const safeMs = Math.max(0, ms);
@@ -74,6 +80,8 @@ export function VideoNoteRecorder({
   const startAttemptedRef = useRef(false);
   const finishingRef = useRef(false);
   const cancelledRef = useRef(false);
+  const stageOpacity = useRef(new Animated.Value(0)).current;
+  const cameraOpacity = useRef(new Animated.Value(0)).current;
 
   const hasCameraPermission = cameraPermission?.granted === true;
   const hasMicrophonePermission = microphonePermission?.granted === true;
@@ -237,6 +245,14 @@ export function VideoNoteRecorder({
 
     cancelledRef.current = false;
     startAttemptedRef.current = false;
+    cameraOpacity.setValue(0);
+    stageOpacity.setValue(0);
+    Animated.timing(stageOpacity, {
+      toValue: 1,
+      duration: STAGE_FADE_IN_MS,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
     setCameraSessionKey((current) => current + 1);
     setFacing('front');
     setCameraReady(false);
@@ -249,7 +265,24 @@ export function VideoNoteRecorder({
         setIsPreparing(false);
       }
     });
-  }, [ensurePermissions, stopTimer, visible]);
+  }, [cameraOpacity, ensurePermissions, stageOpacity, stopTimer, visible]);
+
+  // Камеру показываем только когда она сообщила о готовности (и ещё через кадр): до этого её слой мог на миг
+  // показаться прямоугольным, не обрезанным по кругу.
+  useEffect(() => {
+    if (!visible || !cameraReady) {
+      cameraOpacity.setValue(0);
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      Animated.timing(cameraOpacity, {
+        toValue: 1,
+        duration: CAMERA_FADE_IN_MS,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [cameraOpacity, cameraReady, visible]);
 
   useEffect(() => {
     if (!visible || !cameraReady || !hasAllPermissions || isRecording || finishingRef.current) {
@@ -305,7 +338,10 @@ export function VideoNoteRecorder({
     }
 
     return (
-      <View style={styles.cameraMask}>
+      <Animated.View
+        testID="video-note-camera-layer"
+        style={[styles.cameraMask, { opacity: cameraOpacity }]}
+      >
         <CameraView
           key={`video-note-camera-${cameraSessionKey}-${facing}`}
           ref={setCameraNodeRef}
@@ -321,9 +357,9 @@ export function VideoNoteRecorder({
             setCameraReady(true);
           }}
         />
-      </View>
+      </Animated.View>
     );
-  }, [ensurePermissions, facing, hasAllPermissions, setCameraNodeRef]);
+  }, [cameraOpacity, ensurePermissions, facing, hasAllPermissions, setCameraNodeRef]);
 
   const blurProps =
     blurTargetRef && blurTargetRef.current
@@ -334,12 +370,14 @@ export function VideoNoteRecorder({
     <Modal
       transparent
       visible={visible}
-      animationType="fade"
+      // Без анимации Modal: при закрытии (отмена) окно исчезает сразу, а не «догорает» кругом камеры на фоне.
+      // Плавное появление — своё, см. stageOpacity.
+      animationType="none"
       presentationStyle="overFullScreen"
       statusBarTranslucent
       onRequestClose={handleCancel}
     >
-      <View style={styles.modalRoot}>
+      <Animated.View testID="video-note-stage" style={[styles.modalRoot, { opacity: stageOpacity }]}>
         <BlurView
           intensity={100}
           tint="default"
@@ -449,7 +487,7 @@ export function VideoNoteRecorder({
             </View>
           </View>
         </View>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }

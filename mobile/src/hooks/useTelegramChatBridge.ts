@@ -5,6 +5,7 @@ import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { normalizePhoneForTdlib } from '../utils/telegramPhone';
 import { buildInputMessageVideoNoteContent } from '../screens/telegramChat/composer';
 import { probeLocalVideoDimensionsWithRetry } from '../utils/probeLocalVideoDimensions';
+import { ensureSquareVideoNote } from '../services/VideoNoteSquareService';
 
 type TdlibMessage = { '@type'?: string; [key: string]: unknown };
 
@@ -172,7 +173,7 @@ export function useTelegramChatBridge(contactPhoneNumber: string) {
     });
   };
 
-  const sendVideoNote = async (result: {
+  const sendVideoNote = async (recorded: {
     uri: string;
     durationMs: number;
     thumbnailUri?: string;
@@ -180,6 +181,13 @@ export function useTelegramChatBridge(contactPhoneNumber: string) {
     if (!chatId) {
       throw new Error('Telegram chat is not ready');
     }
+
+    // Telegram принимает кружком только квадратное видео — обрезаем по центру (при сбое уйдёт исходный файл).
+    const { result } = await ensureSquareVideoNote({
+      uri: recorded.uri,
+      durationMs: recorded.durationMs,
+      thumbnailUri: recorded.thumbnailUri ?? '',
+    });
 
     const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
     if (!probed) {

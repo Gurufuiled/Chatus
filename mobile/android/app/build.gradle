@@ -164,6 +164,11 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
+    // VideoSquareModule: квадратный видеокружок для Telegram
+    implementation "androidx.media3:media3-transformer:1.8.0"
+    implementation "androidx.media3:media3-effect:1.8.0"
+    implementation "androidx.media3:media3-common:1.8.0"
+
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
     def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";

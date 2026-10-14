@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   IOSConfig,
+  withAppBuildGradle,
   withDangerousMod,
   withMainApplication,
   withPodfile,
@@ -19,6 +20,16 @@ const {
 } = require('@expo/config-plugins');
 
 const JAVA_REL = path.join('app', 'src', 'main', 'java');
+/**
+ * Media3 Transformer для `VideoSquareModule` (обрезка видеокружка до квадрата перед отправкой в Telegram).
+ * Версия та же, что у expo-video (`androidxMedia3Version`), чтобы не смешивать разные релизы media3.
+ */
+const ANDROID_MEDIA3_VERSION = '1.8.0';
+const ANDROID_MEDIA3_DEPENDENCIES = [
+  `implementation "androidx.media3:media3-transformer:${ANDROID_MEDIA3_VERSION}"`,
+  `implementation "androidx.media3:media3-effect:${ANDROID_MEDIA3_VERSION}"`,
+  `implementation "androidx.media3:media3-common:${ANDROID_MEDIA3_VERSION}"`,
+];
 const IOS_TDLIB_POD_LINE = "  pod 'TdLib', :path => '../tdlib-ios'";
 const IOS_TDLIB_HEADER_IMPORT = '#import <td/telegram/td_json_client.h>';
 const IOS_TDLIB_FALLBACK_DECLARATIONS = `
@@ -98,6 +109,22 @@ function withTdlibNative(config) {
       return cfg;
     },
   ]);
+
+  config = withAppBuildGradle(config, (mod) => {
+    if (mod.modResults.language !== 'groovy') return mod;
+    const contents = mod.modResults.contents;
+    const missing = ANDROID_MEDIA3_DEPENDENCIES.filter((line) => !contents.includes(line));
+    if (missing.length === 0) return mod;
+    const anchor = 'implementation("com.facebook.react:react-android")';
+    if (!contents.includes(anchor)) {
+      throw new Error(
+        `withTdlibNative: не нашёл ${anchor} в app/build.gradle — добавь зависимости media3 вручную: ${missing.join('; ')}`,
+      );
+    }
+    const lines = ['', '    // VideoSquareModule: квадратный видеокружок для Telegram', ...missing.map((line) => `    ${line}`)];
+    mod.modResults.contents = contents.replace(anchor, `${anchor}\n${lines.join('\n')}`);
+    return mod;
+  });
 
   config = withDangerousMod(config, [
     'ios',

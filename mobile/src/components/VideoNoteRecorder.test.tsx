@@ -186,3 +186,30 @@ describe('VideoNoteRecorder: отмена (регрессия: долгая от
     expect(VideoNoteRecorderService.cancelRecording).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('VideoNoteRecorder: без мерцания масок при открытии и отмене', () => {
+  it('окно закрывается без анимации Modal: при отмене не «догорает» кругом камеры', () => {
+    const { Modal } = require('react-native') as typeof import('react-native');
+    const { UNSAFE_getByType } = renderRecorder();
+    // раньше было fade: во время исчезновения на фоне на миг оставалась тёмная круглая маска
+    expect(UNSAFE_getByType(Modal).props.animationType).toBe('none');
+  });
+
+  it('камера скрыта (opacity 0), пока не сообщила о готовности: слой камеры не мелькает квадратом', () => {
+    const { getByTestId } = renderRecorder();
+    // CameraView из мока сообщает о готовности асинхронно — сразу после монтирования она ещё не готова
+    expect(flat(getByTestId('video-note-camera-layer')).opacity).toBe(0);
+  });
+
+  it('само окно появляется плавно: стартует прозрачным', () => {
+    const { getByTestId } = renderRecorder();
+    expect(flat(getByTestId('video-note-stage')).opacity).toBe(0);
+  });
+
+  it('слой камеры круглый: скругление и обрезка по кругу заданы на самом слое', () => {
+    const { getByTestId } = renderRecorder();
+    const layer = flat(getByTestId('video-note-camera-layer'));
+    expect(layer.overflow).toBe('hidden');
+    expect(layer.borderRadius).toBeGreaterThan(0);
+  });
+});
