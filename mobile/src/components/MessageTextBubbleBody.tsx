@@ -63,8 +63,10 @@ export function MessageTextBubbleBody({
 }
 
 const styles = StyleSheet.create({
+  // Растягиваем на ширину пузыря: у обычного текста она равна ширине текста, а когда пузырь шире (цитата ответа,
+  // пересланное, превью ссылки) время/статус остаются у ПРАВОГО края пузыря, как в Telegram, а не липнут к тексту.
   containerShrink: {
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
     maxWidth: '100%',
   },
   containerFill: {
@@ -74,6 +76,10 @@ const styles = StyleSheet.create({
   positionedContent: {
     position: 'relative',
     flexDirection: 'column',
+    // Текст всегда у ЛЕВОГО края блока. `rowStyle` приходит от экранов с `alignItems: 'flex-end'` (остаток от строки
+    // «текст + время»): в колонке это прижимало текст к правому краю, и после растяжки блока на ширину пузыря
+    // (цитата, пересланное) короткие сообщения «уезжали» вправо.
+    alignItems: 'flex-start',
     minHeight: 20,
   },
   messageText: {

@@ -16,12 +16,12 @@ import type { MessageSource } from '../stores/types';
 import { MessageTextBubbleBody } from './MessageTextBubbleBody';
 import { SingleImageViewerModal } from './SingleImageViewerModal';
 import { registerMediaThumb, unregisterMediaThumb } from '../utils/mediaThumbRegistry';
+import { computeMediaDisplaySize, shouldFloatMediaReactions } from '../utils/mediaBubbleLayout';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const MAX_BUBBLE_WIDTH = Math.min(SCREEN_WIDTH * 0.68, 300);
 const MAX_BUBBLE_HEIGHT = Math.min(SCREEN_HEIGHT * 0.48, 360);
-const MIN_PORTRAIT_WIDTH = 154;
 const DEFAULT_PLACEHOLDER_SIZE = {
   width: Math.min(MAX_BUBBLE_WIDTH, 192),
   height: Math.min(MAX_BUBBLE_HEIGHT, 192),
@@ -74,23 +74,10 @@ function computeDisplaySize(
   maxWidth: number = MAX_BUBBLE_WIDTH,
   maxHeight: number = MAX_BUBBLE_HEIGHT,
 ): { width: number; height: number } {
-  if (naturalWidth <= 0 || naturalHeight <= 0) {
-    return { width: maxWidth, height: maxHeight };
-  }
-
-  const baseScale = Math.min(maxWidth / naturalWidth, maxHeight / naturalHeight, 1);
-  let width = Math.round(naturalWidth * baseScale);
-  let height = Math.round(naturalHeight * baseScale);
-
-  const isPortrait = naturalHeight / naturalWidth > 1.28;
-  if (isPortrait && width < MIN_PORTRAIT_WIDTH) {
-    const minWidthScale = MIN_PORTRAIT_WIDTH / naturalWidth;
-    const safeScale = Math.min(Math.max(baseScale, minWidthScale), maxHeight / naturalHeight, 1);
-    width = Math.round(naturalWidth * safeScale);
-    height = Math.round(naturalHeight * safeScale);
-  }
-
-  return { width, height };
+  return computeMediaDisplaySize(naturalWidth, naturalHeight, maxWidth, maxHeight, {
+    width: maxWidth,
+    height: maxHeight,
+  });
 }
 
 function resolveKnownDisplaySize(
@@ -253,8 +240,15 @@ export function ImageBubble({
     ? { width: '100%' as const, height: channelImageH }
     : { width: w, height: h };
 
-  return (
-    <>
+  const floatReactions = shouldFloatMediaReactions({
+    hasReactions: !!inlineReactions?.length,
+    hasCaption,
+    hasFooter,
+    embedded,
+    incomingChannelPost,
+  });
+
+  const bubble = (
       <View
         style={[
           styles.container,
@@ -397,7 +391,7 @@ export function ImageBubble({
 
         {footer}
 
-        {inlineReactions?.length ? (
+        {inlineReactions?.length && !floatReactions ? (
           <MessageReactionInline
             reactions={inlineReactions}
             isMe={isMe}
@@ -407,6 +401,29 @@ export function ImageBubble({
           />
         ) : null}
       </View>
+  );
+
+  return (
+    <>
+      {floatReactions ? (
+        // Фото без подписи: реакции — отдельная «таблетка» под пузырём (как в Telegram), а не цветная полоса внутри него
+        <View style={styles.floatingReactionsWrap}>
+          {bubble}
+          <View style={[styles.floatingReactions, isMe ? styles.floatingReactionsEnd : styles.floatingReactionsStart]}>
+            <MessageReactionInline
+              reactions={inlineReactions ?? []}
+              isMe={isMe}
+              allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+              onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+              variant="floatingTail"
+              tailAlign={isMe ? 'end' : 'start'}
+              accentColor={reactionAccentColor}
+            />
+          </View>
+        </View>
+      ) : (
+        bubble
+      )}
 
       {!onOpenFullscreen ? (
         <SingleImageViewerModal
@@ -422,6 +439,20 @@ export function ImageBubble({
 }
 
 const styles = StyleSheet.create({
+  floatingReactionsWrap: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+  },
+  floatingReactions: {
+    marginTop: 4,
+    maxWidth: '100%',
+  },
+  floatingReactionsEnd: {
+    alignSelf: 'flex-end',
+  },
+  floatingReactionsStart: {
+    alignSelf: 'flex-start',
+  },
   container: {
     paddingHorizontal: 4,
     paddingVertical: 3,

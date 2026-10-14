@@ -23,6 +23,8 @@ type MessageReactionInlineProps = {
   onToggle: (emoji: string) => void;
   /** Компактные «таблетки» снизу справа (голос / кружок), как в Telegram */
   variant?: 'default' | 'floatingTail';
+  /** Для `floatingTail`: к какому краю прижать таблетку (по умолчанию — к правому, как раньше). */
+  tailAlign?: 'start' | 'end';
   accentColor?: string;
 };
 
@@ -35,6 +37,7 @@ export function MessageReactionInline({
   allowReactions,
   onToggle,
   variant = 'default',
+  tailAlign = 'end',
   accentColor,
 }: MessageReactionInlineProps) {
   if (!reactions.length) return null;
@@ -43,7 +46,11 @@ export function MessageReactionInline({
 
   return (
     <Reanimated.View
-      style={[styles.row, isTail && styles.rowFloatingTail]}
+      style={[
+        styles.row,
+        isTail && styles.rowFloatingTail,
+        isTail && tailAlign === 'start' && styles.rowFloatingTailStart,
+      ]}
       entering={REACTION_ROW_ENTERING}
       layout={REACTION_ROW_LAYOUT}
     >
@@ -145,6 +152,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignSelf: 'flex-end',
     maxWidth: '92%',
+  },
+  rowFloatingTailStart: {
+    justifyContent: 'flex-start',
+    alignSelf: 'flex-start',
   },
   chip: {
     flexDirection: 'row',
