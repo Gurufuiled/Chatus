@@ -53,7 +53,13 @@ import { ReplyPreview } from '../components/ReplyPreview';
 import { WebPagePreviewBubble } from '../components/WebPagePreviewBubble';
 import { TelegramChannelCommentsBar } from '../components/TelegramChannelCommentsBar';
 import { VideoBubble } from '../components/VideoBubble';
-import { VideoNoteBubble, stopActiveVideoNotePlayback } from '../components/VideoNoteBubble';
+import {
+  VideoNoteBubble,
+  stopActiveVideoNotePlayback,
+  useVideoNotePlayer,
+} from '../components/VideoNoteBubble';
+import { useVoicePlayer } from '../contexts/VoicePlayerContext';
+import { formatPlaybackElapsedDuration } from '../utils/mediaDuration';
 import { VoiceBubble } from '../components/VoiceBubble';
 import { PendingVideoBubble, PendingVideoNoteBubble } from '../components/TelegramPendingMediaBubble';
 import {
@@ -65,6 +71,10 @@ import { tdlibClient } from '../services/tdlib/TdlibClient';
 import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
 import { throwIfTdError } from '../services/tdlib/tdlibErrors';
 import type { VideoNoteRecordingResult } from '../services/VideoNoteRecorderService';
+import {
+  VIDEO_NOTE_SQUARE_SIDE_PX,
+  ensureSquareVideoNote,
+} from '../services/VideoNoteSquareService';
 import type { VoiceRecordingResult } from '../services/VoiceRecorderService';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { uiStore } from '../stores/uiStore';
@@ -80,7 +90,7 @@ import {
 import {
   probeLocalVideoDimensionsWithRetry,
 } from '../utils/probeLocalVideoDimensions';
-import { ChatBackgroundPattern } from './chatScreen.shared';
+import { ChatBackgroundPattern, formatPlaybackRate } from './chatScreen.shared';
 import {
   CHAT_MSG_ROW_MARGIN_GROUPED,
   CHAT_MSG_ROW_MARGIN_ISOLATED,
@@ -140,6 +150,7 @@ import {
 } from './telegramChat/telegramMediaDownloadPlan';
 import { createCoalesceQueue } from '../utils/coalesceQueue';
 import { formatFileSize } from '../utils/formatFileSize';
+import { encodeTdWaveform } from '../utils/tdVoiceWaveform';
 import { createHistoryLoadGuard } from './telegramChat/historyLoadGuard';
 import {
   getTelegramRowTdMessageIds,
@@ -434,6 +445,72 @@ export function TelegramChatScreen() {
     return map;
   }, [messages]);
   const replyToRow = replyToMessageId != null ? messageById.get(replyToMessageId) ?? null : null;
+
+  // Верхние плашки «Голосовое сообщение» / «Видеосообщение» с паузой (в Telegram-чате раньше были выключены
+  // жёстко, без связи с плеером).
+  const {
+    play: playVoice,
+    pause: pauseVoice,
+    stop: stopVoice,
+    setPlaybackRate: setVoicePlaybackRate,
+    currentVoiceUri,
+    currentVoiceKey,
+    status: voiceStatus,
+  } = useVoicePlayer();
+  const activeVideoNote = useVideoNotePlayer();
+  const activeVoiceRow = useMemo(() => {
+    if (!currentVoiceKey && !currentVoiceUri) return null;
+    return (
+      (currentVoiceKey
+        ? messages.find((row) => row.kind === 'voice' && row.id === currentVoiceKey)
+        : null) ??
+      (currentVoiceUri
+        ? messages.find((row) => row.kind === 'voice' && row.voiceUri === currentVoiceUri)
+        : null) ??
+      null
+    );
+  }, [currentVoiceKey, currentVoiceUri, messages]);
+  const activeVoiceAuthor = activeVoiceRow
+    ? activeVoiceRow.outgoing
+      ? 'Вы'
+      : activeVoiceRow.senderName?.trim() || headerTitle
+    : null;
+  const activeVoiceProgress =
+    voiceStatus.durationMs > 0 ? Math.min(voiceStatus.positionMs / voiceStatus.durationMs, 1) : 0;
+  const activeVideoNoteRow = useMemo(
+    () =>
+      activeVideoNote.messageId
+        ? messages.find((row) => row.kind === 'video_note' && row.id === activeVideoNote.messageId) ?? null
+        : null,
+    [activeVideoNote.messageId, messages],
+  );
+  const activeVideoNoteAuthor = activeVideoNoteRow
+    ? activeVideoNoteRow.outgoing
+      ? 'Вы'
+      : activeVideoNoteRow.senderName?.trim() || headerTitle
+    : null;
+  const activeVideoNoteVisible = !!(activeVideoNote.messageId && activeVideoNote.uri);
+  const activeVideoNoteDurationLabel = formatPlaybackElapsedDuration(
+    activeVideoNote.positionMs,
+    activeVideoNote.durationMs,
+  );
+  const handleToggleVoiceBannerPlayback = useCallback(() => {
+    if (!currentVoiceUri) return;
+    if (voiceStatus.isPlaying) {
+      void pauseVoice();
+      return;
+    }
+    stopActiveVideoNotePlayback();
+    void playVoice(currentVoiceUri, undefined, currentVoiceKey ?? undefined);
+  }, [currentVoiceKey, currentVoiceUri, pauseVoice, playVoice, voiceStatus.isPlaying]);
+  const handleCycleVoiceRate = useCallback(() => {
+    const rates = [1, 1.5, 2];
+    const currentIndex = rates.findIndex((rate) => Math.abs(rate - (voiceStatus.rate || 1)) < 0.01);
+    void setVoicePlaybackRate(rates[(currentIndex + 1 + rates.length) % rates.length]);
+  }, [setVoicePlaybackRate, voiceStatus.rate]);
+  const handleStopVoiceBanner = useCallback(() => {
+    void stopVoice();
+  }, [stopVoice]);
   const replyToInputMessage = useMemo(
     () => (replyToRow ? telegramRowToInputReplyMessage(replyToRow, chatId) : null),
     [chatId, replyToRow],
@@ -1653,6 +1730,8 @@ export function TelegramChatScreen() {
               path: localPath,
             },
             duration: Math.max(1, Math.round(result.durationMs / 1000)),
+            // Без дорожки у получателя рисовалась заглушка; формат — 5 бит на значение, base64
+            waveform: encodeTdWaveform(result.waveform),
           },
         })) as Record<string, unknown>;
         throwIfTdError(response);
@@ -1676,22 +1755,11 @@ export function TelegramChatScreen() {
   );
 
   const sendVideoNote = useCallback(
-    async (result: VideoNoteRecordingResult) => {
+    async (recorded: VideoNoteRecordingResult) => {
       if (!Number.isFinite(chatId)) return;
-      const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
-      if (!probed) {
-        Alert.alert(
-          'Не удалось отправить видеосообщение',
-          'Не удалось определить размер видео. Запишите ещё раз через свайп вверх по микрофону.',
-        );
-        return;
-      }
-      const lengthPx = Math.min(
-        640,
-        Math.max(240, Math.round(Math.min(probed.width, probed.height))),
-      );
       const tempId = -Date.now();
       const activeReplyToMessageId = replyToMessageId;
+      // Пузырь появляется сразу (с исходным файлом); квадратный файл подставим, когда обрезка закончится.
       const optimistic: TelegramMessageRow = {
         id: `temp-${Math.abs(tempId)}`,
         messageId: tempId,
@@ -1701,16 +1769,46 @@ export function TelegramChatScreen() {
         dateMs: Date.now(),
         status: 'sending',
         replyToMessageId: activeReplyToMessageId,
-        mediaUri: result.uri,
-        thumbnailUri: result.thumbnailUri,
-        durationMs: result.durationMs,
-        width: lengthPx,
-        height: lengthPx,
+        mediaUri: recorded.uri,
+        thumbnailUri: recorded.thumbnailUri,
+        durationMs: recorded.durationMs,
+        width: VIDEO_NOTE_SQUARE_SIDE_PX,
+        height: VIDEO_NOTE_SQUARE_SIDE_PX,
       };
       setMessages((prev) => upsertMessage(prev, optimistic));
       setReplyToMessageId(null);
       markOpenedChatRead();
+      const markFailed = (message: string) => {
+        setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
+        Alert.alert('Не удалось отправить видеосообщение', message);
+      };
       try {
+        // Telegram принимает кружком только квадратное видео, а камера пишет 4:3/16:9 (круг в приложении — маска).
+        // Прямоугольный файл сервер отдавал обычным видеороликом, поэтому обрезаем по центру до квадрата.
+        const squareOutcome = await ensureSquareVideoNote(recorded);
+        const result = squareOutcome.result;
+        if (squareOutcome.squared) {
+          setMessages((prev) =>
+            prev.map((item) =>
+              item.id === optimistic.id
+                ? { ...item, mediaUri: result.uri, thumbnailUri: result.thumbnailUri }
+                : item,
+            ),
+          );
+        } else if (squareOutcome.error && __DEV__) {
+          console.warn('[TelegramChat] square crop skipped:', squareOutcome.error);
+        }
+
+        const probed = await probeLocalVideoDimensionsWithRetry(result.uri);
+        if (!probed) {
+          markFailed('Не удалось определить размер видео. Запишите ещё раз через свайп вверх по микрофону.');
+          return;
+        }
+        const lengthPx = Math.min(
+          640,
+          Math.max(240, Math.round(Math.min(probed.width, probed.height))),
+        );
+
         await ensureReady();
         const inputMessageContent = buildInputMessageVideoNoteContent({
           videoUri: result.uri,
@@ -1747,9 +1845,7 @@ export function TelegramChatScreen() {
         patchTelegramDialogOutgoingPreview(chatId, 'Видеосообщение', mapped.dateMs);
         markOpenedChatRead();
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setMessages((prev) => prev.map((item) => (item.id === optimistic.id ? { ...item, status: 'failed' } : item)));
-        Alert.alert('Не удалось отправить видеосообщение', message);
+        markFailed(err instanceof Error ? err.message : String(err));
       }
     },
     [chatId, ensureReady, markOpenedChatRead, replyToMessageId],
@@ -2281,6 +2377,7 @@ export function TelegramChatScreen() {
                 >
                   <VoiceBubble
                     uri={item.voiceUri ?? null}
+                    messageKey={item.id}
                     waveform={item.waveform ?? []}
                     durationMs={item.durationMs ?? 0}
                     isMe={isMe}
@@ -2305,6 +2402,7 @@ export function TelegramChatScreen() {
               ) : (
                 <VoiceBubble
                   uri={item.voiceUri ?? null}
+                  messageKey={item.id}
                   waveform={item.waveform ?? []}
                   durationMs={item.durationMs ?? 0}
                   isMe={isMe}
@@ -3022,21 +3120,21 @@ export function TelegramChatScreen() {
             selectionMode={telegramSelectionMode}
             selectedCount={selectedTelegramMessageIds.length}
             onClearSelection={clearTelegramSelection}
-            activeVoiceVisible={false}
-            activeVoiceAuthor={null}
-            activeVoiceIsPlaying={false}
-            activeVoiceRateLabel="1×"
-            activeVoiceProgress={0}
-            onToggleVoicePlayback={() => undefined}
-            onCycleVoiceRate={() => undefined}
-            onStopVoice={() => undefined}
-            activeVideoNoteVisible={false}
-            activeVideoNoteAuthor={null}
-            activeVideoNoteIsPlaying={false}
-            activeVideoNoteProgress={0}
-            activeVideoNoteDurationLabel="0:00"
-            onToggleVideoNotePlayback={() => undefined}
-            onStopVideoNote={() => undefined}
+            activeVoiceVisible={!!activeVoiceRow}
+            activeVoiceAuthor={activeVoiceAuthor}
+            activeVoiceIsPlaying={voiceStatus.isPlaying}
+            activeVoiceRateLabel={formatPlaybackRate(voiceStatus.rate || 1)}
+            activeVoiceProgress={activeVoiceProgress}
+            onToggleVoicePlayback={handleToggleVoiceBannerPlayback}
+            onCycleVoiceRate={handleCycleVoiceRate}
+            onStopVoice={handleStopVoiceBanner}
+            activeVideoNoteVisible={activeVideoNoteVisible}
+            activeVideoNoteAuthor={activeVideoNoteAuthor}
+            activeVideoNoteIsPlaying={activeVideoNote.isPlaying}
+            activeVideoNoteProgress={activeVideoNote.progress}
+            activeVideoNoteDurationLabel={activeVideoNoteDurationLabel}
+            onToggleVideoNotePlayback={activeVideoNote.togglePlayback}
+            onStopVideoNote={activeVideoNote.stopPlayback}
             pinnedMessageText={telegramSelectionMode || isSearchMode ? null : pinnedMessageText}
             onPinnedPress={handlePinnedBannerPress}
             onPinnedClose={handlePinnedBannerClose}

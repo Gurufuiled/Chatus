@@ -2,6 +2,8 @@
  * Pure waveform utilities. No RN/expo deps - safe for unit tests in Node.
  */
 
+import { resampleToBars } from '../utils/voiceWaveform';
+
 const METERING_MIN_DB = -55;
 const METERING_MAX_DB = 0;
 
@@ -86,51 +88,74 @@ export function smoothWaveform(samples: number[], radius: number = 1): number[] 
   });
 }
 
+/** Метр expo-av ниже этого уровня (дБ) считаем тишиной / шумом комнаты. */
+const SILENCE_DB = -52;
 /**
- * Full UI waveform pipeline for recorded audio:
- * 1. normalize metering values
- * 2. resample to target number of bars
- * 3. smooth neighboring peaks
- * 4. ensure a tiny visible floor so silence still renders as subtle bars
+ * Степень сжатия линейной амплитуды. Речь отличается от шума в десятки раз; 0.6 оставляет тишину низкой, но не
+ * даёт одному громкому выбросу (кашель, хлопок) сделать всю остальную речь «точками».
+ */
+const AMPLITUDE_EXPONENT = 0.6;
+
+/**
+ * Метр (дБ) → уровень сэмпла 0..1 по ЛИНЕЙНОЙ амплитуде, как у Telegram.
+ * Раньше шкала была линейной по дБ (-55…0): шум комнаты (~-45 дБ) получал 0.18, то есть заметную высоту, и дорожка
+ * в паузах выглядела так, будто в микрофон кричат. Здесь тишина остаётся почти нулём.
+ */
+export function dbToAmplitudeSample(metering: number | undefined): number {
+  if (metering == null || !Number.isFinite(metering) || metering <= SILENCE_DB) return 0;
+  const amplitude = Math.pow(10, Math.min(0, metering) / 20);
+  return clamp01(Math.pow(amplitude, AMPLITUDE_EXPONENT));
+}
+
+/** Лёгкое сглаживание соседей [0.2, 0.6, 0.2]: убирает одиночные зубцы, но не размазывает речь. */
+function lightSmooth(samples: number[]): number[] {
+  return samples.map((value, index) => {
+    const prev = samples[index - 1] ?? value;
+    const next = samples[index + 1] ?? value;
+    return clamp01(prev * 0.2 + value * 0.6 + next * 0.2);
+  });
+}
+
+/**
+ * Итоговая дорожка записанного голосового (то, что отправляется и хранится):
+ * 1. сэмплы уровня (см. `dbToAmplitudeSample`) приводятся к `targetCount` пик-сэмплированием;
+ * 2. лёгкое сглаживание;
+ * 3. самое громкое место масштабируется до 1 (если запись не тишина) — как у Telegram;
+ * 4. минимальный пол, чтобы тишина оставалась видимыми точками.
  */
 export function buildUiWaveform(samples: number[], targetCount: number): number[] {
-  const resampled = resampleWaveform(samples, targetCount);
-  const smoothed = smoothWaveform(resampled, 1);
-  return smoothed.map((sample) => Math.max(0.04, clamp01(sample)));
+  if (targetCount <= 0) return [];
+  const normalized = samples.map(clamp01);
+  if (normalized.length === 0) return Array(targetCount).fill(WAVEFORM_FLOOR);
+  const smoothed = lightSmooth(resampleToBars(normalized, targetCount));
+  const peak = Math.max(...smoothed);
+  const scaled = peak > SILENCE_PEAK_FOR_SCALING ? smoothed.map((value) => value / peak) : smoothed;
+  return scaled.map((value) => Math.max(WAVEFORM_FLOOR, clamp01(value)));
 }
 
-/**
- * Noise gate for *live* recording UI only (Telegram uses raw RMS; expo dB noise sits
- * mid‑range so we must not boost quiet samples like the old pow(0.68) curve did).
- */
-function gateLiveMeterSample(normalized: number): number {
-  const v = clamp01(normalized);
-  /** Below this → treat as silence / room noise (bars stay short). */
-  const gate = 0.22;
-  if (v < gate) {
-    return clamp01((v / gate) * 0.06);
-  }
-  const above = (v - gate) / (1 - gate);
-  /** Compress low‑mid; loud speech still reaches ~1. */
-  return clamp01(0.06 + Math.pow(above, 1.15) * 0.94);
-}
+/** Усиление живой дорожки (на экране записи высота ограничена, а уровень линейный). */
+const LIVE_GAIN = 1.6;
+/** Минимальная высота столбика готовой дорожки. */
+const WAVEFORM_FLOOR = 0.04;
+/** Если пик не выше этого, запись — тишина: её не растягиваем до полной высоты. */
+const SILENCE_PEAK_FOR_SCALING = 0.08;
 
 /**
- * Live recording waveform:
- * short window, light smoothing, noise gate — quiet room noise stays visually low.
+ * Живая дорожка во время записи: последние ~2×targetCount сэмплов, лёгкое сглаживание, слабый шум остаётся низким.
  */
 export function buildLiveWaveform(samples: number[], targetCount: number): number[] {
   if (targetCount <= 0) return [];
 
-  /** Smaller window than UI so bars react sooner early in recording (fewer samples needed). */
   const liveWindow = samples.slice(-Math.max(targetCount * 2, targetCount));
-  const gated = liveWindow.map(gateLiveMeterSample);
-  const resampled = resampleWaveform(gated, targetCount);
-  const smoothed = smoothWaveform(resampled, 1);
+  const resampled = resampleToBars(liveWindow.map(clamp01), targetCount);
+  const smoothed = lightSmooth(resampled);
 
   return smoothed.map((sample, index) => {
-    /** Slight right emphasis (newest audio) without tall‑bar skew like before. */
+    /** Чуть выше свежее (правый край) — столбики «набегают» справа. */
     const freshness = targetCount <= 1 ? 1 : 0.96 + (index / (targetCount - 1)) * 0.08;
-    return Math.max(0.045, clamp01(sample * freshness));
+    /** Слабый уровень (шум комнаты) дополнительно прижимаем вниз. */
+    const gated = sample < 0.08 ? sample * 0.4 : sample;
+    /** Усиление: обычная речь (-25…-10 дБ) занимает середину–верх шкалы, а не её низ. */
+    return Math.max(0.045, clamp01(gated * LIVE_GAIN * freshness));
   });
 }

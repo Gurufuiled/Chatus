@@ -15,7 +15,7 @@ import {
   useVoicePlayerControls,
 } from '../../contexts/VoicePlayerContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { buildVoiceProfileBarHeights } from '../../utils/voiceProfileWaveform';
+import { VoiceWaveform } from '../VoiceWaveform';
 import type { ThemeColors } from '../../theme/palettes';
 import { withAlpha } from '../../theme/stylePrimitives';
 import {
@@ -384,10 +384,6 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
   const durationLabel = isCurrent && (isPlaying || progress > 0)
     ? formatRemainingPlaybackDuration(remainingMs)
     : formatMediaDuration(item.durationMs);
-  const bars = useMemo(
-    () => buildVoiceProfileBarHeights(item.waveform, item.uri, item.durationMs),
-    [item.durationMs, item.uri, item.waveform],
-  );
   const suppressNextPressRef = useRef(false);
 
   const handlePlayPress = () => {
@@ -448,25 +444,15 @@ const GroupVoiceRow = React.memo(function GroupVoiceRow({
           </View>
 
           <View style={styles.voiceWaveWrap}>
-            <View style={styles.voiceWaveTrack}>
-              {bars.map((height, index) => {
-                const isFilled = progress > 0 && index / bars.length <= progress;
-                return (
-                  <View
-                    key={`${item.id}-${index}`}
-                    style={[
-                      styles.voiceBar,
-                      {
-                        height,
-                        backgroundColor: isFilled
-                          ? themeColors.accent
-                          : withAlpha(themeColors.accent, 0.24),
-                      },
-                    ]}
-                  />
-                );
-              })}
-            </View>
+            <VoiceWaveform
+              waveform={item.waveform}
+              seed={item.uri ?? item.id}
+              durationMs={item.durationMs}
+              progress={isCurrent ? progress : 0}
+              playedColor={themeColors.accent}
+              unplayedColor={withAlpha(themeColors.accent, 0.3)}
+              disabled
+            />
             <View style={styles.voiceMetaRow}>
               <Text style={styles.voiceDuration}>{durationLabel}</Text>
               <Text style={styles.voiceDate}>{item.dateLabel}</Text>

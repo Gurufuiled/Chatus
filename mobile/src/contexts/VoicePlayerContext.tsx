@@ -15,7 +15,7 @@ import {
 } from '../services/VoicePlayerService';
 
 type VoicePlayerControls = {
-  play: (uri: string, positionMs?: number) => Promise<void>;
+  play: (uri: string, positionMs?: number, sourceKey?: string) => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
   seekTo: (positionMs: number) => Promise<void>;
@@ -89,8 +89,8 @@ function isSameVoicePlaybackSelection(
 }
 
 export function VoicePlayerProvider({ children }: { children: React.ReactNode }) {
-  const play = useCallback(async (uri: string, positionMs?: number) => {
-    await VoicePlayerService.play(uri, positionMs);
+  const play = useCallback(async (uri: string, positionMs?: number, sourceKey?: string) => {
+    await VoicePlayerService.play(uri, positionMs, sourceKey);
   }, []);
 
   const pause = useCallback(async () => {
@@ -183,6 +183,7 @@ export function useVoicePlaybackForUri(
 
 export function useVoicePlayer(): VoicePlayerControls & {
   currentVoiceUri: string | null;
+  currentVoiceKey: string | null;
   status: VoicePlayerStatus;
 } {
   const controls = useVoicePlayerControls();
@@ -191,6 +192,7 @@ export function useVoicePlayer(): VoicePlayerControls & {
   return {
     ...controls,
     currentVoiceUri: snapshot.currentVoiceUri,
+    currentVoiceKey: snapshot.currentVoiceKey,
     status: snapshot.status,
   };
 }

@@ -241,24 +241,41 @@ export const InputVoiceRecordingStage = React.memo(function InputVoiceRecordingS
   const [liveWaveform, setLiveWaveform] = React.useState<number[]>(LIVE_WAVEFORM_FALLBACK);
   const recordingPulse = React.useRef(new RNAnimated.Value(1)).current;
 
+  /**
+   * Таймер = длительность, которую сообщает сам рекордер (она же уйдёт в сообщение). Часы JS остаются запасным
+   * вариантом на случай, если статусы рекордера ещё не пошли. Раньше таймер считал только по часам от момента
+   * `await startRecording()`: он стоял на 0:00, пока шёл старт, а в сообщение попадала вся запись целиком.
+   */
+  const recorderDurationRef = React.useRef(0);
+  const startedAtRef = React.useRef(recordingStartedAtMs);
+  startedAtRef.current = recordingStartedAtMs;
+
+  const refreshElapsed = React.useCallback(() => {
+    const startedAt = startedAtRef.current;
+    const wallClockMs = startedAt ? Math.max(0, Date.now() - startedAt) : 0;
+    setElapsedMs(recorderDurationRef.current > 0 ? recorderDurationRef.current : wallClockMs);
+  }, []);
+
+  // Слушаем рекордер всё время, пока этап записи на экране: так таймер идёт с первого же отчёта рекордера, а не
+  // ждёт, пока JS вернётся из `await startRecording()`.
+  React.useEffect(() => {
+    const unsubscribeDuration = VoiceRecorderService.subscribeToDuration((durationMs) => {
+      recorderDurationRef.current = durationMs;
+      refreshElapsed();
+    });
+    return unsubscribeDuration;
+  }, [refreshElapsed]);
+
   React.useEffect(() => {
     if (!recordingStartedAtMs) {
+      recorderDurationRef.current = 0;
       setElapsedMs(0);
       return;
     }
-
-    const updateElapsed = () => {
-      setElapsedMs(Math.max(0, Date.now() - recordingStartedAtMs));
-    };
-
-    updateElapsed();
-
-    const timer = setInterval(() => {
-      updateElapsed();
-    }, 200);
-
+    refreshElapsed();
+    const timer = setInterval(refreshElapsed, 200);
     return () => clearInterval(timer);
-  }, [recordingStartedAtMs]);
+  }, [recordingStartedAtMs, refreshElapsed]);
 
   React.useEffect(() => {
     const unsubscribe = VoiceRecorderService.subscribeToLiveWaveform((nextWaveform) => {

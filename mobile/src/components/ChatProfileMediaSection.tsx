@@ -15,7 +15,6 @@ import {
   useVoicePlayerControls,
 } from '../contexts/VoicePlayerContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { buildVoiceProfileBarHeights } from '../utils/voiceProfileWaveform';
 import { withAlpha } from '../theme/stylePrimitives';
 import {
   createChatProfileMediaSectionStyles,
@@ -29,6 +28,7 @@ import {
   getCachedVideoThumbnailUri,
 } from '../utils/videoThumbnail';
 import { usePeerFirstResolvedUri } from './peerFirstMedia';
+import { VoiceWaveform } from './VoiceWaveform';
 
 export type ProfileTabKey = 'media' | 'files' | 'voice' | 'links';
 
@@ -279,10 +279,6 @@ const VoiceRow = React.memo(function VoiceRow({
   const durationLabel = isCurrent && (isPlaying || progress > 0)
     ? formatRemainingPlaybackDuration(remainingMs)
     : formatMediaDuration(item.durationMs);
-  const bars = useMemo(
-    () => buildVoiceProfileBarHeights(item.waveform, item.uri, item.durationMs),
-    [item.durationMs, item.uri, item.waveform],
-  );
 
   const handlePlayPress = () => {
     if (!item.uri) {
@@ -333,25 +329,16 @@ const VoiceRow = React.memo(function VoiceRow({
       </Pressable>
 
       <View style={styles.voiceWaveWrap}>
-        <View style={styles.voiceWaveTrack}>
-          {bars.map((height, index) => {
-            const isFilled = progress > 0 && index / bars.length <= progress;
-            return (
-              <View
-                key={`${item.id}-${index}`}
-                style={[
-                  styles.voiceBar,
-                  {
-                    height,
-                    backgroundColor: isFilled
-                      ? themeColors.accent
-                      : withAlpha(themeColors.accent, 0.24),
-                  },
-                ]}
-              />
-            );
-          })}
-        </View>
+        <VoiceWaveform
+          waveform={item.waveform}
+          seed={item.uri ?? item.id}
+          durationMs={item.durationMs}
+          progress={isCurrent ? progress : 0}
+          playedColor={themeColors.accent}
+          unplayedColor={withAlpha(themeColors.accent, 0.3)}
+          // строка целиком нажимаема и открывает меню по долгому нажатию — дорожка здесь только показывает прогресс
+          disabled
+        />
         <View style={styles.voiceMetaRow}>
           <Text style={styles.voiceDuration}>{durationLabel}</Text>
           <Text style={styles.voiceDate}>{item.dateLabel}</Text>

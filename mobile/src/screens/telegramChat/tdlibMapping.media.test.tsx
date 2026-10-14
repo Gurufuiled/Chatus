@@ -15,6 +15,7 @@ import {
   patchMessagesWithTdlibFile,
   patchMessagesWithTdlibFiles,
 } from './telegramFileUpdates';
+import { encodeTdWaveform } from '../../utils/tdVoiceWaveform';
 import type { TelegramMessageRow } from './types';
 
 const mockSend = jest.fn((_request: Record<string, unknown>) => Promise.resolve({}));
@@ -210,6 +211,43 @@ describe('голосовые', () => {
     const [fid] = ids(1);
     await mapTdMessage(voiceMessage(22, fid), 0, { mediaLocalOnly: true });
     expect(downloads()).toEqual([]);
+  });
+});
+
+describe('дорожка голосового из Telegram (регрессия: байты читали как значения — «забитая» дорожка)', () => {
+  const voiceWithWaveform = (messageId: number, fileId: number, waveform: unknown) => ({
+    id: messageId,
+    date: 1_700_000_000 + messageId,
+    is_outgoing: false,
+    content: {
+      '@type': 'messageVoiceNote',
+      voice_note: { duration: 5, waveform, voice: tdFile(fileId) },
+    },
+  });
+
+  it('5-битная дорожка TDLib распаковывается в значения 0..1', async () => {
+    const [fid] = ids(1);
+    const original = [0, 0.1, 0.5, 1, 0.25, 0.75, 0.05, 0.9];
+    const row = await mapTdMessage(voiceWithWaveform(80, fid, encodeTdWaveform(original)), 0);
+    expect(row?.waveform).toBeDefined();
+    const decoded = row!.waveform!;
+    expect(decoded.length).toBeGreaterThanOrEqual(original.length);
+    expect(decoded.every((v) => v >= 0 && v <= 1)).toBe(true);
+    original.forEach((value, i) => expect(Math.abs(decoded[i] - value)).toBeLessThanOrEqual(0.5 / 31 + 1e-9));
+  });
+
+  it('упакованные байты 0xFF не превращаются в значения больше 1', async () => {
+    const [fid] = ids(1);
+    const row = await mapTdMessage(voiceWithWaveform(81, fid, '//8='), 0);
+    expect(Math.max(...row!.waveform!)).toBe(1);
+  });
+
+  it('массив чисел (старый формат) разбирается как раньше, пустое значение — пустая дорожка', async () => {
+    const [fidA, fidB] = ids(2);
+    const asArray = await mapTdMessage(voiceWithWaveform(82, fidA, [0, 31, 15.5]), 0);
+    expect(asArray?.waveform).toEqual([0, 1, 0.5]);
+    const empty = await mapTdMessage(voiceWithWaveform(83, fidB, ''), 0);
+    expect(empty?.waveform).toEqual([]);
   });
 });
 

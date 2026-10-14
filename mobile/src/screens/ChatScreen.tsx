@@ -149,6 +149,7 @@ import {
 import { bubbleRadius } from '../theme/stylePrimitives';
 import { resolveAvatarUrl, resolveMediaUrl } from '../config';
 import { resolveVoiceMessageUri } from '../utils/messageMediaUri';
+import { findActiveVoiceMessage } from '../utils/activeVoiceMessage';
 import { hideOthersMessageOnlyOnDevice } from '../services/locallyHiddenMessages';
 import { useGroupCall } from '../contexts/GroupCallContext';
 import { GroupCallBanner } from '../components/group-call/GroupCallBanner';
@@ -471,7 +472,7 @@ export function ChatScreen() {
   );
   const currentUserId = authStore((s) => s.user?.id ?? null);
   const { play, pause, stop, setPlaybackRate } = useVoicePlayerControls();
-  const { currentVoiceUri, status: voiceStatus } = useVoicePlayerState();
+  const { currentVoiceUri, currentVoiceKey, status: voiceStatus } = useVoicePlayerState();
   const activeVideoNote = useVideoNotePlayer();
   const insets = useSafeAreaInsets();
   const composerDockPaddingBottom = useChatComposerDockPaddingBottom(insets.bottom);
@@ -767,16 +768,18 @@ export function ChatScreen() {
   }, [messages, normalizedSearchQuery]);
   matchedMessageIdsRef.current = matchedMessageIds;
   const searchMatchSignature = matchedMessageIds.join('|');
-  const activeVoiceMessage = useMemo(() => {
-    if (!currentVoiceUri) return null;
-    return (
-      messages.find((message) => {
-        if (message.msg_type !== 'voice') return false;
-        const remoteUri = message.media?.[0]?.remote_url ?? null;
-        return remoteUri === currentVoiceUri || `file://${message.id}` === currentVoiceUri;
-      }) ?? null
-    );
-  }, [currentVoiceUri, messages]);
+  // Ищем по ключу сообщения (его передаёт пузырь при запуске), а не только по адресу: после peer-first загрузки
+  // играет локальный кэш, и адрес с `remote_url` не совпадает — из-за этого плашка перестала появляться.
+  const activeVoiceMessage = useMemo(
+    () =>
+      findActiveVoiceMessage<Message>(
+        messages,
+        { key: currentVoiceKey, uri: currentVoiceUri },
+        (uri) => resolveMediaUrl(uri),
+        (message) => resolveVoiceMessageUri(message) ?? `file://${message.id}`,
+      ),
+    [currentVoiceKey, currentVoiceUri, messages],
+  );
   const activeVoiceAuthor = activeVoiceMessage
     ? getMessageAuthorNameThemed(activeVoiceMessage, chatId, currentUserId)
     : null;
@@ -2329,6 +2332,7 @@ export function ChatScreen() {
         <PeerFirstVoiceBubble
           lineId={item.chat_id}
           serverUri={voiceUri}
+          messageKey={item.id}
           waveform={item.media[0].waveform ?? []}
           durationMs={item.media[0].duration_ms ?? 0}
           isMe={isMe}

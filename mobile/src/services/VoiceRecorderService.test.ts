@@ -6,7 +6,9 @@
  */
 
 import {
+  buildLiveWaveform,
   buildUiWaveform,
+  dbToAmplitudeSample,
   dbToNormalized,
   resampleWaveform,
   smoothWaveform,
@@ -67,6 +69,46 @@ function runTests(): void {
   const uiWaveform = buildUiWaveform([0, 0.1, 0.4, 0.8, 0.3, 0.05], 8);
   assert(uiWaveform.length === 8, 'buildUiWaveform should return target length');
   assert(uiWaveform.every((v) => v >= 0.04 && v <= 1), 'buildUiWaveform should clamp to visible floor');
+
+
+  // ── линейная амплитуда: тишина остаётся почти нулём (регрессия: шум комнаты рисовался как «крик») ──
+  assert(dbToAmplitudeSample(-160) === 0, 'нулевой сигнал (-160 дБ) — ноль');
+  assert(dbToAmplitudeSample(-55) === 0, 'ниже порога тишины — ноль');
+  assert(dbToAmplitudeSample(undefined) === 0, 'нет данных — ноль');
+  assert(dbToAmplitudeSample(NaN) === 0, 'NaN — ноль');
+  assert(dbToAmplitudeSample(0) === 1, '0 дБ — максимум');
+  assert(dbToAmplitudeSample(6) === 1, 'выше 0 дБ обрезается до 1');
+  const roomNoise = dbToAmplitudeSample(-45); // типичный шум комнаты
+  const speechLevel = dbToAmplitudeSample(-20);
+  assert(roomNoise < 0.1, `шум комнаты низкий: ${roomNoise} (по старой шкале dB было ${dbToNormalized(-45)})`);
+  assert(dbToNormalized(-45) > 0.15, 'старая шкала поднимала шум заметно выше — это и было «кричу в тишине»');
+  assert(speechLevel > 0.2, `речь заметно выше шума: ${speechLevel}`);
+  assert(speechLevel > roomNoise * 4, 'отношение речи к шуму сохранено');
+  assert(dbToAmplitudeSample(-30) > dbToAmplitudeSample(-40), 'монотонно по громкости');
+
+  // ── итоговая дорожка записи ──
+  const quietTake = Array(120).fill(dbToAmplitudeSample(-48));
+  const quietWave = buildUiWaveform(quietTake, 72);
+  assert(Math.max(...quietWave) < 0.1, 'запись одной тишины не растягивается до полной высоты');
+  const talk: number[] = [];
+  for (let i = 0; i < 200; i += 1) {
+    talk.push(i % 50 < 15 ? dbToAmplitudeSample(-50) : dbToAmplitudeSample(-25 + (i % 7)));
+  }
+  const talkWave = buildUiWaveform(talk, 72);
+  assert(talkWave.length === 72, 'нужное число значений');
+  assert(Math.max(...talkWave) === 1, 'самое громкое место — 1 (как у Telegram)');
+  assert(talkWave.filter((v) => v < 0.15).length >= 8, 'паузы остаются низкими');
+  assert(talkWave.filter((v) => v > 0.6).length >= 20, 'речь высокая');
+  assert(buildUiWaveform([], 5).every((v) => v === 0.04), 'пустая запись — ровные точки');
+  assert(buildUiWaveform([0.5], 0).length === 0, 'ноль столбиков — пустой массив');
+
+  // ── живая дорожка во время записи ──
+  const liveSilence = buildLiveWaveform(Array(80).fill(dbToAmplitudeSample(-50)), 28);
+  assert(liveSilence.length === 28, 'размер живой дорожки');
+  assert(Math.max(...liveSilence) < 0.1, 'в тишине живая дорожка низкая');
+  const liveSpeech = buildLiveWaveform(Array(80).fill(dbToAmplitudeSample(-15)), 28);
+  assert(Math.min(...liveSpeech) > 0.4, 'при громкой речи живая дорожка высокая');
+  assert(buildLiveWaveform([], 28).length === 28, 'пустой вход не ломает дорожку');
 
   console.log('VoiceRecorderService dbToNormalized: all tests passed');
 }

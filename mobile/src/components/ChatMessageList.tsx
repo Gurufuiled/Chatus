@@ -1803,6 +1803,7 @@ const MessageRow = React.memo(function MessageRow({
         <PeerFirstVoiceBubble
           lineId={chatId}
           serverUri={voiceUri}
+          messageKey={bodyItem.id}
           waveform={bodyItem.media[0].waveform ?? []}
           durationMs={bodyItem.media[0].duration_ms ?? 0}
           isMe={isMe}

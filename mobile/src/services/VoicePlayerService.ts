@@ -21,6 +21,11 @@ export interface VoicePlayerStatus {
 
 export interface VoicePlayerSnapshot {
   currentVoiceUri: string | null;
+  /**
+   * Идентификатор сообщения, чьё голосовое играет (его передаёт пузырь при запуске). Адрес файла может быть
+   * подменён локальным кэшем и не совпасть с адресом в сообщении, поэтому верхняя плашка ищет сообщение по ключу.
+   */
+  currentVoiceKey: string | null;
   status: VoicePlayerStatus;
 }
 
@@ -34,6 +39,7 @@ class VoicePlayerServiceClass {
   private storeListeners = new Set<VoicePlayerStoreListener>();
   private voiceCacheDir: string | null = null;
   private currentUri: string | null = null;
+  private currentKey: string | null = null;
   private lastStatus: VoicePlayerStatus = {
     positionMs: 0,
     durationMs: 0,
@@ -42,6 +48,7 @@ class VoicePlayerServiceClass {
   };
   private lastSnapshot: VoicePlayerSnapshot = {
     currentVoiceUri: null,
+    currentVoiceKey: null,
     status: {
       positionMs: 0,
       durationMs: 0,
@@ -155,6 +162,7 @@ class VoicePlayerServiceClass {
     }
     this.soundRef = null;
     this.currentUri = null;
+    this.currentKey = null;
     this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
     this.notifyListeners({ throttleStore: false });
   }
@@ -162,6 +170,7 @@ class VoicePlayerServiceClass {
   private refreshSnapshot(): void {
     this.lastSnapshot = {
       currentVoiceUri: this.currentUri,
+      currentVoiceKey: this.currentKey,
       status: { ...this.lastStatus },
     };
   }
@@ -227,7 +236,11 @@ class VoicePlayerServiceClass {
   };
 
   /** Try streaming from remote URL (avoids download latency when supported). */
-  private async tryPlayFromUriDirect(uri: string, positionMs?: number): Promise<boolean> {
+  private async tryPlayFromUriDirect(
+    uri: string,
+    positionMs?: number,
+    sourceKey?: string,
+  ): Promise<boolean> {
     try {
       const { sound } = await Audio.Sound.createAsync(
         { uri },
@@ -243,6 +256,7 @@ class VoicePlayerServiceClass {
       );
       this.soundRef = sound;
       this.currentUri = uri;
+      this.currentKey = sourceKey ?? null;
       const status = await sound.getStatusAsync();
       if (status.isLoaded) {
         this.lastStatus = {
@@ -265,12 +279,13 @@ class VoicePlayerServiceClass {
    * Stops and unloads any previously playing sound.
    * Serialized to avoid race when play() is called concurrently.
    */
-  async play(uri: string, positionMs?: number): Promise<void> {
+  async play(uri: string, positionMs?: number, sourceKey?: string): Promise<void> {
     const previous = this.playPromise;
     this.playPromise = (async () => {
       await previous;
 
       if (this.soundRef && this.currentUri === uri) {
+        if (sourceKey != null) this.currentKey = sourceKey;
         const currentStatus = await this.soundRef.getStatusAsync();
         if (currentStatus.isLoaded) {
           if (positionMs != null) {
@@ -303,7 +318,7 @@ class VoicePlayerServiceClass {
       await this.stopAndUnloadCurrent();
       await this.preparePlaybackAudioMode();
       if (/^https?:\/\//i.test(uri)) {
-        const streamed = await this.tryPlayFromUriDirect(uri, positionMs);
+        const streamed = await this.tryPlayFromUriDirect(uri, positionMs, sourceKey);
         if (streamed) return;
       }
       const playableUri = await this.resolvePlayableUri(uri);
@@ -323,6 +338,7 @@ class VoicePlayerServiceClass {
 
       this.soundRef = sound;
       this.currentUri = uri;
+      this.currentKey = sourceKey ?? null;
       const status = await sound.getStatusAsync();
       if (status.isLoaded) {
         this.lastStatus = {
@@ -354,6 +370,7 @@ class VoicePlayerServiceClass {
     } catch {
       this.soundRef = null;
       this.currentUri = null;
+      this.currentKey = null;
       this.lastStatus = { positionMs: 0, durationMs: 0, isPlaying: false, rate: this.playbackRate };
       this.notifyListeners({ throttleStore: false });
       throw new Error('Failed to pause playback');

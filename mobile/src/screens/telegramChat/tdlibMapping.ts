@@ -10,6 +10,7 @@ import { previewForUnsupported } from './composer';
 import { getTdMediaAlbumId, mergeTelegramFeedRows } from './telegramAlbumRows';
 import { classifyTelegramForwardOriginType } from './telegramForwardOrigin';
 import { planGridPhoto, planPhotoDisplay, type PhotoSizeCandidate } from './tdlibPhotoSize';
+import { decodeTdWaveform } from '../../utils/tdVoiceWaveform';
 import type {
   TelegramAlbumMediaItem,
   TelegramMessageRow,
@@ -235,16 +236,9 @@ function parseTdVoiceWaveform(voiceNote: Record<string, unknown> | null): number
   if (!voiceNote) return [];
   const raw = voiceNote.waveform;
   if (typeof raw === 'string' && raw.length > 0) {
-    try {
-      const binary = atob(raw);
-      const bars: number[] = [];
-      for (let i = 0; i < binary.length; i += 1) {
-        bars.push(binary.charCodeAt(i) / 31);
-      }
-      return bars;
-    } catch {
-      return [];
-    }
+    // TDLib отдаёт дорожку 5-битными значениями (0…31), упакованными подряд. Раньше каждый БАЙТ читали как одно
+    // значение (`byte / 31`): получались числа до 8 и «забитая» дорожка у голосовых из Telegram.
+    return decodeTdWaveform(raw);
   }
   if (Array.isArray(raw)) {
     return raw.map((value) =>

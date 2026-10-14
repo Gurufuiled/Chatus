@@ -1,12 +1,16 @@
 import React, { useMemo, useRef, useState } from 'react';
 import Feather from '@expo/vector-icons/Feather';
-import { ActivityIndicator, Dimensions, type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import {
   useVoicePlaybackForUri,
   useVoicePlayerControls,
 } from '../contexts/VoicePlayerContext';
 import { bubbleRadius, colors, typography } from '../theme/colors';
+import { withAlpha } from '../theme/stylePrimitives';
+import { positionMsForRatio } from '../utils/voiceWaveform';
+import { voiceBubbleWidth } from '../utils/mediaBubbleLayout';
+import { VoiceWaveform } from './VoiceWaveform';
 import {
   formatMediaDuration,
   formatRemainingPlaybackDuration,
@@ -46,82 +50,13 @@ export interface VoiceBubbleProps {
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
   source?: MessageSource;
   loading?: boolean;
+  /** Идентификатор сообщения: по нему верхняя плашка находит играющее голосовое, даже если адрес файла подменён кэшем. */
+  messageKey?: string;
 }
 
-const VOICE_BUBBLE_WIDTH = Math.min(Dimensions.get('window').width * 0.72, 290);
-const VOICE_BAR_COUNT = 74;
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
-}
-
-function createDeterministicSeed(uri: string, durationMs: number): number {
-  let hash = durationMs || 1;
-  for (let i = 0; i < uri.length; i += 1) {
-    hash = (hash * 31 + uri.charCodeAt(i)) >>> 0;
-  }
-  return hash || 1;
-}
-
-function seededUnitNoise(seed: number, index: number): number {
-  const x = Math.sin(seed * 0.00013 + index * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function buildDecorativeFallback(
-  uri: string,
-  durationMs: number,
-  targetCount: number,
-): number[] {
-  const seed = createDeterministicSeed(uri, durationMs);
-  return Array.from({ length: targetCount }, (_, index) => {
-    const t = targetCount <= 1 ? 0 : index / (targetCount - 1);
-    const phraseEnvelope = 0.28 + Math.sin(t * Math.PI) * 0.34;
-    const phrasePulse =
-      Math.sin(t * Math.PI * 4.1 + seededUnitNoise(seed, index) * 1.2) * 0.18;
-    const localNoise = (seededUnitNoise(seed, index + 17) - 0.5) * 0.2;
-    const gapDip = index % 6 === 0 ? -0.2 : index % 4 === 0 ? -0.08 : 0;
-    return clamp01(phraseEnvelope + phrasePulse + localNoise + gapDip);
-  });
-}
-
-function buildTelegramLikeBars(
-  uri: string,
-  waveform: number[],
-  durationMs: number,
-  targetCount: number,
-): number[] {
-  if (waveform.length === 0) {
-    return buildDecorativeFallback(uri, durationMs, targetCount);
-  }
-
-  const clamped = waveform.map(clamp01);
-
-  const bucketSize = clamped.length / targetCount;
-  const bars = Array.from({ length: targetCount }, (_, i) => {
-    const start = Math.floor(i * bucketSize);
-    const end = Math.min(clamped.length, Math.ceil((i + 1) * bucketSize));
-    const bucket = clamped.slice(start, Math.max(end, start + 1));
-    if (bucket.length === 0) return 0;
-    const peak = Math.max(...bucket);
-    const avg = bucket.reduce((s, v) => s + v, 0) / bucket.length;
-    return peak * 0.6 + avg * 0.4;
-  });
-
-  const min = Math.min(...bars);
-  const max = Math.max(...bars);
-  const spread = max - min;
-
-  if (spread < 0.005) {
-    return buildDecorativeFallback(uri, durationMs, targetCount);
-  }
-
-  return bars.map((value, index) => {
-    const normalized = (value - min) / spread;
-    const t = targetCount <= 1 ? 0.5 : index / (targetCount - 1);
-    const edgeTaper = 0.88 + Math.sin(t * Math.PI) * 0.12;
-    return clamp01(normalized * edgeTaper);
-  });
 }
 
 function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
@@ -145,7 +80,8 @@ function arePropsEqual(prev: VoiceBubbleProps, next: VoiceBubbleProps) {
     prev.inlineReactions === next.inlineReactions &&
     prev.allowMessageReactions === next.allowMessageReactions &&
     prev.onToggleInlineReaction === next.onToggleInlineReaction &&
-    prev.loading === next.loading
+    prev.loading === next.loading &&
+    prev.messageKey === next.messageKey
   );
 }
 
@@ -173,10 +109,13 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   style,
   source,
   loading = false,
+  messageKey,
 }: VoiceBubbleProps) {
+  const { width: screenWidth } = useWindowDimensions();
   const { play, pause, seekTo } = useVoicePlayerControls();
   const { isCurrent, isPlaying, progress, remainingMs } = useVoicePlaybackForUri(uri, durationMs);
-  const [waveformWidth, setWaveformWidth] = useState(0);
+  /** Пока палец ведёт по дорожке — доля 0..1 под пальцем (для времени рядом). */
+  const [scrubRatio, setScrubRatio] = useState<number | null>(null);
 
   // Throttle the progress value used for waveform rendering to avoid
   // excessive re-renders from 100ms service ticks. UI looks identical at 8fps.
@@ -195,27 +134,12 @@ export const VoiceBubble = React.memo(function VoiceBubble({
   }, [isPlaying, progress]);
 
   const shouldShowRemainingDuration = isCurrent && (isPlaying || progress > 0);
-  const durationLabel = shouldShowRemainingDuration
-    ? formatRemainingPlaybackDuration(remainingMs)
-    : formatMediaDuration(durationMs);
-
-  const bars = useMemo(
-    () => buildTelegramLikeBars(uri ?? 'voice-loading', waveform, durationMs, VOICE_BAR_COUNT),
-    [durationMs, uri, waveform]
-  );
-  const barHeights = useMemo(
-    () =>
-      bars.map((value) => {
-        const v = Math.max(0, Math.min(1, value ?? 0));
-        return 2 + Math.pow(v, 1.4) * 22;
-      }),
-    [bars]
-  );
-
-  const barCount = bars.length;
-  const filledBarCount =
-    renderProgress > 0 ? Math.max(0, Math.min(barCount, Math.round(renderProgress * barCount))) : 0;
-  const hasPlaybackProgress = isCurrent && renderProgress > 0;
+  const durationLabel =
+    scrubRatio != null
+      ? formatRemainingPlaybackDuration(Math.max(durationMs - positionMsForRatio(scrubRatio, durationMs), 0))
+      : shouldShowRemainingDuration
+        ? formatRemainingPlaybackDuration(remainingMs)
+        : formatMediaDuration(durationMs);
 
   const handlePress = () => {
     if (!uri || loading) return;
@@ -226,7 +150,7 @@ export const VoiceBubble = React.memo(function VoiceBubble({
 
     try {
       stopActiveVideoNotePlayback();
-      void play(uri).catch((err) => {
+      void play(uri, undefined, messageKey).catch((err) => {
         if (__DEV__) console.warn('[VoiceBubble] playback error:', err, uri);
       });
     } catch (err) {
@@ -234,22 +158,15 @@ export const VoiceBubble = React.memo(function VoiceBubble({
     }
   };
 
-  const handleWaveformLayout = (event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    if (nextWidth > 0 && nextWidth !== waveformWidth) {
-      setWaveformWidth(nextWidth);
-    }
-  };
-
-  const handleWaveformPress = (pressX: number) => {
-    if (!uri || loading || waveformWidth <= 0 || durationMs <= 0) return;
-    const ratio = clamp01(pressX / waveformWidth);
-    const targetPositionMs = Math.round(durationMs * ratio);
+  /** Тап по дорожке или конец перетаскивания: перейти в точку (или начать с неё, если это другое голосовое). */
+  const handleSeek = (ratio: number) => {
+    if (!uri || loading || durationMs <= 0) return;
+    const targetPositionMs = positionMsForRatio(clamp01(ratio), durationMs);
 
     try {
       if (!isCurrent) {
         stopActiveVideoNotePlayback();
-        void play(uri, targetPositionMs).catch((err) => {
+        void play(uri, targetPositionMs, messageKey).catch((err) => {
           if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
         });
       } else {
@@ -261,6 +178,36 @@ export const VoiceBubble = React.memo(function VoiceBubble({
       if (__DEV__) console.warn('[VoiceBubble] seek error:', err, uri);
     }
   };
+
+  const playedColor = isMe ? outgoingTextColor ?? '#FFFFFF' : '#4A8FF5';
+  const unplayedColor = isMe
+    ? outgoingTextColor
+      ? withAlpha(outgoingTextColor, 0.4)
+      : 'rgba(255, 255, 255, 0.4)'
+    : '#D2D5DA';
+
+  const hasReactions = !!inlineReactions?.length;
+  const metaRight = (
+    <View style={styles.metaRight}>
+      {viewCount != null ? (
+        <View style={styles.metricWrap}>
+          <Feather name="eye" size={12} color="rgba(120, 126, 138, 0.9)" />
+          <Text style={styles.metricText}>{viewCount}</Text>
+        </View>
+      ) : null}
+      {time ? (
+        <MessageTimeStatus
+          time={time}
+          status={messageStatus ?? 'sent'}
+          isMe={isMe}
+          compact
+          timeColor={isMe ? outgoingMetaColor : undefined}
+          iconColor={isMe ? outgoingMetaColor : undefined}
+          source={source}
+        />
+      ) : null}
+    </View>
+  );
 
   return (
     <View
@@ -274,6 +221,8 @@ export const VoiceBubble = React.memo(function VoiceBubble({
             }
           : null,
         isMe && bubbleMeColor ? { backgroundColor: bubbleMeColor } : null,
+        // Ширина по длительности (как в Telegram): короткое голосовое — узкий пузырь, а не всегда максимум
+        embedded ? null : { width: voiceBubbleWidth(durationMs, screenWidth) },
         style,
       ]}
     >
@@ -306,35 +255,18 @@ export const VoiceBubble = React.memo(function VoiceBubble({
         </Pressable>
 
         <View style={styles.contentColumn}>
-          <Pressable
-            onLayout={handleWaveformLayout}
-            onPress={(event) => {
-              handleWaveformPress(event.nativeEvent.locationX);
-            }}
-            style={({ pressed }) => [styles.waveformContainer, pressed && styles.waveformPressed]}
-          >
-            {barHeights.map((barHeight, index) => {
-              const isFilled = renderProgress > 0 && index / barCount <= renderProgress;
-              return (
-                <View
-                  key={index}
-                  style={[
-                    styles.bar,
-                    {
-                      height: barHeight,
-                      backgroundColor: isFilled
-                        ? isMe
-                          ? outgoingTextColor ?? '#FFFFFF'
-                          : '#4A8FF5'
-                        : isMe
-                          ? outgoingTextColor ? `${outgoingTextColor}66` : 'rgba(255, 255, 255, 0.4)'
-                          : '#D2D5DA',
-                    },
-                  ]}
-                />
-              );
-            })}
-          </Pressable>
+          <VoiceWaveform
+            testID="voice-bubble-waveform"
+            waveform={waveform}
+            seed={uri ?? 'voice-loading'}
+            durationMs={durationMs}
+            progress={isCurrent ? renderProgress : 0}
+            playedColor={playedColor}
+            unplayedColor={unplayedColor}
+            disabled={!uri || loading}
+            onSeek={handleSeek}
+            onScrub={setScrubRatio}
+          />
 
           <View style={styles.metaRow}>
             <Text
@@ -346,38 +278,27 @@ export const VoiceBubble = React.memo(function VoiceBubble({
             >
               {durationLabel}
             </Text>
-            <View style={styles.metaRight}>
-              {viewCount != null ? (
-                <View style={styles.metricWrap}>
-                  <Feather name="eye" size={12} color="rgba(120, 126, 138, 0.9)" />
-                  <Text style={styles.metricText}>{viewCount}</Text>
-                </View>
-              ) : null}
-              {time ? (
-                <MessageTimeStatus
-                  time={time}
-                  status={messageStatus ?? 'sent'}
-                  isMe={isMe}
-                  compact
-                  timeColor={isMe ? outgoingMetaColor : undefined}
-                  iconColor={isMe ? outgoingMetaColor : undefined}
-                  source={source}
-                />
-              ) : null}
-            </View>
+            {hasReactions ? null : metaRight}
           </View>
         </View>
       </View>
 
-      {inlineReactions?.length ? (
-        <MessageReactionInline
-          reactions={inlineReactions}
-          isMe={isMe}
-          allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
-          onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
-          variant="floatingTail"
-          accentColor={reactionAccentColor}
-        />
+      {hasReactions ? (
+        // С реакциями (как в Telegram): внизу в одной строке на всю ширину пузыря — реакции слева, время справа
+        <View testID="voice-bubble-reactions-row" style={styles.reactionsRow}>
+          <View style={styles.reactionsLeft}>
+            <MessageReactionInline
+              reactions={inlineReactions ?? []}
+              isMe={isMe}
+              allowReactions={!!allowMessageReactions && !!onToggleInlineReaction}
+              onToggle={(emoji) => onToggleInlineReaction?.(emoji)}
+              variant="floatingTail"
+              tailAlign="start"
+              accentColor={reactionAccentColor}
+            />
+          </View>
+          {metaRight}
+        </View>
       ) : null}
     </View>
   );
@@ -389,7 +310,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     marginVertical: 4,
-    width: VOICE_BUBBLE_WIDTH,
     maxWidth: '100%',
     minWidth: 0,
   },
@@ -453,23 +373,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  waveformContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    height: 28,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  waveformPressed: {
-    opacity: 0.9,
-  },
-  bar: {
-    width: 2.2,
-    borderRadius: 999,
-    minHeight: 2.5,
-  },
   metaRow: {
     marginTop: 4,
     flexDirection: 'row',
@@ -490,6 +393,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  reactionsRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  reactionsLeft: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   metricWrap: {
     flexDirection: 'row',
