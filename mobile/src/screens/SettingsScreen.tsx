@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,7 +6,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -22,18 +21,24 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SettingsStackParamList } from '../navigation/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { LinearGradient } from 'expo-linear-gradient';
 import { AvatarPickSheet, type AvatarPickResult } from '../components/AvatarPickSheet';
-import { SettingsIconRow } from '../components/settings/SettingsIconRow';
-import { TELEGRAM_SETTINGS_ROW_GLYPHS } from '../icons/telegram/settingsPaths';
 import { useTheme } from '../contexts/ThemeContext';
 import { createSettingsScreenStyles } from './settingsScreen.styles';
+import { getSettingsPalette } from './settingsPalette';
 import { telegramAccountStore } from '../stores/telegramAccountStore';
 import { getTelegramSettingsConnectionMeta } from './telegramAuth/telegramAuthPresentation';
+import { friendlyApiError } from '../utils/apiErrorMessage';
+
+type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+/** Не перезапрашивать профиль чаще, чем раз в это время, если прошлая загрузка удалась. */
+const PROFILE_REFRESH_MIN_INTERVAL_MS = 30_000;
 
 export function SettingsScreen() {
-  const { colors: themeColors } = useTheme();
-  const styles = useMemo(() => createSettingsScreenStyles(themeColors), [themeColors]);
+  const { colors: themeColors, resolvedScheme } = useTheme();
+  const palette = useMemo(() => getSettingsPalette(resolvedScheme), [resolvedScheme]);
+  const styles = useMemo(() => createSettingsScreenStyles(themeColors, palette), [themeColors, palette]);
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const navigation =
@@ -46,9 +51,24 @@ export function SettingsScreen() {
     phone: string | null;
     bio: string | null;
     birthday: number | null;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
+  } | null>(() =>
+    // Профиль из локальной сессии: экран рисуется сразу, а свежие данные подтягиваются в фоне
+    user
+      ? {
+          display_name: user.display_name ?? null,
+          last_name: user.last_name ?? null,
+          avatar_url: user.avatar_url ?? null,
+          handle: user.handle ?? null,
+          phone: user.phone ?? null,
+          bio: user.bio ?? null,
+          birthday: user.birthday ?? null,
+        }
+      : null,
+  );
+  // Спиннер на весь экран — только если показать совсем нечего (раньше экран висел пустым, пока шёл запрос)
+  const [loading, setLoading] = useState(() => !user);
   const [error, setError] = useState<string | null>(null);
+  const lastLoadedAtRef = useRef(0);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarSheetVisible, setAvatarSheetVisible] = useState(false);
   const telegramAuthStatus = telegramAccountStore((s) => s.authStatus);
@@ -75,10 +95,10 @@ export function SettingsScreen() {
   }, [navigation, telegramAuthStatus]);
 
   const loadProfile = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       const p = await getProfile();
+      lastLoadedAtRef.current = Date.now();
       setProfile({
         display_name: p.display_name,
         last_name: p.last_name ?? null,
@@ -89,7 +109,8 @@ export function SettingsScreen() {
         birthday: p.birthday ?? null,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load profile');
+      lastLoadedAtRef.current = 0; // после ошибки следующий вход на экран пробует снова
+      setError(friendlyApiError(e, 'Не удалось загрузить профиль'));
     } finally {
       setLoading(false);
     }
@@ -97,6 +118,7 @@ export function SettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (Date.now() - lastLoadedAtRef.current < PROFILE_REFRESH_MIN_INTERVAL_MS) return;
       void loadProfile();
     }, [loadProfile])
   );
@@ -111,17 +133,17 @@ export function SettingsScreen() {
             paddingHorizontal: 12,
             paddingVertical: 6,
             borderRadius: 14,
-            backgroundColor: themeColors.inputBackgroundSolid,
+            backgroundColor: palette.card,
             opacity: pressed ? 0.75 : 1,
           })}
         >
-          <Text style={{ fontSize: 15, fontWeight: '600', color: themeColors.textPrimary }}>
+          <Text style={{ fontSize: 15, fontWeight: '600', color: palette.title }}>
             Изм.
           </Text>
         </Pressable>
       ),
     });
-  }, [navigation, themeColors.inputBackgroundSolid, themeColors.textPrimary]);
+  }, [navigation, palette.card, palette.title]);
 
   const syncAuthStore = useCallback((apiUser: Parameters<typeof apiUserToUserRow>[0]) => {
     const token = authStore.getState().accessToken;
@@ -150,7 +172,7 @@ export function SettingsScreen() {
         await authService.saveUserToLocal(updated);
         syncAuthStore(updated);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to upload avatar');
+        setError(friendlyApiError(e, 'Не удалось загрузить фото'));
       } finally {
         setUploadingAvatar(false);
       }
@@ -167,267 +189,283 @@ export function SettingsScreen() {
   const handleVal = profile?.handle?.trim().replace(/^@/, '') ?? '';
   const phoneLine = profile?.phone?.trim() || '';
   const handleLine = handleVal ? `@${handleVal}` : '';
+  const initial = (profile?.display_name ?? user?.display_name ?? '')[0]?.toUpperCase() ?? '';
 
   const showComingSoon = useCallback((title: string) => {
     Alert.alert('Скоро', `${title}: раздел будет подключен позже.`);
   }, []);
 
-  const sg = TELEGRAM_SETTINGS_ROW_GLYPHS;
+  const telegramBadgeColors = useMemo(() => {
+    if (resolvedScheme !== 'dark') {
+      return { bg: telegramConnectionMeta.badgeBg, text: telegramConnectionMeta.badgeText };
+    }
+    // на тёмном фоне тёмно-зелёный/синий текст бейджа почти не виден — осветляем
+    const lighter: Record<string, string> = {
+      '#2E7D4A': '#5FD38A',
+      '#B45309': '#FBBF24',
+      '#2563EB': '#7FB2FF',
+      '#C62828': '#FF8A8F',
+    };
+    return {
+      bg: telegramConnectionMeta.badgeBg,
+      text: lighter[telegramConnectionMeta.badgeText] ?? telegramConnectionMeta.badgeText,
+    };
+  }, [resolvedScheme, telegramConnectionMeta]);
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={themeColors.accent} />
+        <ActivityIndicator size="large" color={palette.link} />
       </View>
     );
   }
 
+  const renderRow = (row: {
+    key: string;
+    icon: IconName;
+    title: string;
+    subtitle?: string;
+    onPress: () => void;
+    soon?: boolean;
+    last?: boolean;
+    badge?: { label: string; bg: string; text: string };
+    testID?: string;
+  }) => (
+    <Pressable
+      key={row.key}
+      testID={row.testID}
+      onPress={row.onPress}
+      style={({ pressed }) => [
+        styles.row,
+        !row.last && styles.rowDivider,
+        row.soon && styles.rowSoon,
+        pressed && styles.rowPressed,
+      ]}
+    >
+      <View style={styles.tile}>
+        <MaterialCommunityIcons name={row.icon} size={20} color={palette.tileIcon} />
+      </View>
+      <View style={styles.rowText}>
+        <Text style={styles.rowTitle} numberOfLines={2}>
+          {row.title}
+        </Text>
+        {row.subtitle ? (
+          <Text style={styles.rowSubtitle} numberOfLines={2}>
+            {row.subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {row.badge ? (
+        <View style={[styles.statusBadge, { backgroundColor: row.badge.bg }]}>
+          <Text style={[styles.statusBadgeText, { color: row.badge.text }]}>{row.badge.label}</Text>
+        </View>
+      ) : null}
+      {row.soon ? (
+        <Text style={styles.soonLabel}>Скоро</Text>
+      ) : (
+        <View style={styles.chevronWrap}>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={palette.chevron} />
+        </View>
+      )}
+    </Pressable>
+  );
+
+  const soon = (title: string) => () => showComingSoon(title);
+
   return (
     <>
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 96 }]} keyboardShouldPersistTaps="handled">
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        )}
-
-        <Text style={styles.sectionTitle}>Аккаунт</Text>
-        <Pressable
-          style={styles.profileHeroCard}
-          onPress={() => navigation.navigate('MyProfile')}
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 96 }]}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.profileHeroAvatarWrap}>
-            {avatarUrl ? (
-              <Image
-                source={{ uri: avatarUrl }}
-                style={styles.profileHeroAvatar}
-                contentFit="cover"
-                cachePolicy="disk"
-              />
-            ) : (
-              <View style={styles.profileHeroAvatarPlaceholder}>
-                <Text style={styles.profileHeroAvatarText}>
-                  {(profile?.display_name ?? user?.display_name ?? '?')[0]?.toUpperCase() ?? '?'}
-                </Text>
-              </View>
-            )}
-            {uploadingAvatar && (
-              <View style={styles.profileHeroAvatarOverlay}>
-                <ActivityIndicator color={themeColors.textSecondaryMuted} />
-              </View>
-            )}
-          </View>
-          <Text style={styles.profileHeroTitle}>{profileTitle}</Text>
-          <Text style={styles.profileHeroMeta} numberOfLines={2}>
-            {phoneLine && handleLine
-              ? `${phoneLine} · ${handleLine}`
-              : phoneLine || handleLine || ' '}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.changePhotoBtn,
-            pressed && { opacity: 0.85 },
-            uploadingAvatar && { opacity: 0.5 },
-          ]}
-          onPress={uploadingAvatar ? undefined : handleAvatarTap}
-          disabled={uploadingAvatar}
-        >
-          <MaterialCommunityIcons name="camera-plus-outline" size={22} color={themeColors.accent} />
-          <Text style={styles.changePhotoBtnText}>Изменить фотографию</Text>
-        </Pressable>
-
-        <View style={{ height: 8 }} />
-
-        <Text style={styles.sectionTitle}>Настройки</Text>
-        <View style={styles.settingsCard}>
-          <Pressable
-            onPress={openTelegram}
-            style={({ pressed }) => [
-              styles.servicesRow,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: themeColors.separator },
-              pressed && styles.servicesRowPressed,
-            ]}
-          >
-            <View style={[styles.servicesIconBubble, { backgroundColor: '#3390ec' }]}>
-              <FontAwesome name="telegram" size={22} color="#FFF" />
+          {error && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
-            <View style={styles.servicesText}>
-              <Text style={styles.servicesTitle}>Telegram</Text>
-              <Text style={styles.servicesSubtitle}>{telegramConnectionMeta.subtitle}</Text>
-            </View>
-            <View
-              style={[
-                styles.telegramStatusBadge,
-                { backgroundColor: telegramConnectionMeta.badgeBg },
-              ]}
+          )}
+
+          <View style={styles.heroCard}>
+            <Pressable
+              style={styles.heroAvatarWrap}
+              onPress={() => navigation.navigate('MyProfile')}
+              testID="settings-hero-avatar"
             >
-              <Text
-                style={[
-                  styles.telegramStatusBadgeText,
-                  { color: telegramConnectionMeta.badgeText },
-                ]}
+              {avatarUrl ? (
+                <Image
+                  source={{ uri: avatarUrl }}
+                  style={styles.heroAvatar}
+                  contentFit="cover"
+                  cachePolicy="disk"
+                />
+              ) : (
+                <LinearGradient
+                  colors={[palette.gradientFrom, palette.gradientTo]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.heroAvatar}
+                >
+                  {initial ? (
+                    <Text style={styles.heroAvatarInitial}>{initial}</Text>
+                  ) : (
+                    <MaterialCommunityIcons name="account-outline" size={42} color="#FFFFFF" />
+                  )}
+                </LinearGradient>
+              )}
+              {uploadingAvatar && (
+                <View style={styles.heroAvatarOverlay}>
+                  <ActivityIndicator color="#FFFFFF" />
+                </View>
+              )}
+              <Pressable
+                style={styles.heroCameraBadge}
+                onPress={uploadingAvatar ? undefined : handleAvatarTap}
+                disabled={uploadingAvatar}
+                hitSlop={8}
+                testID="settings-hero-camera"
               >
-                {telegramConnectionMeta.badge}
+                <MaterialCommunityIcons name="camera" size={13} color="#FFFFFF" />
+              </Pressable>
+            </Pressable>
+            <Pressable onPress={() => navigation.navigate('MyProfile')}>
+              <Text style={styles.heroTitle}>{profileTitle}</Text>
+              <Text style={styles.heroMeta} numberOfLines={2}>
+                {phoneLine && handleLine
+                  ? `${phoneLine} · ${handleLine}`
+                  : phoneLine || handleLine || ' '}
               </Text>
-            </View>
-            <Text style={styles.servicesChevron}>›</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate('Appearance')}
-            style={({ pressed }) => [
-              styles.servicesRow,
-              { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: themeColors.separator },
-              pressed && styles.servicesRowPressed,
-            ]}
-          >
-            <View style={[styles.servicesIconBubble, { backgroundColor: '#2fc1d6' }]}>
-              <MaterialCommunityIcons
-                name="palette"
-                size={20}
-                color="#FFF"
-              />
-            </View>
-            <View style={styles.servicesText}>
-              <Text style={styles.servicesTitle}>Оформление</Text>
-              <Text style={styles.servicesSubtitle}>Тема приложения</Text>
-            </View>
-            <Text style={styles.servicesChevron}>›</Text>
-          </Pressable>
-          <SettingsIconRow
-            title="Настройки чатов"
-            iconD={sg.chat.d}
-            iconFillRule={sg.chat.fillRule}
-            iconBgColor="#F2994A"
-            placeholder={false}
-            showChevron
-            onPress={() => navigation.navigate('ChatSettings')}
-          />
-          <SettingsIconRow
-            title="Уведомления и звуки"
-            iconD={sg.sounds.d}
-            iconFillRule={sg.sounds.fillRule}
-            iconBgColor="#FF4A4A"
-            placeholder
-            onPress={() => showComingSoon('Уведомления и звуки')}
-          />
-          <SettingsIconRow
-            title="Конфиденциальность"
-            iconD={sg.privacy.d}
-            iconFillRule={sg.privacy.fillRule}
-            iconBgColor="#34C759"
-            placeholder
-            onPress={() => showComingSoon('Конфиденциальность')}
-          />
-          <SettingsIconRow
-            title="Данные и память"
-            iconD={sg.data.d}
-            iconFillRule={sg.data.fillRule}
-            iconBgColor="#42A5F5"
-            placeholder
-            onPress={() => showComingSoon('Данные и память')}
-          />
-          <SettingsIconRow
-            title="Язык"
-            iconD={sg.language.d}
-            iconFillRule={sg.language.fillRule}
-            iconBgColor="#AF52DE"
-            placeholder
-            onPress={() => showComingSoon('Язык')}
-          />
-          <SettingsIconRow
-            title="Устройства"
-            iconD={sg.devices.d}
-            iconFillRule={sg.devices.fillRule}
-            iconBgColor="#00C2CB"
-            placeholder
-            onPress={() => showComingSoon('Устройства')}
-          />
-          <SettingsIconRow
-            title="Пароль и безопасность"
-            iconD={sg.security.d}
-            iconFillRule={sg.security.fillRule}
-            iconBgColor="#1E88E5"
-            placeholder
-            onPress={() => showComingSoon('Пароль и безопасность')}
-          />
-        </View>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.heroChangePhoto, pressed && { opacity: 0.7 }, uploadingAvatar && { opacity: 0.5 }]}
+              onPress={uploadingAvatar ? undefined : handleAvatarTap}
+              disabled={uploadingAvatar}
+            >
+              <Text style={styles.heroChangePhotoText}>Изменить фотографию</Text>
+            </Pressable>
+          </View>
 
-        <Text style={styles.sectionTitle}>Сервисы</Text>
-        <View style={styles.settingsCard}>
-          <Pressable
-            onPress={() => navigation.navigate('Services')}
-            style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
-          >
-            <View style={[styles.servicesIconBubble, { backgroundColor: '#3390ec' }]}>
-              <MaterialCommunityIcons
-                name="apps"
-                size={20}
-                color="#FFF"
-              />
-            </View>
-            <View style={styles.servicesText}>
-              <Text style={styles.servicesTitle}>Сервисы</Text>
-              <Text style={styles.servicesSubtitle}>
-                Мини-приложения и ChatusFather
-              </Text>
-            </View>
-            <Text style={styles.servicesChevron}>›</Text>
-          </Pressable>
-        </View>
+          <Text style={styles.sectionTitle}>Подключения</Text>
+          <View style={styles.card}>
+            {renderRow({
+              key: 'telegram',
+              icon: 'send-outline',
+              title: 'Telegram',
+              subtitle: telegramConnectionMeta.subtitle,
+              onPress: openTelegram,
+              badge: {
+                label: telegramConnectionMeta.badge,
+                bg: telegramBadgeColors.bg,
+                text: telegramBadgeColors.text,
+              },
+            })}
+            {renderRow({
+              key: 'services',
+              icon: 'view-grid-outline',
+              title: 'Сервисы',
+              subtitle: 'Мини-приложения и боты',
+              onPress: () => navigation.navigate('Services'),
+              last: true,
+            })}
+          </View>
 
-        <Text style={styles.sectionTitle}>Обратная связь</Text>
-        <View style={styles.settingsCard}>
-          <Pressable
-            onPress={() => navigation.navigate('FeedbackList', { kind: 'bug' })}
-            style={({ pressed }) => [styles.servicesRow, pressed && styles.servicesRowPressed]}
-          >
-            <View style={[styles.servicesIconBubble, { backgroundColor: '#E53935' }]}>
-              <MaterialCommunityIcons name="bug" size={20} color="#FFF" />
-            </View>
-            <View style={styles.servicesText}>
-              <Text style={styles.servicesTitle}>Сообщить о баге</Text>
-              <Text style={styles.servicesSubtitle}>Список ваших сообщений и новая заявка</Text>
-            </View>
-            <Text style={styles.servicesChevron}>›</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate('FeedbackList', { kind: 'suggestion' })}
-            style={({ pressed }) => [
-              styles.servicesRow,
-              styles.feedbackRowSecond,
-              pressed && styles.servicesRowPressed,
-            ]}
-          >
-            <View style={[styles.servicesIconBubble, { backgroundColor: '#FFB300' }]}>
-              <MaterialCommunityIcons name="lightbulb" size={20} color="#FFF" />
-            </View>
-            <View style={styles.servicesText}>
-              <Text style={styles.servicesTitle}>Предложения</Text>
-              <Text style={styles.servicesSubtitle}>Идеи по улучшению приложения</Text>
-            </View>
-            <Text style={styles.servicesChevron}>›</Text>
-          </Pressable>
-        </View>
+          <Text style={styles.sectionTitle}>Приложение</Text>
+          <View style={styles.card}>
+            {renderRow({
+              key: 'appearance',
+              icon: 'palette-outline',
+              title: 'Оформление',
+              subtitle: 'Тема приложения',
+              onPress: () => navigation.navigate('Appearance'),
+            })}
+            {renderRow({
+              key: 'chats',
+              icon: 'message-outline',
+              title: 'Настройки чатов',
+              onPress: () => navigation.navigate('ChatSettings'),
+            })}
+            {renderRow({
+              key: 'notifications',
+              icon: 'bell-outline',
+              title: 'Уведомления и звуки',
+              onPress: soon('Уведомления и звуки'),
+              soon: true,
+            })}
+            {renderRow({
+              key: 'language',
+              icon: 'earth',
+              title: 'Язык',
+              onPress: soon('Язык'),
+              soon: true,
+            })}
+            {renderRow({
+              key: 'data',
+              icon: 'chart-pie',
+              title: 'Данные и память',
+              onPress: soon('Данные и память'),
+              soon: true,
+              last: true,
+            })}
+          </View>
 
-        <View style={[styles.settingsCard, styles.logoutCard]}>
-          <SettingsIconRow
-            title="Выйти из аккаунта"
-            iconD={sg.power.d}
-            iconFillRule={sg.power.fillRule}
-            iconBgColor="#E53935"
-            destructive
-            placeholder={false}
-            showChevron={false}
-            onPress={logout}
-          />
-        </View>
-      </ScrollView>
+          <Text style={styles.sectionTitle}>Безопасность</Text>
+          <View style={styles.card}>
+            {renderRow({
+              key: 'privacy',
+              icon: 'shield-outline',
+              title: 'Конфиденциальность',
+              onPress: soon('Конфиденциальность'),
+              soon: true,
+            })}
+            {renderRow({
+              key: 'security',
+              icon: 'lock-outline',
+              title: 'Пароль и безопасность',
+              onPress: soon('Пароль и безопасность'),
+              soon: true,
+            })}
+            {renderRow({
+              key: 'devices',
+              icon: 'laptop',
+              title: 'Устройства',
+              onPress: soon('Устройства'),
+              soon: true,
+              last: true,
+            })}
+          </View>
+
+          <Text style={styles.sectionTitle}>Поддержка</Text>
+          <View style={styles.card}>
+            {renderRow({
+              key: 'bug',
+              icon: 'bug-outline',
+              title: 'Сообщить о баге',
+              subtitle: 'Список ваших сообщений и новая заявка',
+              onPress: () => navigation.navigate('FeedbackList', { kind: 'bug' }),
+            })}
+            {renderRow({
+              key: 'suggestion',
+              icon: 'lightbulb-outline',
+              title: 'Предложения',
+              subtitle: 'Идеи по улучшению приложения',
+              onPress: () => navigation.navigate('FeedbackList', { kind: 'suggestion' }),
+              last: true,
+            })}
+          </View>
+
+          <View style={[styles.card, styles.logoutCard]}>
+            <Pressable
+              testID="settings-logout"
+              onPress={logout}
+              style={({ pressed }) => [styles.row, styles.logoutRow, pressed && styles.rowPressed]}
+            >
+              <MaterialCommunityIcons name="logout" size={20} color={palette.danger} style={{ marginRight: 10 }} />
+              <Text style={[styles.rowTitle, styles.rowTitleDanger]}>Выйти из аккаунта</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
       <AvatarPickSheet
         visible={avatarSheetVisible}
@@ -436,5 +474,5 @@ export function SettingsScreen() {
         subtitle="Фото профиля"
       />
     </>
-    );
-  }
+  );
+}
