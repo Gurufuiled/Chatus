@@ -33,7 +33,10 @@ import {
   getTelegramBuildCredentials,
   tdlibClient,
 } from "../services/tdlib/TdlibClient";
-import { applyTdlibParameters } from "../services/tdlib/tdlibBootstrap";
+import {
+  applyTdlibParameters,
+  recoverTdlibAuthSession,
+} from "../services/tdlib/tdlibBootstrap";
 import { throwIfTdError } from "../services/tdlib/tdlibErrors";
 import { runTdlibAuthorizationQuery } from "../services/tdlib/tdlibAuthQueue";
 import {
@@ -49,6 +52,7 @@ import {
   type AuthWizardStep,
 } from "./telegramAuth/telegramAuthPresentation";
 import {
+  describeUnexpectedAuthState,
   formatTdlibAuthError,
   readWaitPasswordAuthInfo,
 } from "./telegramAuth/tdlibAuthErrors";
@@ -181,6 +185,12 @@ export function TelegramAuthScreen() {
   const screenFocusedRef = useRef(false);
   const authWaitAbortRef = useRef<AbortController | null>(null);
   const qrUnsubscribeRef = useRef<(() => void) | null>(null);
+  /**
+   * Пользователь вернулся на шаг «номер телефона» с шага кода/пароля («Изменить номер»). TDLib позволяет
+   * повторно вызвать setAuthenticationPhoneNumber в состояниях WaitCode/WaitPassword, поэтому проверки
+   * «код уже отправлен» в этом случае пропускаем. Раньше выйти с шага кода можно было только сбросом сессии.
+   */
+  const changingPhoneRef = useRef(false);
   const qrFlowActiveRef = useRef(
     telegramAccountStore.getState().authStatus === "waiting_qr",
   );
@@ -251,6 +261,8 @@ export function TelegramAuthScreen() {
       if (apiId == null || !apiHash) {
         return telegramAccountStore.getState().authStatus;
       }
+      // Клиент мог выйти из аккаунта (LoggingOut/Closed) — пересоздаём его, иначе вход невозможен.
+      await recoverTdlibAuthSession();
       await applyTdlibParameters();
       let auth = (await tdlibClient.send({
         "@type": "getAuthorizationState",
@@ -400,6 +412,7 @@ export function TelegramAuthScreen() {
       setBootstrapError(null);
 
       const currentStatus = telegramAccountStore.getState().authStatus;
+      const changingPhone = changingPhoneRef.current;
       if (currentStatus === "ready") {
         if (navigation.canGoBack()) navigation.popToTop();
         return;
@@ -416,6 +429,11 @@ export function TelegramAuthScreen() {
         return;
       }
 
+      await withTimeout(
+        recoverTdlibAuthSession(),
+        45000,
+        "Telegram не завершил выход за 45 с. Закройте приложение полностью и откройте снова.",
+      );
       await withTimeout(
         applyTdlibParameters(),
         30000,
@@ -437,15 +455,16 @@ export function TelegramAuthScreen() {
         return;
       }
       if (
-        probeType === "authorizationStateWaitCode" ||
-        probeType === "authorizationStateWaitEmailCode"
+        !changingPhone &&
+        (probeType === "authorizationStateWaitCode" ||
+          probeType === "authorizationStateWaitEmailCode")
       ) {
         telegramAccountStore.getState().setAuthStatus("waiting_code");
         await telegramAccountStore.getState().persistSnapshot();
         Alert.alert("Код уже отправлен", "Введите код на этом шаге.");
         return;
       }
-      if (probeType === "authorizationStateWaitPassword") {
+      if (!changingPhone && probeType === "authorizationStateWaitPassword") {
         telegramAccountStore.getState().setAuthStatus("waiting_password");
         await telegramAccountStore.getState().persistSnapshot();
         Alert.alert(
@@ -454,15 +473,21 @@ export function TelegramAuthScreen() {
         );
         return;
       }
-      if (
-        probeType !== "authorizationStateWaitPhoneNumber" &&
-        probeType !== "authorizationStateWaitEmailAddress" &&
-        probeType !== "authorizationStateWaitRegistration"
-      ) {
-        Alert.alert(
-          "Telegram",
-          `Не удалось начать вход (состояние: ${probeType ?? "?"}). Закройте экран и откройте снова.`,
-        );
+      const phoneEntryStates = new Set([
+        "authorizationStateWaitPhoneNumber",
+        "authorizationStateWaitEmailAddress",
+        "authorizationStateWaitRegistration",
+        // при смене номера TDLib принимает номер и в этих состояниях
+        ...(changingPhone
+          ? [
+              "authorizationStateWaitCode",
+              "authorizationStateWaitEmailCode",
+              "authorizationStateWaitPassword",
+            ]
+          : []),
+      ]);
+      if (!phoneEntryStates.has(probeType ?? "")) {
+        Alert.alert("Telegram", describeUnexpectedAuthState(probeType));
         return;
       }
 
@@ -485,7 +510,11 @@ export function TelegramAuthScreen() {
         const netMsg =
           netErr instanceof Error ? netErr.message : String(netErr);
         console.warn("[TDLib] ⚠️ testNetwork FAILED:", netMsg);
-        // Не прерываем — попробуем отправить номер всё равно, но логируем
+        // Раньше номер отправлялся всё равно и экран висел до 10 минут. Серверы Telegram недоступны (частая
+        // причина — блокировка провайдером): код не придёт, говорим об этом сразу.
+        throw new Error(
+          "Нет связи с серверами Telegram. Часто их блокирует провайдер или Wi-Fi-роутер — включите VPN и повторите.",
+        );
       }
 
       await runTdlibAuthorizationQuery(async () => {
@@ -636,11 +665,24 @@ export function TelegramAuthScreen() {
 
         throwIfTdError(result);
         telegramAccountStore.getState().setPhoneHint(trimmed);
-        telegramAccountStore.getState().setAuthStatus("waiting_code");
+        changingPhoneRef.current = false;
+        // TDLib мог сразу перейти не в «ждём код» (уже вошли / подтверждение на другом устройстве)
+        const resolvedState = (result as { _state?: string } | null)?._state;
+        if (resolvedState === "authorizationStateReady") {
+          await completeAuthSuccess();
+          return;
+        }
+        telegramAccountStore
+          .getState()
+          .setAuthStatus(
+            resolvedState === "authorizationStateWaitOtherDeviceConfirmation"
+              ? "waiting_qr"
+              : "waiting_code",
+          );
         await telegramAccountStore.getState().persistSnapshot();
       });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = formatTdlibAuthError(e instanceof Error ? e.message : String(e));
       if (screenFocusedRef.current) {
         setBootstrapError(msg);
         Alert.alert("Telegram", msg);
@@ -743,6 +785,11 @@ export function TelegramAuthScreen() {
             acceptStates: new Set([
               "authorizationStateWaitPassword",
               "authorizationStateReady",
+              // Раньше этих состояний не ждали: для незарегистрированного номера или входа с e-mail экран висел
+              // 90 секунд и писал «не подтвердил код».
+              "authorizationStateWaitRegistration",
+              "authorizationStateWaitEmailAddress",
+              "authorizationStateWaitEmailCode",
             ]),
             timeoutMs: 90_000,
             timeoutMessage:
@@ -774,7 +821,10 @@ export function TelegramAuthScreen() {
           await completeAuthSuccess();
           return;
         }
-        throw new Error(`Неожиданное состояние после кода: ${nextState ?? "?"}`);
+        // вернуть шаг «номер телефона»: на этом шаге код уже не поможет
+        telegramAccountStore.getState().setAuthStatus("waiting_phone");
+        await telegramAccountStore.getState().persistSnapshot();
+        throw new Error(describeUnexpectedAuthState(nextState));
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -792,7 +842,7 @@ export function TelegramAuthScreen() {
             return;
           }
         }
-        Alert.alert("Telegram", message);
+        Alert.alert("Telegram", formatTdlibAuthError(message));
       }
     } finally {
       authWaitAbortRef.current = null;
@@ -893,6 +943,13 @@ export function TelegramAuthScreen() {
     }
   }, [cloudPassword, completeAuthSuccess, syncAuthorizationFromTdlib]);
 
+  const startChangePhone = useCallback(() => {
+    changingPhoneRef.current = true;
+    setCode("");
+    setBootstrapError(null);
+    telegramAccountStore.getState().setAuthStatus("waiting_phone");
+  }, []);
+
   const resetTg = useCallback(() => {
     Alert.alert(
       "Выйти из Telegram?",
@@ -930,6 +987,11 @@ export function TelegramAuthScreen() {
     stopQrLogin();
     qrFlowActiveRef.current = true;
     try {
+      await withTimeout(
+        recoverTdlibAuthSession(),
+        45000,
+        "Telegram не завершил выход за 45 секунд.",
+      );
       await withTimeout(
         applyTdlibParameters(),
         30000,
@@ -1206,6 +1268,24 @@ export function TelegramAuthScreen() {
               style={inputFieldStyle}
             />
             <Pressable
+              onPress={startChangePhone}
+              disabled={busy || preparing}
+              hitSlop={8}
+              style={{ marginBottom: 10 }}
+              accessibilityRole="button"
+              testID="telegram-auth-change-phone"
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: busy || preparing ? ui.placeholder : colors.accent,
+                  fontWeight: "600",
+                }}
+              >
+                Изменить номер телефона
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={() => void resendAuthCode()}
               disabled={busy || preparing || status !== "waiting_code"}
               style={{ marginBottom: 10 }}
@@ -1289,6 +1369,23 @@ export function TelegramAuthScreen() {
                 (почта для восстановления уже привязана).
               </Text>
             ) : null}
+            <Pressable
+              onPress={startChangePhone}
+              disabled={busy || preparing}
+              hitSlop={8}
+              style={{ marginTop: 8 }}
+              accessibilityRole="button"
+            >
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: busy || preparing ? ui.placeholder : colors.accent,
+                  fontWeight: "600",
+                }}
+              >
+                Изменить номер телефона
+              </Text>
+            </Pressable>
           </>
         ) : null}
 

@@ -68,7 +68,11 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
-  private val clientId: Int
+  /**
+   * Меняется в [restartClient]: после `authorizationStateClosed` (выход, `destroy`) клиент TDLib мёртв, новый
+   * создаётся без перезапуска процесса. Апдейты старого client_id отфильтровываются в [handleIncoming].
+   */
+  @Volatile private var clientId: Int = -1
   @Volatile private var destroyed = false
   @Volatile private var receiveRunning = false
   private var receiveThread: Thread? = null
@@ -86,7 +90,8 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
         Log.e(TAG, "TDLib native init failed (did you run npm run tdlib:fetch-android?)", e)
         -1
       }
-    if (clientId >= 0) {
+    val startedClientId = clientId
+    if (startedClientId >= 0) {
       try {
         JsonClient.td_set_log_message_callback(
           2,
@@ -234,6 +239,44 @@ class TdlibModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun removeListeners(count: Int) {}
+
+  /**
+   * Создаёт нового клиента TDLib вместо закрытого (`authorizationStateClosed` после выхода или `destroy`).
+   * Все ожидающие ответа запросы старого клиента отклоняются: ответов на них уже не будет.
+   * Вызывать только когда старый клиент закрыт — иначе новый упрётся в блокировку базы данных.
+   */
+  @ReactMethod
+  fun restartClient(promise: Promise) {
+    val rt = receiveThread
+    if (destroyed || !receiveRunning || rt == null || !rt.isAlive) {
+      promise.reject("E_TD_JSON", "TDLib receive-поток недоступен — перезапустите приложение.", null)
+      return
+    }
+    try {
+      val newId = synchronized(sendLock) { JsonClient.td_create_client_id() }
+      val oldId = clientId
+      clientId = newId
+      Log.w(TAG, "restartClient: client_id $oldId → $newId")
+      for (r in pendingTimeouts.values.toList()) {
+        mainHandler.removeCallbacks(r)
+      }
+      pendingTimeouts.clear()
+      val snapshot = pending.entries.toList()
+      pending.clear()
+      for ((_, p) in snapshot) {
+        mainHandler.post {
+          try {
+            p.reject("E_TD_RESTARTED", "Клиент TDLib перезапущен.", null)
+          } catch (_: Exception) {
+          }
+        }
+      }
+      promise.resolve(newId)
+    } catch (e: Throwable) {
+      Log.e(TAG, "restartClient failed", e)
+      promise.reject("E_TD_RESTART", e.message ?: "не удалось создать клиента TDLib", e)
+    }
+  }
 
   @ReactMethod
   fun sendClientJson(queryJson: String, promise: Promise) {

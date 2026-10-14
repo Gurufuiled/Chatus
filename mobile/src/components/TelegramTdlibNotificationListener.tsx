@@ -1,7 +1,11 @@
 import { useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
-import { applyTdlibParameters, waitForTdlibAuthorizationReady } from '../services/tdlib/tdlibBootstrap';
+import {
+  applyTdlibParameters,
+  recoverTdlibAuthSession,
+  waitForTdlibAuthorizationReady,
+} from '../services/tdlib/tdlibBootstrap';
 import {
   notifyTelegramInboundMessagePreview,
   registerTelegramAndroidPushWithTdlib,
@@ -131,6 +135,11 @@ export function TelegramTdlibNotificationListener() {
               if (store.authStatus !== 'error') {
                 store.setAuthStatus('error');
                 scheduleAuthPersist();
+              }
+              if (stateType === 'authorizationStateClosed') {
+                // Клиент закрыт (выход или сессию завершил сервер) — заранее создаём нового, чтобы вход заново
+                // работал без перезапуска приложения.
+                void recoverTdlibAuthSession().catch(() => undefined);
               }
               break;
             default:

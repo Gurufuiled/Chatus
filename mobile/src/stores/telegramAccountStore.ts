@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { resetTelegramPushRegistrationFlag } from '../services/pushNotificationsService';
 import { tdlibClient } from '../services/tdlib/TdlibClient';
+import { recoverTdlibAuthSession } from '../services/tdlib/tdlibBootstrap';
 import { clearUserNameCache } from '../services/tdlib/userNameCache';
 import { normalizeTelegramDialogRows, normalizeTelegramDialogRow } from '../screens/telegramChat/telegramDialogFallback';
 
@@ -151,5 +152,8 @@ export const telegramAccountStore = create<TelegramAccountState & TelegramAccoun
     clearUserNameCache();
     set({ ...initial });
     await SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => undefined);
+    // После выхода клиент TDLib закрывается и войти в нём заново нельзя. Пересоздаём его в фоне (если сервер
+    // Telegram недоступен и выход не завершается — через destroy), чтобы вход работал без перезапуска приложения.
+    void recoverTdlibAuthSession({ assumeState: 'authorizationStateLoggingOut' }).catch(() => undefined);
   },
 }));

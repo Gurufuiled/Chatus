@@ -2,6 +2,12 @@ import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getTelegramBuildCredentials, tdlibClient } from './TdlibClient';
 import { throwIfTdError } from './tdlibErrors';
+import {
+  AUTH_STATE_CLOSED,
+  recoverTdlibSession,
+  type SessionRecoveryOptions,
+  type SessionRecoveryResult,
+} from './tdlibSessionRecovery';
 
 /** TDLib ждёт POSIX-путь; Expo `documentDirectory` — `file:///…`. */
 function fileUriToFilesystemPath(uri: string): string {
@@ -109,6 +115,86 @@ async function doApplyTdlibParameters(): Promise<void> {
   });
   throwIfTdError(setRes);
   tdlibParametersAppliedThisProcess = true;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(id);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(id);
+        reject(error);
+      },
+    );
+  });
+}
+
+function waitForClosedState(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (tdlibClient.getLastAuthorizationState() === AUTH_STATE_CLOSED) {
+      resolve(true);
+      return;
+    }
+    const timer = setTimeout(() => {
+      unsubscribe();
+      resolve(false);
+    }, timeoutMs);
+    const unsubscribe = tdlibClient.subscribe((update) => {
+      if (update['@type'] !== 'updateAuthorizationState') return;
+      const state = (update.authorization_state as { '@type'?: string } | undefined)?.['@type'];
+      if (state !== AUTH_STATE_CLOSED) return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(true);
+    });
+  });
+}
+
+let recoveryInFlight: Promise<SessionRecoveryResult> | null = null;
+
+/**
+ * Гарантирует, что клиент TDLib жив: если он вышел из аккаунта (LoggingOut / Closing / Closed) — ждёт закрытия
+ * (или делает `destroy`, если выход не завершается из-за недоступных серверов Telegram), создаёт нового клиента и
+ * заново передаёт параметры. Живой клиент не трогает. Одновременные вызовы делят один проход.
+ */
+export function recoverTdlibAuthSession(options?: SessionRecoveryOptions): Promise<SessionRecoveryResult> {
+  if (recoveryInFlight) return recoveryInFlight;
+  const run = recoverTdlibSession(
+    {
+      readState: async () => {
+        const known = tdlibClient.getLastAuthorizationState();
+        if (known) return known;
+        try {
+          const auth = (await withTimeout(
+            tdlibClient.send({ '@type': 'getAuthorizationState' }) as Promise<Record<string, unknown>>,
+            4000,
+          )) as Record<string, unknown>;
+          return typeof auth['@type'] === 'string' ? (auth['@type'] as string) : null;
+        } catch {
+          return null;
+        }
+      },
+      waitClosed: waitForClosedState,
+      destroy: async () => {
+        // закрытый клиент на запросы не отвечает — ответа может не быть, ждём закрытия по апдейтам
+        await withTimeout(tdlibClient.send({ '@type': 'destroy' }), 4000).catch(() => undefined);
+      },
+      restartClient: () => tdlibClient.restartClient(),
+      reinitialize: async () => {
+        resetTdlibParametersLock();
+        await applyTdlibParameters();
+      },
+    },
+    options,
+  ).finally(() => {
+    recoveryInFlight = null;
+  });
+  recoveryInFlight = run;
+  return run;
 }
 
 const AUTH_READY_POLL_MS = 120;

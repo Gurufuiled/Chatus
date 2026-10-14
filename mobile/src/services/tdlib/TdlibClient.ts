@@ -7,18 +7,16 @@ type TdUpdateListener = (update: TdlibUpdate) => void;
 
 const NATIVE_NAME = 'Tdlib';
 
-function getNativeModule(): {
+type NativeTdlibModule = {
   sendClientJson: (json: string) => Promise<string>;
+  /** Создаёт нового клиента TDLib вместо закрытого. Есть не во всех сборках — см. `restartClient`. */
+  restartClient?: () => Promise<number>;
   addListener?: (eventType: string) => void;
   removeListeners?: (count: number) => void;
-} | null {
-  const m = NativeModules[NATIVE_NAME] as
-    | {
-        sendClientJson: (json: string) => Promise<string>;
-        addListener?: (eventType: string) => void;
-        removeListeners?: (count: number) => void;
-      }
-    | undefined;
+};
+
+function getNativeModule(): NativeTdlibModule | null {
+  const m = NativeModules[NATIVE_NAME] as NativeTdlibModule | undefined;
   return m ?? null;
 }
 
@@ -34,6 +32,7 @@ class TdlibClientImpl {
   private listeners = new Set<TdUpdateListener>();
   private pendingUpdates: TdlibUpdate[] = [];
   private flushScheduled = false;
+  private authorizationState: string | null = null;
 
   constructor() {
     const mod = getNativeModule();
@@ -52,6 +51,10 @@ class TdlibClientImpl {
     } catch {
       return;
     }
+    if (parsed['@type'] === 'updateAuthorizationState') {
+      const state = (parsed.authorization_state as { '@type'?: string } | undefined)?.['@type'];
+      if (state) this.authorizationState = state;
+    }
     this.pendingUpdates.push(parsed);
     if (this.flushScheduled) return;
     this.flushScheduled = true;
@@ -69,6 +72,28 @@ class TdlibClientImpl {
         }
       }
     });
+  }
+
+  /**
+   * Последнее состояние авторизации из `updateAuthorizationState` (`null` — ещё не приходило).
+   * Нужно, потому что закрытый клиент TDLib на запросы не отвечает: `getAuthorizationState` повисает
+   * до таймаута, и узнать про `authorizationStateClosed` можно только из апдейтов.
+   */
+  getLastAuthorizationState(): string | null {
+    return this.authorizationState;
+  }
+
+  /**
+   * Заменяет закрытого клиента TDLib новым (после выхода из аккаунта или `destroy`), без перезапуска процесса.
+   * Бросает, если нативная часть такой метод не поддерживает (старая сборка).
+   */
+  async restartClient(): Promise<void> {
+    const mod = getNativeModule();
+    if (typeof mod?.restartClient !== 'function') {
+      throw new Error('Эта сборка не умеет перезапускать Telegram. Закройте приложение полностью и откройте снова.');
+    }
+    await mod.restartClient();
+    this.authorizationState = null;
   }
 
   subscribe(listener: TdUpdateListener): () => void {
