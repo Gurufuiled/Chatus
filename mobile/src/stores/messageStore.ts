@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   insertChatMessageNewestFirst,
+  placeOptimisticAtEnd,
   sortChatMessagesNewestFirst,
 } from '../utils/chatMessageOrder';
 import { filterHiddenMessages, locallyHiddenMessageStore } from './locallyHiddenMessageStore';
@@ -70,7 +71,7 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
       return {
         messagesByChatId: {
           ...state.messagesByChatId,
-          [chatId]: insertChatMessageNewestFirst(existing, message),
+          [chatId]: insertChatMessageNewestFirst(existing, placeOptimisticAtEnd(existing, message)),
         },
       };
     }),
@@ -83,7 +84,7 @@ export const messageStore = create<MessageState & MessageActions>((set) => ({
       return {
         messagesByChatId: {
           ...state.messagesByChatId,
-          [chatId]: insertChatMessageNewestFirst(existing, message),
+          [chatId]: insertChatMessageNewestFirst(existing, placeOptimisticAtEnd(existing, message)),
         },
       };
     }),

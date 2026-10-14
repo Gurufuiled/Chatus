@@ -14,6 +14,22 @@ export function sortChatMessagesNewestFirst(messages: Message[]): Message[] {
   return [...messages].sort(compareChatMessagesNewestFirst);
 }
 
+/**
+ * Отправляемое сообщение (ещё не подтверждено сервером) всегда ложится в самый конец чата.
+ *
+ * Время у такого сообщения берётся с часов телефона, а у остальных — с сервера. Если часы телефона отстают, новое
+ * сообщение получало время меньше последнего серверного и рисовалось ПОСРЕДИ переписки; после подтверждения сервер
+ * присваивал настоящее время, и оно «перепрыгивало» вниз (так было у кружков и голосовых). Поэтому время
+ * отправляемого сообщения не может быть меньше времени самого свежего сообщения чата.
+ */
+export function placeOptimisticAtEnd(existingNewestFirst: readonly Message[], message: Message): Message {
+  if (message.status !== 'sending') return message;
+  const newest = existingNewestFirst[0];
+  if (!newest || message.created_at > newest.created_at) return message;
+  const createdAt = newest.created_at + 1;
+  return { ...message, created_at: createdAt, updated_at: Math.max(message.updated_at, createdAt) };
+}
+
 /** Insert without duplicates; keeps newest-first order by `created_at`. */
 export function insertChatMessageNewestFirst(
   messages: Message[],
